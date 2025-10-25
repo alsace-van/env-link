@@ -320,7 +320,17 @@ const AccessoriesCatalogView = () => {
         <AccessoryCatalogFormDialog
           isOpen={!!editingAccessory}
           onClose={() => setEditingAccessory(null)}
-          accessory={editingAccessory}
+          accessory={editingAccessory ? {
+            id: editingAccessory.id,
+            nom: editingAccessory.nom,
+            category_id: editingAccessory.category_id,
+            prix_reference: editingAccessory.prix_reference || undefined,
+            prix_vente_ttc: editingAccessory.prix_vente_ttc || undefined,
+            marge_pourcent: editingAccessory.marge_pourcent || undefined,
+            fournisseur: editingAccessory.fournisseur || undefined,
+            description: editingAccessory.description || undefined,
+            url_produit: editingAccessory.url_produit || undefined,
+          } : null}
           onSuccess={() => {
             loadAccessories();
             setEditingAccessory(null);

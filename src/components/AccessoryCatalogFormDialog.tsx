@@ -24,6 +24,8 @@ interface AccessoryCatalogFormDialogProps {
     nom: string;
     category_id?: string | null;
     prix_reference?: number;
+    prix_vente_ttc?: number;
+    marge_pourcent?: number;
     fournisseur?: string;
     description?: string;
     url_produit?: string;
@@ -57,8 +59,8 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           nom: accessory.nom,
           category_id: accessory.category_id || "",
           prix_reference: accessory.prix_reference?.toString() || "",
-          prix_vente_ttc: "",
-          marge_pourcent: "",
+          prix_vente_ttc: accessory.prix_vente_ttc?.toString() || "",
+          marge_pourcent: accessory.marge_pourcent?.toString() || "",
           fournisseur: accessory.fournisseur || "",
           description: accessory.description || "",
           url_produit: accessory.url_produit || "",
