@@ -309,6 +309,36 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       }
     } else {
       // Mode création
+      let finalAccessoryId = selectedAccessoryId;
+
+      // Si pas de lien sélectionné, chercher dans le catalogue
+      if (!finalAccessoryId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: catalogItems } = await supabase
+            .from("accessories_catalog")
+            .select("*")
+            .eq("user_id", user.id);
+
+          if (catalogItems && catalogItems.length > 0) {
+            const match = catalogItems.find(item => {
+              const nameMatch = item.nom.toLowerCase().includes(formData.nom_accessoire.toLowerCase()) ||
+                               formData.nom_accessoire.toLowerCase().includes(item.nom.toLowerCase());
+              const priceMatch = item.prix_reference && 
+                                Math.abs(item.prix_reference - parseFloat(formData.prix_achat)) < 0.01;
+              const supplierMatch = item.fournisseur && formData.fournisseur && 
+                                   item.fournisseur.toLowerCase() === formData.fournisseur.toLowerCase();
+              
+              return nameMatch || priceMatch || supplierMatch;
+            });
+
+            if (match) {
+              finalAccessoryId = match.id;
+            }
+          }
+        }
+      }
+
       const { error } = await supabase
         .from("project_expenses")
         .insert({
@@ -325,14 +355,18 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           notes: formData.notes || null,
           statut_paiement: "non_paye",
           statut_livraison: "commande",
-          accessory_id: selectedAccessoryId,
+          accessory_id: finalAccessoryId,
         });
 
       if (error) {
         toast.error("Erreur lors de l'ajout de la dépense");
         console.error(error);
       } else {
-        toast.success("Dépense ajoutée avec succès");
+        if (finalAccessoryId && !selectedAccessoryId) {
+          toast.success("Dépense ajoutée et liée au catalogue");
+        } else {
+          toast.success("Dépense ajoutée avec succès");
+        }
         setFormData({
           nom_accessoire: "",
           marque: "",

@@ -156,6 +156,53 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         console.error(error);
       } else {
         toast.success("Article ajouté au catalogue");
+        
+        // Chercher et lier les dépenses correspondantes
+        const { data: newAccessory } = await supabase
+          .from("accessories_catalog")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("nom", formData.nom)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (newAccessory) {
+          // Trouver les dépenses qui correspondent
+          const { data: matchingExpenses } = await supabase
+            .from("project_expenses")
+            .select("id, nom_accessoire, prix, fournisseur")
+            .is("accessory_id", null);
+
+          if (matchingExpenses && matchingExpenses.length > 0) {
+            let linkedCount = 0;
+            
+            for (const expense of matchingExpenses) {
+              const nameMatch = formData.nom.toLowerCase().includes(expense.nom_accessoire.toLowerCase()) ||
+                               expense.nom_accessoire.toLowerCase().includes(formData.nom.toLowerCase());
+              const priceMatch = formData.prix_reference && 
+                                Math.abs(parseFloat(formData.prix_reference) - expense.prix) < 0.01;
+              const supplierMatch = formData.fournisseur && expense.fournisseur && 
+                                   formData.fournisseur.toLowerCase() === expense.fournisseur.toLowerCase();
+              
+              if (nameMatch || priceMatch || supplierMatch) {
+                const { error: linkError } = await supabase
+                  .from("project_expenses")
+                  .update({ accessory_id: newAccessory.id })
+                  .eq("id", expense.id);
+
+                if (!linkError) {
+                  linkedCount++;
+                }
+              }
+            }
+
+            if (linkedCount > 0) {
+              toast.success(`Article ajouté et ${linkedCount} dépense(s) liée(s)`);
+            }
+          }
+        }
+
         setFormData({
           nom: "",
           prix_reference: "",
