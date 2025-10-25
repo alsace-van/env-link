@@ -12,6 +12,7 @@ import PhotoAnnotationModal from "@/components/PhotoAnnotationModal";
 import UserMenu from "@/components/UserMenu";
 import ExpensesList from "@/components/ExpensesList";
 import ExpensesSummary from "@/components/ExpensesSummary";
+import AccessoriesCatalogView from "@/components/AccessoriesCatalogView";
 import { User } from "@supabase/supabase-js";
 
 interface Project {
@@ -325,9 +326,7 @@ const ProjectDetail = () => {
                 <CardDescription>Votre catalogue personnel partagé entre tous vos projets</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  Fonctionnalité à venir
-                </p>
+                <AccessoriesCatalogView />
               </CardContent>
             </Card>
           </TabsContent>
