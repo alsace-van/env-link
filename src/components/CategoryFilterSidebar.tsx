@@ -226,13 +226,13 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
 
   return (
     <div className="relative">
-      {/* Collapse/Expand Button */}
+      {/* Collapse Button - Always visible */}
       <Button
         variant="ghost"
         size="icon"
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className={`absolute top-4 z-10 h-8 w-8 transition-all duration-300 ${
-          isCollapsed ? "left-2" : "right-2"
+        className={`absolute z-10 h-8 w-8 transition-all duration-300 ${
+          isCollapsed ? "left-2 top-2" : "-right-10 top-4"
         }`}
       >
         {isCollapsed ? <Filter className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -242,7 +242,7 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
         isCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-72 opacity-100"
       }`}>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between pr-8">
+          <div className="flex items-center justify-between">
             <CardTitle className="text-base">Filtres par catégorie</CardTitle>
             <div className="flex gap-1">
               {selectedCategories.length > 0 && (
