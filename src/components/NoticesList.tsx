@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,6 +15,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface Notice {
   id: string;
@@ -105,61 +113,83 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {notices.map((notice) => (
-        <Card key={notice.id}>
-          <CardHeader>
-            <CardTitle className="text-lg">{notice.titre}</CardTitle>
-            {(notice.marque || notice.modele) && (
-              <CardDescription>
-                {notice.marque} {notice.modele}
-              </CardDescription>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {notice.categorie && (
-              <div className="text-sm">
-                <span className="font-medium">Catégorie:</span> {notice.categorie}
-              </div>
-            )}
-            {notice.description && (
-              <p className="text-sm text-muted-foreground">{notice.description}</p>
-            )}
-            <div className="flex gap-2 pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => window.open(notice.url_notice, "_blank")}
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Ouvrir
-              </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm">
-                    <Trash2 className="h-4 w-4" />
+    <div className="border rounded-lg">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="min-w-[200px]">Titre</TableHead>
+            <TableHead className="min-w-[150px]">Marque / Modèle</TableHead>
+            <TableHead className="min-w-[120px]">Catégorie</TableHead>
+            <TableHead className="min-w-[200px]">Description</TableHead>
+            <TableHead className="min-w-[150px]">Date d'ajout</TableHead>
+            <TableHead className="w-[120px] text-center">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {notices.map((notice) => (
+            <TableRow key={notice.id}>
+              <TableCell className="font-medium">{notice.titre}</TableCell>
+              <TableCell>
+                {notice.marque || notice.modele ? (
+                  <div className="text-sm">
+                    {notice.marque && <div>{notice.marque}</div>}
+                    {notice.modele && <div className="text-muted-foreground">{notice.modele}</div>}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground text-xs">-</span>
+                )}
+              </TableCell>
+              <TableCell>
+                {notice.categorie || <span className="text-muted-foreground text-xs">-</span>}
+              </TableCell>
+              <TableCell>
+                {notice.description ? (
+                  <span className="text-sm line-clamp-2">{notice.description}</span>
+                ) : (
+                  <span className="text-muted-foreground text-xs">-</span>
+                )}
+              </TableCell>
+              <TableCell>
+                <span className="text-sm text-muted-foreground">
+                  {new Date(notice.created_at).toLocaleDateString("fr-FR")}
+                </span>
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-2 justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(notice.url_notice, "_blank")}
+                  >
+                    <ExternalLink className="h-4 w-4" />
                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Cette action est irréversible. La notice sera dissociée des accessoires liés.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Annuler</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => handleDelete(notice.id)}>
-                      Supprimer
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action est irréversible. La notice sera dissociée des accessoires liés.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDelete(notice.id)}>
+                          Supprimer
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 };
