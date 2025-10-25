@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Plus, CreditCard, Package, ArrowRight, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -218,109 +219,222 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       )}
 
       <ScrollArea className="h-[600px]">
-        <div className="space-y-3">
-          {filteredExpenses.map((expense) => (
-            <Card key={expense.id} className="p-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-1">
-                  <div className="col-span-2 flex items-center gap-2 mb-1">
-                    <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
-                    <Badge variant="outline" className="text-xs">{expense.categorie}</Badge>
-                    {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
-                  </div>
-                  
-                  <div className="text-xs text-muted-foreground">
-                    <span>Prix achat: {expense.prix.toFixed(2)} € × {expense.quantite}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>
+        {selectedCategory ? (
+          <div className="space-y-3">
+            {filteredExpenses.map((expense) => (
+              <Card key={expense.id} className="p-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-1">
+                    <div className="col-span-2 flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
+                      <Badge variant="outline" className="text-xs">{expense.categorie}</Badge>
+                      {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
+                    </div>
+                    
+                    <div className="text-xs text-muted-foreground">
+                      <span>Prix achat: {expense.prix.toFixed(2)} € × {expense.quantite}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>
+                    </div>
+
+                    {expense.prix_vente_ttc && (
+                      <div className="text-xs text-muted-foreground">
+                        <span>Prix vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</span>
+                      </div>
+                    )}
+                    {expense.marge_pourcent && (
+                      <div className="text-xs text-muted-foreground">
+                        <span>Marge: {expense.marge_pourcent.toFixed(2)} %</span>
+                      </div>
+                    )}
+
+                    {expense.date_achat && (
+                      <div className="text-xs text-muted-foreground">
+                        <span>Date: {new Date(expense.date_achat).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {expense.fournisseur && (
+                      <div className="text-xs text-muted-foreground">
+                        <span>Fournisseur: {expense.fournisseur}</span>
+                      </div>
+                    )}
+                    
+                    {expense.notes && (
+                      <div className="col-span-2 text-xs text-muted-foreground italic">
+                        {expense.notes}
+                      </div>
+                    )}
                   </div>
 
-                  {expense.prix_vente_ttc && (
-                    <div className="text-xs text-muted-foreground">
-                      <span>Prix vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</span>
-                    </div>
-                  )}
-                  {expense.marge_pourcent && (
-                    <div className="text-xs text-muted-foreground">
-                      <span>Marge: {expense.marge_pourcent.toFixed(2)} %</span>
-                    </div>
-                  )}
+                  <div className="flex gap-1.5">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
+                            <CreditCard className="h-4 w-4" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{getPaymentStatus().label}</p>
+                        </TooltipContent>
+                      </Tooltip>
 
-                  {expense.date_achat && (
-                    <div className="text-xs text-muted-foreground">
-                      <span>Date: {new Date(expense.date_achat).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                  {expense.fournisseur && (
-                    <div className="text-xs text-muted-foreground">
-                      <span>Fournisseur: {expense.fournisseur}</span>
-                    </div>
-                  )}
-                  
-                  {expense.notes && (
-                    <div className="col-span-2 text-xs text-muted-foreground italic">
-                      {expense.notes}
-                    </div>
-                  )}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                            onClick={() => cycleDeliveryStatus(expense)}
+                          >
+                            {getDeliveryInfo(expense.statut_livraison).icon}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => deleteExpense(expense.id)}
+                          >
+                            <span className="text-xs font-bold">×</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Supprimer</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                 </div>
+              </Card>
+            ))}
 
-                <div className="flex gap-1.5">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
-                          <CreditCard className="h-4 w-4" />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{getPaymentStatus().label}</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
-                          onClick={() => cycleDeliveryStatus(expense)}
-                        >
-                          {getDeliveryInfo(expense.statut_livraison).icon}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="destructive"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => deleteExpense(expense.id)}
-                        >
-                          <span className="text-xs font-bold">×</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Supprimer</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
+            {filteredExpenses.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                Aucune dépense dans cette catégorie
               </div>
-            </Card>
-          ))}
+            )}
+          </div>
+        ) : (
+          <Accordion type="multiple" className="space-y-2">
+            {categories.map((category) => (
+              <AccordionItem key={category} value={category} className="border rounded-lg px-4">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{category}</span>
+                    <Badge variant="secondary">{groupedByCategory[category].length} article(s)</Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-3 pt-2">
+                    {groupedByCategory[category].map((expense) => (
+                      <Card key={expense.id} className="p-3">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-1">
+                            <div className="col-span-2 flex items-center gap-2 mb-1">
+                              <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
+                              {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
+                            </div>
+                            
+                            <div className="text-xs text-muted-foreground">
+                              <span>Prix achat: {expense.prix.toFixed(2)} € × {expense.quantite}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>
+                            </div>
 
-          {filteredExpenses.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              Aucune dépense dans cette catégorie
-            </div>
-          )}
-        </div>
+                            {expense.prix_vente_ttc && (
+                              <div className="text-xs text-muted-foreground">
+                                <span>Prix vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</span>
+                              </div>
+                            )}
+                            {expense.marge_pourcent && (
+                              <div className="text-xs text-muted-foreground">
+                                <span>Marge: {expense.marge_pourcent.toFixed(2)} %</span>
+                              </div>
+                            )}
+
+                            {expense.date_achat && (
+                              <div className="text-xs text-muted-foreground">
+                                <span>Date: {new Date(expense.date_achat).toLocaleDateString()}</span>
+                              </div>
+                            )}
+                            {expense.fournisseur && (
+                              <div className="text-xs text-muted-foreground">
+                                <span>Fournisseur: {expense.fournisseur}</span>
+                              </div>
+                            )}
+                            
+                            {expense.notes && (
+                              <div className="col-span-2 text-xs text-muted-foreground italic">
+                                {expense.notes}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex gap-1.5">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
+                                    <CreditCard className="h-4 w-4" />
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{getPaymentStatus().label}</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                                    onClick={() => cycleDeliveryStatus(expense)}
+                                  >
+                                    {getDeliveryInfo(expense.statut_livraison).icon}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => deleteExpense(expense.id)}
+                                  >
+                                    <span className="text-xs font-bold">×</span>
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Supprimer</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        )}
       </ScrollArea>
 
       <ExpenseFormDialog

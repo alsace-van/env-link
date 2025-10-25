@@ -196,8 +196,8 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              <CarouselPrevious />
-              <CarouselNext />
+              <CarouselPrevious className="h-12 w-12" />
+              <CarouselNext className="h-12 w-12" />
             </Carousel>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
