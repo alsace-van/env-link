@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, ExternalLink, Edit } from "lucide-react";
+import { Search, Trash2, ExternalLink, Edit, Plus } from "lucide-react";
 import { toast } from "sonner";
-import AccessoryEditDialog from "./AccessoryEditDialog";
+import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +35,7 @@ const AccessoriesCatalogView = () => {
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editingAccessory, setEditingAccessory] = useState<Accessory | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
     loadAccessories();
@@ -98,7 +99,7 @@ const AccessoriesCatalogView = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-4">
+      <div className="flex gap-4 items-center">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -108,6 +109,10 @@ const AccessoriesCatalogView = () => {
             className="pl-10"
           />
         </div>
+        <Button onClick={() => setIsDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Ajouter un article
+        </Button>
       </div>
 
       {filteredAccessories.length === 0 ? (
@@ -219,7 +224,17 @@ const AccessoriesCatalogView = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AccessoryEditDialog
+      <AccessoryCatalogFormDialog
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+        accessory={null}
+        onSuccess={() => {
+          loadAccessories();
+          setIsDialogOpen(false);
+        }}
+      />
+
+      <AccessoryCatalogFormDialog
         isOpen={!!editingAccessory}
         onClose={() => setEditingAccessory(null)}
         accessory={editingAccessory}
