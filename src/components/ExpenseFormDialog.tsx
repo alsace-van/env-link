@@ -61,9 +61,10 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   const [showMarqueList, setShowMarqueList] = useState(false);
   const [filteredMarques, setFilteredMarques] = useState<string[]>([]);
   
-  const [catalogCategories, setCatalogCategories] = useState<string[]>([]);
+  const [catalogCategories, setCatalogCategories] = useState<{id: string, nom: string}[]>([]);
   const [isNewCatalogCategory, setIsNewCatalogCategory] = useState(false);
-  const [catalogCategory, setCatalogCategory] = useState("");
+  const [catalogCategoryId, setCatalogCategoryId] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [showAddToCatalog, setShowAddToCatalog] = useState(false);
 
   // Catalogue suggestions
@@ -171,15 +172,12 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
 
   const loadCatalogCategories = async () => {
     const { data } = await supabase
-      .from("accessories_catalog")
-      .select("nom");
+      .from("categories")
+      .select("id, nom")
+      .order("nom");
 
     if (data) {
-      const categories = Array.from(new Set(data.map(item => {
-        const parts = item.nom.split(" - ");
-        return parts.length > 1 ? parts[0] : "Autre";
-      })));
-      setCatalogCategories(categories.sort());
+      setCatalogCategories(data);
     }
   };
 
@@ -260,17 +258,42 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       return;
     }
 
-    const catalogName = catalogCategory 
-      ? `${catalogCategory} - ${formData.nom_accessoire}`
-      : formData.nom_accessoire;
+    // Si nouvelle catégorie, la créer d'abord
+    let finalCategoryId = catalogCategoryId || null;
+    if (isNewCatalogCategory && newCategoryName.trim()) {
+      const { data: newCat, error: catError } = await supabase
+        .from("categories")
+        .insert({
+          nom: newCategoryName.trim(),
+          user_id: user.id,
+        })
+        .select()
+        .single();
+
+      if (catError) {
+        toast.error("Erreur lors de la création de la catégorie");
+        console.error(catError);
+        return;
+      }
+      finalCategoryId = newCat.id;
+    }
 
     const { error } = await supabase
       .from("accessories_catalog")
       .insert({
-        nom: catalogName,
+        nom: formData.nom_accessoire,
+        marque: formData.marque || null,
+        category_id: finalCategoryId,
         prix_reference: parseFloat(formData.prix_achat),
+        prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+        marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
         description: formData.notes || null,
         fournisseur: formData.fournisseur || null,
+        type_electrique: formData.type_electrique || null,
+        poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+        longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+        largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+        hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
         user_id: user.id,
       });
 
@@ -280,8 +303,10 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     } else {
       toast.success("Accessoire ajouté au catalogue");
       setShowAddToCatalog(false);
-      setCatalogCategory("");
+      setCatalogCategoryId("");
+      setNewCategoryName("");
       setIsNewCatalogCategory(false);
+      loadCatalogCategories();
     }
   };
 
@@ -742,15 +767,15 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                     <div className="flex gap-2">
                       <Input
                         placeholder="Nom de la catégorie"
-                        value={catalogCategory}
-                        onChange={(e) => setCatalogCategory(e.target.value)}
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
                       />
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => {
                           setIsNewCatalogCategory(false);
-                          setCatalogCategory("");
+                          setNewCategoryName("");
                         }}
                       >
                         Annuler
@@ -758,13 +783,13 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                     </div>
                   ) : (
                     <Select
-                      value={catalogCategory}
+                      value={catalogCategoryId}
                       onValueChange={(value) => {
                         if (value === "__new__") {
                           setIsNewCatalogCategory(true);
-                          setCatalogCategory("");
+                          setNewCategoryName("");
                         } else {
-                          setCatalogCategory(value);
+                          setCatalogCategoryId(value);
                         }
                       }}
                     >
@@ -773,9 +798,10 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__new__">+ Nouvelle catégorie</SelectItem>
+                        <SelectItem value="">Aucune catégorie</SelectItem>
                         {catalogCategories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.nom}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -791,7 +817,8 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                     variant="outline"
                     onClick={() => {
                       setShowAddToCatalog(false);
-                      setCatalogCategory("");
+                      setCatalogCategoryId("");
+                      setNewCategoryName("");
                       setIsNewCatalogCategory(false);
                     }}
                   >
