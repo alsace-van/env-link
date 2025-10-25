@@ -90,6 +90,7 @@ const AccessoriesCatalogView = () => {
         (acc) =>
           acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
           acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
@@ -197,122 +198,176 @@ const AccessoriesCatalogView = () => {
             </p>
           </div>
         ) : (
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nom</TableHead>
-                  <TableHead>Catégorie</TableHead>
-                  <TableHead>Prix réf.</TableHead>
-                  <TableHead>Prix vente TTC</TableHead>
-                  <TableHead>Marge €</TableHead>
-                  <TableHead>Marge %</TableHead>
-                  <TableHead>Fournisseur</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAccessories.map((accessory) => {
-                  const margeEuros = accessory.prix_vente_ttc && accessory.prix_reference
-                    ? (accessory.prix_vente_ttc / 1.20) - accessory.prix_reference
-                    : null;
+          <div className="space-y-6">
+            {/* Grouper par catégorie */}
+            {(() => {
+              // Grouper les accessoires par catégorie
+              const grouped: Record<string, typeof filteredAccessories> = {};
+              filteredAccessories.forEach((acc) => {
+                const categoryName = acc.categories?.nom || "Sans catégorie";
+                if (!grouped[categoryName]) {
+                  grouped[categoryName] = [];
+                }
+                grouped[categoryName].push(acc);
+              });
 
-                  return (
-                    <TableRow key={accessory.id}>
-                      <TableCell className="font-medium">
-                        {accessory.nom}
-                      </TableCell>
-                      <TableCell>
-                        {accessory.categories && (
-                          <Badge variant="secondary">
-                            {accessory.categories.nom}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {accessory.prix_reference ? (
-                          <span>{accessory.prix_reference.toFixed(2)} €</span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {accessory.prix_vente_ttc ? (
-                          <span>{accessory.prix_vente_ttc.toFixed(2)} €</span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {margeEuros !== null ? (
-                          <span className={margeEuros >= 0 ? "text-green-600" : "text-red-600"}>
-                            {margeEuros.toFixed(2)} €
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {accessory.marge_pourcent !== null ? (
-                          <span className={accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}>
-                            {accessory.marge_pourcent.toFixed(2)} %
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {accessory.fournisseur || (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="max-w-xs">
-                          {accessory.description ? (
-                            <span className="text-sm line-clamp-2">
-                              {accessory.description}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                          {accessory.url_produit && (
-                            <a
-                              href={accessory.url_produit}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline inline-flex items-center gap-1 text-sm mt-1"
-                            >
-                              Lien produit
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setEditingAccessory(accessory)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteId(accessory.id)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+              return Object.entries(grouped).map(([categoryName, items]) => (
+                <div key={categoryName} className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-semibold">{categoryName}</h3>
+                    <Badge variant="secondary">{items.length} article{items.length > 1 ? 's' : ''}</Badge>
+                  </div>
+                  
+                  <div className="border rounded-lg overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[180px]">Nom</TableHead>
+                          <TableHead className="w-[100px]">Marque</TableHead>
+                          <TableHead className="w-[80px]">Prix réf.</TableHead>
+                          <TableHead className="w-[80px]">Prix TTC</TableHead>
+                          <TableHead className="w-[70px]">Marge €</TableHead>
+                          <TableHead className="w-[70px]">Marge %</TableHead>
+                          <TableHead className="w-[120px]">Fournisseur</TableHead>
+                          <TableHead className="w-[100px]">Type élec.</TableHead>
+                          <TableHead className="w-[70px]">Poids</TableHead>
+                          <TableHead className="w-[80px]">L×l×h</TableHead>
+                          <TableHead className="w-[150px]">Description</TableHead>
+                          <TableHead className="w-[100px]">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((accessory) => {
+                          const margeEuros = accessory.prix_vente_ttc && accessory.prix_reference
+                            ? (accessory.prix_vente_ttc / 1.20) - accessory.prix_reference
+                            : null;
+
+                          return (
+                            <TableRow key={accessory.id}>
+                              <TableCell className="font-medium">
+                                {accessory.nom}
+                              </TableCell>
+                              <TableCell>
+                                {accessory.marque || (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {accessory.prix_reference ? (
+                                  <span className="text-sm">{accessory.prix_reference.toFixed(2)} €</span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {accessory.prix_vente_ttc ? (
+                                  <span className="text-sm">{accessory.prix_vente_ttc.toFixed(2)} €</span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {margeEuros !== null ? (
+                                  <span className={`text-sm ${margeEuros >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                    {margeEuros.toFixed(2)} €
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {accessory.marge_pourcent !== null ? (
+                                  <span className={`text-sm ${accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                    {accessory.marge_pourcent.toFixed(1)} %
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm">
+                                  {accessory.fournisseur || (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                {accessory.type_electrique ? (
+                                  <Badge variant="outline" className="text-xs">
+                                    {accessory.type_electrique === "consommateur" ? "Conso" : 
+                                     accessory.type_electrique === "producteur" ? "Prod" : 
+                                     accessory.type_electrique}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {accessory.poids_kg ? (
+                                  <span className="text-sm">{accessory.poids_kg} kg</span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {accessory.longueur_mm && accessory.largeur_mm && accessory.hauteur_mm ? (
+                                  <span className="text-xs whitespace-nowrap">
+                                    {accessory.longueur_mm}×{accessory.largeur_mm}×{accessory.hauteur_mm}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="max-w-[150px]">
+                                  {accessory.description ? (
+                                    <span className="text-xs line-clamp-2">
+                                      {accessory.description}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                  {accessory.url_produit && (
+                                    <a
+                                      href={accessory.url_produit}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline inline-flex items-center gap-1 text-xs mt-1"
+                                    >
+                                      Lien
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setEditingAccessory(accessory)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setDeleteId(accessory.id)}
+                                    className="text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         )}
 
