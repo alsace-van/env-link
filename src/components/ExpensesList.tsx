@@ -265,14 +265,9 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className={`h-8 w-8 ${getPaymentStatus().color}`}
-                          onClick={() => {}}
-                        >
+                        <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
                           <CreditCard className="h-4 w-4" />
-                        </Button>
+                        </div>
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>{getPaymentStatus().label}</p>
