@@ -58,15 +58,20 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
     setCategoryTotals(chartData);
     setTotalExpenses(Math.round(total * 100) / 100);
 
-    // Calculate total sales and margin
+    // Calculate total sales and net margin (excluding 20% VAT)
     let totalVentes = 0;
+    let totalVentesHT = 0;
     data?.forEach((expense) => {
       if (expense.prix_vente_ttc) {
-        totalVentes += expense.prix_vente_ttc * expense.quantite;
+        const venteTTC = expense.prix_vente_ttc * expense.quantite;
+        totalVentes += venteTTC;
+        // Convert TTC to HT by dividing by 1.20 (20% VAT)
+        totalVentesHT += venteTTC / 1.20;
       }
     });
     setTotalSales(Math.round(totalVentes * 100) / 100);
-    setTotalMargin(Math.round((totalVentes - total) * 100) / 100);
+    // Net margin = Sales HT - Purchase HT
+    setTotalMargin(Math.round((totalVentesHT - total) * 100) / 100);
   };
 
 
@@ -97,7 +102,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
         <Card>
           <CardHeader>
-            <CardTitle>Marge Totale</CardTitle>
+            <CardTitle>Marge Nette (HT)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-600">
@@ -105,9 +110,12 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
             </div>
             {totalExpenses > 0 && (
               <div className="text-sm text-muted-foreground mt-1">
-                {((totalMargin / totalExpenses) * 100).toFixed(1)}%
+                {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
               </div>
             )}
+            <div className="text-xs text-muted-foreground mt-2">
+              TVA 20% déduite
+            </div>
           </CardContent>
         </Card>
       </div>
