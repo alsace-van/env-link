@@ -221,32 +221,51 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
         <div className="space-y-3">
           {filteredExpenses.map((expense) => (
             <Card key={expense.id} className="p-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 space-y-1.5">
-                  <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-1">
+                  <div className="col-span-2 flex items-center gap-2 mb-1">
                     <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
                     <Badge variant="outline" className="text-xs">{expense.categorie}</Badge>
                     {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                   </div>
                   
-                  <div className="text-xs text-muted-foreground space-y-0.5">
-                    <p>Prix d'achat unitaire: {expense.prix.toFixed(2)} € × {expense.quantite}</p>
-                    <p className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</p>
-                    {expense.prix_vente_ttc && (
-                      <p>Prix de vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</p>
-                    )}
-                    {expense.marge_pourcent && (
-                      <p>Marge: {expense.marge_pourcent.toFixed(2)} %</p>
-                    )}
-                    {expense.date_achat && (
-                      <p>Date d'achat: {new Date(expense.date_achat).toLocaleDateString()}</p>
-                    )}
-                    {expense.fournisseur && <p>Fournisseur: {expense.fournisseur}</p>}
-                    {expense.notes && <p className="italic">{expense.notes}</p>}
+                  <div className="text-xs text-muted-foreground">
+                    <span>Prix achat: {expense.prix.toFixed(2)} € × {expense.quantite}</span>
                   </div>
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>
+                  </div>
+
+                  {expense.prix_vente_ttc && (
+                    <div className="text-xs text-muted-foreground">
+                      <span>Prix vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</span>
+                    </div>
+                  )}
+                  {expense.marge_pourcent && (
+                    <div className="text-xs text-muted-foreground">
+                      <span>Marge: {expense.marge_pourcent.toFixed(2)} %</span>
+                    </div>
+                  )}
+
+                  {expense.date_achat && (
+                    <div className="text-xs text-muted-foreground">
+                      <span>Date: {new Date(expense.date_achat).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  {expense.fournisseur && (
+                    <div className="text-xs text-muted-foreground">
+                      <span>Fournisseur: {expense.fournisseur}</span>
+                    </div>
+                  )}
+                  
+                  {expense.notes && (
+                    <div className="col-span-2 text-xs text-muted-foreground italic">
+                      {expense.notes}
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex flex-col gap-1.5">
+                <div className="flex gap-1.5">
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
