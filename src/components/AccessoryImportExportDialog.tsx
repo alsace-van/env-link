@@ -301,13 +301,54 @@ const AccessoryImportExportDialog = ({
                 Copiez des lignes depuis Excel, Google Sheets ou Numbers et collez-les ici.
               </p>
               <div className="space-y-2">
-                <Label htmlFor="paste-area">Données à importer</Label>
+                <Label>Tableau d'exemple (utilisez ce format)</Label>
+                <div className="bg-muted p-3 rounded font-mono text-xs overflow-x-auto">
+                  <table className="border-collapse">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="px-2 py-1 text-left">Nom</th>
+                        <th className="px-2 py-1 text-left">Catégorie</th>
+                        <th className="px-2 py-1 text-left">Prix référence</th>
+                        <th className="px-2 py-1 text-left">Prix vente TTC</th>
+                        <th className="px-2 py-1 text-left">Marge %</th>
+                        <th className="px-2 py-1 text-left">Fournisseur</th>
+                        <th className="px-2 py-1 text-left">Description</th>
+                        <th className="px-2 py-1 text-left">URL produit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-border">
+                        <td className="px-2 py-1">Batterie 100Ah</td>
+                        <td className="px-2 py-1">Électricité</td>
+                        <td className="px-2 py-1">350</td>
+                        <td className="px-2 py-1">550</td>
+                        <td className="px-2 py-1">57.14</td>
+                        <td className="px-2 py-1">Fournisseur A</td>
+                        <td className="px-2 py-1">Batterie lithium</td>
+                        <td className="px-2 py-1">https://...</td>
+                      </tr>
+                      <tr>
+                        <td className="px-2 py-1">Panneau solaire</td>
+                        <td className="px-2 py-1">Électricité</td>
+                        <td className="px-2 py-1">200</td>
+                        <td className="px-2 py-1">350</td>
+                        <td className="px-2 py-1">75</td>
+                        <td className="px-2 py-1">Fournisseur B</td>
+                        <td className="px-2 py-1">100W monocristallin</td>
+                        <td className="px-2 py-1">https://...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="paste-area">Collez vos données ici</Label>
                 <Textarea
                   id="paste-area"
-                  placeholder="Collez vos données ici (avec en-têtes)...&#10;Nom	Catégorie	Prix référence	Prix vente TTC	Marge %	Fournisseur	Description	URL produit&#10;Batterie 100Ah	Électricité	350	550	57.14	Fournisseur A	Description...	https://..."
+                  placeholder="Collez vos données ici avec les en-têtes...&#10;&#10;Copiez directement depuis Excel, Google Sheets ou Numbers (Ctrl+C puis Ctrl+V)"
                   value={pastedData}
                   onChange={(e) => setPastedData(e.target.value)}
-                  className="min-h-[300px] font-mono text-xs"
+                  className="min-h-[250px] font-mono text-xs"
                   disabled={isProcessing}
                 />
               </div>
