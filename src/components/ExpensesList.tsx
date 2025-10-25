@@ -5,10 +5,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, CreditCard, Package, ArrowRight, Truck, Edit } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
+import { Input } from "@/components/ui/input";
 
 interface Expense {
   id: string;
@@ -155,6 +156,27 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     }
   };
 
+  const updateQuantity = async (expenseId: string, newQuantity: number) => {
+    if (newQuantity < 1) {
+      toast.error("La quantité doit être au moins 1");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("project_expenses")
+      .update({ quantite: newQuantity })
+      .eq("id", expenseId);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+      console.error(error);
+    } else {
+      toast.success("Quantité mise à jour");
+      loadExpenses();
+      onExpenseChange();
+    }
+  };
+
   const getDeliveryInfo = (status: Expense["statut_livraison"]) => {
     switch (status) {
       case "commande":
@@ -236,8 +258,33 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                       {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                     </div>
                     
-                    <div className="text-xs text-muted-foreground">
-                      <span>Prix achat: {expense.prix.toFixed(2)} € × {expense.quantite}</span>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={expense.quantite}
+                          onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                          className="h-6 w-12 text-center text-xs p-0"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>
@@ -365,8 +412,33 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                               {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                             </div>
                             
-                            <div className="text-xs text-muted-foreground">
-                              <span>Prix achat: {expense.prix.toFixed(2)} € × {expense.quantite}</span>
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                              <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={expense.quantite}
+                                  onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                                  className="h-6 w-12 text-center text-xs p-0"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
                             </div>
                             <div className="text-xs text-muted-foreground">
                               <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>

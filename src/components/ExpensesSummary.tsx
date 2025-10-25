@@ -211,11 +211,11 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
       <Card>
         <CardHeader>
-          <CardTitle>Vue d'ensemble par Catégorie</CardTitle>
+          <CardTitle className="text-lg">Vue d'ensemble par Catégorie</CardTitle>
         </CardHeader>
         <CardContent>
           {categoryTotals.length > 0 ? (
-            <ResponsiveContainer width="100%" height={400}>
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
                   data={categoryTotals}
@@ -223,30 +223,32 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
                   cy="50%"
                   labelLine={true}
                   label={(entry) => {
-                    // Truncate long names
-                    const maxLength = 15;
+                    const maxLength = 12;
                     const name = entry.name.length > maxLength 
                       ? entry.name.substring(0, maxLength) + "..." 
                       : entry.name;
                     return `${name}: ${entry.value.toFixed(0)}€`;
                   }}
-                  outerRadius={100}
+                  outerRadius={70}
                   fill="#8884d8"
                   dataKey="value"
+                  style={{ fontSize: '11px' }}
                 >
                   {categoryTotals.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip 
+                  contentStyle={{ fontSize: '12px' }}
                   formatter={(value: number, name: string, props: any) => [
                     `${value.toFixed(2)}€`,
                     props.payload.name
                   ]} 
                 />
                 <Legend 
+                  wrapperStyle={{ fontSize: '11px' }}
                   formatter={(value: string) => {
-                    const maxLength = 20;
+                    const maxLength = 15;
                     return value.length > maxLength 
                       ? value.substring(0, maxLength) + "..." 
                       : value;
