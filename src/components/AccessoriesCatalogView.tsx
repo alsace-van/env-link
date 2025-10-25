@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, ExternalLink, Edit, Plus, FileDown, FileUp } from "lucide-react";
+import { Search, Trash2, ExternalLink, Edit, Plus, FileDown, FileUp, Zap, Plug } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
 import CategoryFilterSidebar from "./CategoryFilterSidebar";
@@ -150,9 +150,9 @@ const AccessoriesCatalogView = () => {
   }
 
   return (
-    <div className="flex gap-6">
-      {/* Sidebar Filter */}
-      <div className="flex-shrink-0">
+    <div className="relative flex w-full">
+      {/* Sidebar Filter - Overlay mode */}
+      <div className="absolute left-0 top-0 bottom-0 z-20">
         <CategoryFilterSidebar
           selectedCategories={selectedCategories}
           onCategoryChange={setSelectedCategories}
@@ -160,7 +160,7 @@ const AccessoriesCatalogView = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 space-y-6">
+      <div className="flex-1 w-full space-y-6 pl-14">{/* pl-14 for collapsed sidebar space */}
         <div className="flex gap-4 items-center flex-wrap">
           <div className="flex-1 min-w-[250px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -223,18 +223,20 @@ const AccessoriesCatalogView = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="min-w-[150px]">Nom</TableHead>
-                            <TableHead className="min-w-[100px]">Marque</TableHead>
-                            <TableHead className="min-w-[90px]">Prix réf.</TableHead>
-                            <TableHead className="min-w-[90px]">Prix TTC</TableHead>
-                            <TableHead className="min-w-[80px]">Marge €</TableHead>
-                            <TableHead className="min-w-[80px]">Marge %</TableHead>
-                            <TableHead className="min-w-[120px]">Fournisseur</TableHead>
-                            <TableHead className="min-w-[100px]">Type élec.</TableHead>
-                            <TableHead className="min-w-[80px]">Poids</TableHead>
-                            <TableHead className="min-w-[100px]">Dimensions</TableHead>
-                            <TableHead className="min-w-[150px]">Description</TableHead>
-                            <TableHead className="sticky right-0 bg-background z-10 min-w-[100px]">Actions</TableHead>
+                            <TableHead className="min-w-[120px]">Nom</TableHead>
+                            <TableHead className="min-w-[80px]">Marque</TableHead>
+                            <TableHead className="min-w-[70px]">Prix réf.</TableHead>
+                            <TableHead className="min-w-[70px]">Prix TTC</TableHead>
+                            <TableHead className="min-w-[65px]">Marge €</TableHead>
+                            <TableHead className="min-w-[65px]">Marge %</TableHead>
+                            <TableHead className="min-w-[100px]">Fournisseur</TableHead>
+                            <TableHead className="min-w-[40px] text-center">
+                              <Zap className="h-4 w-4 mx-auto" />
+                            </TableHead>
+                            <TableHead className="min-w-[60px]">Poids</TableHead>
+                            <TableHead className="min-w-[90px]">Dim.</TableHead>
+                            <TableHead className="min-w-[130px]">Description</TableHead>
+                            <TableHead className="sticky right-0 bg-background z-10 min-w-[80px]">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -292,13 +294,15 @@ const AccessoriesCatalogView = () => {
                                     )}
                                   </span>
                                 </TableCell>
-                                <TableCell>
+                                <TableCell className="text-center">
                                   {accessory.type_electrique ? (
-                                    <Badge variant="outline" className="text-xs whitespace-nowrap">
-                                      {accessory.type_electrique === "consommateur" ? "Conso" : 
-                                       accessory.type_electrique === "producteur" ? "Prod" : 
-                                       accessory.type_electrique}
-                                    </Badge>
+                                    <div className="flex justify-center" title={accessory.type_electrique === "consommateur" ? "Consommateur" : "Producteur"}>
+                                      {accessory.type_electrique === "consommateur" ? (
+                                        <Plug className="h-4 w-4 text-orange-500" />
+                                      ) : (
+                                        <Zap className="h-4 w-4 text-green-500" />
+                                      )}
+                                    </div>
                                   ) : (
                                     <span className="text-muted-foreground text-xs">-</span>
                                   )}
