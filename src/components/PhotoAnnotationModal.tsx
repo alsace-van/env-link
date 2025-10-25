@@ -307,12 +307,12 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col">
+      <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-6">
         <DialogHeader>
           <DialogTitle>Annoter la photo</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 flex gap-4 overflow-hidden">
+        <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
           <div className="flex-1 flex flex-col gap-3">
             <div className="flex flex-wrap gap-2 items-center">
               <Button
@@ -425,8 +425,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               <span className="text-sm text-muted-foreground">{strokeWidth}px</span>
             </div>
 
-            <div className="flex-1 border rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-              <canvas ref={canvasRef} />
+            <div className="flex-1 border rounded-lg overflow-auto bg-muted flex items-center justify-center min-h-0">
+              <canvas ref={canvasRef} style={{ display: 'block' }} />
             </div>
           </div>
 

@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import PhotoUpload from "@/components/PhotoUpload";
 import PhotoGallery from "@/components/PhotoGallery";
 import PhotoAnnotationModal from "@/components/PhotoAnnotationModal";
+import UserMenu from "@/components/UserMenu";
+import { User } from "@supabase/supabase-js";
 
 interface Project {
   id: string;
@@ -40,6 +42,7 @@ const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [photoRefresh, setPhotoRefresh] = useState(0);
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
@@ -59,6 +62,8 @@ const ProjectDetail = () => {
       navigate("/auth");
       return;
     }
+
+    setUser(user);
 
     const { data, error } = await supabase
       .from("projects")
@@ -131,6 +136,7 @@ const ProjectDetail = () => {
                 </p>
               )}
             </div>
+            {user && <UserMenu user={user} />}
           </div>
         </div>
       </header>

@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
 import ProjectsList from "@/components/ProjectsList";
 import ProjectForm from "@/components/ProjectForm";
+import UserMenu from "@/components/UserMenu";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -13,6 +12,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     checkUser();
+    trackLogin();
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
@@ -24,6 +24,19 @@ const Dashboard = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  const trackLogin = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (session) {
+      // Track login
+      await supabase.from("user_logins").insert({
+        user_id: session.user.id,
+        ip_address: null, // Would need additional setup to get IP
+        user_agent: navigator.userAgent,
+      });
+    }
+  };
 
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -60,10 +73,9 @@ const Dashboard = () => {
               Gérez vos projets d'aménagement
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Déconnexion
-          </Button>
+          <div className="flex items-center gap-2">
+            {user && <UserMenu user={user} />}
+          </div>
         </div>
       </header>
 
