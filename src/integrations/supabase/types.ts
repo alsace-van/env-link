@@ -231,17 +231,22 @@ export type Database = {
           created_at: string
           date_achat: string | null
           fournisseur: string | null
+          hauteur_mm: number | null
           id: string
+          largeur_mm: number | null
+          longueur_mm: number | null
           marge_pourcent: number | null
           marque: string | null
           nom_accessoire: string
           notes: string | null
+          poids_kg: number | null
           prix: number
           prix_vente_ttc: number | null
           project_id: string
           quantite: number
           statut_livraison: string | null
           statut_paiement: string | null
+          type_electrique: string | null
         }
         Insert: {
           accessory_id?: string | null
@@ -249,17 +254,22 @@ export type Database = {
           created_at?: string
           date_achat?: string | null
           fournisseur?: string | null
+          hauteur_mm?: number | null
           id?: string
+          largeur_mm?: number | null
+          longueur_mm?: number | null
           marge_pourcent?: number | null
           marque?: string | null
           nom_accessoire: string
           notes?: string | null
+          poids_kg?: number | null
           prix: number
           prix_vente_ttc?: number | null
           project_id: string
           quantite?: number
           statut_livraison?: string | null
           statut_paiement?: string | null
+          type_electrique?: string | null
         }
         Update: {
           accessory_id?: string | null
@@ -267,17 +277,22 @@ export type Database = {
           created_at?: string
           date_achat?: string | null
           fournisseur?: string | null
+          hauteur_mm?: number | null
           id?: string
+          largeur_mm?: number | null
+          longueur_mm?: number | null
           marge_pourcent?: number | null
           marque?: string | null
           nom_accessoire?: string
           notes?: string | null
+          poids_kg?: number | null
           prix?: number
           prix_vente_ttc?: number | null
           project_id?: string
           quantite?: number
           statut_livraison?: string | null
           statut_paiement?: string | null
+          type_electrique?: string | null
         }
         Relationships: [
           {

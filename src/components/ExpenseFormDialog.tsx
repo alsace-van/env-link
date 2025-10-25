@@ -29,6 +29,11 @@ interface ExpenseFormDialogProps {
     fournisseur?: string;
     notes?: string;
     accessory_id?: string;
+    type_electrique?: string;
+    poids_kg?: number;
+    longueur_mm?: number;
+    largeur_mm?: number;
+    hauteur_mm?: number;
   } | null;
 }
 
@@ -44,6 +49,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     categorie: "",
     fournisseur: "",
     notes: "",
+    type_electrique: "",
+    poids_kg: "",
+    longueur_mm: "",
+    largeur_mm: "",
+    hauteur_mm: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNewCategory, setIsNewCategory] = useState(false);
@@ -81,6 +91,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           categorie: expense.categorie,
           fournisseur: expense.fournisseur || "",
           notes: expense.notes || "",
+          type_electrique: expense.type_electrique || "",
+          poids_kg: expense.poids_kg?.toString() || "",
+          longueur_mm: expense.longueur_mm?.toString() || "",
+          largeur_mm: expense.largeur_mm?.toString() || "",
+          hauteur_mm: expense.hauteur_mm?.toString() || "",
         });
         setSelectedAccessoryId(expense.accessory_id || null);
       } else {
@@ -96,6 +111,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           categorie: "",
           fournisseur: "",
           notes: "",
+          type_electrique: "",
+          poids_kg: "",
+          longueur_mm: "",
+          largeur_mm: "",
+          hauteur_mm: "",
         });
         setSelectedAccessoryId(null);
       }
@@ -185,6 +205,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       prix_achat: accessory.prix_reference?.toString() || "",
       fournisseur: accessory.fournisseur || "",
       notes: accessory.description || "",
+      type_electrique: accessory.type_electrique || "",
+      poids_kg: accessory.poids_kg?.toString() || "",
+      longueur_mm: accessory.longueur_mm?.toString() || "",
+      largeur_mm: accessory.largeur_mm?.toString() || "",
+      hauteur_mm: accessory.hauteur_mm?.toString() || "",
     });
     setSelectedAccessoryId(accessory.id);
     setShowAccessoriesList(false);
@@ -276,6 +301,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           categorie: formData.categorie,
           fournisseur: formData.fournisseur || null,
           notes: formData.notes || null,
+          type_electrique: formData.type_electrique || null,
+          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
         })
         .eq("id", expense.id);
 
@@ -356,6 +386,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           statut_paiement: "non_paye",
           statut_livraison: "commande",
           accessory_id: finalAccessoryId,
+          type_electrique: formData.type_electrique || null,
+          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
         });
 
       if (error) {
@@ -378,6 +413,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           categorie: "",
           fournisseur: "",
           notes: "",
+          type_electrique: "",
+          poids_kg: "",
+          longueur_mm: "",
+          largeur_mm: "",
+          hauteur_mm: "",
         });
         setIsNewCategory(false);
         setShowAddToCatalog(false);
@@ -484,7 +524,77 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           </div>
 
           <Separator />
-          
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="type_electrique">Type électrique</Label>
+              <Select
+                value={formData.type_electrique || "none"}
+                onValueChange={(value) => setFormData({ ...formData, type_electrique: value === "none" ? "" : value })}
+              >
+                <SelectTrigger id="type_electrique">
+                  <SelectValue placeholder="Sélectionner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Non applicable</SelectItem>
+                  <SelectItem value="consommateur">Consommateur</SelectItem>
+                  <SelectItem value="producteur">Producteur</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="poids">Poids (kg)</Label>
+              <Input
+                id="poids"
+                type="number"
+                step="0.01"
+                value={formData.poids_kg}
+                onChange={(e) => setFormData({ ...formData, poids_kg: e.target.value })}
+                placeholder="Ex: 12.5"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dimensions (mm)</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="longueur" className="text-xs text-muted-foreground">Longueur</Label>
+                <Input
+                  id="longueur"
+                  type="number"
+                  value={formData.longueur_mm}
+                  onChange={(e) => setFormData({ ...formData, longueur_mm: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="largeur" className="text-xs text-muted-foreground">Largeur</Label>
+                <Input
+                  id="largeur"
+                  type="number"
+                  value={formData.largeur_mm}
+                  onChange={(e) => setFormData({ ...formData, largeur_mm: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">Hauteur</Label>
+                <Input
+                  id="hauteur"
+                  type="number"
+                  value={formData.hauteur_mm}
+                  onChange={(e) => setFormData({ ...formData, hauteur_mm: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
           <div className="space-y-2">
             <Label className="text-base font-semibold">Calcul de prix (remplir 2 sur 3)</Label>
             <div className="grid grid-cols-3 gap-4">
