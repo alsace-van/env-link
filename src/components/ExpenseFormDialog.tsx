@@ -103,18 +103,31 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     const margePourcent = parseFloat(newFormData.marge_pourcent) || 0;
 
     if (field === "prix_achat") {
+      // Si on change le prix d'achat HT
       if (margePourcent > 0 && prixAchat > 0) {
+        // Calculer le prix TTC à partir du HT et de la marge
         newFormData.prix_vente_ttc = (prixAchat * (1 + margePourcent / 100)).toFixed(2);
       } else if (prixVenteTTC > 0 && prixAchat > 0) {
+        // Calculer la marge à partir du HT et du TTC
         newFormData.marge_pourcent = (((prixVenteTTC - prixAchat) / prixAchat) * 100).toFixed(2);
       }
     } else if (field === "prix_vente_ttc") {
+      // Si on change le prix TTC
       if (prixAchat > 0 && prixVenteTTC > 0) {
+        // Calculer la marge à partir du HT et du TTC
         newFormData.marge_pourcent = (((prixVenteTTC - prixAchat) / prixAchat) * 100).toFixed(2);
+      } else if (margePourcent > 0 && prixVenteTTC > 0) {
+        // Calculer le prix HT à partir du TTC et de la marge
+        newFormData.prix_achat = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
       }
     } else if (field === "marge_pourcent") {
+      // Si on change la marge
       if (prixAchat > 0 && margePourcent >= 0) {
+        // Calculer le prix TTC à partir du HT et de la marge
         newFormData.prix_vente_ttc = (prixAchat * (1 + margePourcent / 100)).toFixed(2);
+      } else if (prixVenteTTC > 0 && margePourcent >= 0) {
+        // Calculer le prix HT à partir du TTC et de la marge
+        newFormData.prix_achat = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
       }
     }
 
