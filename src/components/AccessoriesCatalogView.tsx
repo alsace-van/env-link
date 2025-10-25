@@ -2,13 +2,21 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search, Trash2, ExternalLink, Edit, Plus, Filter } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
 import CategoryFilter from "./CategoryFilter";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -178,78 +186,88 @@ const AccessoriesCatalogView = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredAccessories.map((accessory) => {
-              return (
-                <Card key={accessory.id}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-2">
-                          {accessory.nom}
-                        </CardTitle>
-                        {accessory.categories && (
-                          <Badge variant="secondary" className="mb-2">
-                            {accessory.categories.nom}
-                          </Badge>
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nom</TableHead>
+                  <TableHead>Catégorie</TableHead>
+                  <TableHead>Prix réf.</TableHead>
+                  <TableHead>Fournisseur</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAccessories.map((accessory) => (
+                  <TableRow key={accessory.id}>
+                    <TableCell className="font-medium">
+                      {accessory.nom}
+                    </TableCell>
+                    <TableCell>
+                      {accessory.categories && (
+                        <Badge variant="secondary">
+                          {accessory.categories.nom}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {accessory.prix_reference ? (
+                        <span>{accessory.prix_reference.toFixed(2)} €</span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {accessory.fournisseur || (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="max-w-xs">
+                        {accessory.description ? (
+                          <span className="text-sm line-clamp-2">
+                            {accessory.description}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                        {accessory.url_produit && (
+                          <a
+                            href={accessory.url_produit}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline inline-flex items-center gap-1 text-sm mt-1"
+                          >
+                            Lien produit
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
                         )}
                       </div>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setEditingAccessory(accessory)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteId(accessory.id)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  {accessory.description && (
-                    <CardDescription>{accessory.description}</CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm">
-                    {accessory.prix_reference && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Prix de référence:</span>
-                        <span className="font-medium">
-                          {accessory.prix_reference.toFixed(2)} €
-                        </span>
-                      </div>
-                    )}
-                    {accessory.fournisseur && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Fournisseur:</span>
-                        <span>{accessory.fournisseur}</span>
-                      </div>
-                    )}
-                    {accessory.url_produit && (
-                      <div>
-                        <a
-                          href={accessory.url_produit}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline inline-flex items-center gap-1"
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditingAccessory(accessory)}
                         >
-                          Voir le produit
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteId(accessory.id)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              );
-            })}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
 
