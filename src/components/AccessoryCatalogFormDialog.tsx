@@ -43,6 +43,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParent, setNewCategoryParent] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -84,6 +87,41 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
     if (!error && data) {
       setCategories(data);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      toast.error("Veuillez entrer un nom de catégorie");
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("categories")
+      .insert({
+        nom: newCategoryName.trim(),
+        parent_id: newCategoryParent,
+        user_id: user.id,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      toast.error("Erreur lors de la création de la catégorie");
+      console.error(error);
+    } else {
+      toast.success("Catégorie créée");
+      setFormData({ ...formData, category_id: data.id });
+      setIsCreatingCategory(false);
+      setNewCategoryName("");
+      setNewCategoryParent(null);
+      loadCategories();
     }
   };
 
@@ -268,36 +306,99 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
           <div className="space-y-2">
             <Label htmlFor="category_id">Catégorie</Label>
-            <Select
-              value={formData.category_id || "none"}
-              onValueChange={(value) =>
-                setFormData({ ...formData, category_id: value === "none" ? "" : value })
-              }
-            >
-              <SelectTrigger id="category_id">
-                <SelectValue placeholder="Sélectionner une catégorie" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Aucune catégorie</SelectItem>
-                {categories
-                  .filter(cat => cat.parent_id === null)
-                  .map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.nom}
-                    </SelectItem>
-                  ))}
-                {categories
-                  .filter(cat => cat.parent_id !== null)
-                  .map((cat) => {
-                    const parent = categories.find(p => p.id === cat.parent_id);
-                    return (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {parent?.nom} → {cat.nom}
-                      </SelectItem>
-                    );
-                  })}
-              </SelectContent>
-            </Select>
+            {isCreatingCategory ? (
+              <div className="space-y-3 p-4 border rounded-lg">
+                <div className="space-y-2">
+                  <Label htmlFor="new-category-name">Nom de la catégorie</Label>
+                  <Input
+                    id="new-category-name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="Ex: Électronique"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-category-parent">Catégorie parente (optionnel)</Label>
+                  <Select
+                    value={newCategoryParent || "none"}
+                    onValueChange={(value) => setNewCategoryParent(value === "none" ? null : value)}
+                  >
+                    <SelectTrigger id="new-category-parent">
+                      <SelectValue placeholder="Aucune" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
+                      {categories
+                        .filter(cat => cat.parent_id === null)
+                        .map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.nom}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={handleCreateCategory}
+                    className="flex-1"
+                  >
+                    Créer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsCreatingCategory(false);
+                      setNewCategoryName("");
+                      setNewCategoryParent(null);
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Select
+                  value={formData.category_id || "none"}
+                  onValueChange={(value) => {
+                    if (value === "__create__") {
+                      setIsCreatingCategory(true);
+                    } else {
+                      setFormData({ ...formData, category_id: value === "none" ? "" : value });
+                    }
+                  }}
+                >
+                  <SelectTrigger id="category_id">
+                    <SelectValue placeholder="Sélectionner une catégorie" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__create__">+ Créer une nouvelle catégorie</SelectItem>
+                    <SelectItem value="none">Aucune catégorie</SelectItem>
+                    {categories
+                      .filter(cat => cat.parent_id === null)
+                      .map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.nom}
+                        </SelectItem>
+                      ))}
+                    {categories
+                      .filter(cat => cat.parent_id !== null)
+                      .map((cat) => {
+                        const parent = categories.find(p => p.id === cat.parent_id);
+                        return (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {parent?.nom} → {cat.nom}
+                          </SelectItem>
+                        );
+                      })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <Separator />
