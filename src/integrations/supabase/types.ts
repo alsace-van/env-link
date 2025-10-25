@@ -166,9 +166,12 @@ export type Database = {
           date_achat: string | null
           fournisseur: string | null
           id: string
+          marge_pourcent: number | null
+          marque: string | null
           nom_accessoire: string
           notes: string | null
           prix: number
+          prix_vente_ttc: number | null
           project_id: string
           quantite: number
           statut_livraison: string | null
@@ -181,9 +184,12 @@ export type Database = {
           date_achat?: string | null
           fournisseur?: string | null
           id?: string
+          marge_pourcent?: number | null
+          marque?: string | null
           nom_accessoire: string
           notes?: string | null
           prix: number
+          prix_vente_ttc?: number | null
           project_id: string
           quantite?: number
           statut_livraison?: string | null
@@ -196,9 +202,12 @@ export type Database = {
           date_achat?: string | null
           fournisseur?: string | null
           id?: string
+          marge_pourcent?: number | null
+          marque?: string | null
           nom_accessoire?: string
           notes?: string | null
           prix?: number
+          prix_vente_ttc?: number | null
           project_id?: string
           quantite?: number
           statut_livraison?: string | null

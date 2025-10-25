@@ -11,7 +11,10 @@ import ExpenseFormDialog from "./ExpenseFormDialog";
 interface Expense {
   id: string;
   nom_accessoire: string;
+  marque?: string;
   prix: number;
+  prix_vente_ttc?: number;
+  marge_pourcent?: number;
   quantite: number;
   date_achat: string;
   categorie: string;
@@ -181,11 +184,18 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                   <div className="flex items-center gap-2">
                     <h4 className="font-medium">{expense.nom_accessoire}</h4>
                     <Badge variant="outline">{expense.categorie}</Badge>
+                    {expense.marque && <Badge variant="secondary">{expense.marque}</Badge>}
                   </div>
                   
                   <div className="text-sm text-muted-foreground space-y-1">
-                    <p>Prix unitaire: {expense.prix.toFixed(2)} € × {expense.quantite}</p>
-                    <p className="font-semibold">Total: {(expense.prix * expense.quantite).toFixed(2)} €</p>
+                    <p>Prix d'achat unitaire: {expense.prix.toFixed(2)} € × {expense.quantite}</p>
+                    <p className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</p>
+                    {expense.prix_vente_ttc && (
+                      <p>Prix de vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</p>
+                    )}
+                    {expense.marge_pourcent && (
+                      <p>Marge: {expense.marge_pourcent.toFixed(2)} %</p>
+                    )}
                     {expense.date_achat && (
                       <p>Date d'achat: {new Date(expense.date_achat).toLocaleDateString()}</p>
                     )}
