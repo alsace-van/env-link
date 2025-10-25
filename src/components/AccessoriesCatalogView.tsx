@@ -130,7 +130,7 @@ const AccessoriesCatalogView = () => {
   return (
     <div className="flex gap-6">
       {/* Sidebar Filter */}
-      <div className="w-72 flex-shrink-0">
+      <div className="flex-shrink-0">
         <CategoryFilterSidebar
           selectedCategories={selectedCategories}
           onCategoryChange={setSelectedCategories}

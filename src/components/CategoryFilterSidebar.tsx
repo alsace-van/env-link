@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronDown, ChevronRight, Plus, GripVertical, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, GripVertical, X, ChevronLeft, Filter } from "lucide-react";
 import CategoryManagementDialog from "./CategoryManagementDialog";
 import { toast } from "sonner";
 
@@ -26,6 +26,7 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
   const [isManageDialogOpen, setIsManageDialogOpen] = useState(false);
   const [draggedCategory, setDraggedCategory] = useState<Category | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     loadCategories();
@@ -224,37 +225,52 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
   const rootCategories = getSubcategories(null);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Filtres par catégorie</CardTitle>
-          <div className="flex gap-1">
-            {selectedCategories.length > 0 && (
+    <div className="relative">
+      {/* Collapse/Expand Button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className={`absolute top-4 z-10 h-8 w-8 transition-all duration-300 ${
+          isCollapsed ? "left-2" : "right-2"
+        }`}
+      >
+        {isCollapsed ? <Filter className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+      </Button>
+
+      <Card className={`transition-all duration-300 ease-in-out ${
+        isCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-72 opacity-100"
+      }`}>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between pr-8">
+            <CardTitle className="text-base">Filtres par catégorie</CardTitle>
+            <div className="flex gap-1">
+              {selectedCategories.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-7 px-2"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={clearFilters}
+                onClick={() => setIsManageDialogOpen(true)}
                 className="h-7 px-2"
               >
-                <X className="h-3 w-3" />
+                <Plus className="h-3 w-3" />
               </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsManageDialogOpen(true)}
-              className="h-7 px-2"
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
+            </div>
           </div>
-        </div>
-        {selectedCategories.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {selectedCategories.length} catégorie(s) sélectionnée(s)
-          </p>
-        )}
-      </CardHeader>
+          {selectedCategories.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {selectedCategories.length} catégorie(s) sélectionnée(s)
+            </p>
+          )}
+        </CardHeader>
       
       <CardContent className="pt-0">
         <div
@@ -298,16 +314,17 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
         </div>
       </CardContent>
 
-      <CategoryManagementDialog
-        isOpen={isManageDialogOpen}
-        onClose={() => setIsManageDialogOpen(false)}
-        onSuccess={() => {
-          loadCategories();
-          setIsManageDialogOpen(false);
-        }}
-        categories={categories}
-      />
-    </Card>
+        <CategoryManagementDialog
+          isOpen={isManageDialogOpen}
+          onClose={() => setIsManageDialogOpen(false)}
+          onSuccess={() => {
+            loadCategories();
+            setIsManageDialogOpen(false);
+          }}
+          categories={categories}
+        />
+      </Card>
+    </div>
   );
 };
 
