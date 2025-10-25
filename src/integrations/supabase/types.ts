@@ -26,6 +26,7 @@ export type Database = {
           largeur_mm: number | null
           longueur_mm: number | null
           marge_pourcent: number | null
+          marque: string | null
           nom: string
           poids_kg: number | null
           prix_reference: number | null
@@ -45,6 +46,7 @@ export type Database = {
           largeur_mm?: number | null
           longueur_mm?: number | null
           marge_pourcent?: number | null
+          marque?: string | null
           nom: string
           poids_kg?: number | null
           prix_reference?: number | null
@@ -64,6 +66,7 @@ export type Database = {
           largeur_mm?: number | null
           longueur_mm?: number | null
           marge_pourcent?: number | null
+          marque?: string | null
           nom?: string
           poids_kg?: number | null
           prix_reference?: number | null

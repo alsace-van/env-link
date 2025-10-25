@@ -22,6 +22,7 @@ interface AccessoryCatalogFormDialogProps {
   accessory?: {
     id: string;
     nom: string;
+    marque?: string;
     category_id?: string | null;
     prix_reference?: number;
     prix_vente_ttc?: number;
@@ -40,6 +41,7 @@ interface AccessoryCatalogFormDialogProps {
 const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: AccessoryCatalogFormDialogProps) => {
   const [formData, setFormData] = useState({
     nom: "",
+    marque: "",
     category_id: "",
     prix_reference: "",
     prix_vente_ttc: "",
@@ -67,6 +69,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         // Mode édition
         setFormData({
           nom: accessory.nom,
+          marque: accessory.marque || "",
           category_id: accessory.category_id || "",
           prix_reference: accessory.prix_reference?.toString() || "",
           prix_vente_ttc: accessory.prix_vente_ttc?.toString() || "",
@@ -84,6 +87,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         // Mode création
         setFormData({
           nom: "",
+          marque: "",
           category_id: "",
           prix_reference: "",
           prix_vente_ttc: "",
@@ -193,6 +197,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         .from("accessories_catalog")
         .update({
           nom: formData.nom,
+          marque: formData.marque || null,
           category_id: formData.category_id || null,
           prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
           prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
@@ -238,6 +243,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         .insert({
           user_id: user.id,
           nom: formData.nom,
+          marque: formData.marque || null,
           category_id: formData.category_id || null,
           prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
           prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
@@ -306,6 +312,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
         setFormData({
           nom: "",
+          marque: "",
           category_id: "",
           prix_reference: "",
           prix_vente_ttc: "",
@@ -334,15 +341,27 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="nom">Nom de l'article *</Label>
-            <Input
-              id="nom"
-              required
-              value={formData.nom}
-              onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
-              placeholder="Ex: Batterie lithium 100Ah"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="nom">Nom de l'article *</Label>
+              <Input
+                id="nom"
+                required
+                value={formData.nom}
+                onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                placeholder="Ex: Batterie lithium 100Ah"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="marque">Marque</Label>
+              <Input
+                id="marque"
+                value={formData.marque}
+                onChange={(e) => setFormData({ ...formData, marque: e.target.value })}
+                placeholder="Ex: Victron"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">

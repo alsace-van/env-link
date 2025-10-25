@@ -36,6 +36,7 @@ interface Category {
 interface Accessory {
   id: string;
   nom: string;
+  marque?: string | null;
   category_id?: string | null;
   prix_reference: number | null;
   prix_vente_ttc: number | null;
