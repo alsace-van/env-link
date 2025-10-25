@@ -44,6 +44,11 @@ interface Accessory {
   description: string | null;
   fournisseur: string | null;
   url_produit: string | null;
+  type_electrique?: string | null;
+  poids_kg?: number | null;
+  longueur_mm?: number | null;
+  largeur_mm?: number | null;
+  hauteur_mm?: number | null;
   created_at: string;
   categories?: Category | null;
 }
@@ -348,6 +353,7 @@ const AccessoriesCatalogView = () => {
           accessory={editingAccessory ? {
             id: editingAccessory.id,
             nom: editingAccessory.nom,
+            marque: editingAccessory.marque || undefined,
             category_id: editingAccessory.category_id,
             prix_reference: editingAccessory.prix_reference || undefined,
             prix_vente_ttc: editingAccessory.prix_vente_ttc || undefined,
@@ -355,11 +361,11 @@ const AccessoriesCatalogView = () => {
             fournisseur: editingAccessory.fournisseur || undefined,
             description: editingAccessory.description || undefined,
             url_produit: editingAccessory.url_produit || undefined,
-            type_electrique: (editingAccessory as any).type_electrique || undefined,
-            poids_kg: (editingAccessory as any).poids_kg || undefined,
-            longueur_mm: (editingAccessory as any).longueur_mm || undefined,
-            largeur_mm: (editingAccessory as any).largeur_mm || undefined,
-            hauteur_mm: (editingAccessory as any).hauteur_mm || undefined,
+            type_electrique: editingAccessory.type_electrique || undefined,
+            poids_kg: editingAccessory.poids_kg || undefined,
+            longueur_mm: editingAccessory.longueur_mm || undefined,
+            largeur_mm: editingAccessory.largeur_mm || undefined,
+            hauteur_mm: editingAccessory.hauteur_mm || undefined,
           } : null}
           onSuccess={() => {
             loadAccessories();

@@ -202,6 +202,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     setFormData({
       ...formData,
       nom_accessoire: accessory.nom,
+      marque: accessory.marque || "",
       prix_achat: accessory.prix_reference?.toString() || "",
       prix_vente_ttc: accessory.prix_vente_ttc?.toString() || "",
       marge_pourcent: accessory.marge_pourcent?.toString() || "",
