@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { ExternalLink, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -98,6 +98,25 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     }
   };
 
+  const handleDownload = async (url: string, titre: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `${titre}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success("Téléchargement lancé");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erreur lors du téléchargement");
+    }
+  };
+
   if (isLoading) {
     return <div className="text-center py-8">Chargement...</div>;
   }
@@ -122,7 +141,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
             <TableHead className="min-w-[120px]">Catégorie</TableHead>
             <TableHead className="min-w-[200px]">Description</TableHead>
             <TableHead className="min-w-[150px]">Date d'ajout</TableHead>
-            <TableHead className="w-[120px] text-center">Actions</TableHead>
+            <TableHead className="w-[180px] text-center">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -159,7 +178,16 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   <Button
                     variant="outline"
                     size="sm"
+                    onClick={() => handleDownload(notice.url_notice, notice.titre)}
+                    title="Télécharger"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => window.open(notice.url_notice, "_blank")}
+                    title="Ouvrir dans un nouvel onglet"
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Button>
