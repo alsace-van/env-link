@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -138,19 +139,20 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      {!preselectedAccessoryId && (
-        <DialogTrigger asChild>
-          {trigger || (
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter une notice
-            </Button>
-          )}
-        </DialogTrigger>
-      )}
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter une notice
+          </Button>
+        )}
+      </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Ajouter une notice</DialogTitle>
+          <CardDescription>
+            Renseignez les informations de la notice et liez-la éventuellement à un accessoire
+          </CardDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
