@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import PaymentTransactions from "./PaymentTransactions";
 
 interface ExpensesSummaryProps {
@@ -91,8 +92,9 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <ScrollArea className="h-[calc(100vh-2rem)] pr-4">
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Total Achats (HT)</CardTitle>
@@ -206,7 +208,42 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
           )}
         </CardContent>
       </Card>
-    </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Vue d'ensemble par Catégorie</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {categoryTotals.length > 0 ? (
+            <ResponsiveContainer width="100%" height={400}>
+              <PieChart>
+                <Pie
+                  data={categoryTotals}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={(entry) => `${entry.name}: ${entry.value.toFixed(0)}€`}
+                  outerRadius={120}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {categoryTotals.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              Aucune donnée disponible
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      </div>
+    </ScrollArea>
   );
 };
 
