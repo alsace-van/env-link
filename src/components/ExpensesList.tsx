@@ -68,8 +68,10 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       const expensesData = (data || []) as Expense[];
       setExpenses(expensesData);
       
-      // Extract unique categories
-      const uniqueCategories = Array.from(new Set(expensesData.map(e => e.categorie).filter(Boolean)));
+      // Extract unique categories, including empty ones as "Non catégorisé"
+      const uniqueCategories = Array.from(new Set(
+        expensesData.map(e => e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé")
+      ));
       setCategories(uniqueCategories);
 
       // Calculate total sales
@@ -202,11 +204,17 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   };
 
   const filteredExpenses = selectedCategory
-    ? expenses.filter(e => e.categorie === selectedCategory)
+    ? expenses.filter(e => {
+        const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
+        return expenseCategory === selectedCategory;
+      })
     : expenses;
 
   const groupedByCategory = categories.reduce((acc, cat) => {
-    acc[cat] = expenses.filter(e => e.categorie === cat);
+    acc[cat] = expenses.filter(e => {
+      const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
+      return expenseCategory === cat;
+    });
     return acc;
   }, {} as Record<string, Expense[]>);
 
