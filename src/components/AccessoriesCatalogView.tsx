@@ -223,7 +223,7 @@ const AccessoriesCatalogView = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="min-w-[120px]">Nom</TableHead>
+                            <TableHead className="min-w-[180px]">Nom</TableHead>
                             <TableHead className="min-w-[80px]">Marque</TableHead>
                             <TableHead className="min-w-[70px]">Prix réf.</TableHead>
                             <TableHead className="min-w-[70px]">Prix TTC</TableHead>
@@ -236,7 +236,6 @@ const AccessoriesCatalogView = () => {
                             <TableHead className="min-w-[60px]">Poids</TableHead>
                             <TableHead className="min-w-[90px]">Dim.</TableHead>
                             <TableHead className="min-w-[130px]">Description</TableHead>
-                            <TableHead className="sticky right-0 bg-background z-10 min-w-[80px]">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -248,7 +247,25 @@ const AccessoriesCatalogView = () => {
                             return (
                               <TableRow key={accessory.id}>
                                 <TableCell className="font-medium">
-                                  {accessory.nom}
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 shrink-0"
+                                      onClick={() => setEditingAccessory(accessory)}
+                                    >
+                                      <Edit className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
+                                      onClick={() => setDeleteId(accessory.id)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <span>{accessory.nom}</span>
+                                  </div>
                                 </TableCell>
                                 <TableCell>
                                   {accessory.marque || (
@@ -343,25 +360,6 @@ const AccessoriesCatalogView = () => {
                                         <ExternalLink className="h-3 w-3" />
                                       </a>
                                     )}
-                                  </div>
-                                </TableCell>
-                                <TableCell className="sticky right-0 bg-background">
-                                  <div className="flex gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => setEditingAccessory(accessory)}
-                                    >
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => setDeleteId(accessory.id)}
-                                      className="text-destructive hover:text-destructive"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
                                   </div>
                                 </TableCell>
                               </TableRow>
