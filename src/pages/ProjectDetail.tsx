@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Image, Euro, FileText, Package, BookOpen } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen } from "lucide-react";
 import { toast } from "sonner";
 import PhotoUpload from "@/components/PhotoUpload";
 import PhotoGallery from "@/components/PhotoGallery";
@@ -51,6 +52,7 @@ const ProjectDetail = () => {
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expenseRefresh, setExpenseRefresh] = useState(0);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -285,23 +287,37 @@ const ProjectDetail = () => {
           </TabsContent>
 
           <TabsContent value="expenses">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <Card>
-                  <CardContent className="pt-6">
-                    <ExpensesList
+            <div className="relative">
+              <Card>
+                <CardContent className="pt-6">
+                  <ExpensesList
+                    projectId={project.id}
+                    onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
+                  />
+                </CardContent>
+              </Card>
+
+              <Sheet open={isSummaryOpen} onOpenChange={setIsSummaryOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+                    size="icon"
+                  >
+                    <PanelRightOpen className="h-6 w-6" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+                  <SheetHeader>
+                    <SheetTitle>Récapitulatif Financier</SheetTitle>
+                  </SheetHeader>
+                  <div className="mt-6">
+                    <ExpensesSummary
                       projectId={project.id}
-                      onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
+                      refreshTrigger={expenseRefresh}
                     />
-                  </CardContent>
-                </Card>
-              </div>
-              <div>
-                <ExpensesSummary
-                  projectId={project.id}
-                  refreshTrigger={expenseRefresh}
-                />
-              </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
             </div>
           </TabsContent>
 

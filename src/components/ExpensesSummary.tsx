@@ -120,6 +120,12 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
         </Card>
       </div>
 
+      <PaymentTransactions 
+        projectId={projectId} 
+        totalSales={totalSales}
+        onPaymentChange={() => setPaymentRefresh(prev => prev + 1)}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
@@ -185,12 +191,6 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
           </CardContent>
         </Card>
       </div>
-
-      <PaymentTransactions 
-        projectId={projectId} 
-        totalSales={totalSales}
-        onPaymentChange={() => setPaymentRefresh(prev => prev + 1)}
-      />
     </div>
   );
 };
