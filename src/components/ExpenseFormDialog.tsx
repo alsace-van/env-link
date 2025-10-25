@@ -203,6 +203,8 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       ...formData,
       nom_accessoire: accessory.nom,
       prix_achat: accessory.prix_reference?.toString() || "",
+      prix_vente_ttc: accessory.prix_vente_ttc?.toString() || "",
+      marge_pourcent: accessory.marge_pourcent?.toString() || "",
       fournisseur: accessory.fournisseur || "",
       notes: accessory.description || "",
       type_electrique: accessory.type_electrique || "",
@@ -213,7 +215,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     });
     setSelectedAccessoryId(accessory.id);
     setShowAccessoriesList(false);
-    toast.success("Article du catalogue sélectionné");
+    toast.success("Article du catalogue sélectionné et informations copiées");
   };
 
   const handlePricingChange = (field: "prix_achat" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
