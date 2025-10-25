@@ -449,13 +449,13 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="marge_euros">Marge (€)</Label>
+                <Label htmlFor="marge_euros">Marge nette (€)</Label>
                 <Input
                   id="marge_euros"
                   type="text"
                   value={
                     formData.prix_reference && formData.prix_vente_ttc
-                      ? (parseFloat(formData.prix_vente_ttc) - parseFloat(formData.prix_reference)).toFixed(2)
+                      ? ((parseFloat(formData.prix_vente_ttc) / 1.20) - parseFloat(formData.prix_reference)).toFixed(2)
                       : ""
                   }
                   readOnly
