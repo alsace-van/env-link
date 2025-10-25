@@ -9,6 +9,12 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
+interface Category {
+  id: string;
+  nom: string;
+  parent_id: string | null;
+}
+
 interface AccessoryCatalogFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -16,7 +22,7 @@ interface AccessoryCatalogFormDialogProps {
   accessory?: {
     id: string;
     nom: string;
-    categorie?: string | null;
+    category_id?: string | null;
     prix_reference?: number;
     fournisseur?: string;
     description?: string;
@@ -27,7 +33,7 @@ interface AccessoryCatalogFormDialogProps {
 const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: AccessoryCatalogFormDialogProps) => {
   const [formData, setFormData] = useState({
     nom: "",
-    categorie: "",
+    category_id: "",
     prix_reference: "",
     prix_vente_ttc: "",
     marge_pourcent: "",
@@ -36,8 +42,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     url_produit: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [existingCategories, setExistingCategories] = useState<string[]>([]);
-  const [isNewCategory, setIsNewCategory] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -47,7 +52,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         // Mode édition
         setFormData({
           nom: accessory.nom,
-          categorie: (accessory as any).categorie || "",
+          category_id: accessory.category_id || "",
           prix_reference: accessory.prix_reference?.toString() || "",
           prix_vente_ttc: "",
           marge_pourcent: "",
@@ -59,7 +64,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         // Mode création
         setFormData({
           nom: "",
-          categorie: "",
+          category_id: "",
           prix_reference: "",
           prix_vente_ttc: "",
           marge_pourcent: "",
@@ -72,18 +77,13 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   }, [isOpen, accessory]);
 
   const loadCategories = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .order("nom");
 
-    const { data: catalogData } = await supabase
-      .from("accessories_catalog")
-      .select("categorie")
-      .eq("user_id", user.id)
-      .not("categorie", "is", null);
-
-    if (catalogData) {
-      const categories = Array.from(new Set(catalogData.map(item => item.categorie).filter(Boolean)));
-      setExistingCategories(categories.sort());
+    if (!error && data) {
+      setCategories(data);
     }
   };
 
@@ -133,7 +133,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         .from("accessories_catalog")
         .update({
           nom: formData.nom,
-          categorie: formData.categorie || null,
+          category_id: formData.category_id || null,
           prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
           fournisseur: formData.fournisseur || null,
           description: formData.description || null,
@@ -171,7 +171,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         .insert({
           user_id: user.id,
           nom: formData.nom,
-          categorie: formData.categorie || null,
+          category_id: formData.category_id || null,
           prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
           fournisseur: formData.fournisseur || null,
           description: formData.description || null,
@@ -232,7 +232,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
         setFormData({
           nom: "",
-          categorie: "",
+          category_id: "",
           prix_reference: "",
           prix_vente_ttc: "",
           marge_pourcent: "",
@@ -267,51 +267,37 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="categorie">Catégorie</Label>
-            {isNewCategory ? (
-              <div className="flex gap-2">
-                <Input
-                  id="categorie"
-                  placeholder="Nom de la catégorie"
-                  value={formData.categorie}
-                  onChange={(e) => setFormData({ ...formData, categorie: e.target.value })}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsNewCategory(false);
-                    setFormData({ ...formData, categorie: "" });
-                  }}
-                >
-                  Annuler
-                </Button>
-              </div>
-            ) : (
-              <Select
-                value={formData.categorie}
-                onValueChange={(value) => {
-                  if (value === "__new__") {
-                    setIsNewCategory(true);
-                    setFormData({ ...formData, categorie: "" });
-                  } else {
-                    setFormData({ ...formData, categorie: value });
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner ou créer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__new__">+ Nouvelle catégorie</SelectItem>
-                  {existingCategories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
+            <Label htmlFor="category_id">Catégorie</Label>
+            <Select
+              value={formData.category_id}
+              onValueChange={(value) =>
+                setFormData({ ...formData, category_id: value })
+              }
+            >
+              <SelectTrigger id="category_id">
+                <SelectValue placeholder="Sélectionner une catégorie" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Aucune catégorie</SelectItem>
+                {categories
+                  .filter(cat => cat.parent_id === null)
+                  .map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.nom}
                     </SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            )}
+                {categories
+                  .filter(cat => cat.parent_id !== null)
+                  .map((cat) => {
+                    const parent = categories.find(p => p.id === cat.parent_id);
+                    return (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {parent?.nom} → {cat.nom}
+                      </SelectItem>
+                    );
+                  })}
+              </SelectContent>
+            </Select>
           </div>
 
           <Separator />

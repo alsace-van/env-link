@@ -17,6 +17,7 @@ export type Database = {
       accessories_catalog: {
         Row: {
           categorie: string | null
+          category_id: string | null
           created_at: string
           description: string | null
           fournisseur: string | null
@@ -28,6 +29,7 @@ export type Database = {
         }
         Insert: {
           categorie?: string | null
+          category_id?: string | null
           created_at?: string
           description?: string | null
           fournisseur?: string | null
@@ -39,6 +41,7 @@ export type Database = {
         }
         Update: {
           categorie?: string | null
+          category_id?: string | null
           created_at?: string
           description?: string | null
           fournisseur?: string | null
@@ -50,10 +53,49 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "accessories_catalog_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "accessories_catalog_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      categories: {
+        Row: {
+          created_at: string
+          id: string
+          nom: string
+          parent_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nom: string
+          parent_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nom?: string
+          parent_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
             referencedColumns: ["id"]
           },
         ]
