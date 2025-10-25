@@ -26,21 +26,12 @@ interface ExpensesListProps {
   onExpenseChange: () => void;
 }
 
-const CATEGORIES = [
-  "Électricité",
-  "Plomberie",
-  "Isolation",
-  "Mobilier",
-  "Cuisine",
-  "Chauffage",
-  "Autres"
-];
-
 const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
 
   useEffect(() => {
     loadExpenses();
@@ -58,7 +49,12 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       toast.error("Erreur lors du chargement des dépenses");
       console.error(error);
     } else {
-      setExpenses((data || []) as Expense[]);
+      const expensesData = (data || []) as Expense[];
+      setExpenses(expensesData);
+      
+      // Extract unique categories
+      const uniqueCategories = Array.from(new Set(expensesData.map(e => e.categorie).filter(Boolean)));
+      setCategories(uniqueCategories);
     }
     setIsLoading(false);
   };
@@ -135,7 +131,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     ? expenses.filter(e => e.categorie === selectedCategory)
     : expenses;
 
-  const groupedByCategory = CATEGORIES.reduce((acc, cat) => {
+  const groupedByCategory = categories.reduce((acc, cat) => {
     acc[cat] = expenses.filter(e => e.categorie === cat);
     return acc;
   }, {} as Record<string, Expense[]>);
@@ -154,25 +150,27 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
         </Button>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <Button
-          variant={selectedCategory === null ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSelectedCategory(null)}
-        >
-          Toutes ({expenses.length})
-        </Button>
-        {CATEGORIES.map((cat) => (
+      {categories.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
           <Button
-            key={cat}
-            variant={selectedCategory === cat ? "default" : "outline"}
+            variant={selectedCategory === null ? "default" : "outline"}
             size="sm"
-            onClick={() => setSelectedCategory(cat)}
+            onClick={() => setSelectedCategory(null)}
           >
-            {cat} ({groupedByCategory[cat].length})
+            Toutes ({expenses.length})
           </Button>
-        ))}
-      </div>
+          {categories.map((cat) => (
+            <Button
+              key={cat}
+              variant={selectedCategory === cat ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedCategory(cat)}
+            >
+              {cat} ({groupedByCategory[cat].length})
+            </Button>
+          ))}
+        </div>
+      )}
 
       <ScrollArea className="h-[600px]">
         <div className="space-y-3">
@@ -254,6 +252,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
         isOpen={isDialogOpen}
         onClose={() => setIsDialogOpen(false)}
         projectId={projectId}
+        existingCategories={categories}
         onSuccess={() => {
           loadExpenses();
           onExpenseChange();

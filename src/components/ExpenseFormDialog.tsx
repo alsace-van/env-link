@@ -12,30 +12,22 @@ interface ExpenseFormDialogProps {
   isOpen: boolean;
   onClose: () => void;
   projectId: string;
+  existingCategories: string[];
   onSuccess: () => void;
 }
 
-const CATEGORIES = [
-  "Électricité",
-  "Plomberie",
-  "Isolation",
-  "Mobilier",
-  "Cuisine",
-  "Chauffage",
-  "Autres"
-];
-
-const ExpenseFormDialog = ({ isOpen, onClose, projectId, onSuccess }: ExpenseFormDialogProps) => {
+const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onSuccess }: ExpenseFormDialogProps) => {
   const [formData, setFormData] = useState({
     nom_accessoire: "",
     prix: "",
     quantite: "1",
     date_achat: new Date().toISOString().split("T")[0],
-    categorie: "Autres",
+    categorie: "",
     fournisseur: "",
     notes: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isNewCategory, setIsNewCategory] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,10 +58,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, onSuccess }: ExpenseFor
         prix: "",
         quantite: "1",
         date_achat: new Date().toISOString().split("T")[0],
-        categorie: "Autres",
+        categorie: "",
         fournisseur: "",
         notes: "",
       });
+      setIsNewCategory(false);
       onSuccess();
     }
 
@@ -97,21 +90,53 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, onSuccess }: ExpenseFor
 
             <div className="space-y-2">
               <Label htmlFor="categorie">Catégorie *</Label>
-              <Select
-                value={formData.categorie}
-                onValueChange={(value) => setFormData({ ...formData, categorie: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isNewCategory ? (
+                <div className="flex gap-2">
+                  <Input
+                    id="categorie"
+                    required
+                    placeholder="Nom de la catégorie"
+                    value={formData.categorie}
+                    onChange={(e) => setFormData({ ...formData, categorie: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsNewCategory(false);
+                      setFormData({ ...formData, categorie: "" });
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Select
+                    value={formData.categorie}
+                    onValueChange={(value) => {
+                      if (value === "__new__") {
+                        setIsNewCategory(true);
+                        setFormData({ ...formData, categorie: "" });
+                      } else {
+                        setFormData({ ...formData, categorie: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner ou créer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__new__">+ Nouvelle catégorie</SelectItem>
+                      {existingCategories.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
