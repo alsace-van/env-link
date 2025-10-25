@@ -78,10 +78,14 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     }
   };
 
-  const updateDeliveryStatus = async (expense: Expense, newStatus: Expense["statut_livraison"]) => {
+  const cycleDeliveryStatus = async (expense: Expense) => {
+    const statusOrder: Expense["statut_livraison"][] = ["commande", "en_livraison", "livre"];
+    const currentIndex = statusOrder.indexOf(expense.statut_livraison);
+    const nextStatus = statusOrder[(currentIndex + 1) % statusOrder.length];
+
     const { error } = await supabase
       .from("project_expenses")
-      .update({ statut_livraison: newStatus })
+      .update({ statut_livraison: nextStatus })
       .eq("id", expense.id);
 
     if (error) {
@@ -108,14 +112,23 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     }
   };
 
-  const getDeliveryColor = (status: Expense["statut_livraison"]) => {
+  const getDeliveryInfo = (status: Expense["statut_livraison"]) => {
     switch (status) {
       case "commande":
-        return "border-orange-500 text-orange-500";
+        return { 
+          color: "border-orange-500 text-orange-500 bg-orange-50",
+          label: "Commandé"
+        };
       case "en_livraison":
-        return "border-blue-500 text-blue-500 bg-blue-50";
+        return {
+          color: "border-blue-500 text-blue-500 bg-blue-50",
+          label: "En livraison"
+        };
       case "livre":
-        return "border-green-500 text-green-500 bg-green-50";
+        return {
+          color: "border-green-500 text-green-500 bg-green-50",
+          label: "Livré"
+        };
     }
   };
 
@@ -167,16 +180,16 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       <ScrollArea className="h-[600px]">
         <div className="space-y-3">
           {filteredExpenses.map((expense) => (
-            <Card key={expense.id} className="p-4">
+            <Card key={expense.id} className="p-3">
               <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <h4 className="font-medium">{expense.nom_accessoire}</h4>
-                    <Badge variant="outline">{expense.categorie}</Badge>
-                    {expense.marque && <Badge variant="secondary">{expense.marque}</Badge>}
+                    <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
+                    <Badge variant="outline" className="text-xs">{expense.categorie}</Badge>
+                    {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                   </div>
                   
-                  <div className="text-sm text-muted-foreground space-y-1">
+                  <div className="text-xs text-muted-foreground space-y-0.5">
                     <p>Prix d'achat unitaire: {expense.prix.toFixed(2)} € × {expense.quantite}</p>
                     <p className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</p>
                     {expense.prix_vente_ttc && (
@@ -199,32 +212,29 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                     size="sm"
                     onClick={() => togglePaymentStatus(expense)}
                     className={expense.statut_paiement === "paye" 
-                      ? "border-green-500 text-green-500 bg-green-50" 
-                      : "border-red-500 text-red-500 bg-red-50"}
+                      ? "border-green-500 text-green-500 bg-green-50 text-xs" 
+                      : "border-red-500 text-red-500 bg-red-50 text-xs"}
                   >
-                    <CreditCard className="h-4 w-4 mr-1" />
+                    <CreditCard className="h-3.5 w-3.5 mr-1" />
                     {expense.statut_paiement === "paye" ? "Payé" : "Non payé"}
                   </Button>
 
-                  <div className="flex gap-1">
-                    {(["commande", "en_livraison", "livre"] as const).map((status) => (
-                      <Button
-                        key={status}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => updateDeliveryStatus(expense, status)}
-                        className={expense.statut_livraison === status ? getDeliveryColor(status) : ""}
-                        title={status === "commande" ? "Commandé" : status === "en_livraison" ? "En livraison" : "Livré"}
-                      >
-                        <Package className="h-4 w-4" />
-                      </Button>
-                    ))}
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cycleDeliveryStatus(expense)}
+                    className={`${getDeliveryInfo(expense.statut_livraison).color} text-xs`}
+                    title="Cliquer pour changer le statut"
+                  >
+                    <Package className="h-3.5 w-3.5 mr-1" />
+                    {getDeliveryInfo(expense.statut_livraison).label}
+                  </Button>
 
                   <Button
                     variant="destructive"
                     size="sm"
                     onClick={() => deleteExpense(expense.id)}
+                    className="text-xs"
                   >
                     Supprimer
                   </Button>
