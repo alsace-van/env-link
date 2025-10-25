@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Link } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
@@ -25,6 +25,7 @@ interface Expense {
   statut_livraison: "commande" | "en_livraison" | "livre";
   fournisseur?: string;
   notes?: string;
+  accessory_id?: string;
 }
 
 interface ExpensesListProps {
@@ -177,6 +178,58 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     }
   };
 
+  const linkExpensesToCatalog = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Récupérer tous les articles du catalogue
+    const { data: catalogItems, error: catalogError } = await supabase
+      .from("accessories_catalog")
+      .select("*")
+      .eq("user_id", user.id);
+
+    if (catalogError || !catalogItems) {
+      toast.error("Erreur lors du chargement du catalogue");
+      return;
+    }
+
+    // Récupérer les dépenses sans lien
+    const unlinkedExpenses = expenses.filter(e => !e.accessory_id);
+    let linkedCount = 0;
+
+    for (const expense of unlinkedExpenses) {
+      // Chercher une correspondance dans le catalogue
+      const match = catalogItems.find(item => {
+        const nameMatch = item.nom.toLowerCase().includes(expense.nom_accessoire.toLowerCase()) ||
+                         expense.nom_accessoire.toLowerCase().includes(item.nom.toLowerCase());
+        const priceMatch = item.prix_reference && Math.abs(item.prix_reference - expense.prix) < 0.01;
+        const supplierMatch = item.fournisseur && expense.fournisseur && 
+                             item.fournisseur.toLowerCase() === expense.fournisseur.toLowerCase();
+        
+        return nameMatch || priceMatch || supplierMatch;
+      });
+
+      if (match) {
+        const { error } = await supabase
+          .from("project_expenses")
+          .update({ accessory_id: match.id })
+          .eq("id", expense.id);
+
+        if (!error) {
+          linkedCount++;
+        }
+      }
+    }
+
+    if (linkedCount > 0) {
+      toast.success(`${linkedCount} dépense(s) liée(s) au catalogue`);
+      loadExpenses();
+      onExpenseChange();
+    } else {
+      toast.info("Aucune correspondance trouvée dans le catalogue");
+    }
+  };
+
   const getDeliveryInfo = (status: Expense["statut_livraison"]) => {
     switch (status) {
       case "commande":
@@ -215,12 +268,18 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-2">
         <h3 className="text-lg font-semibold">Liste des dépenses</h3>
-        <Button onClick={() => setIsDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Ajouter une dépense
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={linkExpensesToCatalog}>
+            <Link className="h-4 w-4 mr-2" />
+            Lier au catalogue
+          </Button>
+          <Button onClick={() => setIsDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter une dépense
+          </Button>
+        </div>
       </div>
 
       {categories.length > 0 && (
