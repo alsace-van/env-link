@@ -9,6 +9,7 @@ import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
 import CategoryFilterSidebar from "./CategoryFilterSidebar";
 import AccessoryImportExportDialog from "./AccessoryImportExportDialog";
 import { NoticeUploadDialog } from "./NoticeUploadDialog";
+import { NoticeSearchDialog } from "./NoticeSearchDialog";
 import {
   Tooltip,
   TooltipContent,
@@ -78,6 +79,12 @@ const AccessoriesCatalogView = () => {
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [noticeDialogAccessoryId, setNoticeDialogAccessoryId] = useState<string>("");
+  const [noticeSearchOpen, setNoticeSearchOpen] = useState(false);
+  const [selectedAccessoryForNotice, setSelectedAccessoryForNotice] = useState<{
+    id: string;
+    nom: string;
+    marque?: string | null;
+  } | null>(null);
 
   useEffect(() => {
     loadAccessories();
@@ -372,7 +379,12 @@ const AccessoriesCatalogView = () => {
                                             if (accessory.notice_id && accessory.notices_database) {
                                               window.open(accessory.notices_database.url_notice, "_blank");
                                             } else {
-                                              setNoticeDialogAccessoryId(accessory.id);
+                                              setSelectedAccessoryForNotice({
+                                                id: accessory.id,
+                                                nom: accessory.nom,
+                                                marque: accessory.marque,
+                                              });
+                                              setNoticeSearchOpen(true);
                                             }
                                           }}
                                         >
@@ -387,7 +399,7 @@ const AccessoriesCatalogView = () => {
                                         <p>
                                           {accessory.notice_id 
                                             ? `Ouvrir la notice: ${accessory.notices_database?.titre}` 
-                                            : "Lier une notice"}
+                                            : "Rechercher et lier une notice"}
                                         </p>
                                       </TooltipContent>
                                     </Tooltip>
@@ -501,6 +513,24 @@ const AccessoriesCatalogView = () => {
             onSuccess={() => {
               loadAccessories();
               setNoticeDialogAccessoryId("");
+            }}
+          />
+        )}
+
+        {selectedAccessoryForNotice && (
+          <NoticeSearchDialog
+            isOpen={noticeSearchOpen}
+            onClose={() => {
+              setNoticeSearchOpen(false);
+              setSelectedAccessoryForNotice(null);
+            }}
+            accessoryId={selectedAccessoryForNotice.id}
+            accessoryMarque={selectedAccessoryForNotice.marque || undefined}
+            accessoryNom={selectedAccessoryForNotice.nom}
+            onSuccess={() => {
+              loadAccessories();
+              setNoticeSearchOpen(false);
+              setSelectedAccessoryForNotice(null);
             }}
           />
         )}
