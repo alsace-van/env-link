@@ -10,6 +10,8 @@ import PhotoUpload from "@/components/PhotoUpload";
 import PhotoGallery from "@/components/PhotoGallery";
 import PhotoAnnotationModal from "@/components/PhotoAnnotationModal";
 import UserMenu from "@/components/UserMenu";
+import ExpensesList from "@/components/ExpensesList";
+import ExpensesSummary from "@/components/ExpensesSummary";
 import { User } from "@supabase/supabase-js";
 
 interface Project {
@@ -47,6 +49,7 @@ const ProjectDetail = () => {
   const [photoRefresh, setPhotoRefresh] = useState(0);
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [expenseRefresh, setExpenseRefresh] = useState(0);
 
   useEffect(() => {
     if (id) {
@@ -281,17 +284,24 @@ const ProjectDetail = () => {
           </TabsContent>
 
           <TabsContent value="expenses">
-            <Card>
-              <CardHeader>
-                <CardTitle>Suivi Financier</CardTitle>
-                <CardDescription>Liste des accessoires et matériel installés</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  Fonctionnalité à venir
-                </p>
-              </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardContent className="pt-6">
+                    <ExpensesList
+                      projectId={project.id}
+                      onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+              <div>
+                <ExpensesSummary
+                  projectId={project.id}
+                  refreshTrigger={expenseRefresh}
+                />
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="documents">

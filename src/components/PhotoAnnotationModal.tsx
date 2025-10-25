@@ -47,59 +47,72 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     const canvas = new FabricCanvas(canvasRef.current, {
       width: 900,
       height: 600,
-      backgroundColor: "#f5f5f5",
-    });
-
-    // Load image with better error handling
-    FabricImage.fromURL(photo.url, {
-      crossOrigin: "anonymous",
-    }).then((img) => {
-      if (!img || !img.width || !img.height) {
-        toast.error("Erreur lors du chargement de l'image");
-        return;
-      }
-
-      // Scale image to fit canvas while maintaining aspect ratio
-      const scale = Math.min(
-        canvas.width! / img.width,
-        canvas.height! / img.height,
-        1 // Don't scale up
-      );
-      
-      img.scale(scale);
-      img.set({
-        left: (canvas.width! - img.width * scale) / 2,
-        top: (canvas.height! - img.height * scale) / 2,
-        selectable: false,
-        evented: false,
-      });
-      
-      canvas.add(img);
-      canvas.sendObjectToBack(img);
-      canvas.renderAll();
-
-      // Load saved annotations if they exist
-      if (photo.annotations) {
-        try {
-          canvas.loadFromJSON(photo.annotations, () => {
-            // Make sure image stays in back after loading annotations
-            const objects = canvas.getObjects();
-            const imageObj = objects.find(obj => obj.type === 'image');
-            if (imageObj) {
-              canvas.sendObjectToBack(imageObj);
-            }
-            canvas.renderAll();
-          });
-        } catch (error) {
-          console.error("Error loading annotations:", error);
-        }
-      }
-    }).catch((error) => {
-      console.error("Error loading image:", error);
-      toast.error("Erreur lors du chargement de l'image");
+      backgroundColor: "#ffffff",
     });
 
     setFabricCanvas(canvas);
+
+    // Create image element first to ensure it loads
+    const imgElement = new Image();
+    imgElement.crossOrigin = "anonymous";
+    
+    imgElement.onload = () => {
+      FabricImage.fromURL(photo.url, {
+        crossOrigin: "anonymous",
+      }).then((img) => {
+        if (!img || !img.width || !img.height) {
+          toast.error("Erreur lors du chargement de l'image");
+          return;
+        }
+
+        // Scale image to fit canvas while maintaining aspect ratio
+        const scale = Math.min(
+          canvas.width! / img.width,
+          canvas.height! / img.height,
+          1 // Don't scale up
+        );
+        
+        img.scale(scale);
+        img.set({
+          left: (canvas.width! - img.width * scale) / 2,
+          top: (canvas.height! - img.height * scale) / 2,
+          selectable: false,
+          evented: false,
+        });
+        
+        canvas.add(img);
+        canvas.sendObjectToBack(img);
+        canvas.renderAll();
+
+        // Load saved annotations if they exist
+        if (photo.annotations) {
+          try {
+            canvas.loadFromJSON(photo.annotations, () => {
+              // Make sure image stays in back after loading annotations
+              const objects = canvas.getObjects();
+              const imageObj = objects.find(obj => obj.type === 'image');
+              if (imageObj) {
+                canvas.sendObjectToBack(imageObj);
+              }
+              canvas.renderAll();
+            });
+          } catch (error) {
+            console.error("Error loading annotations:", error);
+          }
+        }
+      }).catch((error) => {
+        console.error("Error loading image:", error);
+        toast.error("Erreur lors du chargement de l'image");
+      });
+    };
+
+    imgElement.onerror = () => {
+      console.error("Failed to load image");
+      toast.error("Erreur lors du chargement de l'image");
+    };
+
+    imgElement.src = photo.url;
+
     setHistory([]);
     setHistoryStep(-1);
 

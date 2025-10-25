@@ -160,6 +160,8 @@ export type Database = {
       }
       project_expenses: {
         Row: {
+          accessory_id: string | null
+          categorie: string | null
           created_at: string
           date_achat: string | null
           fournisseur: string | null
@@ -169,8 +171,12 @@ export type Database = {
           prix: number
           project_id: string
           quantite: number
+          statut_livraison: string | null
+          statut_paiement: string | null
         }
         Insert: {
+          accessory_id?: string | null
+          categorie?: string | null
           created_at?: string
           date_achat?: string | null
           fournisseur?: string | null
@@ -180,8 +186,12 @@ export type Database = {
           prix: number
           project_id: string
           quantite?: number
+          statut_livraison?: string | null
+          statut_paiement?: string | null
         }
         Update: {
+          accessory_id?: string | null
+          categorie?: string | null
           created_at?: string
           date_achat?: string | null
           fournisseur?: string | null
@@ -191,10 +201,60 @@ export type Database = {
           prix?: number
           project_id?: string
           quantite?: number
+          statut_livraison?: string | null
+          statut_paiement?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "project_expenses_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "project_expenses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_payments: {
+        Row: {
+          acompte: number | null
+          acompte_paye: boolean | null
+          created_at: string
+          id: string
+          project_id: string
+          solde: number | null
+          solde_paye: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          acompte?: number | null
+          acompte_paye?: boolean | null
+          created_at?: string
+          id?: string
+          project_id: string
+          solde?: number | null
+          solde_paye?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          acompte?: number | null
+          acompte_paye?: boolean | null
+          created_at?: string
+          id?: string
+          project_id?: string
+          solde?: number | null
+          solde_paye?: boolean | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_payments_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
