@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import ProjectsList from "@/components/ProjectsList";
 import ProjectForm from "@/components/ProjectForm";
 import UserMenu from "@/components/UserMenu";
+import { Button } from "@/components/ui/button";
+import { Package } from "lucide-react";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -74,6 +76,14 @@ const Dashboard = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate("/catalog")}
+              className="gap-2"
+            >
+              <Package className="h-4 w-4" />
+              Catalogue
+            </Button>
             {user && <UserMenu user={user} />}
           </div>
         </div>
