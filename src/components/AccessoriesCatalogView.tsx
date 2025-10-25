@@ -223,7 +223,7 @@ const AccessoriesCatalogView = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="min-w-[180px]">Nom</TableHead>
+                            <TableHead className="min-w-[180px] pl-[4.5rem]">Nom</TableHead>
                             <TableHead className="min-w-[80px]">Marque</TableHead>
                             <TableHead className="min-w-[70px]">Prix réf.</TableHead>
                             <TableHead className="min-w-[70px]">Prix TTC</TableHead>
