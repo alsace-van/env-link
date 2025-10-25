@@ -269,16 +269,16 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           <div className="space-y-2">
             <Label htmlFor="category_id">Catégorie</Label>
             <Select
-              value={formData.category_id}
+              value={formData.category_id || "none"}
               onValueChange={(value) =>
-                setFormData({ ...formData, category_id: value })
+                setFormData({ ...formData, category_id: value === "none" ? "" : value })
               }
             >
               <SelectTrigger id="category_id">
                 <SelectValue placeholder="Sélectionner une catégorie" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Aucune catégorie</SelectItem>
+                <SelectItem value="none">Aucune catégorie</SelectItem>
                 {categories
                   .filter(cat => cat.parent_id === null)
                   .map((cat) => (
