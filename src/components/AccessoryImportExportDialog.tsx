@@ -4,11 +4,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Upload, ClipboardPaste } from "lucide-react";
+import { Download, Upload, ClipboardPaste, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+
+interface AccessoryRow {
+  id: string;
+  nom: string;
+  categorie: string;
+  prix_reference: string;
+  prix_vente_ttc: string;
+  marge_pourcent: string;
+  fournisseur: string;
+  description: string;
+  url_produit: string;
+}
 
 interface AccessoryImportExportDialogProps {
   isOpen: boolean;
@@ -25,6 +38,58 @@ const AccessoryImportExportDialog = ({
 }: AccessoryImportExportDialogProps) => {
   const [pastedData, setPastedData] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [tableRows, setTableRows] = useState<AccessoryRow[]>([
+    { id: "1", nom: "", categorie: "", prix_reference: "", prix_vente_ttc: "", marge_pourcent: "", fournisseur: "", description: "", url_produit: "" }
+  ]);
+
+  const addTableRow = () => {
+    setTableRows([...tableRows, {
+      id: Date.now().toString(),
+      nom: "",
+      categorie: "",
+      prix_reference: "",
+      prix_vente_ttc: "",
+      marge_pourcent: "",
+      fournisseur: "",
+      description: "",
+      url_produit: ""
+    }]);
+  };
+
+  const removeTableRow = (id: string) => {
+    if (tableRows.length > 1) {
+      setTableRows(tableRows.filter(row => row.id !== id));
+    }
+  };
+
+  const updateTableRow = (id: string, field: keyof AccessoryRow, value: string) => {
+    setTableRows(tableRows.map(row => 
+      row.id === id ? { ...row, [field]: value } : row
+    ));
+  };
+
+  const handleTableImport = async () => {
+    setIsProcessing(true);
+    
+    const dataToImport = tableRows.filter(row => row.nom.trim() !== "").map(row => ({
+      Nom: row.nom,
+      Catégorie: row.categorie,
+      "Prix référence": row.prix_reference,
+      "Prix vente TTC": row.prix_vente_ttc,
+      "Marge %": row.marge_pourcent,
+      Fournisseur: row.fournisseur,
+      Description: row.description,
+      "URL produit": row.url_produit,
+    }));
+
+    if (dataToImport.length === 0) {
+      toast.error("Aucune donnée à importer");
+      setIsProcessing(false);
+      return;
+    }
+
+    await processImportData(dataToImport);
+  };
 
   const handleExport = async () => {
     try {
@@ -234,8 +299,9 @@ const AccessoryImportExportDialog = ({
         </DialogHeader>
 
         <Tabs defaultValue="export" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="export">Exporter</TabsTrigger>
+            <TabsTrigger value="table">Saisie tableau</TabsTrigger>
             <TabsTrigger value="upload">Importer fichier</TabsTrigger>
             <TabsTrigger value="paste">Copier-coller</TabsTrigger>
           </TabsList>
@@ -249,6 +315,138 @@ const AccessoryImportExportDialog = ({
                 <Download className="h-4 w-4 mr-2" />
                 Télécharger le catalogue (CSV)
               </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="table" className="space-y-4">
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Remplissez le tableau ci-dessous pour ajouter plusieurs accessoires.
+              </p>
+              <div className="border rounded-lg overflow-x-auto max-h-[500px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted sticky top-0">
+                    <tr>
+                      <th className="px-2 py-2 text-left font-medium">Nom *</th>
+                      <th className="px-2 py-2 text-left font-medium">Catégorie</th>
+                      <th className="px-2 py-2 text-left font-medium">Prix réf.</th>
+                      <th className="px-2 py-2 text-left font-medium">Prix TTC</th>
+                      <th className="px-2 py-2 text-left font-medium">Marge %</th>
+                      <th className="px-2 py-2 text-left font-medium">Fournisseur</th>
+                      <th className="px-2 py-2 text-left font-medium">Description</th>
+                      <th className="px-2 py-2 text-left font-medium">URL</th>
+                      <th className="px-2 py-2 text-center font-medium w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableRows.map((row) => (
+                      <tr key={row.id} className="border-t">
+                        <td className="px-2 py-1">
+                          <Input
+                            value={row.nom}
+                            onChange={(e) => updateTableRow(row.id, "nom", e.target.value)}
+                            placeholder="Nom"
+                            className="h-8 text-xs"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            value={row.categorie}
+                            onChange={(e) => updateTableRow(row.id, "categorie", e.target.value)}
+                            placeholder="Catégorie"
+                            className="h-8 text-xs"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.prix_reference}
+                            onChange={(e) => updateTableRow(row.id, "prix_reference", e.target.value)}
+                            placeholder="0.00"
+                            className="h-8 text-xs w-24"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.prix_vente_ttc}
+                            onChange={(e) => updateTableRow(row.id, "prix_vente_ttc", e.target.value)}
+                            placeholder="0.00"
+                            className="h-8 text-xs w-24"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.marge_pourcent}
+                            onChange={(e) => updateTableRow(row.id, "marge_pourcent", e.target.value)}
+                            placeholder="0.00"
+                            className="h-8 text-xs w-20"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            value={row.fournisseur}
+                            onChange={(e) => updateTableRow(row.id, "fournisseur", e.target.value)}
+                            placeholder="Fournisseur"
+                            className="h-8 text-xs"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            value={row.description}
+                            onChange={(e) => updateTableRow(row.id, "description", e.target.value)}
+                            placeholder="Description"
+                            className="h-8 text-xs"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            value={row.url_produit}
+                            onChange={(e) => updateTableRow(row.id, "url_produit", e.target.value)}
+                            placeholder="https://..."
+                            className="h-8 text-xs"
+                          />
+                        </td>
+                        <td className="px-2 py-1 text-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeTableRow(row.id)}
+                            disabled={tableRows.length === 1}
+                            className="h-8 w-8"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  onClick={addTableRow}
+                  className="flex-1"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter une ligne
+                </Button>
+                <Button 
+                  onClick={handleTableImport}
+                  disabled={isProcessing}
+                  className="flex-1"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  {isProcessing ? "Import en cours..." : "Importer le tableau"}
+                </Button>
+              </div>
             </div>
           </TabsContent>
 
