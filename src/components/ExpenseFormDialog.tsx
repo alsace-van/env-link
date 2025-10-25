@@ -16,9 +16,23 @@ interface ExpenseFormDialogProps {
   projectId: string;
   existingCategories: string[];
   onSuccess: () => void;
+  expense?: {
+    id: string;
+    nom_accessoire: string;
+    marque?: string;
+    prix: number;
+    prix_vente_ttc?: number;
+    marge_pourcent?: number;
+    quantite: number;
+    date_achat: string;
+    categorie: string;
+    fournisseur?: string;
+    notes?: string;
+    accessory_id?: string;
+  } | null;
 }
 
-const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onSuccess }: ExpenseFormDialogProps) => {
+const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onSuccess, expense }: ExpenseFormDialogProps) => {
   const [formData, setFormData] = useState({
     nom_accessoire: "",
     marque: "",
@@ -46,8 +60,38 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     if (isOpen) {
       loadExistingMarques();
       loadCatalogCategories();
+      
+      // Load expense data if editing
+      if (expense) {
+        setFormData({
+          nom_accessoire: expense.nom_accessoire,
+          marque: expense.marque || "",
+          prix_achat: expense.prix.toString(),
+          prix_vente_ttc: expense.prix_vente_ttc?.toString() || "",
+          marge_pourcent: expense.marge_pourcent?.toString() || "",
+          quantite: expense.quantite.toString(),
+          date_achat: expense.date_achat,
+          categorie: expense.categorie,
+          fournisseur: expense.fournisseur || "",
+          notes: expense.notes || "",
+        });
+      } else {
+        // Reset form for new expense
+        setFormData({
+          nom_accessoire: "",
+          marque: "",
+          prix_achat: "",
+          prix_vente_ttc: "",
+          marge_pourcent: "",
+          quantite: "1",
+          date_achat: new Date().toISOString().split("T")[0],
+          categorie: "",
+          fournisseur: "",
+          notes: "",
+        });
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, expense]);
 
   useEffect(() => {
     if (formData.marque) {
@@ -165,44 +209,88 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { error } = await supabase
-      .from("project_expenses")
-      .insert({
-        project_id: projectId,
-        nom_accessoire: formData.nom_accessoire,
-        marque: formData.marque || null,
-        prix: parseFloat(formData.prix_achat),
-        prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-        marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-        quantite: parseInt(formData.quantite),
-        date_achat: formData.date_achat,
-        categorie: formData.categorie,
-        fournisseur: formData.fournisseur || null,
-        notes: formData.notes || null,
-        statut_paiement: "non_paye",
-        statut_livraison: "commande",
-      });
+    if (expense) {
+      // Mode édition
+      const { error } = await supabase
+        .from("project_expenses")
+        .update({
+          nom_accessoire: formData.nom_accessoire,
+          marque: formData.marque || null,
+          prix: parseFloat(formData.prix_achat),
+          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
+          quantite: parseInt(formData.quantite),
+          date_achat: formData.date_achat,
+          categorie: formData.categorie,
+          fournisseur: formData.fournisseur || null,
+          notes: formData.notes || null,
+        })
+        .eq("id", expense.id);
 
-    if (error) {
-      toast.error("Erreur lors de l'ajout de la dépense");
-      console.error(error);
+      if (error) {
+        toast.error("Erreur lors de la modification");
+        console.error(error);
+      } else {
+        // Si lié à un accessoire du catalogue, mettre à jour le catalogue
+        if (expense.accessory_id) {
+          const { error: catalogError } = await supabase
+            .from("accessories_catalog")
+            .update({
+              nom: formData.nom_accessoire,
+              fournisseur: formData.fournisseur || null,
+              prix_reference: parseFloat(formData.prix_achat),
+            })
+            .eq("id", expense.accessory_id);
+
+          if (catalogError) {
+            console.error("Erreur lors de la mise à jour du catalogue:", catalogError);
+          }
+        }
+
+        toast.success("Dépense modifiée avec succès");
+        onSuccess();
+      }
     } else {
-      toast.success("Dépense ajoutée avec succès");
-      setFormData({
-        nom_accessoire: "",
-        marque: "",
-        prix_achat: "",
-        prix_vente_ttc: "",
-        marge_pourcent: "",
-        quantite: "1",
-        date_achat: new Date().toISOString().split("T")[0],
-        categorie: "",
-        fournisseur: "",
-        notes: "",
-      });
-      setIsNewCategory(false);
-      setShowAddToCatalog(false);
-      onSuccess();
+      // Mode création
+      const { error } = await supabase
+        .from("project_expenses")
+        .insert({
+          project_id: projectId,
+          nom_accessoire: formData.nom_accessoire,
+          marque: formData.marque || null,
+          prix: parseFloat(formData.prix_achat),
+          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
+          quantite: parseInt(formData.quantite),
+          date_achat: formData.date_achat,
+          categorie: formData.categorie,
+          fournisseur: formData.fournisseur || null,
+          notes: formData.notes || null,
+          statut_paiement: "non_paye",
+          statut_livraison: "commande",
+        });
+
+      if (error) {
+        toast.error("Erreur lors de l'ajout de la dépense");
+        console.error(error);
+      } else {
+        toast.success("Dépense ajoutée avec succès");
+        setFormData({
+          nom_accessoire: "",
+          marque: "",
+          prix_achat: "",
+          prix_vente_ttc: "",
+          marge_pourcent: "",
+          quantite: "1",
+          date_achat: new Date().toISOString().split("T")[0],
+          categorie: "",
+          fournisseur: "",
+          notes: "",
+        });
+        setIsNewCategory(false);
+        setShowAddToCatalog(false);
+        onSuccess();
+      }
     }
 
     setIsSubmitting(false);
@@ -212,7 +300,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Ajouter une dépense</DialogTitle>
+          <DialogTitle>{expense ? "Modifier la dépense" : "Ajouter une dépense"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">

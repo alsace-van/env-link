@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, ExternalLink } from "lucide-react";
+import { Search, Trash2, ExternalLink, Edit } from "lucide-react";
 import { toast } from "sonner";
+import AccessoryEditDialog from "./AccessoryEditDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,7 @@ const AccessoriesCatalogView = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingAccessory, setEditingAccessory] = useState<Accessory | null>(null);
 
   useEffect(() => {
     loadAccessories();
@@ -137,14 +139,23 @@ const AccessoriesCatalogView = () => {
                         </Badge>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDeleteId(accessory.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditingAccessory(accessory)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteId(accessory.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   {accessory.description && (
                     <CardDescription>{accessory.description}</CardDescription>
@@ -207,6 +218,16 @@ const AccessoriesCatalogView = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AccessoryEditDialog
+        isOpen={!!editingAccessory}
+        onClose={() => setEditingAccessory(null)}
+        accessory={editingAccessory}
+        onSuccess={() => {
+          loadAccessories();
+          setEditingAccessory(null);
+        }}
+      />
     </div>
   );
 };

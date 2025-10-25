@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, CreditCard, Package, ArrowRight, Truck } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
@@ -40,6 +40,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [paymentTransactions, setPaymentTransactions] = useState<PaymentTransaction[]>([]);
@@ -136,6 +137,10 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   };
 
   const deleteExpense = async (id: string) => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cette dépense ?")) {
+      return;
+    }
+
     const { error } = await supabase
       .from("project_expenses")
       .delete()
@@ -271,6 +276,22 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setEditingExpense(expense)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Modifier</p>
+                        </TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
                           <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
                             <CreditCard className="h-4 w-4" />
                           </div>
@@ -384,6 +405,22 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => setEditingExpense(expense)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Modifier</p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
                                   <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
                                     <CreditCard className="h-4 w-4" />
                                   </div>
@@ -438,14 +475,19 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       </ScrollArea>
 
       <ExpenseFormDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
+        isOpen={isDialogOpen || editingExpense !== null}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingExpense(null);
+        }}
         projectId={projectId}
         existingCategories={categories}
+        expense={editingExpense}
         onSuccess={() => {
           loadExpenses();
           onExpenseChange();
           setIsDialogOpen(false);
+          setEditingExpense(null);
         }}
       />
     </div>
