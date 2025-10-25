@@ -230,6 +230,39 @@ export type Database = {
           },
         ]
       }
+      project_payment_transactions: {
+        Row: {
+          created_at: string
+          date_paiement: string
+          id: string
+          montant: number
+          notes: string | null
+          project_id: string
+          type_paiement: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date_paiement: string
+          id?: string
+          montant?: number
+          notes?: string | null
+          project_id: string
+          type_paiement: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date_paiement?: string
+          id?: string
+          montant?: number
+          notes?: string | null
+          project_id?: string
+          type_paiement?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       project_payments: {
         Row: {
           acompte: number | null

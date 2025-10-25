@@ -30,11 +30,9 @@ interface ExpensesListProps {
   onExpenseChange: () => void;
 }
 
-interface PaymentInfo {
-  acompte: number;
-  acompte_paye: boolean;
-  solde: number;
-  solde_paye: boolean;
+interface PaymentTransaction {
+  id: string;
+  montant: number;
 }
 
 const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
@@ -43,17 +41,12 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
-  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({
-    acompte: 0,
-    acompte_paye: false,
-    solde: 0,
-    solde_paye: false,
-  });
+  const [paymentTransactions, setPaymentTransactions] = useState<PaymentTransaction[]>([]);
   const [totalSales, setTotalSales] = useState(0);
 
   useEffect(() => {
     loadExpenses();
-    loadPaymentInfo();
+    loadPaymentTransactions();
   }, [projectId]);
 
   const loadExpenses = async () => {
@@ -87,30 +80,22 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     setIsLoading(false);
   };
 
-  const loadPaymentInfo = async () => {
+  const loadPaymentTransactions = async () => {
     const { data, error } = await supabase
-      .from("project_payments")
-      .select("*")
-      .eq("project_id", projectId)
-      .maybeSingle();
+      .from("project_payment_transactions")
+      .select("id, montant")
+      .eq("project_id", projectId);
 
     if (error) {
       console.error(error);
       return;
     }
 
-    if (data) {
-      setPaymentInfo({
-        acompte: data.acompte,
-        acompte_paye: data.acompte_paye,
-        solde: data.solde,
-        solde_paye: data.solde_paye,
-      });
-    }
+    setPaymentTransactions(data || []);
   };
 
   const getPaymentStatus = () => {
-    const totalPaid = paymentInfo.acompte + paymentInfo.solde;
+    const totalPaid = paymentTransactions.reduce((sum, t) => sum + t.montant, 0);
     
     if (totalPaid === 0) {
       return {
@@ -125,7 +110,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     } else {
       return {
         color: "border-orange-500 text-orange-500 bg-orange-50",
-        label: "Acompte versé"
+        label: "Paiement partiel"
       };
     }
   };
