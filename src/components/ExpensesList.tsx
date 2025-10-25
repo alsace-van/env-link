@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Plus, CreditCard, Package } from "lucide-react";
 import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
 
 interface Expense {
@@ -206,38 +207,58 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => togglePaymentStatus(expense)}
-                    className={expense.statut_paiement === "paye" 
-                      ? "border-green-500 text-green-500 bg-green-50 text-xs" 
-                      : "border-red-500 text-red-500 bg-red-50 text-xs"}
-                  >
-                    <CreditCard className="h-3.5 w-3.5 mr-1" />
-                    {expense.statut_paiement === "paye" ? "Payé" : "Non payé"}
-                  </Button>
+                <div className="flex flex-col gap-1.5">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={`h-8 w-8 ${expense.statut_paiement === "paye" 
+                            ? "border-green-500 text-green-500 bg-green-50" 
+                            : "border-red-500 text-red-500 bg-red-50"}`}
+                          onClick={() => togglePaymentStatus(expense)}
+                        >
+                          <CreditCard className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{expense.statut_paiement === "paye" ? "Payé" : "Non payé"}</p>
+                      </TooltipContent>
+                    </Tooltip>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => cycleDeliveryStatus(expense)}
-                    className={`${getDeliveryInfo(expense.statut_livraison).color} text-xs`}
-                    title="Cliquer pour changer le statut"
-                  >
-                    <Package className="h-3.5 w-3.5 mr-1" />
-                    {getDeliveryInfo(expense.statut_livraison).label}
-                  </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                          onClick={() => cycleDeliveryStatus(expense)}
+                        >
+                          <Package className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                      </TooltipContent>
+                    </Tooltip>
 
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => deleteExpense(expense.id)}
-                    className="text-xs"
-                  >
-                    Supprimer
-                  </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => deleteExpense(expense.id)}
+                        >
+                          <span className="text-xs font-bold">×</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Supprimer</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             </Card>
