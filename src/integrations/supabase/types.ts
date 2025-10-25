@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       accessories_catalog: {
         Row: {
+          categorie: string | null
           created_at: string
           description: string | null
           fournisseur: string | null
@@ -26,6 +27,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          categorie?: string | null
           created_at?: string
           description?: string | null
           fournisseur?: string | null
@@ -36,6 +38,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          categorie?: string | null
           created_at?: string
           description?: string | null
           fournisseur?: string | null

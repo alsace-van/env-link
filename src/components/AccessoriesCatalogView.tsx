@@ -21,6 +21,7 @@ import {
 interface Accessory {
   id: string;
   nom: string;
+  categorie?: string | null;
   prix_reference: number | null;
   description: string | null;
   fournisseur: string | null;
@@ -47,7 +48,8 @@ const AccessoriesCatalogView = () => {
         accessories.filter(
           (acc) =>
             acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase())
+            acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            acc.categorie?.toLowerCase().includes(searchTerm.toLowerCase())
         )
       );
     } else {
@@ -88,11 +90,6 @@ const AccessoriesCatalogView = () => {
     setDeleteId(null);
   };
 
-  const getCategoryFromName = (name: string) => {
-    const parts = name.split(" - ");
-    return parts.length > 1 ? parts[0] : null;
-  };
-
   if (loading) {
     return <div className="text-center py-12">Chargement...</div>;
   }
@@ -129,7 +126,6 @@ const AccessoriesCatalogView = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredAccessories.map((accessory) => {
-            const category = getCategoryFromName(accessory.nom);
             return (
               <Card key={accessory.id}>
                 <CardHeader>
@@ -138,9 +134,9 @@ const AccessoriesCatalogView = () => {
                       <CardTitle className="text-lg mb-2">
                         {accessory.nom}
                       </CardTitle>
-                      {category && (
+                      {accessory.categorie && (
                         <Badge variant="secondary" className="mb-2">
-                          {category}
+                          {accessory.categorie}
                         </Badge>
                       )}
                     </div>
