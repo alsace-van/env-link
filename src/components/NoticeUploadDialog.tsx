@@ -127,6 +127,14 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
     onSuccess?.(); // Call onSuccess to clear preselectedAccessoryId in parent
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen) {
+      setOpen(true);
+    } else {
+      handleClose();
+    }
+  };
+
   const resetForm = () => {
     setTitre("");
     setMarque("");
@@ -138,7 +146,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger || (
           <Button>
