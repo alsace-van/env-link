@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Upload, Plus } from "lucide-react";
+import { Upload, Plus, FileText, X } from "lucide-react";
 
 interface NoticeUploadDialogProps {
   trigger?: React.ReactNode;
@@ -27,6 +27,8 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   const [urlNotice, setUrlNotice] = useState("");
   const [accessories, setAccessories] = useState<Array<{ id: string; nom: string; marque?: string }>>([]);
   const [selectedAccessoryId, setSelectedAccessoryId] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Auto-open when preselectedAccessoryId changes
   useEffect(() => {
@@ -60,9 +62,84 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
     setAccessories(data || []);
   };
 
+  const handleFileSelect = (file: File) => {
+    // Vérifier le type de fichier (PDF uniquement)
+    if (file.type !== "application/pdf") {
+      toast.error("Seuls les fichiers PDF sont acceptés");
+      return;
+    }
+
+    // Vérifier la taille (max 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("Le fichier ne doit pas dépasser 20 MB");
+      return;
+    }
+
+    setSelectedFile(file);
+    if (!titre) {
+      setTitre(file.name.replace(".pdf", ""));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const uploadFile = async (file: File): Promise<string | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    const { data, error } = await supabase.storage
+      .from("notice-files")
+      .upload(fileName, file);
+
+    if (error) {
+      console.error("Error uploading file:", error);
+      toast.error("Erreur lors de l'upload du fichier");
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("notice-files")
+      .getPublicUrl(fileName);
+
+    return publicUrl;
+  };
+
   const handleSubmit = async () => {
-    if (!titre || !urlNotice) {
-      toast.error("Le titre et l'URL de la notice sont requis");
+    if (!titre) {
+      toast.error("Le titre est requis");
+      return;
+    }
+
+    if (!selectedFile && !urlNotice) {
+      toast.error("Veuillez uploader un fichier ou fournir une URL");
       return;
     }
 
@@ -75,6 +152,17 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
         return;
       }
 
+      let finalUrl = urlNotice;
+
+      // Upload file if selected
+      if (selectedFile) {
+        const uploadedUrl = await uploadFile(selectedFile);
+        if (!uploadedUrl) {
+          return;
+        }
+        finalUrl = uploadedUrl;
+      }
+
       // Insert notice
       const { data: notice, error: noticeError } = await supabase
         .from("notices_database")
@@ -84,7 +172,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
           modele,
           categorie,
           description,
-          url_notice: urlNotice,
+          url_notice: finalUrl,
           created_by: user.id,
         })
         .select()
@@ -143,6 +231,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
     setDescription("");
     setUrlNotice("");
     setSelectedAccessoryId("");
+    setSelectedFile(null);
   };
 
   return (
@@ -163,6 +252,76 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
           </CardDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
+          {/* Zone de drag and drop */}
+          <div className="grid gap-2">
+            <Label>Fichier notice (PDF)</Label>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                isDragging
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25 hover:border-primary/50"
+              }`}
+            >
+              {selectedFile ? (
+                <div className="flex items-center justify-center gap-3">
+                  <FileText className="h-8 w-8 text-primary" />
+                  <div className="flex-1 text-left">
+                    <p className="font-medium">{selectedFile.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSelectedFile(null)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Glissez-déposez votre fichier PDF ici
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-4">ou</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById("file-input")?.click()}
+                  >
+                    Parcourir les fichiers
+                  </Button>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={handleFileInputChange}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* URL alternative */}
+          <div className="grid gap-2">
+            <Label htmlFor="url">Ou URL de la notice</Label>
+            <Input
+              id="url"
+              value={urlNotice}
+              onChange={(e) => setUrlNotice(e.target.value)}
+              placeholder="https://..."
+              type="url"
+              disabled={!!selectedFile}
+            />
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="titre">Titre *</Label>
             <Input
@@ -212,17 +371,6 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description de la notice"
               rows={3}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="url">URL de la notice *</Label>
-            <Input
-              id="url"
-              value={urlNotice}
-              onChange={(e) => setUrlNotice(e.target.value)}
-              placeholder="https://..."
-              type="url"
             />
           </div>
 
