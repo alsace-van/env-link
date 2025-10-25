@@ -6,6 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Image, Euro, FileText, Package, BookOpen } from "lucide-react";
 import { toast } from "sonner";
+import PhotoUpload from "@/components/PhotoUpload";
+import PhotoGallery from "@/components/PhotoGallery";
+import PhotoAnnotationModal from "@/components/PhotoAnnotationModal";
 
 interface Project {
   id: string;
@@ -25,11 +28,22 @@ interface Project {
   };
 }
 
+interface SelectedPhoto {
+  id: string;
+  url: string;
+  description?: string;
+  comment?: string;
+  annotations?: any;
+}
+
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [photoRefresh, setPhotoRefresh] = useState(0);
+  const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -68,6 +82,20 @@ const ProjectDetail = () => {
     }
 
     setProject(data);
+  };
+
+  const handlePhotoClick = (photo: SelectedPhoto) => {
+    setSelectedPhoto(photo);
+    setIsModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setSelectedPhoto(null);
+  };
+
+  const handleSaveAnnotations = () => {
+    setPhotoRefresh((prev) => prev + 1);
   };
 
   if (isLoading) {
@@ -208,10 +236,18 @@ const ProjectDetail = () => {
                 <CardTitle>Photos du Projet</CardTitle>
                 <CardDescription>Photos de l'avancement de votre aménagement</CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  Fonctionnalité à venir
-                </p>
+              <CardContent className="space-y-6">
+                <PhotoUpload
+                  projectId={project.id}
+                  type="projet"
+                  onUploadComplete={() => setPhotoRefresh((prev) => prev + 1)}
+                />
+                <PhotoGallery
+                  projectId={project.id}
+                  type="projet"
+                  refresh={photoRefresh}
+                  onPhotoClick={handlePhotoClick}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -222,10 +258,18 @@ const ProjectDetail = () => {
                 <CardTitle>Photos d'Inspiration</CardTitle>
                 <CardDescription>Vos idées et inspirations pour l'aménagement</CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  Fonctionnalité à venir
-                </p>
+              <CardContent className="space-y-6">
+                <PhotoUpload
+                  projectId={project.id}
+                  type="inspiration"
+                  onUploadComplete={() => setPhotoRefresh((prev) => prev + 1)}
+                />
+                <PhotoGallery
+                  projectId={project.id}
+                  type="inspiration"
+                  refresh={photoRefresh}
+                  onPhotoClick={handlePhotoClick}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -286,6 +330,13 @@ const ProjectDetail = () => {
             </Card>
           </TabsContent>
         </Tabs>
+
+        <PhotoAnnotationModal
+          photo={selectedPhoto}
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onSave={handleSaveAnnotations}
+        />
       </main>
     </div>
   );

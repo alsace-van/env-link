@@ -198,6 +198,8 @@ export type Database = {
       }
       project_photos: {
         Row: {
+          annotations: Json | null
+          comment: string | null
           created_at: string
           description: string | null
           id: string
@@ -206,6 +208,8 @@ export type Database = {
           url: string
         }
         Insert: {
+          annotations?: Json | null
+          comment?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -214,6 +218,8 @@ export type Database = {
           url: string
         }
         Update: {
+          annotations?: Json | null
+          comment?: string | null
           created_at?: string
           description?: string | null
           id?: string
