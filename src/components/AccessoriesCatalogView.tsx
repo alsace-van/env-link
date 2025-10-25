@@ -218,152 +218,154 @@ const AccessoriesCatalogView = () => {
                     <Badge variant="secondary">{items.length} article{items.length > 1 ? 's' : ''}</Badge>
                   </div>
                   
-                  <div className="border rounded-lg overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[180px]">Nom</TableHead>
-                          <TableHead className="w-[100px]">Marque</TableHead>
-                          <TableHead className="w-[80px]">Prix réf.</TableHead>
-                          <TableHead className="w-[80px]">Prix TTC</TableHead>
-                          <TableHead className="w-[70px]">Marge €</TableHead>
-                          <TableHead className="w-[70px]">Marge %</TableHead>
-                          <TableHead className="w-[120px]">Fournisseur</TableHead>
-                          <TableHead className="w-[100px]">Type élec.</TableHead>
-                          <TableHead className="w-[70px]">Poids</TableHead>
-                          <TableHead className="w-[80px]">L×l×h</TableHead>
-                          <TableHead className="w-[150px]">Description</TableHead>
-                          <TableHead className="w-[100px]">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {items.map((accessory) => {
-                          const margeEuros = accessory.prix_vente_ttc && accessory.prix_reference
-                            ? (accessory.prix_vente_ttc / 1.20) - accessory.prix_reference
-                            : null;
+                  <div className="border rounded-lg">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="min-w-[150px]">Nom</TableHead>
+                            <TableHead className="min-w-[100px]">Marque</TableHead>
+                            <TableHead className="min-w-[90px]">Prix réf.</TableHead>
+                            <TableHead className="min-w-[90px]">Prix TTC</TableHead>
+                            <TableHead className="min-w-[80px]">Marge €</TableHead>
+                            <TableHead className="min-w-[80px]">Marge %</TableHead>
+                            <TableHead className="min-w-[120px]">Fournisseur</TableHead>
+                            <TableHead className="min-w-[100px]">Type élec.</TableHead>
+                            <TableHead className="min-w-[80px]">Poids</TableHead>
+                            <TableHead className="min-w-[100px]">Dimensions</TableHead>
+                            <TableHead className="min-w-[150px]">Description</TableHead>
+                            <TableHead className="sticky right-0 bg-background z-10 min-w-[100px]">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {items.map((accessory) => {
+                            const margeEuros = accessory.prix_vente_ttc && accessory.prix_reference
+                              ? (accessory.prix_vente_ttc / 1.20) - accessory.prix_reference
+                              : null;
 
-                          return (
-                            <TableRow key={accessory.id}>
-                              <TableCell className="font-medium">
-                                {accessory.nom}
-                              </TableCell>
-                              <TableCell>
-                                {accessory.marque || (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {accessory.prix_reference ? (
-                                  <span className="text-sm">{accessory.prix_reference.toFixed(2)} €</span>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {accessory.prix_vente_ttc ? (
-                                  <span className="text-sm">{accessory.prix_vente_ttc.toFixed(2)} €</span>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {margeEuros !== null ? (
-                                  <span className={`text-sm ${margeEuros >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                    {margeEuros.toFixed(2)} €
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {accessory.marge_pourcent !== null ? (
-                                  <span className={`text-sm ${accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                    {accessory.marge_pourcent.toFixed(1)} %
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <span className="text-sm">
-                                  {accessory.fournisseur || (
+                            return (
+                              <TableRow key={accessory.id}>
+                                <TableCell className="font-medium">
+                                  {accessory.nom}
+                                </TableCell>
+                                <TableCell>
+                                  {accessory.marque || (
                                     <span className="text-muted-foreground text-xs">-</span>
                                   )}
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                {accessory.type_electrique ? (
-                                  <Badge variant="outline" className="text-xs">
-                                    {accessory.type_electrique === "consommateur" ? "Conso" : 
-                                     accessory.type_electrique === "producteur" ? "Prod" : 
-                                     accessory.type_electrique}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {accessory.poids_kg ? (
-                                  <span className="text-sm">{accessory.poids_kg} kg</span>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {accessory.longueur_mm && accessory.largeur_mm && accessory.hauteur_mm ? (
-                                  <span className="text-xs whitespace-nowrap">
-                                    {accessory.longueur_mm}×{accessory.largeur_mm}×{accessory.hauteur_mm}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">-</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="max-w-[150px]">
-                                  {accessory.description ? (
-                                    <span className="text-xs line-clamp-2">
-                                      {accessory.description}
+                                </TableCell>
+                                <TableCell>
+                                  {accessory.prix_reference ? (
+                                    <span className="text-sm whitespace-nowrap">{accessory.prix_reference.toFixed(2)} €</span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {accessory.prix_vente_ttc ? (
+                                    <span className="text-sm whitespace-nowrap">{accessory.prix_vente_ttc.toFixed(2)} €</span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {margeEuros !== null ? (
+                                    <span className={`text-sm whitespace-nowrap ${margeEuros >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                      {margeEuros.toFixed(2)} €
                                     </span>
                                   ) : (
                                     <span className="text-muted-foreground text-xs">-</span>
                                   )}
-                                  {accessory.url_produit && (
-                                    <a
-                                      href={accessory.url_produit}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-primary hover:underline inline-flex items-center gap-1 text-xs mt-1"
-                                    >
-                                      Lien
-                                      <ExternalLink className="h-3 w-3" />
-                                    </a>
+                                </TableCell>
+                                <TableCell>
+                                  {accessory.marge_pourcent !== null ? (
+                                    <span className={`text-sm whitespace-nowrap ${accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                      {accessory.marge_pourcent.toFixed(1)} %
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
                                   )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setEditingAccessory(accessory)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => setDeleteId(accessory.id)}
-                                    className="text-destructive hover:text-destructive"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                                </TableCell>
+                                <TableCell>
+                                  <span className="text-sm">
+                                    {accessory.fournisseur || (
+                                      <span className="text-muted-foreground text-xs">-</span>
+                                    )}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  {accessory.type_electrique ? (
+                                    <Badge variant="outline" className="text-xs whitespace-nowrap">
+                                      {accessory.type_electrique === "consommateur" ? "Conso" : 
+                                       accessory.type_electrique === "producteur" ? "Prod" : 
+                                       accessory.type_electrique}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {accessory.poids_kg ? (
+                                    <span className="text-sm whitespace-nowrap">{accessory.poids_kg} kg</span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {accessory.longueur_mm && accessory.largeur_mm && accessory.hauteur_mm ? (
+                                    <span className="text-xs whitespace-nowrap">
+                                      {accessory.longueur_mm}×{accessory.largeur_mm}×{accessory.hauteur_mm} mm
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">-</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="max-w-[150px]">
+                                    {accessory.description ? (
+                                      <span className="text-xs line-clamp-2">
+                                        {accessory.description}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">-</span>
+                                    )}
+                                    {accessory.url_produit && (
+                                      <a
+                                        href={accessory.url_produit}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-primary hover:underline inline-flex items-center gap-1 text-xs mt-1"
+                                      >
+                                        Lien
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="sticky right-0 bg-background">
+                                  <div className="flex gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setEditingAccessory(accessory)}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setDeleteId(accessory.id)}
+                                      className="text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 </div>
               ));
