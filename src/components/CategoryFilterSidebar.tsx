@@ -232,7 +232,7 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
         size="icon"
         onClick={() => setIsCollapsed(!isCollapsed)}
         className={`absolute z-10 h-8 w-8 transition-all duration-300 ${
-          isCollapsed ? "left-2 top-2" : "-right-10 top-4"
+          isCollapsed ? "left-2 top-2" : "right-2 top-2"
         }`}
       >
         {isCollapsed ? <Filter className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -241,7 +241,7 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
       <Card className={`transition-all duration-300 ease-in-out ${
         isCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-72 opacity-100"
       }`}>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 pt-12">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Filtres par catégorie</CardTitle>
             <div className="flex gap-1">
