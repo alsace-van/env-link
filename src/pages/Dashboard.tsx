@@ -45,8 +45,7 @@ const Dashboard = () => {
   };
 
   const handleProjectSelect = (projectId: string) => {
-    // TODO: Navigate to project detail page
-    console.log("Selected project:", projectId);
+    navigate(`/project/${projectId}`);
   };
 
   return (
