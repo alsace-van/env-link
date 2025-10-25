@@ -31,6 +31,8 @@ const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899"
 const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) => {
   const [categoryTotals, setCategoryTotals] = useState<CategoryTotal[]>([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
+  const [totalSales, setTotalSales] = useState(0);
+  const [totalMargin, setTotalMargin] = useState(0);
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({
     acompte: 0,
     acompte_paye: false,
@@ -47,7 +49,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
   const loadExpensesData = async () => {
     const { data, error } = await supabase
       .from("project_expenses")
-      .select("categorie, prix, quantite")
+      .select("categorie, prix, quantite, prix_vente_ttc")
       .eq("project_id", projectId);
 
     if (error) {
@@ -55,7 +57,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
       return;
     }
 
-    // Calculate totals by category
+    // Calculate totals by category for purchases
     const categoryMap = new Map<string, number>();
     let total = 0;
 
@@ -73,6 +75,16 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
     setCategoryTotals(chartData);
     setTotalExpenses(Math.round(total * 100) / 100);
+
+    // Calculate total sales and margin
+    let totalVentes = 0;
+    data?.forEach((expense) => {
+      if (expense.prix_vente_ttc) {
+        totalVentes += expense.prix_vente_ttc * expense.quantite;
+      }
+    });
+    setTotalSales(Math.round(totalVentes * 100) / 100);
+    setTotalMargin(Math.round((totalVentes - total) * 100) / 100);
   };
 
   const loadPaymentInfo = async () => {
@@ -145,27 +157,93 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Total des dépenses</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-4xl font-bold text-primary">
-            {totalExpenses.toFixed(2)} €
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Achats (HT)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-red-600">
+              {totalExpenses.toFixed(2)} €
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Répartition par catégorie</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {categoryTotals.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Ventes (TTC)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-green-600">
+              {totalSales.toFixed(2)} €
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Marge Totale</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-blue-600">
+              {totalMargin.toFixed(2)} €
+            </div>
+            {totalExpenses > 0 && (
+              <div className="text-sm text-muted-foreground mt-1">
+                {((totalMargin / totalExpenses) * 100).toFixed(1)}%
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Répartition des Achats par Catégorie</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {categoryTotals.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={categoryTotals}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry) => `${entry.value.toFixed(0)}€`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {categoryTotals.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                Aucune dépense pour le moment
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Comparaison Achats vs Ventes</CardTitle>
+          </CardHeader>
+          <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={categoryTotals}
+                  data={[
+                    { name: "Achats (HT)", value: totalExpenses },
+                    { name: "Marge", value: totalMargin },
+                  ]}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
@@ -174,21 +252,16 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {categoryTotals.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
+                  <Cell fill="#ef4444" />
+                  <Cell fill="#10b981" />
                 </Pie>
                 <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              Aucune dépense pour le moment
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
@@ -252,8 +325,8 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
           <div className="pt-4 border-t">
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span>Total des dépenses:</span>
-                <span className="font-semibold">{totalExpenses.toFixed(2)} €</span>
+                <span>Total prix de vente TTC:</span>
+                <span className="font-semibold">{totalSales.toFixed(2)} €</span>
               </div>
               <div className="flex justify-between">
                 <span>Acompte versé:</span>
@@ -265,8 +338,12 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
               </div>
               <div className="flex justify-between text-base font-bold pt-2 border-t">
                 <span>Reste à payer:</span>
-                <span className="text-primary">
-                  {(totalExpenses - paymentInfo.acompte - paymentInfo.solde).toFixed(2)} €
+                <span className={
+                  (totalSales - paymentInfo.acompte - paymentInfo.solde) <= 0 
+                    ? "text-green-600" 
+                    : "text-primary"
+                }>
+                  {(totalSales - paymentInfo.acompte - paymentInfo.solde).toFixed(2)} €
                 </span>
               </div>
             </div>

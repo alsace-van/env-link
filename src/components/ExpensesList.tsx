@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Check, X, Package, Truck, CheckCircle } from "lucide-react";
+import { Plus, CreditCard, Package } from "lucide-react";
 import { toast } from "sonner";
 import ExpenseFormDialog from "./ExpenseFormDialog";
 
@@ -108,25 +108,14 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
     }
   };
 
-  const getDeliveryIcon = (status: Expense["statut_livraison"]) => {
-    switch (status) {
-      case "commande":
-        return <Package className="h-4 w-4" />;
-      case "en_livraison":
-        return <Truck className="h-4 w-4" />;
-      case "livre":
-        return <CheckCircle className="h-4 w-4" />;
-    }
-  };
-
   const getDeliveryColor = (status: Expense["statut_livraison"]) => {
     switch (status) {
       case "commande":
-        return "bg-orange-500";
+        return "border-orange-500 text-orange-500";
       case "en_livraison":
-        return "bg-blue-500";
+        return "border-blue-500 text-blue-500 bg-blue-50";
       case "livre":
-        return "bg-green-500";
+        return "border-green-500 text-green-500 bg-green-50";
     }
   };
 
@@ -209,19 +198,12 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                     variant="outline"
                     size="sm"
                     onClick={() => togglePaymentStatus(expense)}
-                    className={expense.statut_paiement === "paye" ? "bg-green-50" : "bg-red-50"}
+                    className={expense.statut_paiement === "paye" 
+                      ? "border-green-500 text-green-500 bg-green-50" 
+                      : "border-red-500 text-red-500 bg-red-50"}
                   >
-                    {expense.statut_paiement === "paye" ? (
-                      <>
-                        <Check className="h-4 w-4 mr-1" />
-                        Payé
-                      </>
-                    ) : (
-                      <>
-                        <X className="h-4 w-4 mr-1" />
-                        Non payé
-                      </>
-                    )}
+                    <CreditCard className="h-4 w-4 mr-1" />
+                    {expense.statut_paiement === "paye" ? "Payé" : "Non payé"}
                   </Button>
 
                   <div className="flex gap-1">
@@ -231,9 +213,10 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                         variant="outline"
                         size="sm"
                         onClick={() => updateDeliveryStatus(expense, status)}
-                        className={expense.statut_livraison === status ? getDeliveryColor(status) + " text-white" : ""}
+                        className={expense.statut_livraison === status ? getDeliveryColor(status) : ""}
+                        title={status === "commande" ? "Commandé" : status === "en_livraison" ? "En livraison" : "Livré"}
                       >
-                        {getDeliveryIcon(status)}
+                        <Package className="h-4 w-4" />
                       </Button>
                     ))}
                   </div>
