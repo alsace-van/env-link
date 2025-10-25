@@ -39,6 +39,8 @@ interface Accessory {
   nom: string;
   category_id?: string | null;
   prix_reference: number | null;
+  prix_vente_ttc: number | null;
+  marge_pourcent: number | null;
   description: string | null;
   fournisseur: string | null;
   url_produit: string | null;
@@ -193,79 +195,113 @@ const AccessoriesCatalogView = () => {
                   <TableHead>Nom</TableHead>
                   <TableHead>Catégorie</TableHead>
                   <TableHead>Prix réf.</TableHead>
+                  <TableHead>Prix vente TTC</TableHead>
+                  <TableHead>Marge €</TableHead>
+                  <TableHead>Marge %</TableHead>
                   <TableHead>Fournisseur</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAccessories.map((accessory) => (
-                  <TableRow key={accessory.id}>
-                    <TableCell className="font-medium">
-                      {accessory.nom}
-                    </TableCell>
-                    <TableCell>
-                      {accessory.categories && (
-                        <Badge variant="secondary">
-                          {accessory.categories.nom}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {accessory.prix_reference ? (
-                        <span>{accessory.prix_reference.toFixed(2)} €</span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {accessory.fournisseur || (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="max-w-xs">
-                        {accessory.description ? (
-                          <span className="text-sm line-clamp-2">
-                            {accessory.description}
+                {filteredAccessories.map((accessory) => {
+                  const margeEuros = accessory.prix_vente_ttc && accessory.prix_reference
+                    ? accessory.prix_vente_ttc - accessory.prix_reference
+                    : null;
+
+                  return (
+                    <TableRow key={accessory.id}>
+                      <TableCell className="font-medium">
+                        {accessory.nom}
+                      </TableCell>
+                      <TableCell>
+                        {accessory.categories && (
+                          <Badge variant="secondary">
+                            {accessory.categories.nom}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {accessory.prix_reference ? (
+                          <span>{accessory.prix_reference.toFixed(2)} €</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {accessory.prix_vente_ttc ? (
+                          <span>{accessory.prix_vente_ttc.toFixed(2)} €</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {margeEuros !== null ? (
+                          <span className={margeEuros >= 0 ? "text-green-600" : "text-red-600"}>
+                            {margeEuros.toFixed(2)} €
                           </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
-                        {accessory.url_produit && (
-                          <a
-                            href={accessory.url_produit}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline inline-flex items-center gap-1 text-sm mt-1"
-                          >
-                            Lien produit
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
+                      </TableCell>
+                      <TableCell>
+                        {accessory.marge_pourcent !== null ? (
+                          <span className={accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}>
+                            {accessory.marge_pourcent.toFixed(2)} %
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setEditingAccessory(accessory)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteId(accessory.id)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell>
+                        {accessory.fournisseur || (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-w-xs">
+                          {accessory.description ? (
+                            <span className="text-sm line-clamp-2">
+                              {accessory.description}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                          {accessory.url_produit && (
+                            <a
+                              href={accessory.url_produit}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline inline-flex items-center gap-1 text-sm mt-1"
+                            >
+                              Lien produit
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setEditingAccessory(accessory)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteId(accessory.id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

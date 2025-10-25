@@ -22,8 +22,10 @@ export type Database = {
           description: string | null
           fournisseur: string | null
           id: string
+          marge_pourcent: number | null
           nom: string
           prix_reference: number | null
+          prix_vente_ttc: number | null
           url_produit: string | null
           user_id: string
         }
@@ -34,8 +36,10 @@ export type Database = {
           description?: string | null
           fournisseur?: string | null
           id?: string
+          marge_pourcent?: number | null
           nom: string
           prix_reference?: number | null
+          prix_vente_ttc?: number | null
           url_produit?: string | null
           user_id: string
         }
@@ -46,8 +50,10 @@ export type Database = {
           description?: string | null
           fournisseur?: string | null
           id?: string
+          marge_pourcent?: number | null
           nom?: string
           prix_reference?: number | null
+          prix_vente_ttc?: number | null
           url_produit?: string | null
           user_id?: string
         }
