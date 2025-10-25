@@ -21,6 +21,11 @@ interface AccessoryRow {
   fournisseur: string;
   description: string;
   url_produit: string;
+  type_electrique: string;
+  poids_kg: string;
+  longueur_mm: string;
+  largeur_mm: string;
+  hauteur_mm: string;
 }
 
 interface AccessoryImportExportDialogProps {
@@ -39,7 +44,7 @@ const AccessoryImportExportDialog = ({
   const [pastedData, setPastedData] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [tableRows, setTableRows] = useState<AccessoryRow[]>([
-    { id: "1", nom: "", categorie: "", prix_reference: "", prix_vente_ttc: "", marge_pourcent: "", fournisseur: "", description: "", url_produit: "" }
+    { id: "1", nom: "", categorie: "", prix_reference: "", prix_vente_ttc: "", marge_pourcent: "", fournisseur: "", description: "", url_produit: "", type_electrique: "", poids_kg: "", longueur_mm: "", largeur_mm: "", hauteur_mm: "" }
   ]);
 
   const addTableRow = () => {
@@ -52,7 +57,12 @@ const AccessoryImportExportDialog = ({
       marge_pourcent: "",
       fournisseur: "",
       description: "",
-      url_produit: ""
+      url_produit: "",
+      type_electrique: "",
+      poids_kg: "",
+      longueur_mm: "",
+      largeur_mm: "",
+      hauteur_mm: ""
     }]);
   };
 
@@ -80,6 +90,11 @@ const AccessoryImportExportDialog = ({
       Fournisseur: row.fournisseur,
       Description: row.description,
       "URL produit": row.url_produit,
+      "Type électrique": row.type_electrique,
+      "Poids (kg)": row.poids_kg,
+      "Longueur (mm)": row.longueur_mm,
+      "Largeur (mm)": row.largeur_mm,
+      "Hauteur (mm)": row.hauteur_mm,
     }));
 
     if (dataToImport.length === 0) {
@@ -109,14 +124,19 @@ const AccessoryImportExportDialog = ({
           marge_pourcent,
           fournisseur,
           description,
-          url_produit
+          url_produit,
+          type_electrique,
+          poids_kg,
+          longueur_mm,
+          largeur_mm,
+          hauteur_mm
         `)
         .eq("user_id", user.id);
 
       if (error) throw error;
 
       // Préparer les données pour l'export
-      const exportData = data.map(item => ({
+      const exportData = data.map((item: any) => ({
         "Nom": item.nom,
         "Catégorie": item.categories?.nom || "",
         "Prix référence": item.prix_reference || "",
@@ -125,6 +145,11 @@ const AccessoryImportExportDialog = ({
         "Fournisseur": item.fournisseur || "",
         "Description": item.description || "",
         "URL produit": item.url_produit || "",
+        "Type électrique": item.type_electrique || "",
+        "Poids (kg)": item.poids_kg || "",
+        "Longueur (mm)": item.longueur_mm || "",
+        "Largeur (mm)": item.largeur_mm || "",
+        "Hauteur (mm)": item.hauteur_mm || "",
       }));
 
       // Créer le CSV
@@ -233,6 +258,11 @@ const AccessoryImportExportDialog = ({
           const fournisseur = row["Fournisseur"] || row["fournisseur"] || row["Supplier"] || null;
           const description = row["Description"] || row["description"] || null;
           const urlProduit = row["URL produit"] || row["url_produit"] || row["URL"] || null;
+          const typeElectrique = row["Type électrique"] || row["type_electrique"] || row["Type"] || null;
+          const poidsKg = parseFloat(row["Poids (kg)"] || row["Poids"] || row["poids_kg"] || "0") || null;
+          const longueurMm = parseInt(row["Longueur (mm)"] || row["Longueur"] || row["longueur_mm"] || "0") || null;
+          const largeurMm = parseInt(row["Largeur (mm)"] || row["Largeur"] || row["largeur_mm"] || "0") || null;
+          const hauteurMm = parseInt(row["Hauteur (mm)"] || row["Hauteur"] || row["hauteur_mm"] || "0") || null;
 
           if (!nom) {
             errorCount++;
@@ -261,6 +291,11 @@ const AccessoryImportExportDialog = ({
               fournisseur,
               description,
               url_produit: urlProduit,
+              type_electrique: typeElectrique,
+              poids_kg: poidsKg,
+              longueur_mm: longueurMm,
+              largeur_mm: largeurMm,
+              hauteur_mm: hauteurMm,
             });
 
           if (error) {
@@ -327,14 +362,19 @@ const AccessoryImportExportDialog = ({
                 <table className="w-full text-sm">
                   <thead className="bg-muted sticky top-0">
                     <tr>
-                      <th className="px-2 py-2 text-left font-medium">Nom *</th>
-                      <th className="px-2 py-2 text-left font-medium">Catégorie</th>
-                      <th className="px-2 py-2 text-left font-medium">Prix réf.</th>
-                      <th className="px-2 py-2 text-left font-medium">Prix TTC</th>
-                      <th className="px-2 py-2 text-left font-medium">Marge %</th>
-                      <th className="px-2 py-2 text-left font-medium">Fournisseur</th>
-                      <th className="px-2 py-2 text-left font-medium">Description</th>
-                      <th className="px-2 py-2 text-left font-medium">URL</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Nom *</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Catégorie</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Prix réf.</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Prix TTC</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Marge %</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Fournisseur</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Description</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">URL</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Type élec.</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Poids (kg)</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">L (mm)</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">l (mm)</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">H (mm)</th>
                       <th className="px-2 py-2 text-center font-medium w-10"></th>
                     </tr>
                   </thead>
@@ -346,7 +386,7 @@ const AccessoryImportExportDialog = ({
                             value={row.nom}
                             onChange={(e) => updateTableRow(row.id, "nom", e.target.value)}
                             placeholder="Nom"
-                            className="h-8 text-xs"
+                            className="h-8 text-xs min-w-[120px]"
                           />
                         </td>
                         <td className="px-2 py-1">
@@ -354,7 +394,7 @@ const AccessoryImportExportDialog = ({
                             value={row.categorie}
                             onChange={(e) => updateTableRow(row.id, "categorie", e.target.value)}
                             placeholder="Catégorie"
-                            className="h-8 text-xs"
+                            className="h-8 text-xs min-w-[100px]"
                           />
                         </td>
                         <td className="px-2 py-1">
@@ -363,8 +403,8 @@ const AccessoryImportExportDialog = ({
                             step="0.01"
                             value={row.prix_reference}
                             onChange={(e) => updateTableRow(row.id, "prix_reference", e.target.value)}
-                            placeholder="0.00"
-                            className="h-8 text-xs w-24"
+                            placeholder="0"
+                            className="h-8 text-xs w-20"
                           />
                         </td>
                         <td className="px-2 py-1">
@@ -373,8 +413,8 @@ const AccessoryImportExportDialog = ({
                             step="0.01"
                             value={row.prix_vente_ttc}
                             onChange={(e) => updateTableRow(row.id, "prix_vente_ttc", e.target.value)}
-                            placeholder="0.00"
-                            className="h-8 text-xs w-24"
+                            placeholder="0"
+                            className="h-8 text-xs w-20"
                           />
                         </td>
                         <td className="px-2 py-1">
@@ -383,8 +423,8 @@ const AccessoryImportExportDialog = ({
                             step="0.01"
                             value={row.marge_pourcent}
                             onChange={(e) => updateTableRow(row.id, "marge_pourcent", e.target.value)}
-                            placeholder="0.00"
-                            className="h-8 text-xs w-20"
+                            placeholder="0"
+                            className="h-8 text-xs w-16"
                           />
                         </td>
                         <td className="px-2 py-1">
@@ -392,7 +432,7 @@ const AccessoryImportExportDialog = ({
                             value={row.fournisseur}
                             onChange={(e) => updateTableRow(row.id, "fournisseur", e.target.value)}
                             placeholder="Fournisseur"
-                            className="h-8 text-xs"
+                            className="h-8 text-xs min-w-[100px]"
                           />
                         </td>
                         <td className="px-2 py-1">
@@ -400,7 +440,7 @@ const AccessoryImportExportDialog = ({
                             value={row.description}
                             onChange={(e) => updateTableRow(row.id, "description", e.target.value)}
                             placeholder="Description"
-                            className="h-8 text-xs"
+                            className="h-8 text-xs min-w-[120px]"
                           />
                         </td>
                         <td className="px-2 py-1">
@@ -408,7 +448,56 @@ const AccessoryImportExportDialog = ({
                             value={row.url_produit}
                             onChange={(e) => updateTableRow(row.id, "url_produit", e.target.value)}
                             placeholder="https://..."
-                            className="h-8 text-xs"
+                            className="h-8 text-xs min-w-[100px]"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <select
+                            value={row.type_electrique}
+                            onChange={(e) => updateTableRow(row.id, "type_electrique", e.target.value)}
+                            className="h-8 text-xs rounded-md border border-input bg-background px-2 w-28"
+                          >
+                            <option value="">-</option>
+                            <option value="consommateur">Conso.</option>
+                            <option value="producteur">Prod.</option>
+                            <option value="autre">Autre</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={row.poids_kg}
+                            onChange={(e) => updateTableRow(row.id, "poids_kg", e.target.value)}
+                            placeholder="0"
+                            className="h-8 text-xs w-16"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            value={row.longueur_mm}
+                            onChange={(e) => updateTableRow(row.id, "longueur_mm", e.target.value)}
+                            placeholder="0"
+                            className="h-8 text-xs w-16"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            value={row.largeur_mm}
+                            onChange={(e) => updateTableRow(row.id, "largeur_mm", e.target.value)}
+                            placeholder="0"
+                            className="h-8 text-xs w-16"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            value={row.hauteur_mm}
+                            onChange={(e) => updateTableRow(row.id, "hauteur_mm", e.target.value)}
+                            placeholder="0"
+                            className="h-8 text-xs w-16"
                           />
                         </td>
                         <td className="px-2 py-1 text-center">
@@ -455,19 +544,24 @@ const AccessoryImportExportDialog = ({
               <p className="text-sm text-muted-foreground">
                 Importez des accessoires depuis un fichier Excel (.xlsx, .xls) ou CSV (.csv).
               </p>
-              <div className="space-y-2">
-                <Label>Format attendu des colonnes :</Label>
-                <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded">
-                  <div>• <strong>Nom</strong> (obligatoire)</div>
-                  <div>• <strong>Catégorie</strong> (nom de la catégorie)</div>
-                  <div>• <strong>Prix référence</strong> (nombre)</div>
-                  <div>• <strong>Prix vente TTC</strong> (nombre)</div>
-                  <div>• <strong>Marge %</strong> (nombre)</div>
-                  <div>• <strong>Fournisseur</strong></div>
-                  <div>• <strong>Description</strong></div>
-                  <div>• <strong>URL produit</strong></div>
+                <div className="space-y-2">
+                  <Label>Format attendu des colonnes :</Label>
+                  <div className="text-xs text-muted-foreground space-y-1 bg-muted p-3 rounded max-h-[200px] overflow-y-auto">
+                    <div>• <strong>Nom</strong> (obligatoire)</div>
+                    <div>• <strong>Catégorie</strong> (nom de la catégorie)</div>
+                    <div>• <strong>Prix référence</strong> (nombre)</div>
+                    <div>• <strong>Prix vente TTC</strong> (nombre)</div>
+                    <div>• <strong>Marge %</strong> (nombre)</div>
+                    <div>• <strong>Fournisseur</strong></div>
+                    <div>• <strong>Description</strong></div>
+                    <div>• <strong>URL produit</strong></div>
+                    <div>• <strong>Type électrique</strong> (consommateur, producteur, autre)</div>
+                    <div>• <strong>Poids (kg)</strong> (nombre)</div>
+                    <div>• <strong>Longueur (mm)</strong> (nombre)</div>
+                    <div>• <strong>Largeur (mm)</strong> (nombre)</div>
+                    <div>• <strong>Hauteur (mm)</strong> (nombre)</div>
+                  </div>
                 </div>
-              </div>
               <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                 <input
                   type="file"

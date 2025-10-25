@@ -29,6 +29,11 @@ interface AccessoryCatalogFormDialogProps {
     fournisseur?: string;
     description?: string;
     url_produit?: string;
+    type_electrique?: string | null;
+    poids_kg?: number | null;
+    longueur_mm?: number | null;
+    largeur_mm?: number | null;
+    hauteur_mm?: number | null;
   } | null;
 }
 
@@ -42,6 +47,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     fournisseur: "",
     description: "",
     url_produit: "",
+    type_electrique: "",
+    poids_kg: "",
+    longueur_mm: "",
+    largeur_mm: "",
+    hauteur_mm: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -64,6 +74,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           fournisseur: accessory.fournisseur || "",
           description: accessory.description || "",
           url_produit: accessory.url_produit || "",
+          type_electrique: accessory.type_electrique || "",
+          poids_kg: accessory.poids_kg?.toString() || "",
+          longueur_mm: accessory.longueur_mm?.toString() || "",
+          largeur_mm: accessory.largeur_mm?.toString() || "",
+          hauteur_mm: accessory.hauteur_mm?.toString() || "",
         });
       } else {
         // Mode création
@@ -76,6 +91,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           fournisseur: "",
           description: "",
           url_produit: "",
+          type_electrique: "",
+          poids_kg: "",
+          longueur_mm: "",
+          largeur_mm: "",
+          hauteur_mm: "",
         });
       }
     }
@@ -180,6 +200,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           fournisseur: formData.fournisseur || null,
           description: formData.description || null,
           url_produit: formData.url_produit || null,
+          type_electrique: formData.type_electrique || null,
+          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
         })
         .eq("id", accessory.id);
 
@@ -220,6 +245,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           fournisseur: formData.fournisseur || null,
           description: formData.description || null,
           url_produit: formData.url_produit || null,
+          type_electrique: formData.type_electrique || null,
+          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
         });
 
       if (error) {
@@ -283,6 +313,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           fournisseur: "",
           description: "",
           url_produit: "",
+          type_electrique: "",
+          poids_kg: "",
+          longueur_mm: "",
+          largeur_mm: "",
+          hauteur_mm: "",
         });
         onSuccess();
       }
@@ -462,6 +497,76 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   disabled
                   placeholder="Auto"
                   className="bg-muted"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="type_electrique">Type électrique</Label>
+              <Select
+                value={formData.type_electrique || "none"}
+                onValueChange={(value) => setFormData({ ...formData, type_electrique: value === "none" ? "" : value })}
+              >
+                <SelectTrigger id="type_electrique">
+                  <SelectValue placeholder="Sélectionner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Non applicable</SelectItem>
+                  <SelectItem value="consommateur">Consommateur</SelectItem>
+                  <SelectItem value="producteur">Producteur</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="poids">Poids (kg)</Label>
+              <Input
+                id="poids"
+                type="number"
+                step="0.01"
+                value={formData.poids_kg}
+                onChange={(e) => setFormData({ ...formData, poids_kg: e.target.value })}
+                placeholder="Ex: 12.5"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dimensions (mm)</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="longueur" className="text-xs text-muted-foreground">Longueur</Label>
+                <Input
+                  id="longueur"
+                  type="number"
+                  value={formData.longueur_mm}
+                  onChange={(e) => setFormData({ ...formData, longueur_mm: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="largeur" className="text-xs text-muted-foreground">Largeur</Label>
+                <Input
+                  id="largeur"
+                  type="number"
+                  value={formData.largeur_mm}
+                  onChange={(e) => setFormData({ ...formData, largeur_mm: e.target.value })}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">Hauteur</Label>
+                <Input
+                  id="hauteur"
+                  type="number"
+                  value={formData.hauteur_mm}
+                  onChange={(e) => setFormData({ ...formData, hauteur_mm: e.target.value })}
+                  placeholder="0"
                 />
               </div>
             </div>

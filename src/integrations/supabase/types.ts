@@ -21,11 +21,16 @@ export type Database = {
           created_at: string
           description: string | null
           fournisseur: string | null
+          hauteur_mm: number | null
           id: string
+          largeur_mm: number | null
+          longueur_mm: number | null
           marge_pourcent: number | null
           nom: string
+          poids_kg: number | null
           prix_reference: number | null
           prix_vente_ttc: number | null
+          type_electrique: string | null
           url_produit: string | null
           user_id: string
         }
@@ -35,11 +40,16 @@ export type Database = {
           created_at?: string
           description?: string | null
           fournisseur?: string | null
+          hauteur_mm?: number | null
           id?: string
+          largeur_mm?: number | null
+          longueur_mm?: number | null
           marge_pourcent?: number | null
           nom: string
+          poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          type_electrique?: string | null
           url_produit?: string | null
           user_id: string
         }
@@ -49,11 +59,16 @@ export type Database = {
           created_at?: string
           description?: string | null
           fournisseur?: string | null
+          hauteur_mm?: number | null
           id?: string
+          largeur_mm?: number | null
+          longueur_mm?: number | null
           marge_pourcent?: number | null
           nom?: string
+          poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          type_electrique?: string | null
           url_produit?: string | null
           user_id?: string
         }

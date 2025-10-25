@@ -354,6 +354,11 @@ const AccessoriesCatalogView = () => {
             fournisseur: editingAccessory.fournisseur || undefined,
             description: editingAccessory.description || undefined,
             url_produit: editingAccessory.url_produit || undefined,
+            type_electrique: (editingAccessory as any).type_electrique || undefined,
+            poids_kg: (editingAccessory as any).poids_kg || undefined,
+            longueur_mm: (editingAccessory as any).longueur_mm || undefined,
+            largeur_mm: (editingAccessory as any).largeur_mm || undefined,
+            hauteur_mm: (editingAccessory as any).hauteur_mm || undefined,
           } : null}
           onSuccess={() => {
             loadAccessories();
