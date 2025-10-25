@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, CreditCard, Package } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
@@ -30,15 +30,30 @@ interface ExpensesListProps {
   onExpenseChange: () => void;
 }
 
+interface PaymentInfo {
+  acompte: number;
+  acompte_paye: boolean;
+  solde: number;
+  solde_paye: boolean;
+}
+
 const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({
+    acompte: 0,
+    acompte_paye: false,
+    solde: 0,
+    solde_paye: false,
+  });
+  const [totalSales, setTotalSales] = useState(0);
 
   useEffect(() => {
     loadExpenses();
+    loadPaymentInfo();
   }, [projectId]);
 
   const loadExpenses = async () => {
@@ -59,23 +74,59 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       // Extract unique categories
       const uniqueCategories = Array.from(new Set(expensesData.map(e => e.categorie).filter(Boolean)));
       setCategories(uniqueCategories);
+
+      // Calculate total sales
+      let total = 0;
+      expensesData.forEach((expense) => {
+        if (expense.prix_vente_ttc) {
+          total += expense.prix_vente_ttc * expense.quantite;
+        }
+      });
+      setTotalSales(total);
     }
     setIsLoading(false);
   };
 
-  const togglePaymentStatus = async (expense: Expense) => {
-    const newStatus = expense.statut_paiement === "paye" ? "non_paye" : "paye";
-    const { error } = await supabase
-      .from("project_expenses")
-      .update({ statut_paiement: newStatus })
-      .eq("id", expense.id);
+  const loadPaymentInfo = async () => {
+    const { data, error } = await supabase
+      .from("project_payments")
+      .select("*")
+      .eq("project_id", projectId)
+      .maybeSingle();
 
     if (error) {
-      toast.error("Erreur lors de la mise à jour");
+      console.error(error);
+      return;
+    }
+
+    if (data) {
+      setPaymentInfo({
+        acompte: data.acompte,
+        acompte_paye: data.acompte_paye,
+        solde: data.solde,
+        solde_paye: data.solde_paye,
+      });
+    }
+  };
+
+  const getPaymentStatus = () => {
+    const totalPaid = paymentInfo.acompte + paymentInfo.solde;
+    
+    if (totalPaid === 0) {
+      return {
+        color: "border-red-500 text-red-500 bg-red-50",
+        label: "Aucun paiement"
+      };
+    } else if (totalPaid >= totalSales) {
+      return {
+        color: "border-green-500 text-green-500 bg-green-50",
+        label: "Entièrement payé"
+      };
     } else {
-      toast.success("Statut de paiement mis à jour");
-      loadExpenses();
-      onExpenseChange();
+      return {
+        color: "border-orange-500 text-orange-500 bg-orange-50",
+        label: "Acompte versé"
+      };
     }
   };
 
@@ -118,17 +169,20 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       case "commande":
         return { 
           color: "border-orange-500 text-orange-500 bg-orange-50",
-          label: "Commandé"
+          label: "Commandé",
+          icon: <Package className="h-4 w-4" />
         };
       case "en_livraison":
         return {
           color: "border-blue-500 text-blue-500 bg-blue-50",
-          label: "En livraison"
+          label: "En livraison",
+          icon: <ArrowRight className="h-4 w-4" />
         };
       case "livre":
         return {
           color: "border-green-500 text-green-500 bg-green-50",
-          label: "Livré"
+          label: "Livré",
+          icon: <Truck className="h-4 w-4" />
         };
     }
   };
@@ -214,16 +268,14 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                         <Button
                           variant="outline"
                           size="icon"
-                          className={`h-8 w-8 ${expense.statut_paiement === "paye" 
-                            ? "border-green-500 text-green-500 bg-green-50" 
-                            : "border-red-500 text-red-500 bg-red-50"}`}
-                          onClick={() => togglePaymentStatus(expense)}
+                          className={`h-8 w-8 ${getPaymentStatus().color}`}
+                          onClick={() => {}}
                         >
                           <CreditCard className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>{expense.statut_paiement === "paye" ? "Payé" : "Non payé"}</p>
+                        <p>{getPaymentStatus().label}</p>
                       </TooltipContent>
                     </Tooltip>
 
@@ -235,7 +287,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                           className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
                           onClick={() => cycleDeliveryStatus(expense)}
                         >
-                          <Package className="h-4 w-4" />
+                          {getDeliveryInfo(expense.statut_livraison).icon}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
