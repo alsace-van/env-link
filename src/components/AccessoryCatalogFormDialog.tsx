@@ -409,7 +409,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           
           <div className="space-y-2">
             <Label className="text-base font-semibold">Calcul de prix (remplir 2 sur 3)</Label>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="prix_reference">Prix de référence (€)</Label>
                 <Input
@@ -443,6 +443,23 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   value={formData.marge_pourcent}
                   onChange={(e) => handlePricingChange("marge_pourcent", e.target.value)}
                   placeholder="% de marge"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="marge_euros">Marge (€)</Label>
+                <Input
+                  id="marge_euros"
+                  type="text"
+                  value={
+                    formData.prix_reference && formData.prix_vente_ttc
+                      ? (parseFloat(formData.prix_vente_ttc) - parseFloat(formData.prix_reference)).toFixed(2)
+                      : ""
+                  }
+                  readOnly
+                  disabled
+                  placeholder="Auto"
+                  className="bg-muted"
                 />
               </div>
             </div>
