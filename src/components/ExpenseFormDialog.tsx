@@ -56,10 +56,17 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   const [catalogCategory, setCatalogCategory] = useState("");
   const [showAddToCatalog, setShowAddToCatalog] = useState(false);
 
+  // Catalogue suggestions
+  const [catalogAccessories, setCatalogAccessories] = useState<any[]>([]);
+  const [filteredAccessories, setFilteredAccessories] = useState<any[]>([]);
+  const [showAccessoriesList, setShowAccessoriesList] = useState(false);
+  const [selectedAccessoryId, setSelectedAccessoryId] = useState<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       loadExistingMarques();
       loadCatalogCategories();
+      loadCatalogAccessories();
       
       // Load expense data if editing
       if (expense) {
@@ -75,6 +82,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           fournisseur: expense.fournisseur || "",
           notes: expense.notes || "",
         });
+        setSelectedAccessoryId(expense.accessory_id || null);
       } else {
         // Reset form for new expense
         setFormData({
@@ -89,6 +97,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           fournisseur: "",
           notes: "",
         });
+        setSelectedAccessoryId(null);
       }
     }
   }, [isOpen, expense]);
@@ -103,6 +112,21 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       setFilteredMarques([]);
     }
   }, [formData.marque, existingMarques]);
+
+  // Filter accessories based on search
+  useEffect(() => {
+    if (formData.nom_accessoire && formData.nom_accessoire.length >= 2) {
+      const searchTerm = formData.nom_accessoire.toLowerCase();
+      const filtered = catalogAccessories.filter(acc => 
+        acc.nom.toLowerCase().includes(searchTerm) ||
+        (acc.description && acc.description.toLowerCase().includes(searchTerm)) ||
+        (acc.fournisseur && acc.fournisseur.toLowerCase().includes(searchTerm))
+      );
+      setFilteredAccessories(filtered.slice(0, 5)); // Limit to 5 suggestions
+    } else {
+      setFilteredAccessories([]);
+    }
+  }, [formData.nom_accessoire, catalogAccessories]);
 
   const loadExistingMarques = async () => {
     const { data: expensesData } = await supabase
@@ -137,6 +161,34 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       })));
       setCatalogCategories(categories.sort());
     }
+  };
+
+  const loadCatalogAccessories = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("accessories_catalog")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (data) {
+      setCatalogAccessories(data);
+    }
+  };
+
+  const selectAccessoryFromCatalog = (accessory: any) => {
+    setFormData({
+      ...formData,
+      nom_accessoire: accessory.nom,
+      prix_achat: accessory.prix_reference?.toString() || "",
+      fournisseur: accessory.fournisseur || "",
+      notes: accessory.description || "",
+    });
+    setSelectedAccessoryId(accessory.id);
+    setShowAccessoriesList(false);
+    toast.success("Article du catalogue sélectionné");
   };
 
   const handlePricingChange = (field: "prix_achat" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
@@ -273,6 +325,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           notes: formData.notes || null,
           statut_paiement: "non_paye",
           statut_livraison: "commande",
+          accessory_id: selectedAccessoryId,
         });
 
       if (error) {
@@ -310,14 +363,57 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <Label htmlFor="nom">Nom de l'accessoire *</Label>
               <Input
                 id="nom"
                 required
                 value={formData.nom_accessoire}
-                onChange={(e) => setFormData({ ...formData, nom_accessoire: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, nom_accessoire: e.target.value });
+                  setShowAccessoriesList(true);
+                }}
+                onFocus={() => setShowAccessoriesList(true)}
+                onBlur={() => setTimeout(() => setShowAccessoriesList(false), 200)}
+                placeholder="Rechercher dans le catalogue..."
               />
+              {showAccessoriesList && filteredAccessories.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-card border rounded-md shadow-lg max-h-64 overflow-y-auto">
+                  {filteredAccessories.map((accessory) => (
+                    <button
+                      key={accessory.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-accent border-b last:border-b-0"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        selectAccessoryFromCatalog(accessory);
+                      }}
+                    >
+                      <div className="flex flex-col gap-1">
+                        <div className="font-medium text-sm">{accessory.nom}</div>
+                        <div className="text-xs text-muted-foreground flex gap-2">
+                          {accessory.prix_reference && (
+                            <span>Prix: {accessory.prix_reference}€</span>
+                          )}
+                          {accessory.fournisseur && (
+                            <span>• {accessory.fournisseur}</span>
+                          )}
+                        </div>
+                        {accessory.description && (
+                          <div className="text-xs text-muted-foreground italic truncate">
+                            {accessory.description}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedAccessoryId && (
+                <div className="text-xs text-green-600 mt-1">
+                  ✓ Article du catalogue sélectionné
+                </div>
+              )}
             </div>
 
             <div className="space-y-2 relative">
