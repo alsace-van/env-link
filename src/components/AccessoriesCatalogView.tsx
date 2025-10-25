@@ -2,13 +2,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, ExternalLink, Edit, Plus, Filter } from "lucide-react";
+import { Search, Trash2, ExternalLink, Edit, Plus } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
-import CategoryFilter from "./CategoryFilter";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import CategoryFilterSidebar from "./CategoryFilterSidebar";
 import {
   Table,
   TableBody,
@@ -57,7 +55,6 @@ const AccessoriesCatalogView = () => {
   const [editingAccessory, setEditingAccessory] = useState<Accessory | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [isFilterOpen, setIsFilterOpen] = useState(true);
 
   useEffect(() => {
     loadAccessories();
@@ -133,29 +130,11 @@ const AccessoriesCatalogView = () => {
   return (
     <div className="flex gap-6">
       {/* Sidebar Filter */}
-      <div className="w-64 flex-shrink-0">
-        <Collapsible open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-          <Card>
-            <CardHeader className="pb-3">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Filter className="h-4 w-4" />
-                    Filtres
-                  </CardTitle>
-                </Button>
-              </CollapsibleTrigger>
-            </CardHeader>
-            <CollapsibleContent>
-              <CardContent className="pt-0">
-                <CategoryFilter
-                  selectedCategories={selectedCategories}
-                  onCategoryChange={setSelectedCategories}
-                />
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
+      <div className="w-72 flex-shrink-0">
+        <CategoryFilterSidebar
+          selectedCategories={selectedCategories}
+          onCategoryChange={setSelectedCategories}
+        />
       </div>
 
       {/* Main Content */}
