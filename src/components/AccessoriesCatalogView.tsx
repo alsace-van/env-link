@@ -185,7 +185,7 @@ const AccessoriesCatalogView = () => {
               <TableBody>
                 {filteredAccessories.map((accessory) => {
                   const margeEuros = accessory.prix_vente_ttc && accessory.prix_reference
-                    ? accessory.prix_vente_ttc - accessory.prix_reference
+                    ? (accessory.prix_vente_ttc / 1.20) - accessory.prix_reference
                     : null;
 
                   return (
