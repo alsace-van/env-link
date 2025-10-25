@@ -14,6 +14,8 @@ import UserMenu from "@/components/UserMenu";
 import ExpensesList from "@/components/ExpensesList";
 import ExpensesSummary from "@/components/ExpensesSummary";
 import AccessoriesCatalogView from "@/components/AccessoriesCatalogView";
+import { NoticeUploadDialog } from "@/components/NoticeUploadDialog";
+import { NoticesList } from "@/components/NoticesList";
 import { User } from "@supabase/supabase-js";
 
 interface Project {
@@ -346,14 +348,15 @@ const ProjectDetail = () => {
 
           <TabsContent value="notices">
             <Card>
-              <CardHeader>
-                <CardTitle>Base de Notices</CardTitle>
-                <CardDescription>Notices partagées entre tous les utilisateurs</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Base de Notices</CardTitle>
+                  <CardDescription>Notices partagées entre tous les utilisateurs</CardDescription>
+                </div>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  Fonctionnalité à venir
-                </p>
+              <CardContent className="space-y-6">
+                <NoticeUploadDialog onSuccess={() => setPhotoRefresh(prev => prev + 1)} />
+                <NoticesList refreshTrigger={photoRefresh} />
               </CardContent>
             </Card>
           </TabsContent>

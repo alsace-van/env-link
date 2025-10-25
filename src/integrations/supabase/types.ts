@@ -28,6 +28,7 @@ export type Database = {
           marge_pourcent: number | null
           marque: string | null
           nom: string
+          notice_id: string | null
           poids_kg: number | null
           prix_reference: number | null
           prix_vente_ttc: number | null
@@ -48,6 +49,7 @@ export type Database = {
           marge_pourcent?: number | null
           marque?: string | null
           nom: string
+          notice_id?: string | null
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
@@ -68,6 +70,7 @@ export type Database = {
           marge_pourcent?: number | null
           marque?: string | null
           nom?: string
+          notice_id?: string | null
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
@@ -81,6 +84,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accessories_catalog_notice_id_fkey"
+            columns: ["notice_id"]
+            isOneToOne: false
+            referencedRelation: "notices_database"
             referencedColumns: ["id"]
           },
           {

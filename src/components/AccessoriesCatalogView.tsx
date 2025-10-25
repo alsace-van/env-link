@@ -3,11 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, ExternalLink, Edit, Plus, FileDown, FileUp, Zap, Plug } from "lucide-react";
+import { Search, Trash2, ExternalLink, Edit, Plus, FileDown, FileUp, Zap, Plug, FileText, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
 import CategoryFilterSidebar from "./CategoryFilterSidebar";
 import AccessoryImportExportDialog from "./AccessoryImportExportDialog";
+import { NoticeUploadDialog } from "./NoticeUploadDialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -51,6 +58,12 @@ interface Accessory {
   hauteur_mm?: number | null;
   created_at: string;
   categories?: Category | null;
+  notice_id?: string | null;
+  notices_database?: {
+    id: string;
+    titre: string;
+    url_notice: string;
+  } | null;
 }
 
 const AccessoriesCatalogView = () => {
@@ -64,6 +77,7 @@ const AccessoriesCatalogView = () => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [noticeDialogAccessoryId, setNoticeDialogAccessoryId] = useState<string>("");
 
   useEffect(() => {
     loadAccessories();
@@ -115,6 +129,11 @@ const AccessoriesCatalogView = () => {
           id,
           nom,
           parent_id
+        ),
+        notices_database (
+          id,
+          titre,
+          url_notice
         )
       `)
       .order("created_at", { ascending: false });
@@ -235,6 +254,7 @@ const AccessoriesCatalogView = () => {
                             </TableHead>
                             <TableHead className="min-w-[60px]">Poids</TableHead>
                             <TableHead className="min-w-[90px]">Dim.</TableHead>
+                            <TableHead className="min-w-[50px] text-center">Notice</TableHead>
                             <TableHead className="min-w-[130px]">Description</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -340,6 +360,39 @@ const AccessoriesCatalogView = () => {
                                     <span className="text-muted-foreground text-xs">-</span>
                                   )}
                                 </TableCell>
+                                <TableCell className="text-center">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          onClick={() => {
+                                            if (accessory.notice_id && accessory.notices_database) {
+                                              window.open(accessory.notices_database.url_notice, "_blank");
+                                            } else {
+                                              setNoticeDialogAccessoryId(accessory.id);
+                                            }
+                                          }}
+                                        >
+                                          {accessory.notice_id ? (
+                                            <FileText className="h-4 w-4 text-primary" />
+                                          ) : (
+                                            <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                                          )}
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>
+                                          {accessory.notice_id 
+                                            ? `Ouvrir la notice: ${accessory.notices_database?.titre}` 
+                                            : "Lier une notice"}
+                                        </p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </TableCell>
                                 <TableCell>
                                   <div className="max-w-[150px]">
                                     {accessory.description ? (
@@ -441,6 +494,16 @@ const AccessoriesCatalogView = () => {
           }}
           categories={categories}
         />
+
+        {noticeDialogAccessoryId && (
+          <NoticeUploadDialog
+            preselectedAccessoryId={noticeDialogAccessoryId}
+            onSuccess={() => {
+              loadAccessories();
+              setNoticeDialogAccessoryId("");
+            }}
+          />
+        )}
       </div>
     </div>
   );

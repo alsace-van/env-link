@@ -52,55 +52,99 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     setFabricCanvas(canvas);
 
-    // Load image directly
-    FabricImage.fromURL(photo.url, {
-      crossOrigin: "anonymous",
-    }).then((img) => {
-      if (!img || !img.width || !img.height) {
-        console.error("Image dimensions missing");
-        toast.error("Erreur lors du chargement de l'image");
-        return;
-      }
-
-      // Scale image to fit canvas while maintaining aspect ratio
-      const scale = Math.min(
-        canvas.width! / img.width,
-        canvas.height! / img.height,
-        1 // Don't scale up
-      );
-      
-      img.scale(scale);
-      img.set({
-        left: (canvas.width! - img.width * scale) / 2,
-        top: (canvas.height! - img.height * scale) / 2,
-        selectable: false,
-        evented: false,
-      });
-      
-      canvas.add(img);
-      canvas.sendObjectToBack(img);
-      canvas.renderAll();
-
-      // Load saved annotations if they exist
-      if (photo.annotations) {
-        try {
-          canvas.loadFromJSON(photo.annotations, () => {
-            // Make sure image stays in back after loading annotations
-            const objects = canvas.getObjects();
-            const imageObj = objects.find(obj => obj.type === 'image');
-            if (imageObj) {
-              canvas.sendObjectToBack(imageObj);
-            }
-            canvas.renderAll();
-          });
-        } catch (error) {
-          console.error("Error loading annotations:", error);
+    // Load image with better error handling
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    img.onload = () => {
+      FabricImage.fromObject({
+        type: 'image',
+        version: '5.3.0',
+        originX: 'left',
+        originY: 'top',
+        left: 0,
+        top: 0,
+        width: img.width,
+        height: img.height,
+        fill: 'rgb(0,0,0)',
+        stroke: null,
+        strokeWidth: 0,
+        strokeDashArray: null,
+        strokeLineCap: 'butt',
+        strokeDashOffset: 0,
+        strokeLineJoin: 'miter',
+        strokeUniform: false,
+        strokeMiterLimit: 4,
+        scaleX: 1,
+        scaleY: 1,
+        angle: 0,
+        flipX: false,
+        flipY: false,
+        opacity: 1,
+        shadow: null,
+        visible: true,
+        backgroundColor: '',
+        fillRule: 'nonzero',
+        paintFirst: 'fill',
+        globalCompositeOperation: 'source-over',
+        skewX: 0,
+        skewY: 0,
+        cropX: 0,
+        cropY: 0,
+        src: img.src,
+      }).then((fabricImg) => {
+        if (!fabricImg || !fabricImg.width || !fabricImg.height) {
+          toast.error("Erreur lors du chargement de l'image");
+          return;
         }
-      }
-    }).catch((error) => {
-      console.error("Error loading image:", error);
-      toast.error("Impossible de charger l'image. Veuillez réessayer.");
-    });
+
+        // Scale image to fit canvas while maintaining aspect ratio
+        const scale = Math.min(
+          canvas.width! / fabricImg.width,
+          canvas.height! / fabricImg.height,
+          1
+        );
+        
+        fabricImg.scale(scale);
+        fabricImg.set({
+          left: (canvas.width! - fabricImg.width * scale) / 2,
+          top: (canvas.height! - fabricImg.height * scale) / 2,
+          selectable: false,
+          evented: false,
+        });
+        
+        canvas.add(fabricImg);
+        canvas.sendObjectToBack(fabricImg);
+        canvas.renderAll();
+
+        // Load saved annotations if they exist
+        if (photo.annotations) {
+          try {
+            canvas.loadFromJSON(photo.annotations, () => {
+              const objects = canvas.getObjects();
+              const imageObj = objects.find(obj => obj.type === 'image');
+              if (imageObj) {
+                canvas.sendObjectToBack(imageObj);
+              }
+              canvas.renderAll();
+            });
+          } catch (error) {
+            console.error("Error loading annotations:", error);
+          }
+        }
+      }).catch((error) => {
+        console.error("Error creating fabric image:", error);
+        toast.error("Impossible de charger l'image");
+      });
+    };
+
+    img.onerror = () => {
+      console.error("Failed to load image from:", photo.url);
+      toast.error("Impossible de charger l'image. Vérifiez l'URL.");
+    };
+
+    // Try to load the image
+    img.src = photo.url;
 
     setHistory([]);
     setHistoryStep(-1);
