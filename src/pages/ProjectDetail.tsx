@@ -287,38 +287,35 @@ const ProjectDetail = () => {
           </TabsContent>
 
           <TabsContent value="expenses">
-            <div className="relative">
-              <Card>
-                <CardContent className="pt-6">
-                  <ExpensesList
-                    projectId={project.id}
-                    onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
-                  />
-                </CardContent>
-              </Card>
-
-              <Sheet open={isSummaryOpen} onOpenChange={setIsSummaryOpen}>
-                <SheetTrigger asChild>
-                  <Button
-                    className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
-                    size="icon"
-                  >
-                    <PanelRightOpen className="h-6 w-6" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
-                  <SheetHeader>
-                    <SheetTitle>Récapitulatif Financier</SheetTitle>
-                  </SheetHeader>
-                  <div className="mt-6">
-                    <ExpensesSummary
+            <div className="flex gap-6">
+              <div className="flex-1">
+                <Card>
+                  <CardContent className="pt-6">
+                    <ExpensesList
                       projectId={project.id}
-                      refreshTrigger={expenseRefresh}
+                      onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
                     />
-                  </div>
-                </SheetContent>
-              </Sheet>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className={`transition-all duration-300 ${isSummaryOpen ? 'w-[500px]' : 'w-0'} overflow-hidden`}>
+                <div className="w-[500px]">
+                  <ExpensesSummary
+                    projectId={project.id}
+                    refreshTrigger={expenseRefresh}
+                  />
+                </div>
+              </div>
             </div>
+
+            <Button
+              onClick={() => setIsSummaryOpen(!isSummaryOpen)}
+              className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+              size="icon"
+            >
+              <PanelRightOpen className={`h-6 w-6 transition-transform ${isSummaryOpen ? 'rotate-180' : ''}`} />
+            </Button>
           </TabsContent>
 
           <TabsContent value="documents">

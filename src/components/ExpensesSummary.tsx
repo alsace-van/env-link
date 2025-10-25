@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import PaymentTransactions from "./PaymentTransactions";
 
 interface ExpensesSummaryProps {
@@ -12,6 +13,9 @@ interface ExpensesSummaryProps {
 interface CategoryTotal {
   name: string;
   value: number;
+  achats: number;
+  ventes: number;
+  marge: number;
 }
 
 
@@ -39,20 +43,31 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
       return;
     }
 
-    // Calculate totals by category for purchases
-    const categoryMap = new Map<string, number>();
+    // Calculate totals by category for purchases and sales
+    const categoryMap = new Map<string, { achats: number; ventes: number }>();
     let total = 0;
 
     data?.forEach((expense) => {
       const amount = expense.prix * expense.quantite;
       total += amount;
-      const current = categoryMap.get(expense.categorie) || 0;
-      categoryMap.set(expense.categorie, current + amount);
+      
+      const current = categoryMap.get(expense.categorie) || { achats: 0, ventes: 0 };
+      current.achats += amount;
+      
+      if (expense.prix_vente_ttc) {
+        const venteTTC = expense.prix_vente_ttc * expense.quantite;
+        current.ventes += venteTTC / 1.20; // Convert to HT
+      }
+      
+      categoryMap.set(expense.categorie, current);
     });
 
-    const chartData = Array.from(categoryMap.entries()).map(([name, value]) => ({
+    const chartData = Array.from(categoryMap.entries()).map(([name, values]) => ({
       name,
-      value: Math.round(value * 100) / 100,
+      value: Math.round(values.achats * 100) / 100,
+      achats: Math.round(values.achats * 100) / 100,
+      ventes: Math.round(values.ventes * 100) / 100,
+      marge: Math.round((values.ventes - values.achats) * 100) / 100,
     }));
 
     setCategoryTotals(chartData);
@@ -126,71 +141,71 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
         onPaymentChange={() => setPaymentRefresh(prev => prev + 1)}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Répartition des Achats par Catégorie</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {categoryTotals.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={categoryTotals}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={(entry) => `${entry.value.toFixed(0)}€`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {categoryTotals.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                Aucune dépense pour le moment
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Comparaison Achats vs Ventes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: "Achats (HT)", value: totalExpenses },
-                    { name: "Marge", value: totalMargin },
-                  ]}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={(entry) => `${entry.value.toFixed(0)}€`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  <Cell fill="#ef4444" />
-                  <Cell fill="#10b981" />
-                </Pie>
-                <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Analyse par Catégorie</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {categoryTotals.length > 0 ? (
+            <Carousel className="w-full">
+              <CarouselContent>
+                {categoryTotals.map((category, index) => (
+                  <CarouselItem key={category.name}>
+                    <div className="space-y-4">
+                      <div className="text-center">
+                        <h3 className="text-xl font-bold">{category.name}</h3>
+                        <div className="grid grid-cols-3 gap-4 mt-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Achats HT</p>
+                            <p className="text-lg font-bold text-red-600">{category.achats.toFixed(2)} €</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Ventes HT</p>
+                            <p className="text-lg font-bold text-green-600">{category.ventes.toFixed(2)} €</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Marge Nette</p>
+                            <p className="text-lg font-bold text-blue-600">{category.marge.toFixed(2)} €</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: "Achats HT", value: category.achats },
+                              { name: "Marge", value: category.marge },
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={(entry) => `${entry.value.toFixed(0)}€`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            <Cell fill="#ef4444" />
+                            <Cell fill="#10b981" />
+                          </Pie>
+                          <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              <CarouselPrevious />
+              <CarouselNext />
+            </Carousel>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              Aucune catégorie disponible
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
