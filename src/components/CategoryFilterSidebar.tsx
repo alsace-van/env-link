@@ -26,7 +26,7 @@ const CategoryFilterSidebar = ({ selectedCategories, onCategoryChange }: Categor
   const [isManageDialogOpen, setIsManageDialogOpen] = useState(false);
   const [draggedCategory, setDraggedCategory] = useState<Category | null>(null);
   const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   useEffect(() => {
     loadCategories();
