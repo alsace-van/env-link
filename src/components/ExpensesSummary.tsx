@@ -221,9 +221,16 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
                   data={categoryTotals}
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  label={(entry) => `${entry.name}: ${entry.value.toFixed(0)}€`}
-                  outerRadius={120}
+                  labelLine={true}
+                  label={(entry) => {
+                    // Truncate long names
+                    const maxLength = 15;
+                    const name = entry.name.length > maxLength 
+                      ? entry.name.substring(0, maxLength) + "..." 
+                      : entry.name;
+                    return `${name}: ${entry.value.toFixed(0)}€`;
+                  }}
+                  outerRadius={100}
                   fill="#8884d8"
                   dataKey="value"
                 >
@@ -231,8 +238,20 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
-                <Legend />
+                <Tooltip 
+                  formatter={(value: number, name: string, props: any) => [
+                    `${value.toFixed(2)}€`,
+                    props.payload.name
+                  ]} 
+                />
+                <Legend 
+                  formatter={(value: string) => {
+                    const maxLength = 20;
+                    return value.length > maxLength 
+                      ? value.substring(0, maxLength) + "..." 
+                      : value;
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (
