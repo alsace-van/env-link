@@ -3,10 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, ExternalLink, Edit, Plus } from "lucide-react";
+import { Search, Trash2, ExternalLink, Edit, Plus, FileDown, FileUp } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
 import CategoryFilterSidebar from "./CategoryFilterSidebar";
+import AccessoryImportExportDialog from "./AccessoryImportExportDialog";
 import {
   Table,
   TableBody,
@@ -55,10 +56,24 @@ const AccessoriesCatalogView = () => {
   const [editingAccessory, setEditingAccessory] = useState<Accessory | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     loadAccessories();
+    loadCategories();
   }, []);
+
+  const loadCategories = async () => {
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .order("nom");
+
+    if (!error && data) {
+      setCategories(data);
+    }
+  };
 
   useEffect(() => {
     let filtered = accessories;
@@ -139,8 +154,8 @@ const AccessoriesCatalogView = () => {
 
       {/* Main Content */}
       <div className="flex-1 space-y-6">
-        <div className="flex gap-4 items-center">
-          <div className="flex-1 relative">
+        <div className="flex gap-4 items-center flex-wrap">
+          <div className="flex-1 min-w-[250px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Rechercher un accessoire..."
@@ -149,10 +164,19 @@ const AccessoriesCatalogView = () => {
               className="pl-10"
             />
           </div>
-          <Button onClick={() => setIsDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter un article
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsImportExportOpen(true)}
+            >
+              <FileDown className="h-4 w-4 mr-2" />
+              Import/Export
+            </Button>
+            <Button onClick={() => setIsDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Ajouter un article
+            </Button>
+          </div>
         </div>
 
         {filteredAccessories.length === 0 ? (
@@ -335,6 +359,16 @@ const AccessoriesCatalogView = () => {
             loadAccessories();
             setEditingAccessory(null);
           }}
+        />
+
+        <AccessoryImportExportDialog
+          isOpen={isImportExportOpen}
+          onClose={() => setIsImportExportOpen(false)}
+          onSuccess={() => {
+            loadAccessories();
+            setIsImportExportOpen(false);
+          }}
+          categories={categories}
         />
       </div>
     </div>
