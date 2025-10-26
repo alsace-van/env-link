@@ -55,6 +55,7 @@ export const LayoutCanvas = ({
   const [furnitureItems, setFurnitureItems] = useState<Map<string, FurnitureData>>(new Map());
   const [showFurnitureDialog, setShowFurnitureDialog] = useState(false);
   const [pendingRectangle, setPendingRectangle] = useState<paper.Path.Rectangle | null>(null);
+  const [editingFurnitureId, setEditingFurnitureId] = useState<string | null>(null);
   const [loadAreaLength, setLoadAreaLength] = useState(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
   const [loadAreaWidth, setLoadAreaWidth] = useState(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
   const [isEditingDimensions, setIsEditingDimensions] = useState(false);
@@ -136,6 +137,8 @@ export const LayoutCanvas = ({
     let draggedHandle: paper.Path.Circle | null = null;
     let currentMeasureLine: paper.Path.Line | null = null;
     let currentMeasureText: paper.PointText | null = null;
+    let lastClickTime = 0;
+    let lastClickItem: paper.Item | null = null;
     const history: string[] = [];
     let historyIndex = -1;
 
@@ -220,6 +223,42 @@ export const LayoutCanvas = ({
       });
 
       if (activeToolRef.current === "select") {
+        // Détecter le double-clic
+        const currentTime = Date.now();
+        const isDoubleClick = hitResult && lastClickItem === hitResult.item && currentTime - lastClickTime < 300;
+
+        lastClickTime = currentTime;
+        lastClickItem = hitResult?.item || null;
+
+        // Double-clic sur un meuble = ouvrir le dialog d'édition
+        if (isDoubleClick && hitResult?.item) {
+          let furnitureGroup: paper.Group | null = null;
+
+          // Trouver le groupe de meuble
+          if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
+            furnitureGroup = hitResult.item;
+          } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
+            furnitureGroup = hitResult.item.parent;
+          }
+
+          if (furnitureGroup && furnitureGroup.data.furnitureId) {
+            const furnitureId = furnitureGroup.data.furnitureId;
+            const furnitureData = furnitureItems.get(furnitureId);
+
+            if (furnitureData) {
+              setEditingFurnitureId(furnitureId);
+              setFurnitureForm({
+                longueur_mm: furnitureData.longueur_mm,
+                largeur_mm: furnitureData.largeur_mm,
+                hauteur_mm: furnitureData.hauteur_mm,
+                poids_kg: furnitureData.poids_kg,
+              });
+              setShowFurnitureDialog(true);
+            }
+          }
+          return;
+        }
+
         if (hitResult?.item.data.isHandle) {
           draggedHandle = hitResult.item as paper.Path.Circle;
         } else if (hitResult?.item && !hitResult.item.locked) {
@@ -548,51 +587,84 @@ export const LayoutCanvas = ({
   };
 
   const handleFurnitureSubmit = () => {
-    if (!pendingRectangle) return;
+    if (editingFurnitureId) {
+      // Mode édition
+      const newFurnitureData = {
+        id: editingFurnitureId,
+        ...furnitureForm,
+      };
 
-    const furnitureId = `furniture-${Date.now()}`;
-
-    const newFurnitureData = {
-      id: furnitureId,
-      ...furnitureForm,
-    };
-
-    setFurnitureItems((prev) => {
-      const newMap = new Map(prev);
-      newMap.set(furnitureId, newFurnitureData);
-      return newMap;
-    });
-
-    // Créer le label sur le meuble
-    setTimeout(() => {
-      const text = new paper.PointText({
-        point: pendingRectangle!.bounds.center,
-        content: `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`,
-        fillColor: new paper.Color("#000"),
-        fontSize: 12,
-        justification: "center",
+      setFurnitureItems((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(editingFurnitureId, newFurnitureData);
+        return newMap;
       });
-      text.data.isFurnitureLabel = true;
-      text.data.furnitureId = furnitureId;
 
-      // Créer un groupe avec le rectangle et le texte
-      const group = new paper.Group([pendingRectangle!, text]);
-      group.data.isFurniture = true;
-      group.data.furnitureId = furnitureId;
+      // Trouver et mettre à jour le groupe de meuble dans le canvas
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child instanceof paper.Group && child.data.furnitureId === editingFurnitureId) {
+          const text = child.children[1] as paper.PointText;
+          if (text) {
+            text.content = `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`;
+          }
+        }
+      });
 
-      // Transférer les données du rectangle au groupe
-      pendingRectangle!.data = {};
-    }, 0);
+      setEditingFurnitureId(null);
+      setShowFurnitureDialog(false);
+      setFurnitureForm({
+        longueur_mm: 0,
+        largeur_mm: 0,
+        hauteur_mm: 0,
+        poids_kg: 0,
+      });
+      toast.success("Meuble modifié");
+    } else if (pendingRectangle) {
+      // Mode création
+      const furnitureId = `furniture-${Date.now()}`;
 
-    setPendingRectangle(null);
-    setShowFurnitureDialog(false);
-    setFurnitureForm({
-      longueur_mm: 0,
-      largeur_mm: 0,
-      hauteur_mm: 0,
-      poids_kg: 0,
-    });
-    toast.success("Meuble ajouté");
+      const newFurnitureData = {
+        id: furnitureId,
+        ...furnitureForm,
+      };
+
+      setFurnitureItems((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(furnitureId, newFurnitureData);
+        return newMap;
+      });
+
+      // Créer le label sur le meuble
+      setTimeout(() => {
+        const text = new paper.PointText({
+          point: pendingRectangle!.bounds.center,
+          content: `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`,
+          fillColor: new paper.Color("#000"),
+          fontSize: 12,
+          justification: "center",
+        });
+        text.data.isFurnitureLabel = true;
+        text.data.furnitureId = furnitureId;
+
+        // Créer un groupe avec le rectangle et le texte
+        const group = new paper.Group([pendingRectangle!, text]);
+        group.data.isFurniture = true;
+        group.data.furnitureId = furnitureId;
+
+        // Transférer les données du rectangle au groupe
+        pendingRectangle!.data = {};
+      }, 0);
+
+      setPendingRectangle(null);
+      setShowFurnitureDialog(false);
+      setFurnitureForm({
+        longueur_mm: 0,
+        largeur_mm: 0,
+        hauteur_mm: 0,
+        poids_kg: 0,
+      });
+      toast.success("Meuble ajouté");
+    }
   };
 
   const handleFurnitureCancel = () => {
@@ -600,6 +672,7 @@ export const LayoutCanvas = ({
       pendingRectangle.remove();
     }
     setPendingRectangle(null);
+    setEditingFurnitureId(null);
     setShowFurnitureDialog(false);
     setFurnitureForm({
       longueur_mm: 0,
@@ -812,7 +885,7 @@ export const LayoutCanvas = ({
       <Dialog open={showFurnitureDialog} onOpenChange={setShowFurnitureDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Propriétés du meuble</DialogTitle>
+            <DialogTitle>{editingFurnitureId ? "Modifier le meuble" : "Propriétés du meuble"}</DialogTitle>
             <DialogDescription>Renseignez les dimensions et le poids du meuble</DialogDescription>
           </DialogHeader>
 
@@ -909,7 +982,7 @@ export const LayoutCanvas = ({
             <Button variant="outline" onClick={handleFurnitureCancel}>
               Annuler
             </Button>
-            <Button onClick={handleFurnitureSubmit}>Valider</Button>
+            <Button onClick={handleFurnitureSubmit}>{editingFurnitureId ? "Modifier" : "Valider"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
