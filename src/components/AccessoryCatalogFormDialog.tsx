@@ -61,64 +61,72 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryParent, setNewCategoryParent] = useState<string | null>(null);
 
+  // Charger les catégories quand le dialogue s'ouvre
   useEffect(() => {
     if (isOpen) {
-      loadCategories().then(() => {
-        // Initialiser le formulaire après le chargement des catégories
-        if (accessory) {
-          // Mode édition - utiliser ?? pour préserver les valeurs null
-          setFormData({
-            nom: accessory.nom,
-            marque: accessory.marque ?? "",
-            category_id: accessory.category_id || "",
-            prix_reference: accessory.prix_reference?.toString() ?? "",
-            prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
-            marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
-            fournisseur: accessory.fournisseur ?? "",
-            description: accessory.description ?? "",
-            url_produit: accessory.url_produit ?? "",
-            type_electrique: accessory.type_electrique ?? "",
-            poids_kg: accessory.poids_kg?.toString() ?? "",
-            longueur_mm: accessory.longueur_mm?.toString() ?? "",
-            largeur_mm: accessory.largeur_mm?.toString() ?? "",
-            hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
-            puissance_watts: accessory.puissance_watts?.toString() ?? "",
-            intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
-          });
-        } else {
-          // Mode création
-          setFormData({
-            nom: "",
-            marque: "",
-            category_id: "",
-            prix_reference: "",
-            prix_vente_ttc: "",
-            marge_pourcent: "",
-            fournisseur: "",
-            description: "",
-            url_produit: "",
-            type_electrique: "",
-            poids_kg: "",
-            longueur_mm: "",
-            largeur_mm: "",
-            hauteur_mm: "",
-            puissance_watts: "",
-            intensite_amperes: "",
-          });
-        }
-      });
+      setCategoriesLoaded(false);
+      loadCategories();
     }
-  }, [isOpen, accessory?.id]);
+  }, [isOpen]);
+
+  // Initialiser le formulaire une fois les catégories chargées
+  useEffect(() => {
+    if (isOpen && categoriesLoaded) {
+      if (accessory) {
+        // Mode édition - utiliser ?? pour préserver les valeurs null
+        setFormData({
+          nom: accessory.nom,
+          marque: accessory.marque ?? "",
+          category_id: accessory.category_id ?? "",
+          prix_reference: accessory.prix_reference?.toString() ?? "",
+          prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
+          marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
+          fournisseur: accessory.fournisseur ?? "",
+          description: accessory.description ?? "",
+          url_produit: accessory.url_produit ?? "",
+          type_electrique: accessory.type_electrique ?? "",
+          poids_kg: accessory.poids_kg?.toString() ?? "",
+          longueur_mm: accessory.longueur_mm?.toString() ?? "",
+          largeur_mm: accessory.largeur_mm?.toString() ?? "",
+          hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
+          puissance_watts: accessory.puissance_watts?.toString() ?? "",
+          intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
+        });
+      } else {
+        // Mode création
+        setFormData({
+          nom: "",
+          marque: "",
+          category_id: "",
+          prix_reference: "",
+          prix_vente_ttc: "",
+          marge_pourcent: "",
+          fournisseur: "",
+          description: "",
+          url_produit: "",
+          type_electrique: "",
+          poids_kg: "",
+          longueur_mm: "",
+          largeur_mm: "",
+          hauteur_mm: "",
+          puissance_watts: "",
+          intensite_amperes: "",
+        });
+      }
+    }
+  }, [isOpen, categoriesLoaded, accessory?.id]);
 
   const loadCategories = async () => {
     const { data, error } = await supabase.from("categories").select("*").order("nom");
 
     if (!error && data) {
       setCategories(data);
+      setCategoriesLoaded(true);
     }
   };
 
