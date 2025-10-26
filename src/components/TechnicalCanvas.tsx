@@ -126,28 +126,27 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
           const arrow = new Group([arrowLine, arrowHead], {
             selectable: true,
-          });
-
-          arrow.set({
             lockRotation: false,
             hasControls: true,
-            hasBorders: true,
+            hasBorders: false,
             cornerStyle: "circle",
             cornerSize: 10,
             transparentCorners: false,
             borderColor: "#2196F3",
             cornerColor: "#2196F3",
-            setControlsVisibility: {
-              mtr: false,
-              ml: false,
-              mr: false,
-              mt: false,
-              mb: false,
-              tl: true,
-              tr: false,
-              bl: false,
-              br: true,
-            },
+          });
+
+          // Ne garder que les poignées aux extrémités
+          arrow.setControlsVisibility({
+            mtr: false,  // rotation
+            ml: false,   // middle left
+            mr: false,   // middle right
+            mt: false,   // middle top
+            mb: false,   // middle bottom
+            tl: true,    // top left (début)
+            tr: false,
+            bl: false,
+            br: true,    // bottom right (fin)
           });
 
           canvas.add(arrow);
@@ -161,23 +160,25 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           finalLine.set({
             lockRotation: false,
             hasControls: true,
-            hasBorders: true,
+            hasBorders: false,
             cornerStyle: "circle",
             cornerSize: 10,
             transparentCorners: false,
             borderColor: "#2196F3",
             cornerColor: "#2196F3",
-            setControlsVisibility: {
-              mtr: false,
-              ml: false,
-              mr: false,
-              mt: false,
-              mb: false,
-              tl: true,
-              tr: false,
-              bl: false,
-              br: true,
-            },
+          });
+
+          // Ne garder que les poignées aux extrémités pour les lignes aussi
+          finalLine.setControlsVisibility({
+            mtr: false,
+            ml: false,
+            mr: false,
+            mt: false,
+            mb: false,
+            tl: true,
+            tr: false,
+            bl: false,
+            br: true,
           });
 
           canvas.add(finalLine);
