@@ -6,7 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Square, MousePointer, ArrowRight, Save, Pencil, Type, CircleIcon, Minus, Trash2, Undo, Redo } from "lucide-react";
+import {
+  Square,
+  MousePointer,
+  ArrowRight,
+  Save,
+  Pencil,
+  Type,
+  CircleIcon,
+  Minus,
+  Trash2,
+  Undo,
+  Redo,
+} from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 interface Photo {
@@ -26,10 +38,14 @@ interface PhotoAnnotationModalProps {
 
 const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotationModalProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">("select");
+  const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
+    "select",
+  );
   const [comment, setComment] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingImage, setIsLoadingImage] = useState(true);
   const [strokeColor, setStrokeColor] = useState("#ef4444");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [history, setHistory] = useState<any[]>([]);
@@ -47,91 +63,148 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   useEffect(() => {
     if (!canvasRef.current || !isOpen || !photo) return;
 
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: 900,
-      height: 600,
-      backgroundColor: "#f5f5f5",
-    });
+    setIsLoadingImage(true);
 
-    setFabricCanvas(canvas);
-
-    // Load image using the correct Fabric.js v6 method
-    FabricImage.fromURL(photo.url, { crossOrigin: "anonymous" })
-      .then((fabricImg) => {
-        if (!fabricImg || !fabricImg.width || !fabricImg.height) {
-          toast.error("Erreur lors du chargement de l'image");
+    // Attendre que le DOM soit complètement rendu
+    const initCanvas = async () => {
+      try {
+        // Obtenir les dimensions du conteneur
+        const container = containerRef.current;
+        if (!container) {
+          console.error("Container not found");
           return;
         }
 
-        // Scale image to fit canvas while maintaining aspect ratio
-        const scale = Math.min(
-          canvas.width! / fabricImg.width,
-          canvas.height! / fabricImg.height,
-          1
-        );
-        
+        const containerWidth = container.clientWidth - 32; // Padding
+        const containerHeight = container.clientHeight - 32;
+
+        // Initialiser le canvas avec les bonnes dimensions
+        const canvas = new FabricCanvas(canvasRef.current, {
+          width: Math.max(containerWidth, 800),
+          height: Math.max(containerHeight, 500),
+          backgroundColor: "#f5f5f5",
+        });
+
+        setFabricCanvas(canvas);
+
+        console.log("Loading image from:", photo.url);
+
+        // Créer une URL publique signée pour éviter les problèmes CORS
+        let imageUrl = photo.url;
+
+        // Si l'URL contient "project-photos", obtenir une URL signée
+        if (photo.url.includes("/storage/v1/object/public/project-photos/")) {
+          const urlParts = photo.url.split("/project-photos/");
+          if (urlParts.length >= 2) {
+            const filePath = urlParts[1];
+            const { data } = await supabase.storage.from("project-photos").createSignedUrl(filePath, 3600); // URL valide pour 1 heure
+
+            if (data?.signedUrl) {
+              imageUrl = data.signedUrl;
+              console.log("Using signed URL:", imageUrl);
+            }
+          }
+        }
+
+        // Charger l'image
+        const fabricImg = await FabricImage.fromURL(imageUrl, {
+          crossOrigin: "anonymous",
+        });
+
+        if (!fabricImg || !fabricImg.width || !fabricImg.height) {
+          toast.error("Erreur lors du chargement de l'image");
+          setIsLoadingImage(false);
+          return;
+        }
+
+        console.log("Image loaded successfully:", {
+          width: fabricImg.width,
+          height: fabricImg.height,
+        });
+
+        // Calculer l'échelle pour adapter l'image au canvas
+        const scale = Math.min((canvas.width! - 40) / fabricImg.width, (canvas.height! - 40) / fabricImg.height, 1);
+
         fabricImg.scale(scale);
         fabricImg.set({
           left: (canvas.width! - fabricImg.width * scale) / 2,
           top: (canvas.height! - fabricImg.height * scale) / 2,
           selectable: false,
           evented: false,
+          hasControls: false,
+          hasBorders: false,
+          lockMovementX: true,
+          lockMovementY: true,
         });
-        
+
         canvas.add(fabricImg);
         canvas.sendObjectToBack(fabricImg);
         canvas.renderAll();
 
-        // Load saved annotations if they exist
+        setIsLoadingImage(false);
+
+        // Charger les annotations sauvegardées
         if (photo.annotations && photo.annotations.objects) {
           try {
-            // Ne charger que les objets qui ne sont pas des images
-            const annotationObjects = photo.annotations.objects.filter((obj: any) => obj.type !== 'image');
-            
-            // Charger tous les objets d'annotation en une seule fois
+            const annotationObjects = photo.annotations.objects.filter((obj: any) => obj.type !== "image");
+
             if (annotationObjects.length > 0) {
-              annotationObjects.forEach((objData: any) => {
-                // Recréer l'objet selon son type sans utiliser loadFromJSON
-                if (objData.type === 'rect') {
-                  const rect = new Rect(objData);
-                  canvas.add(rect);
-                } else if (objData.type === 'circle') {
-                  const circle = new Circle(objData);
-                  canvas.add(circle);
-                } else if (objData.type === 'line') {
-                  const line = new Line(objData.points, objData);
-                  canvas.add(line);
-                } else if (objData.type === 'triangle') {
-                  const triangle = new Triangle(objData);
-                  canvas.add(triangle);
-                } else if (objData.type === 'textbox' || objData.type === 'text') {
-                  const text = new Textbox(objData.text || '', objData);
-                  canvas.add(text);
-                } else if (objData.type === 'group') {
-                  // Pour les groupes (flèches), on les recrée manuellement
-                  Group.fromObject(objData).then((group) => {
+              for (const objData of annotationObjects) {
+                try {
+                  if (objData.type === "rect") {
+                    const rect = new Rect(objData);
+                    canvas.add(rect);
+                  } else if (objData.type === "circle") {
+                    const circle = new Circle(objData);
+                    canvas.add(circle);
+                  } else if (objData.type === "line") {
+                    const line = new Line(objData.points, objData);
+                    canvas.add(line);
+                  } else if (objData.type === "triangle") {
+                    const triangle = new Triangle(objData);
+                    canvas.add(triangle);
+                  } else if (objData.type === "textbox" || objData.type === "text") {
+                    const text = new Textbox(objData.text || "", objData);
+                    canvas.add(text);
+                  } else if (objData.type === "group") {
+                    const group = await Group.fromObject(objData);
                     canvas.add(group);
-                    canvas.renderAll();
-                  });
+                  } else if (objData.type === "path") {
+                    // Pour les chemins de dessin libre (crayon)
+                    const { Path } = await import("fabric");
+                    const path = await Path.fromObject(objData);
+                    canvas.add(path);
+                  }
+                } catch (err) {
+                  console.error("Error loading individual annotation:", err);
                 }
-              });
+              }
               canvas.renderAll();
+              console.log("Annotations loaded successfully");
             }
           } catch (error) {
             console.error("Error loading annotations:", error);
+            toast.error("Erreur lors du chargement des annotations");
           }
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error("Failed to load image:", error);
-        toast.error("Impossible de charger l'image. Vérifiez l'URL.");
-      });
+        toast.error("Impossible de charger l'image. Vérifiez votre connexion.");
+        setIsLoadingImage(false);
+      }
+    };
+
+    // Attendre un peu pour que le modal soit complètement rendu
+    const timeoutId = setTimeout(initCanvas, 100);
 
     setHistory([]);
     setHistoryStep(-1);
 
     return () => {
-      canvas.dispose();
+      clearTimeout(timeoutId);
+      if (fabricCanvas) {
+        fabricCanvas.dispose();
+      }
     };
   }, [isOpen, photo]);
 
@@ -169,10 +242,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const pointer = event.pointer;
 
         if (!startPoint) {
-          // Premier clic : enregistrer le point de départ
           setStartPoint({ x: pointer.x, y: pointer.y });
         } else {
-          // Deuxième clic : créer la ligne ou flèche
           if (isDrawingLine) {
             const line = new Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
               stroke: strokeColor,
@@ -181,13 +252,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             fabricCanvas.add(line);
             fabricCanvas.setActiveObject(line);
           } else if (isDrawingArrow) {
-            // Calculer l'angle et la distance
             const dx = pointer.x - startPoint.x;
             const dy = pointer.y - startPoint.y;
-            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            // Créer la ligne de la flèche
             const line = new Line([0, 0, distance, 0], {
               stroke: strokeColor,
               strokeWidth: strokeWidth,
@@ -195,7 +264,6 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               originY: "center",
             });
 
-            // Créer la pointe de la flèche
             const arrowHead = new Triangle({
               left: distance,
               top: 0,
@@ -207,7 +275,6 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               originY: "center",
             });
 
-            // Grouper la ligne et la pointe ensemble
             const arrowGroup = new Group([line, arrowHead], {
               left: startPoint.x,
               top: startPoint.y,
@@ -223,7 +290,6 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           fabricCanvas.renderAll();
           saveToHistory();
 
-          // Réinitialiser
           setStartPoint(null);
           setIsDrawingLine(false);
           setIsDrawingArrow(false);
@@ -239,7 +305,6 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     };
   }, [fabricCanvas, isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth]);
 
-  // Gestionnaire pour la touche Suppr
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Delete" || event.key === "Backspace") {
@@ -248,15 +313,12 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     };
 
     window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [fabricCanvas]);
 
   const saveToHistory = () => {
     if (!fabricCanvas) return;
-    
+
     const json = fabricCanvas.toJSON();
     const newHistory = history.slice(0, historyStep + 1);
     newHistory.push(json);
@@ -266,33 +328,35 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   const handleUndo = () => {
     if (!fabricCanvas || historyStep <= 0) return;
-    
-    const prevStep = historyStep - 1;
-    setHistoryStep(prevStep);
-    fabricCanvas.loadFromJSON(history[prevStep], () => {
+
+    const previousState = history[historyStep - 1];
+    setHistoryStep(historyStep - 1);
+
+    fabricCanvas.loadFromJSON(previousState).then(() => {
       fabricCanvas.renderAll();
     });
   };
 
   const handleRedo = () => {
     if (!fabricCanvas || historyStep >= history.length - 1) return;
-    
-    const nextStep = historyStep + 1;
-    setHistoryStep(nextStep);
-    fabricCanvas.loadFromJSON(history[nextStep], () => {
+
+    const nextState = history[historyStep + 1];
+    setHistoryStep(historyStep + 1);
+
+    fabricCanvas.loadFromJSON(nextState).then(() => {
       fabricCanvas.renderAll();
     });
   };
 
   const addRectangle = () => {
     if (!fabricCanvas) return;
-    
+
     setActiveTool("rectangle");
 
     const rect = new Rect({
       left: 100,
       top: 100,
-      width: 150,
+      width: 100,
       height: 100,
       fill: "transparent",
       stroke: strokeColor,
@@ -303,14 +367,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.setActiveObject(rect);
     fabricCanvas.renderAll();
     saveToHistory();
-    
-    // Revenir en mode sélection après un court délai
+
     setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addArrow = () => {
     if (!fabricCanvas) return;
-    
+
     setActiveTool("arrow");
     setIsDrawingArrow(true);
     setIsDrawingLine(false);
@@ -320,7 +383,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   const addCircle = () => {
     if (!fabricCanvas) return;
-    
+
     setActiveTool("circle");
 
     const circle = new Circle({
@@ -336,13 +399,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.setActiveObject(circle);
     fabricCanvas.renderAll();
     saveToHistory();
-    
+
     setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addLine = () => {
     if (!fabricCanvas) return;
-    
+
     setActiveTool("line");
     setIsDrawingLine(true);
     setIsDrawingArrow(false);
@@ -352,7 +415,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   const addText = () => {
     if (!fabricCanvas) return;
-    
+
     setActiveTool("text");
 
     const text = new Textbox("Texte", {
@@ -367,7 +430,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.setActiveObject(text);
     fabricCanvas.renderAll();
     saveToHistory();
-    
+
     setTimeout(() => setActiveTool("select"), 100);
   };
 
@@ -448,73 +511,39 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 <Pencil className="h-4 w-4 mr-1" />
                 Crayon
               </Button>
-              <Button
-                variant={activeTool === "rectangle" ? "default" : "outline"}
-                size="sm"
-                onClick={addRectangle}
-              >
+              <Button variant={activeTool === "rectangle" ? "default" : "outline"} size="sm" onClick={addRectangle}>
                 <Square className="h-4 w-4 mr-1" />
                 Rectangle
               </Button>
-              <Button
-                variant={activeTool === "circle" ? "default" : "outline"}
-                size="sm"
-                onClick={addCircle}
-              >
+              <Button variant={activeTool === "circle" ? "default" : "outline"} size="sm" onClick={addCircle}>
                 <CircleIcon className="h-4 w-4 mr-1" />
                 Cercle
               </Button>
-              <Button
-                variant={activeTool === "line" ? "default" : "outline"}
-                size="sm"
-                onClick={addLine}
-              >
+              <Button variant={activeTool === "line" ? "default" : "outline"} size="sm" onClick={addLine}>
                 <Minus className="h-4 w-4 mr-1" />
                 Ligne
               </Button>
-              <Button
-                variant={activeTool === "arrow" ? "default" : "outline"}
-                size="sm"
-                onClick={addArrow}
-              >
+              <Button variant={activeTool === "arrow" ? "default" : "outline"} size="sm" onClick={addArrow}>
                 <ArrowRight className="h-4 w-4 mr-1" />
                 Flèche
               </Button>
-              <Button
-                variant={activeTool === "text" ? "default" : "outline"}
-                size="sm"
-                onClick={addText}
-              >
+              <Button variant={activeTool === "text" ? "default" : "outline"} size="sm" onClick={addText}>
                 <Type className="h-4 w-4 mr-1" />
                 Texte
               </Button>
-              
+
               <Separator orientation="vertical" className="h-8" />
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={deleteSelected}
-              >
+
+              <Button variant="outline" size="sm" onClick={deleteSelected}>
                 <Trash2 className="h-4 w-4 mr-1" />
                 Supprimer
               </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleUndo}
-                disabled={historyStep <= 0}
-              >
+
+              <Button variant="outline" size="sm" onClick={handleUndo} disabled={historyStep <= 0}>
                 <Undo className="h-4 w-4" />
               </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRedo}
-                disabled={historyStep >= history.length - 1}
-              >
+
+              <Button variant="outline" size="sm" onClick={handleRedo} disabled={historyStep >= history.length - 1}>
                 <Redo className="h-4 w-4" />
               </Button>
             </div>
@@ -527,9 +556,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 onChange={(e) => setStrokeColor(e.target.value)}
                 className="w-10 h-8 rounded border cursor-pointer"
               />
-              
+
               <Separator orientation="vertical" className="h-8 mx-2" />
-              
+
               <Label className="text-sm">Épaisseur:</Label>
               <input
                 type="range"
@@ -542,8 +571,19 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               <span className="text-sm text-muted-foreground">{strokeWidth}px</span>
             </div>
 
-            <div className="flex-1 border rounded-lg overflow-auto bg-muted flex items-center justify-center min-h-0">
-              <canvas ref={canvasRef} style={{ display: 'block' }} />
+            <div
+              ref={containerRef}
+              className="flex-1 border rounded-lg overflow-auto bg-muted flex items-center justify-center min-h-0 relative"
+            >
+              {isLoadingImage && (
+                <div className="absolute inset-0 flex items-center justify-center bg-muted/80 z-10">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-2"></div>
+                    <p className="text-sm text-muted-foreground">Chargement de l'image...</p>
+                  </div>
+                </div>
+              )}
+              <canvas ref={canvasRef} style={{ display: "block" }} />
             </div>
           </div>
 
@@ -559,7 +599,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               />
             </div>
 
-            <Button onClick={handleSave} disabled={isSaving} className="w-full">
+            <Button onClick={handleSave} disabled={isSaving || isLoadingImage} className="w-full">
               {isSaving ? (
                 "Sauvegarde..."
               ) : (
