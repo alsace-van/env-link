@@ -74,7 +74,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           setFormData({
             nom: accessory.nom,
             marque: accessory.marque ?? "",
-            category_id: accessory.category_id ?? "",
+            category_id: accessory.category_id || "",
             prix_reference: accessory.prix_reference?.toString() ?? "",
             prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
             marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
@@ -90,25 +90,25 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
           });
         } else {
-        // Mode création
-        setFormData({
-          nom: "",
-          marque: "",
-          category_id: "",
-          prix_reference: "",
-          prix_vente_ttc: "",
-          marge_pourcent: "",
-          fournisseur: "",
-          description: "",
-          url_produit: "",
-          type_electrique: "",
-          poids_kg: "",
-          longueur_mm: "",
-          largeur_mm: "",
-          hauteur_mm: "",
-          puissance_watts: "",
-          intensite_amperes: "",
-        });
+          // Mode création
+          setFormData({
+            nom: "",
+            marque: "",
+            category_id: "",
+            prix_reference: "",
+            prix_vente_ttc: "",
+            marge_pourcent: "",
+            fournisseur: "",
+            description: "",
+            url_produit: "",
+            type_electrique: "",
+            poids_kg: "",
+            longueur_mm: "",
+            largeur_mm: "",
+            hauteur_mm: "",
+            puissance_watts: "",
+            intensite_amperes: "",
+          });
         }
       });
     }
