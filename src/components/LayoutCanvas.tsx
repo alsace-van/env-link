@@ -28,8 +28,10 @@ import {
 
 interface LayoutCanvasProps {
   projectId: string;
-  vehicleLength?: number; // en mm
-  vehicleWidth?: number; // en mm
+  vehicleLength?: number; // longueur totale en mm
+  vehicleWidth?: number; // largeur totale en mm
+  loadAreaLength?: number; // longueur zone de chargement en mm
+  loadAreaWidth?: number; // largeur zone de chargement en mm
   maxLoad?: number; // charge utile en kg
 }
 
@@ -48,6 +50,8 @@ export const LayoutCanvas = ({
   projectId,
   vehicleLength = 3000,
   vehicleWidth = 1800,
+  loadAreaLength: initialLoadAreaLength,
+  loadAreaWidth: initialLoadAreaWidth,
   maxLoad = 500,
 }: LayoutCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -59,6 +63,9 @@ export const LayoutCanvas = ({
   const [furnitureItems, setFurnitureItems] = useState<Map<string, FurnitureData>>(new Map());
   const [showFurnitureDialog, setShowFurnitureDialog] = useState(false);
   const [pendingRectangle, setPendingRectangle] = useState<paper.Path.Rectangle | null>(null);
+  const [loadAreaLength, setLoadAreaLength] = useState(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
+  const [loadAreaWidth, setLoadAreaWidth] = useState(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
+  const [isEditingDimensions, setIsEditingDimensions] = useState(false);
   const [furnitureForm, setFurnitureForm] = useState({
     longueur_mm: 0,
     largeur_mm: 0,
@@ -111,34 +118,34 @@ export const LayoutCanvas = ({
     setTotalWeight(furnitureWeight + accessoriesWeight);
   }, [furnitureItems, accessoriesWeight]);
 
-  // Calcul de l'échelle pour adapter le véhicule au canvas
+  // Calcul de l'échelle pour adapter la zone de chargement au canvas (avec marge)
   const scale = Math.min(
-    (CANVAS_WIDTH - 40) / vehicleLength,
-    (CANVAS_HEIGHT - 40) / vehicleWidth
+    (CANVAS_WIDTH - 100) / loadAreaLength,
+    (CANVAS_HEIGHT - 100) / loadAreaWidth
   );
 
-  const scaledVehicleLength = vehicleLength * scale;
-  const scaledVehicleWidth = vehicleWidth * scale;
+  const scaledLoadAreaLength = loadAreaLength * scale;
+  const scaledLoadAreaWidth = loadAreaWidth * scale;
 
   useEffect(() => {
     if (!canvasRef.current) return;
 
     paper.setup(canvasRef.current);
 
-    // Dessiner le contour du véhicule
-    const vehicleOutline = new paper.Path.Rectangle({
+    // Dessiner le contour de la zone de chargement
+    const loadAreaOutline = new paper.Path.Rectangle({
       point: [
-        (CANVAS_WIDTH - scaledVehicleLength) / 2,
-        (CANVAS_HEIGHT - scaledVehicleWidth) / 2,
+        (CANVAS_WIDTH - scaledLoadAreaLength) / 2,
+        (CANVAS_HEIGHT - scaledLoadAreaWidth) / 2,
       ],
-      size: [scaledVehicleLength, scaledVehicleWidth],
-      strokeColor: new paper.Color("#666"),
+      size: [scaledLoadAreaLength, scaledLoadAreaWidth],
+      strokeColor: new paper.Color("#3b82f6"),
       strokeWidth: 3,
       dashArray: [10, 5],
       locked: true,
     });
 
-    vehicleOutline.sendToBack();
+    loadAreaOutline.sendToBack();
 
     let currentPath: paper.Path.Rectangle | null = null;
     let selectedItem: paper.Item | null = null;
@@ -412,7 +419,26 @@ export const LayoutCanvas = ({
       delete (window as any).layoutCanvasSave;
       delete (window as any).layoutCanvasLoad;
     };
-  }, [projectId, scaledVehicleLength, scaledVehicleWidth]);
+  }, [projectId, scaledLoadAreaLength, scaledLoadAreaWidth]);
+
+  const handleSaveDimensions = async () => {
+    try {
+      const { error } = await supabase
+        .from("projects")
+        .update({
+          longueur_chargement_mm: loadAreaLength,
+          largeur_chargement_mm: loadAreaWidth,
+        })
+        .eq("id", projectId);
+
+      if (error) throw error;
+      setIsEditingDimensions(false);
+      toast.success("Dimensions sauvegardées");
+    } catch (error) {
+      console.error("Error saving dimensions:", error);
+      toast.error("Erreur lors de la sauvegarde");
+    }
+  };
 
   const handleFurnitureSubmit = () => {
     if (!pendingRectangle) return;
@@ -464,7 +490,7 @@ export const LayoutCanvas = ({
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Jauge de Poids</h3>
             <div className="text-sm text-muted-foreground">
-              Dimensions du véhicule : {vehicleLength}mm x {vehicleWidth}mm
+              Véhicule : {vehicleLength}mm x {vehicleWidth}mm
             </div>
           </div>
           
@@ -498,6 +524,73 @@ export const LayoutCanvas = ({
               ⚠️ Attention : La charge utile est dépassée de {(totalWeight - maxLoad).toFixed(1)} kg
             </div>
           )}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Dimensions de la zone de chargement</h3>
+            {!isEditingDimensions ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditingDimensions(true)}
+              >
+                Modifier
+              </Button>
+            ) : (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLoadAreaLength(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
+                    setLoadAreaWidth(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
+                    setIsEditingDimensions(false);
+                  }}
+                >
+                  Annuler
+                </Button>
+                <Button size="sm" onClick={handleSaveDimensions}>
+                  Sauvegarder
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="load-length">Longueur utile (mm)</Label>
+              {isEditingDimensions ? (
+                <Input
+                  id="load-length"
+                  type="number"
+                  value={loadAreaLength}
+                  onChange={(e) => setLoadAreaLength(Number(e.target.value))}
+                />
+              ) : (
+                <p className="text-lg font-medium">{loadAreaLength} mm</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="load-width">Largeur utile (mm)</Label>
+              {isEditingDimensions ? (
+                <Input
+                  id="load-width"
+                  type="number"
+                  value={loadAreaWidth}
+                  onChange={(e) => setLoadAreaWidth(Number(e.target.value))}
+                />
+              ) : (
+                <p className="text-lg font-medium">{loadAreaWidth} mm</p>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Surface utile : {((loadAreaLength * loadAreaWidth) / 1000000).toFixed(2)} m²
+          </p>
         </div>
       </Card>
 
@@ -611,7 +704,7 @@ export const LayoutCanvas = ({
         </div>
 
         <div className="mt-2 text-xs text-muted-foreground">
-          Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés = zone de chargement du véhicule
+          Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés bleus = zone de chargement utile ({loadAreaLength} x {loadAreaWidth} mm)
         </div>
       </div>
 

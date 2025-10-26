@@ -456,8 +456,10 @@ export type Database = {
           hauteur_mm: number | null
           id: string
           immatriculation: string | null
+          largeur_chargement_mm: number | null
           largeur_mm: number | null
           layout_canvas_data: Json | null
+          longueur_chargement_mm: number | null
           longueur_mm: number | null
           marque_custom: string | null
           modele_custom: string | null
@@ -483,8 +485,10 @@ export type Database = {
           hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
+          largeur_chargement_mm?: number | null
           largeur_mm?: number | null
           layout_canvas_data?: Json | null
+          longueur_chargement_mm?: number | null
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
@@ -510,8 +514,10 @@ export type Database = {
           hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
+          largeur_chargement_mm?: number | null
           largeur_mm?: number | null
           layout_canvas_data?: Json | null
+          longueur_chargement_mm?: number | null
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
