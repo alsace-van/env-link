@@ -36,9 +36,19 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [historyStep, setHistoryStep] = useState(-1);
   const [isDrawingLine, setIsDrawingLine] = useState(false);
   const [isDrawingArrow, setIsDrawingArrow] = useState(false);
-  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [currentLine, setCurrentLine] = useState<Line | Group | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  
+  // Utiliser des refs pour éviter les problèmes de closure
+  const startPointRef = useRef<{ x: number; y: number } | null>(null);
+  const currentLineRef = useRef<Line | Group | null>(null);
+  const isDraggingRef = useRef(false);
+  const strokeColorRef = useRef(strokeColor);
+  const strokeWidthRef = useRef(strokeWidth);
+  
+  // Mettre à jour les refs quand les valeurs changent
+  useEffect(() => {
+    strokeColorRef.current = strokeColor;
+    strokeWidthRef.current = strokeWidth;
+  }, [strokeColor, strokeWidth]);
 
   useEffect(() => {
     if (photo) {
@@ -215,23 +225,23 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
       if (isDrawingLine || isDrawingArrow) {
         const pointer = event.pointer;
-        setStartPoint({ x: pointer.x, y: pointer.y });
-        setIsDragging(true);
+        startPointRef.current = { x: pointer.x, y: pointer.y };
+        isDraggingRef.current = true;
 
         if (isDrawingLine) {
           // Créer une ligne temporaire
           const line = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
+            stroke: strokeColorRef.current,
+            strokeWidth: strokeWidthRef.current,
             selectable: false,
           });
           fabricCanvas.add(line);
-          setCurrentLine(line);
+          currentLineRef.current = line;
         } else if (isDrawingArrow) {
           // Créer une flèche temporaire
           const line = new Line([0, 0, 0, 0], {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
+            stroke: strokeColorRef.current,
+            strokeWidth: strokeWidthRef.current,
             originX: "left",
             originY: "center",
           });
@@ -241,7 +251,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             top: 0,
             width: 15,
             height: 15,
-            fill: strokeColor,
+            fill: strokeColorRef.current,
             angle: 90,
             originX: "center",
             originY: "center",
@@ -257,51 +267,51 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           });
 
           fabricCanvas.add(arrowGroup);
-          setCurrentLine(arrowGroup);
+          currentLineRef.current = arrowGroup;
         }
         fabricCanvas.renderAll();
       }
     };
 
     const handleMouseMove = (event: any) => {
-      if (!isDragging || !startPoint || !currentLine || !event.pointer) return;
+      if (!isDraggingRef.current || !startPointRef.current || !currentLineRef.current || !event.pointer) return;
 
       const pointer = event.pointer;
 
-      if (isDrawingLine && currentLine instanceof Line) {
+      if (isDrawingLine && currentLineRef.current instanceof Line) {
         // Mettre à jour la ligne pendant le drag
-        currentLine.set({
+        currentLineRef.current.set({
           x2: pointer.x,
           y2: pointer.y,
         });
-      } else if (isDrawingArrow && currentLine instanceof Group) {
+      } else if (isDrawingArrow && currentLineRef.current instanceof Group) {
         // Calculer l'angle et la distance pour la flèche
-        const dx = pointer.x - startPoint.x;
-        const dy = pointer.y - startPoint.y;
+        const dx = pointer.x - startPointRef.current.x;
+        const dy = pointer.y - startPointRef.current.y;
         const angle = Math.atan2(dy, dx) * 180 / Math.PI;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        const objects = currentLine.getObjects();
+        const objects = currentLineRef.current.getObjects();
         const line = objects[0] as Line;
         const arrowHead = objects[1] as Triangle;
 
         line.set({ x2: distance, y2: 0 });
         arrowHead.set({ left: distance, top: 0 });
 
-        currentLine.set({
+        currentLineRef.current.set({
           angle: angle,
           dirty: true,
         });
-        currentLine.setCoords();
+        currentLineRef.current.setCoords();
       }
 
       fabricCanvas.renderAll();
     };
 
     const handleMouseUp = () => {
-      if (isDragging && currentLine) {
+      if (isDraggingRef.current && currentLineRef.current) {
         // Rendre la ligne/flèche sélectionnable et ajouter les contrôles
-        currentLine.set({
+        currentLineRef.current.set({
           selectable: true,
           hasControls: true,
           hasBorders: true,
@@ -309,8 +319,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         });
 
         // Pour les lignes, activer les contrôles aux extrémités
-        if (currentLine instanceof Line) {
-          currentLine.setControlsVisibility({
+        if (currentLineRef.current instanceof Line) {
+          currentLineRef.current.setControlsVisibility({
             mt: false,
             mb: false,
             ml: true,
@@ -319,14 +329,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           });
         }
 
-        fabricCanvas.setActiveObject(currentLine);
+        fabricCanvas.setActiveObject(currentLineRef.current);
         fabricCanvas.renderAll();
         saveToHistory();
 
         // Réinitialiser
-        setIsDragging(false);
-        setStartPoint(null);
-        setCurrentLine(null);
+        isDraggingRef.current = false;
+        startPointRef.current = null;
+        currentLineRef.current = null;
         setIsDrawingLine(false);
         setIsDrawingArrow(false);
         setActiveTool("select");
@@ -342,7 +352,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       fabricCanvas.off("mouse:move", handleMouseMove);
       fabricCanvas.off("mouse:up", handleMouseUp);
     };
-  }, [fabricCanvas, isDrawingLine, isDrawingArrow, strokeColor, strokeWidth]);
+  }, [fabricCanvas, isDrawingLine, isDrawingArrow]);
 
   // Gestionnaire pour la touche Suppr
   useEffect(() => {
@@ -419,9 +429,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     setActiveTool("arrow");
     setIsDrawingArrow(true);
     setIsDrawingLine(false);
-    setStartPoint(null);
-    setIsDragging(false);
-    setCurrentLine(null);
+    startPointRef.current = null;
+    isDraggingRef.current = false;
+    currentLineRef.current = null;
     toast.info("Cliquez et faites glisser pour dessiner la flèche");
   };
 
@@ -453,9 +463,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     setActiveTool("line");
     setIsDrawingLine(true);
     setIsDrawingArrow(false);
-    setStartPoint(null);
-    setIsDragging(false);
-    setCurrentLine(null);
+    startPointRef.current = null;
+    isDraggingRef.current = false;
+    currentLineRef.current = null;
     toast.info("Cliquez et faites glisser pour dessiner la ligne");
   };
 
