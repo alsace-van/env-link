@@ -442,7 +442,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         selectedItem = currentPath;
         selectedItem.selected = true;
 
-        if (selectedItem.segments.length === 2) {
+        if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
           createHandles(selectedItem);
         }
 

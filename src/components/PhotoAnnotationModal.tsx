@@ -1,5 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Canvas as FabricCanvas, FabricImage, Rect, Line, Triangle, Circle, Textbox, PencilBrush, Group } from "fabric";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   Square,
-  MousePointer,
   ArrowRight,
   Save,
   Pencil,
@@ -20,6 +18,7 @@ import {
   Redo,
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import paper from "paper";
 
 interface Photo {
   id: string;
@@ -36,11 +35,14 @@ interface PhotoAnnotationModalProps {
   onSave: () => void;
 }
 
+// Constantes pour le snapping
+const SNAP_ANGLE_THRESHOLD = 15;
+
 const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotationModalProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const fabricCanvasRef = useRef<FabricCanvas | null>(null);
-
+  const textInputRef = useRef<HTMLInputElement>(null);
+  
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
     "select",
   );
@@ -49,16 +51,29 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [isLoadingImage, setIsLoadingImage] = useState(true);
   const [strokeColor, setStrokeColor] = useState("#ef4444");
   const [strokeWidth, setStrokeWidth] = useState(3);
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
-  const [isDialogReady, setIsDialogReady] = useState(false);
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
+  const [editingTextItem, setEditingTextItem] = useState<paper.PointText | null>(null);
   
-  // Using refs to avoid re-renders that break canvas display
-  const isDrawingLineRef = useRef(false);
-  const isDrawingArrowRef = useRef(false);
-  const startPointRef = useRef<{ x: number; y: number } | null>(null);
+  // Refs pour éviter la réinitialisation
+  const activeToolRef = useRef(activeTool);
   const strokeColorRef = useRef(strokeColor);
   const strokeWidthRef = useRef(strokeWidth);
+  const backgroundRasterRef = useRef<paper.Raster | null>(null);
+
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+
+  useEffect(() => {
+    strokeColorRef.current = strokeColor;
+  }, [strokeColor]);
+
+  useEffect(() => {
+    strokeWidthRef.current = strokeWidth;
+  }, [strokeWidth]);
 
   useEffect(() => {
     if (photo) {
@@ -66,166 +81,31 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     }
   }, [photo]);
 
-  // Wait for Dialog portal to be fully mounted
-  useLayoutEffect(() => {
-    if (isOpen) {
-      setIsDialogReady(false);
-      // Wait for Dialog portal to mount
-      const timer = setTimeout(() => {
-        setIsDialogReady(true);
-      }, 100);
-      return () => clearTimeout(timer);
-    } else {
-      setIsDialogReady(false);
-    }
-  }, [isOpen]);
-
-  // Initialisation du canvas
+  // Gestion de la touche Suppr/Delete
   useEffect(() => {
-    if (!isOpen || !photo || !isDialogReady) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && !isEditingText) {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isEditingText]);
+
+  // Initialisation du canvas avec Paper.js
+  useEffect(() => {
+    if (!isOpen || !photo || !canvasRef.current || !containerRef.current) {
       return;
     }
 
     let mounted = true;
     let timeoutId: NodeJS.Timeout | null = null;
 
-    const handleMouseDown = (event: any) => {
-      const canvas = fabricCanvasRef.current;
-      if (!canvas) return;
-
-      // Get pointer coordinates using Fabric.js v6 API
-      const pointer = canvas.getPointer(event.e);
-      if (!pointer) return;
-
-      if (isDrawingLineRef.current || isDrawingArrowRef.current) {
-        if (!startPointRef.current) {
-          // First click: set start point
-          startPointRef.current = { x: pointer.x, y: pointer.y };
-          toast.info("Cliquez pour le point d'arrivée (Maj pour ligne droite)");
-        } else {
-          // Second click: draw line or arrow
-          let endX = pointer.x;
-          let endY = pointer.y;
-
-          // If Shift is pressed, constrain to horizontal or vertical
-          if (event.e.shiftKey) {
-            const dx = Math.abs(endX - startPointRef.current.x);
-            const dy = Math.abs(endY - startPointRef.current.y);
-            
-            if (dx > dy) {
-              // Horizontal line
-              endY = startPointRef.current.y;
-            } else {
-              // Vertical line
-              endX = startPointRef.current.x;
-            }
-          }
-
-          if (isDrawingLineRef.current) {
-            const line = new Line([startPointRef.current.x, startPointRef.current.y, endX, endY], {
-              stroke: strokeColorRef.current,
-              strokeWidth: strokeWidthRef.current,
-              strokeUniform: true,
-            });
-            
-            // Configure controls for line: only endpoints, no rotation handle
-            line.setControlsVisibility({
-              mtr: false, // rotation handle
-              ml: false, // middle left
-              mr: false, // middle right
-              mt: false, // middle top
-              mb: false, // middle bottom
-              tl: true, // top left (start point)
-              tr: false,
-              bl: false,
-              br: true, // bottom right (end point)
-            });
-            
-            canvas.add(line);
-            canvas.setActiveObject(line);
-          } else if (isDrawingArrowRef.current) {
-            const dx = endX - startPointRef.current.x;
-            const dy = endY - startPointRef.current.y;
-            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            const line = new Line([0, 0, distance, 0], {
-              stroke: strokeColorRef.current,
-              strokeWidth: strokeWidthRef.current,
-              strokeUniform: true,
-              originX: "left",
-              originY: "center",
-            });
-
-            const arrowHead = new Triangle({
-              left: distance,
-              top: 0,
-              width: 15,
-              height: 15,
-              fill: strokeColorRef.current,
-              angle: 90,
-              originX: "center",
-              originY: "center",
-            });
-
-            const arrowGroup = new Group([line, arrowHead], {
-              left: startPointRef.current.x,
-              top: startPointRef.current.y,
-              angle: angle,
-              originX: "left",
-              originY: "center",
-              strokeUniform: true,
-            });
-            
-            // Configure controls for arrow: only endpoints, no rotation handle
-            arrowGroup.setControlsVisibility({
-              mtr: false, // rotation handle
-              ml: false, // middle left
-              mr: false, // middle right
-              mt: false, // middle top
-              mb: false, // middle bottom
-              tl: true, // left endpoint
-              tr: false,
-              bl: false,
-              br: true, // right endpoint
-            });
-
-            canvas.add(arrowGroup);
-            canvas.setActiveObject(arrowGroup);
-          }
-
-          canvas.renderAll();
-          saveToHistory();
-
-          // Reset state
-          startPointRef.current = null;
-          isDrawingLineRef.current = false;
-          isDrawingArrowRef.current = false;
-          setActiveTool("select");
-        }
-      }
-    };
-
     const initCanvas = async () => {
-      // Check if refs are available and component is still mounted
-      if (!mounted) return;
-      
-      if (!canvasRef.current || !containerRef.current) {
-        console.log("Refs not ready yet, waiting...");
-        // Retry with backoff, max 5 attempts
-        const retryCount = (initCanvas as any).retryCount || 0;
-        if (retryCount < 5) {
-          (initCanvas as any).retryCount = retryCount + 1;
-          timeoutId = setTimeout(initCanvas, 150);
-        } else {
-          console.error("Failed to initialize canvas: refs not available after multiple retries");
-          setIsLoadingImage(false);
-        }
-        return;
-      }
+      if (!mounted || !canvasRef.current || !containerRef.current) return;
 
-      if (!mounted) return;
-      
       setIsLoadingImage(true);
       console.log("Starting canvas initialization...");
 
@@ -233,41 +113,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const container = containerRef.current;
         const canvasElement = canvasRef.current;
 
-        console.log("Container dimensions:", {
-          width: container.clientWidth,
-          height: container.clientHeight,
-        });
-
-        // Nettoyer le canvas existant s'il y en a un
-        if (fabricCanvasRef.current) {
-          fabricCanvasRef.current.dispose();
-          fabricCanvasRef.current = null;
-        }
+        // Setup Paper.js
+        paper.setup(canvasElement);
 
         const containerWidth = container.clientWidth || 800;
         const containerHeight = container.clientHeight || 600;
 
-        console.log("Creating canvas with dimensions:", {
-          width: containerWidth,
-          height: containerHeight,
-        });
-
-        // Créer le nouveau canvas
-        const newCanvas = new FabricCanvas(canvasElement, {
-          width: containerWidth,
-          height: containerHeight,
-          backgroundColor: "#f5f5f5",
-        });
-
-        if (!mounted) {
-          newCanvas.dispose();
-          return;
-        }
-
-        fabricCanvasRef.current = newCanvas;
-
-        // Attacher le gestionnaire d'événements pour les lignes et flèches
-        newCanvas.on("mouse:down", handleMouseDown);
+        // Redimensionner le canvas
+        paper.view.viewSize = new paper.Size(containerWidth, containerHeight);
 
         console.log("Canvas initialized, loading image from:", photo.url);
 
@@ -289,137 +142,453 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         console.log("Loading image from URL:", imageUrl);
 
-        // Charger l'image
-        const fabricImg = await FabricImage.fromURL(imageUrl, {
-          crossOrigin: "anonymous",
-        });
+        // Charger l'image avec Paper.js
+        const raster = new paper.Raster(imageUrl);
+        
+        raster.onLoad = () => {
+          if (!mounted) {
+            raster.remove();
+            return;
+          }
 
-        if (!mounted || !fabricCanvasRef.current) {
-          console.log("Canvas unmounted during image load");
-          return;
-        }
+          console.log("Image loaded successfully:", {
+            width: raster.width,
+            height: raster.height,
+          });
 
-        if (!fabricImg || !fabricImg.width || !fabricImg.height) {
-          console.error("Invalid image loaded:", fabricImg);
+          // Adapter l'image au canvas
+          const scale = Math.min(
+            (paper.view.viewSize.width - 40) / raster.width,
+            (paper.view.viewSize.height - 40) / raster.height,
+            1,
+          );
+
+          raster.scale(scale);
+          raster.position = paper.view.center;
+          raster.locked = true; // Verrouiller l'image de fond
+
+          backgroundRasterRef.current = raster;
+
+          console.log("Canvas rendered with image");
+
+          if (mounted) {
+            setIsLoadingImage(false);
+            saveToHistory();
+          }
+
+          // Charger les annotations sauvegardées
+          if (photo.annotations && mounted) {
+            try {
+              console.log("Loading saved annotations");
+              paper.project.importJSON(photo.annotations);
+              
+              // Verrouiller l'image de fond après import
+              paper.project.activeLayer.children.forEach((item) => {
+                if (item instanceof paper.Raster) {
+                  item.locked = true;
+                }
+              });
+              
+              paper.view.update();
+              console.log("Annotations loaded successfully");
+            } catch (error) {
+              console.error("Error loading annotations:", error);
+            }
+          }
+        };
+
+        raster.onError = () => {
+          console.error("Error loading image");
           if (mounted) {
             toast.error("Erreur lors du chargement de l'image");
             setIsLoadingImage(false);
           }
-          return;
-        }
+        };
 
-        console.log("Image loaded successfully:", {
-          width: fabricImg.width,
-          height: fabricImg.height,
-        });
+        // Variables pour le dessin
+        let currentPath: paper.Path | null = null;
+        let selectedItem: paper.Item | null = null;
+        let handles: paper.Path.Circle[] = [];
+        let draggedHandle: paper.Path.Circle | null = null;
+        let lastClickTime = 0;
+        let lastClickItem: paper.Item | null = null;
 
-        // Adapter l'image au canvas
-        const scale = Math.min(
-          (newCanvas.width! - 40) / fabricImg.width,
-          (newCanvas.height! - 40) / fabricImg.height,
-          1,
-        );
+        // Fonction pour créer des poignées
+        const createHandles = (item: paper.Item) => {
+          // Supprimer les anciennes poignées
+          handles.forEach((h) => h.remove());
+          handles = [];
 
-        console.log("Image scale:", scale);
+          if (item instanceof paper.Path && item.segments.length === 2) {
+            // Poignées pour les lignes/flèches
+            item.segments.forEach((segment, index) => {
+              const handle = new paper.Path.Circle({
+                center: segment.point,
+                radius: 5,
+                fillColor: item.strokeColor,
+                strokeColor: new paper.Color("white"),
+                strokeWidth: 2,
+              });
+              handle.data.isHandle = true;
+              handle.data.segmentIndex = index;
+              handle.data.parentPath = item;
+              handle.data.handleType = "line";
+              handles.push(handle);
+            });
+          } else if (item instanceof paper.Path || item instanceof paper.Shape) {
+            // Poignées pour les rectangles et cercles
+            const bounds = item.bounds;
+            const corners = [bounds.topLeft, bounds.topRight, bounds.bottomRight, bounds.bottomLeft];
 
-        fabricImg.scale(scale);
-        fabricImg.set({
-          left: (newCanvas.width! - fabricImg.width * scale) / 2,
-          top: (newCanvas.height! - fabricImg.height * scale) / 2,
-          selectable: false,
-          evented: false,
-          hasControls: false,
-          hasBorders: false,
-          lockMovementX: true,
-          lockMovementY: true,
-        });
-
-        newCanvas.add(fabricImg);
-        newCanvas.sendObjectToBack(fabricImg);
-        newCanvas.renderAll();
-
-        console.log("Canvas rendered with image");
-
-        if (mounted) {
-          setIsLoadingImage(false);
-        }
-
-        // Charger les annotations sauvegardées
-        if (photo.annotations && photo.annotations.objects && mounted) {
-          try {
-            const annotationObjects = photo.annotations.objects.filter((obj: any) => obj.type !== "image");
-
-            if (annotationObjects.length > 0) {
-              console.log("Loading annotations:", annotationObjects.length);
-              for (const objData of annotationObjects) {
-                if (!mounted || !fabricCanvasRef.current) break;
-
-                try {
-                  if (objData.type === "rect") {
-                    const rect = new Rect(objData);
-                    newCanvas.add(rect);
-                  } else if (objData.type === "circle") {
-                    const circle = new Circle(objData);
-                    newCanvas.add(circle);
-                  } else if (objData.type === "line") {
-                    const line = new Line(objData.points, objData);
-                    // Configure controls for loaded lines
-                    line.setControlsVisibility({
-                      mtr: false,
-                      ml: false,
-                      mr: false,
-                      mt: false,
-                      mb: false,
-                      tl: true,
-                      tr: false,
-                      bl: false,
-                      br: true,
-                    });
-                    newCanvas.add(line);
-                  } else if (objData.type === "triangle") {
-                    const triangle = new Triangle(objData);
-                    newCanvas.add(triangle);
-                  } else if (objData.type === "textbox" || objData.type === "text") {
-                    const text = new Textbox(objData.text || "", objData);
-                    newCanvas.add(text);
-                  } else if (objData.type === "group") {
-                    const group = await Group.fromObject(objData);
-                    if (mounted && fabricCanvasRef.current) {
-                      // Configure controls for loaded groups (arrows)
-                      group.setControlsVisibility({
-                        mtr: false,
-                        ml: false,
-                        mr: false,
-                        mt: false,
-                        mb: false,
-                        tl: true,
-                        tr: false,
-                        bl: false,
-                        br: true,
-                      });
-                      newCanvas.add(group);
-                    }
-                  } else if (objData.type === "path") {
-                    const { Path } = await import("fabric");
-                    const path = await Path.fromObject(objData);
-                    if (mounted && fabricCanvasRef.current) {
-                      newCanvas.add(path);
-                    }
-                  }
-                } catch (err) {
-                  console.error("Error loading individual annotation:", err);
-                }
-              }
-
-              if (mounted && fabricCanvasRef.current) {
-                newCanvas.renderAll();
-                console.log("Annotations loaded successfully");
-              }
-            }
-          } catch (error) {
-            console.error("Error loading annotations:", error);
+            corners.forEach((corner, index) => {
+              const handle = new paper.Path.Circle({
+                center: corner,
+                radius: 6,
+                fillColor: new paper.Color("#2196F3"),
+                strokeColor: new paper.Color("white"),
+                strokeWidth: 2,
+              });
+              handle.data.isHandle = true;
+              handle.data.cornerIndex = index;
+              handle.data.parentItem = item;
+              handle.data.handleType = "corner";
+              handles.push(handle);
+            });
           }
-        }
+        };
+
+        // Fonction pour mettre à jour les poignées
+        const updateHandles = (item: paper.Item) => {
+          if (item instanceof paper.Path && item.segments.length === 2 && handles.length === 2) {
+            // Poignées de ligne
+            handles[0].position = item.segments[0].point;
+            handles[1].position = item.segments[1].point;
+          } else if (handles.length === 4 && (item instanceof paper.Path || item instanceof paper.Shape)) {
+            // Poignées de rectangle/cercle
+            const bounds = item.bounds;
+            handles[0].position = bounds.topLeft;
+            handles[1].position = bounds.topRight;
+            handles[2].position = bounds.bottomRight;
+            handles[3].position = bounds.bottomLeft;
+          }
+        };
+
+        // Fonction pour supprimer les poignées
+        const removeHandles = () => {
+          handles.forEach((h) => h.remove());
+          handles = [];
+        };
+
+        // Fonction pour snapper horizontal/vertical
+        const snapToHV = (from: paper.Point, to: paper.Point): paper.Point => {
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const angle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
+
+          if (angle < SNAP_ANGLE_THRESHOLD || angle > 180 - SNAP_ANGLE_THRESHOLD) {
+            return new paper.Point(to.x, from.y);
+          }
+          if (Math.abs(angle - 90) < SNAP_ANGLE_THRESHOLD) {
+            return new paper.Point(from.x, to.y);
+          }
+          return to;
+        };
+
+        // Fonction pour créer une tête de flèche
+        const createArrowHead = (path: paper.Path): paper.Path => {
+          if (path.segments.length < 2) return path;
+
+          const lastPoint = path.segments[1].point;
+          const firstPoint = path.segments[0].point;
+          const vector = lastPoint.subtract(firstPoint);
+          const angle = vector.angle;
+          const headLength = 15;
+
+          const arrowHead = new paper.Path([
+            lastPoint.add(new paper.Point({ angle: angle + 150, length: headLength })),
+            lastPoint,
+            lastPoint.add(new paper.Point({ angle: angle - 150, length: headLength })),
+          ]);
+
+          arrowHead.strokeColor = path.strokeColor;
+          arrowHead.strokeWidth = path.strokeWidth;
+          arrowHead.fillColor = path.strokeColor;
+          arrowHead.closed = true;
+          arrowHead.data.isArrowHead = true;
+          arrowHead.data.parentId = path.id;
+
+          return arrowHead;
+        };
+
+        // Fonction pour mettre à jour la tête de flèche
+        const updateArrowHead = (path: paper.Path) => {
+          if (path.segments.length < 2) return;
+
+          // Trouver et supprimer l'ancienne tête
+          paper.project.activeLayer.children.forEach((item) => {
+            if (item.data.isArrowHead && item.data.parentId === path.id) {
+              item.remove();
+            }
+          });
+
+          // Créer une nouvelle tête
+          createArrowHead(path);
+        };
+
+        // Créer le tool
+        const tool = new paper.Tool();
+
+        tool.onMouseDown = (event: paper.ToolEvent) => {
+          console.log("Mouse down", activeToolRef.current, event.point);
+
+          // Vérifier si on clique sur une poignée
+          const hitHandle = handles.find((h) => h.contains(event.point));
+          if (hitHandle) {
+            draggedHandle = hitHandle;
+            return;
+          }
+
+          // Vérifier si on clique sur un objet
+          const hitResult = paper.project.activeLayer.hitTest(event.point, {
+            fill: true,
+            stroke: true,
+            tolerance: 5,
+          });
+
+          // Détecter le double-clic manuellement
+          const currentTime = Date.now();
+          const isDoubleClick = hitResult && lastClickItem === hitResult.item && currentTime - lastClickTime < 300;
+
+          lastClickTime = currentTime;
+          lastClickItem = hitResult?.item || null;
+
+          // Double-clic sur un texte = édition
+          if (isDoubleClick && hitResult && hitResult.item instanceof paper.PointText) {
+            const textItem = hitResult.item;
+            const canvasRect = canvasRef.current?.getBoundingClientRect();
+            if (canvasRect) {
+              setTextInputPosition({ x: textItem.point.x, y: textItem.point.y });
+              setEditingTextItem(textItem);
+              setIsEditingText(true);
+
+              setTimeout(() => {
+                if (textInputRef.current) {
+                  textInputRef.current.value = textItem.content;
+                  textInputRef.current.focus();
+                  textInputRef.current.select();
+                }
+              }, 0);
+            }
+            return;
+          }
+
+          if (activeToolRef.current === "select") {
+            // Désélectionner l'ancien
+            if (selectedItem) {
+              selectedItem.selected = false;
+            }
+            removeHandles();
+
+            // Sélectionner le nouveau (sauf les poignées, têtes de flèches et image de fond)
+            if (hitResult && !hitResult.item.data.isHandle && !hitResult.item.data.isArrowHead && !hitResult.item.locked) {
+              selectedItem = hitResult.item;
+              selectedItem.selected = true;
+
+              // Créer des poignées pour les lignes/flèches
+              if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
+                createHandles(selectedItem);
+              }
+              // Créer des poignées pour les rectangles et cercles
+              else if (selectedItem instanceof paper.Path || selectedItem instanceof paper.Shape) {
+                createHandles(selectedItem);
+              }
+            } else {
+              selectedItem = null;
+            }
+          } else if (activeToolRef.current === "text") {
+            // Mode texte : créer un input temporaire
+            const canvasRect = canvasRef.current?.getBoundingClientRect();
+            if (canvasRect) {
+              setTextInputPosition({ x: event.point.x, y: event.point.y });
+              setEditingTextItem(null);
+              setIsEditingText(true);
+
+              setTimeout(() => {
+                textInputRef.current?.focus();
+              }, 0);
+            }
+          } else if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
+            currentPath = new paper.Path({
+              segments: [event.point, event.point],
+              strokeColor: new paper.Color(strokeColorRef.current),
+              strokeWidth: strokeWidthRef.current,
+              strokeCap: "round",
+            });
+            currentPath.data.type = activeToolRef.current;
+            console.log("Created path", currentPath);
+          } else if (activeToolRef.current === "draw") {
+            currentPath = new paper.Path({
+              strokeColor: new paper.Color(strokeColorRef.current),
+              strokeWidth: strokeWidthRef.current,
+              strokeCap: "round",
+              strokeJoin: "round",
+            });
+            currentPath.add(event.point);
+          } else if (activeToolRef.current === "rectangle") {
+            currentPath = new paper.Path.Rectangle({
+              from: event.point,
+              to: event.point,
+              strokeColor: new paper.Color(strokeColorRef.current),
+              strokeWidth: strokeWidthRef.current,
+            });
+          } else if (activeToolRef.current === "circle") {
+            currentPath = new paper.Path.Circle({
+              center: event.point,
+              radius: 0.1,
+              strokeColor: new paper.Color(strokeColorRef.current),
+              strokeWidth: strokeWidthRef.current,
+            });
+            currentPath.data.startPoint = event.point;
+          }
+        };
+
+        tool.onMouseDrag = (event: paper.ToolEvent) => {
+          // Déplacer une poignée
+          if (draggedHandle) {
+            if (draggedHandle.data.handleType === "line" && draggedHandle.data.parentPath) {
+              // Poignée de ligne/flèche
+              const path = draggedHandle.data.parentPath as paper.Path;
+              const index = draggedHandle.data.segmentIndex;
+
+              let newPoint = event.point;
+
+              // Snapping horizontal/vertical
+              if (!event.modifiers.shift) {
+                const otherIndex = index === 0 ? 1 : 0;
+                newPoint = snapToHV(path.segments[otherIndex].point, newPoint);
+              }
+
+              path.segments[index].point = newPoint;
+
+              // Mettre à jour la tête de flèche si nécessaire
+              if (path.data.type === "arrow") {
+                updateArrowHead(path);
+              }
+
+              updateHandles(path);
+            } else if (draggedHandle.data.handleType === "corner" && draggedHandle.data.parentItem) {
+              // Poignée de rectangle/cercle
+              const item = draggedHandle.data.parentItem;
+              const cornerIndex = draggedHandle.data.cornerIndex;
+              const bounds = item.bounds;
+
+              // Calculer les nouvelles dimensions selon le coin déplacé
+              let newBounds;
+              if (cornerIndex === 0) {
+                newBounds = new paper.Rectangle(event.point, bounds.bottomRight);
+              } else if (cornerIndex === 1) {
+                newBounds = new paper.Rectangle(
+                  new paper.Point(bounds.left, event.point.y),
+                  new paper.Point(event.point.x, bounds.bottom),
+                );
+              } else if (cornerIndex === 2) {
+                newBounds = new paper.Rectangle(bounds.topLeft, event.point);
+              } else {
+                newBounds = new paper.Rectangle(
+                  new paper.Point(event.point.x, bounds.top),
+                  new paper.Point(bounds.right, event.point.y),
+                );
+              }
+
+              // Appliquer les nouvelles dimensions
+              if (item instanceof paper.Shape.Circle) {
+                const width = Math.abs(newBounds.width);
+                const height = Math.abs(newBounds.height);
+                const size = Math.max(width, height);
+                const squareBounds = new paper.Rectangle(
+                  newBounds.center.subtract(new paper.Point(size / 2, size / 2)),
+                  new paper.Size(size, size),
+                );
+                item.bounds = squareBounds;
+              } else {
+                item.bounds = newBounds;
+              }
+
+              updateHandles(item);
+            }
+            return;
+          }
+
+          // Dessiner
+          if (currentPath) {
+            if (activeToolRef.current === "draw") {
+              currentPath.add(event.point);
+            } else if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
+              let newPoint = event.point;
+
+              // Snapping
+              if (!event.modifiers.shift) {
+                newPoint = snapToHV(currentPath.segments[0].point, newPoint);
+              }
+
+              currentPath.segments[1].point = newPoint;
+            } else if (activeToolRef.current === "rectangle" && currentPath instanceof paper.Path) {
+              const rect = currentPath as paper.Path;
+              const start = rect.segments[0].point;
+              const bounds = new paper.Rectangle(start, event.point);
+              rect.bounds = bounds;
+            } else if (activeToolRef.current === "circle" && currentPath instanceof paper.Path.Circle) {
+              const startPoint = currentPath.data.startPoint;
+              const radius = startPoint.getDistance(event.point);
+              (currentPath as any).radius = radius;
+            }
+          }
+
+          // Déplacer un objet sélectionné
+          if (selectedItem && activeToolRef.current === "select" && !draggedHandle) {
+            selectedItem.position = selectedItem.position.add(event.delta);
+
+            // Mettre à jour la tête de flèche si c'est une flèche
+            if (selectedItem instanceof paper.Path && selectedItem.data.type === "arrow") {
+              updateArrowHead(selectedItem);
+            }
+
+            updateHandles(selectedItem);
+          }
+        };
+
+        tool.onMouseUp = (event: paper.ToolEvent) => {
+          console.log("Mouse up", currentPath);
+
+          draggedHandle = null;
+
+          if (currentPath) {
+            if (activeToolRef.current === "draw") {
+              currentPath.simplify(10);
+            } else if (activeToolRef.current === "arrow") {
+              createArrowHead(currentPath);
+            }
+
+            // Sélectionner le path créé
+            if (selectedItem) {
+              selectedItem.selected = false;
+            }
+            removeHandles();
+
+            selectedItem = currentPath;
+            selectedItem.selected = true;
+
+            if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
+              createHandles(selectedItem);
+            }
+
+            currentPath = null;
+            saveToHistory();
+
+            console.log("Active layer children:", paper.project.activeLayer.children.length);
+          }
+        };
+
       } catch (error) {
         console.error("Failed to initialize canvas:", error);
         if (mounted) {
@@ -429,335 +598,187 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
     };
 
-    setHistory([]);
-    setHistoryStep(-1);
-    
-    // Reset retry counter
-    (initCanvas as any).retryCount = 0;
-    
-    // Start initialization immediately since Dialog is ready
     timeoutId = setTimeout(initCanvas, 50);
 
     return () => {
       mounted = false;
       
-      // Clear any pending timeout
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
 
-      if (fabricCanvasRef.current) {
-        try {
-          fabricCanvasRef.current.off("mouse:down", handleMouseDown);
-          fabricCanvasRef.current.dispose();
-        } catch (e) {
-          console.error("Error disposing canvas:", e);
-        }
-        fabricCanvasRef.current = null;
+      if (paper.project) {
+        paper.project.clear();
       }
     };
-  }, [isOpen, photo, isDialogReady]);
-
-  // Update refs when state changes
-  useEffect(() => {
-    strokeColorRef.current = strokeColor;
-    strokeWidthRef.current = strokeWidth;
-  }, [strokeColor, strokeWidth]);
-
-  // Gestion des outils
-  useEffect(() => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    canvas.isDrawingMode = activeTool === "draw";
-    canvas.selection = activeTool === "select";
-
-    if (activeTool === "draw") {
-      const brush = new PencilBrush(canvas);
-      brush.color = strokeColor;
-      brush.width = strokeWidth;
-      canvas.freeDrawingBrush = brush;
-    }
-
-    canvas.forEachObject((obj) => {
-      if (obj.type !== "image") {
-        obj.selectable = activeTool === "select";
-        obj.evented = activeTool === "select";
-      }
-    });
-
-    canvas.renderAll();
-  }, [activeTool, strokeColor, strokeWidth]);
-
-
-  // Gestionnaire clavier
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Delete" || event.key === "Backspace") {
-        const target = event.target as HTMLElement;
-        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
-          event.preventDefault();
-          deleteSelected();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isOpen, photo]);
 
   const saveToHistory = () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    const json = canvas.toJSON();
-    const newHistory = history.slice(0, historyStep + 1);
-    newHistory.push(json);
-    setHistory(newHistory);
-    setHistoryStep(newHistory.length - 1);
+    if (!paper.project) return;
+    
+    const json = paper.project.exportJSON();
+    setHistory((prev) => {
+      const newHistory = prev.slice(0, historyStep + 1);
+      newHistory.push(json);
+      return newHistory;
+    });
+    setHistoryStep((prev) => prev + 1);
   };
 
   const handleUndo = () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas || historyStep <= 0) return;
-
-    const previousState = history[historyStep - 1];
-    setHistoryStep(historyStep - 1);
-
-    canvas.loadFromJSON(previousState).then(() => {
-      canvas.renderAll();
-    });
+    if (historyStep > 0) {
+      const newStep = historyStep - 1;
+      setHistoryStep(newStep);
+      paper.project.clear();
+      paper.project.importJSON(history[newStep]);
+      paper.view.update();
+    }
   };
 
   const handleRedo = () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas || historyStep >= history.length - 1) return;
-
-    const nextState = history[historyStep + 1];
-    setHistoryStep(historyStep + 1);
-
-    canvas.loadFromJSON(nextState).then(() => {
-      canvas.renderAll();
-    });
+    if (historyStep < history.length - 1) {
+      const newStep = historyStep + 1;
+      setHistoryStep(newStep);
+      paper.project.clear();
+      paper.project.importJSON(history[newStep]);
+      paper.view.update();
+    }
   };
 
-  const addRectangle = () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
+  const handleTextSubmit = () => {
+    if (!textInputRef.current || !paper.project) return;
 
-    setActiveTool("rectangle");
+    const text = textInputRef.current.value.trim();
 
-    const rect = new Rect({
-      left: 100,
-      top: 100,
-      width: 100,
-      height: 100,
-      fill: "transparent",
-      stroke: strokeColor,
-      strokeWidth: strokeWidth,
-    });
-
-    canvas.add(rect);
-    canvas.setActiveObject(rect);
-    canvas.renderAll();
-    saveToHistory();
-
-    setTimeout(() => setActiveTool("select"), 100);
-  };
-
-  const addArrow = () => {
-    if (!fabricCanvasRef.current) return;
-
-    setActiveTool("arrow");
-    isDrawingArrowRef.current = true;
-    isDrawingLineRef.current = false;
-    startPointRef.current = null;
-    toast.info("Cliquez pour le point de départ, puis pour le point d'arrivée");
-  };
-
-  const addCircle = () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    setActiveTool("circle");
-
-    const circle = new Circle({
-      left: 100,
-      top: 100,
-      radius: 50,
-      fill: "transparent",
-      stroke: strokeColor,
-      strokeWidth: strokeWidth,
-    });
-
-    canvas.add(circle);
-    canvas.setActiveObject(circle);
-    canvas.renderAll();
-    saveToHistory();
-
-    setTimeout(() => setActiveTool("select"), 100);
-  };
-
-  const addLine = () => {
-    if (!fabricCanvasRef.current) return;
-
-    setActiveTool("line");
-    isDrawingLineRef.current = true;
-    isDrawingArrowRef.current = false;
-    startPointRef.current = null;
-    toast.info("Cliquez pour le point de départ, puis pour le point d'arrivée");
-  };
-
-  const addText = () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    setActiveTool("text");
-
-    const text = new Textbox("Texte", {
-      left: 100,
-      top: 100,
-      fontSize: 20,
-      fill: strokeColor,
-      width: 200,
-    });
-
-    canvas.add(text);
-    canvas.setActiveObject(text);
-    canvas.renderAll();
-    saveToHistory();
-
-    setTimeout(() => setActiveTool("select"), 100);
-  };
-
-  const deleteSelected = () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    const activeObjects = canvas.getActiveObjects();
-    if (activeObjects.length > 0) {
-      activeObjects.forEach((obj) => {
-        if (obj.type !== "image") {
-          canvas.remove(obj);
-        }
-      });
-      canvas.discardActiveObject();
+    if (text) {
+      if (editingTextItem) {
+        editingTextItem.content = text;
+      } else {
+        new paper.PointText({
+          point: [textInputPosition.x, textInputPosition.y],
+          content: text,
+          fillColor: new paper.Color(strokeColorRef.current),
+          fontSize: 20,
+        });
+      }
       saveToHistory();
-      canvas.renderAll();
+    } else if (editingTextItem && !text) {
+      editingTextItem.remove();
+      saveToHistory();
+    }
+
+    setIsEditingText(false);
+    setEditingTextItem(null);
+  };
+
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleTextSubmit();
+    } else if (e.key === "Escape") {
+      setIsEditingText(false);
+      setEditingTextItem(null);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!paper.project) return;
+
+    const selectedItems = paper.project.activeLayer.children.filter((item) => item.selected && !item.locked);
+    
+    if (selectedItems.length > 0) {
+      selectedItems.forEach((item) => {
+        // Supprimer aussi les têtes de flèches associées
+        if (item instanceof paper.Path && item.data.type === "arrow") {
+          paper.project.activeLayer.children.forEach((child) => {
+            if (child.data.isArrowHead && child.data.parentId === item.id) {
+              child.remove();
+            }
+          });
+        }
+        item.remove();
+      });
+      saveToHistory();
+      toast.success("Élément supprimé");
     }
   };
 
   const handleSave = async () => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas || !photo) return;
+    if (!photo || !paper.project) return;
 
     setIsSaving(true);
 
     try {
-      const annotations = canvas.toJSON();
+      // Exporter les annotations
+      const annotationsJSON = paper.project.exportJSON();
 
+      // Sauvegarder les annotations et le commentaire
       const { error } = await supabase
         .from("project_photos")
         .update({
-          annotations: annotations,
-          comment: comment,
+          annotations: annotationsJSON,
+          comment: comment.trim() || null,
         })
         .eq("id", photo.id);
 
-      if (error) {
-        toast.error("Erreur lors de la sauvegarde");
-        console.error(error);
-        return;
-      }
+      if (error) throw error;
 
-      toast.success("Annotations sauvegardées !");
+      toast.success("Annotations sauvegardées");
       onSave();
       onClose();
     } catch (error) {
-      console.error(error);
+      console.error("Error saving annotations:", error);
       toast.error("Erreur lors de la sauvegarde");
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (!photo) return null;
+  const tools = [
+    { name: "select", icon: null, label: "Sélection" },
+    { name: "draw", icon: Pencil, label: "Dessin libre" },
+    { name: "line", icon: Minus, label: "Ligne" },
+    { name: "arrow", icon: ArrowRight, label: "Flèche" },
+    { name: "rectangle", icon: Square, label: "Rectangle" },
+    { name: "circle", icon: CircleIcon, label: "Cercle" },
+    { name: "text", icon: Type, label: "Texte" },
+  ] as const;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent key={photo?.id} className="max-w-[95vw] h-[90vh] flex flex-col p-6">
-        <DialogHeader>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[95vw] h-[95vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle>Annoter la photo</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
-          <div className="flex-1 flex flex-col gap-3">
-            <div className="flex flex-wrap gap-2 items-center">
-              <Button
-                variant={activeTool === "select" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTool("select")}
-              >
-                <MousePointer className="h-4 w-4 mr-1" />
-                Sélectionner
-              </Button>
-              <Button
-                variant={activeTool === "draw" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTool("draw")}
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                Crayon
-              </Button>
-              <Button variant={activeTool === "rectangle" ? "default" : "outline"} size="sm" onClick={addRectangle}>
-                <Square className="h-4 w-4 mr-1" />
-                Rectangle
-              </Button>
-              <Button variant={activeTool === "circle" ? "default" : "outline"} size="sm" onClick={addCircle}>
-                <CircleIcon className="h-4 w-4 mr-1" />
-                Cercle
-              </Button>
-              <Button variant={activeTool === "line" ? "default" : "outline"} size="sm" onClick={addLine}>
-                <Minus className="h-4 w-4 mr-1" />
-                Ligne
-              </Button>
-              <Button variant={activeTool === "arrow" ? "default" : "outline"} size="sm" onClick={addArrow}>
-                <ArrowRight className="h-4 w-4 mr-1" />
-                Flèche
-              </Button>
-              <Button variant={activeTool === "text" ? "default" : "outline"} size="sm" onClick={addText}>
-                <Type className="h-4 w-4 mr-1" />
-                Texte
-              </Button>
-
-              <Separator orientation="vertical" className="h-8" />
-
-              <Button variant="outline" size="sm" onClick={deleteSelected}>
-                <Trash2 className="h-4 w-4 mr-1" />
-                Supprimer
-              </Button>
-
-              <Button variant="outline" size="sm" onClick={handleUndo} disabled={historyStep <= 0}>
-                <Undo className="h-4 w-4" />
-              </Button>
-
-              <Button variant="outline" size="sm" onClick={handleRedo} disabled={historyStep >= history.length - 1}>
-                <Redo className="h-4 w-4" />
-              </Button>
+        <div className="flex-1 flex flex-col px-6 pb-6 gap-4 overflow-hidden">
+          {/* Toolbar */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
+              {tools.map((tool) => (
+                <Button
+                  key={tool.name}
+                  variant={activeTool === tool.name ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTool(tool.name as any)}
+                  className="h-8 w-8 p-0"
+                  title={tool.label}
+                >
+                  {tool.icon && <tool.icon className="h-4 w-4" />}
+                  {tool.name === "select" && "↖"}
+                </Button>
+              ))}
             </div>
 
-            <div className="flex gap-2 items-center">
-              <Label className="text-sm">Couleur:</Label>
+            <Separator orientation="vertical" className="h-8" />
+
+            <div className="flex items-center gap-2">
               <input
                 type="color"
                 value={strokeColor}
                 onChange={(e) => setStrokeColor(e.target.value)}
-                className="w-10 h-8 rounded border cursor-pointer"
+                className="h-8 w-12 rounded cursor-pointer"
+                title="Couleur"
               />
-
-              <Separator orientation="vertical" className="h-8 mx-2" />
-
-              <Label className="text-sm">Épaisseur:</Label>
               <input
                 type="range"
                 min="1"
@@ -765,47 +786,95 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 value={strokeWidth}
                 onChange={(e) => setStrokeWidth(Number(e.target.value))}
                 className="w-24"
+                title={`Épaisseur: ${strokeWidth}px`}
               />
-              <span className="text-sm text-muted-foreground">{strokeWidth}px</span>
             </div>
 
-            <div
-              ref={containerRef}
-              className="flex-1 border rounded-lg overflow-auto bg-muted flex items-center justify-center min-h-0 relative"
+            <Separator orientation="vertical" className="h-8" />
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleUndo}
+              disabled={historyStep <= 0}
+              className="h-8 w-8 p-0"
+              title="Annuler"
             >
-              {isLoadingImage && (
-                <div className="absolute inset-0 flex items-center justify-center bg-muted/80 z-10">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-2"></div>
-                    <p className="text-sm text-muted-foreground">Chargement de l'image...</p>
-                  </div>
-                </div>
-              )}
-              <canvas ref={canvasRef} />
-            </div>
+              <Undo className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRedo}
+              disabled={historyStep >= history.length - 1}
+              className="h-8 w-8 p-0"
+              title="Rétablir"
+            >
+              <Redo className="h-4 w-4" />
+            </Button>
+
+            <Separator orientation="vertical" className="h-8" />
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDelete}
+              className="h-8 w-8 p-0"
+              title="Supprimer (Suppr)"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </div>
 
-          <div className="w-80 flex flex-col gap-4">
-            <div className="flex-1 flex flex-col gap-2">
-              <Label htmlFor="comment">Commentaire</Label>
-              <Textarea
-                id="comment"
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Ajoutez un commentaire sur cette photo..."
-                className="flex-1 resize-none"
+          {/* Canvas Container */}
+          <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden">
+            {isLoadingImage && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-muted-foreground">Chargement...</div>
+              </div>
+            )}
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0"
+              style={{ cursor: activeTool === "select" ? "default" : "crosshair" }}
+            />
+            {isEditingText && (
+              <input
+                ref={textInputRef}
+                type="text"
+                className="absolute border-2 border-primary bg-background px-2 py-1 rounded"
+                style={{
+                  left: `${textInputPosition.x}px`,
+                  top: `${textInputPosition.y}px`,
+                }}
+                onBlur={handleTextSubmit}
+                onKeyDown={handleTextKeyDown}
+                autoFocus
               />
-            </div>
+            )}
+          </div>
 
-            <Button onClick={handleSave} disabled={isSaving || isLoadingImage} className="w-full">
-              {isSaving ? (
-                "Sauvegarde..."
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Sauvegarder
-                </>
-              )}
+          {/* Comment Section */}
+          <div className="space-y-2">
+            <Label htmlFor="comment">Commentaire</Label>
+            <Textarea
+              id="comment"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Ajoutez un commentaire sur cette photo..."
+              className="resize-none"
+              rows={3}
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose} disabled={isSaving}>
+              Annuler
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving}>
+              <Save className="h-4 w-4 mr-2" />
+              {isSaving ? "Sauvegarde..." : "Sauvegarder"}
             </Button>
           </div>
         </div>
