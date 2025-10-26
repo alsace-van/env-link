@@ -3,27 +3,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Trash2, ExternalLink, Edit, Plus, FileDown, FileUp, Zap, Plug, FileText, Link as LinkIcon } from "lucide-react";
+import {
+  Search,
+  Trash2,
+  ExternalLink,
+  Edit,
+  Plus,
+  FileDown,
+  FileUp,
+  Zap,
+  Plug,
+  FileText,
+  Link as LinkIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
 import CategoryFilterSidebar from "./CategoryFilterSidebar";
 import AccessoryImportExportDialog from "./AccessoryImportExportDialog";
 import { NoticeUploadDialog } from "./NoticeUploadDialog";
 import { NoticeSearchDialog } from "./NoticeSearchDialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -97,18 +97,15 @@ const AccessoriesCatalogView = () => {
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
   const loadCategories = async () => {
-    const { data, error } = await supabase
-      .from("categories")
-      .select("*")
-      .order("nom");
+    const { data, error } = await supabase.from("categories").select("*").order("nom");
 
     if (!error && data) {
       setCategories(data);
@@ -125,15 +122,13 @@ const AccessoriesCatalogView = () => {
           acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
           acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase())
+          acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     }
 
     // Filter by selected categories
     if (selectedCategories.length > 0) {
-      filtered = filtered.filter((acc) => 
-        acc.category_id && selectedCategories.includes(acc.category_id)
-      );
+      filtered = filtered.filter((acc) => acc.category_id && selectedCategories.includes(acc.category_id));
     }
 
     setFilteredAccessories(filtered);
@@ -143,7 +138,8 @@ const AccessoriesCatalogView = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("accessories_catalog")
-      .select(`
+      .select(
+        `
         *,
         categories (
           id,
@@ -155,7 +151,8 @@ const AccessoriesCatalogView = () => {
           titre,
           url_notice
         )
-      `)
+      `,
+      )
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -169,10 +166,7 @@ const AccessoriesCatalogView = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase
-      .from("accessories_catalog")
-      .delete()
-      .eq("id", id);
+    const { error } = await supabase.from("accessories_catalog").delete().eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la suppression");
@@ -192,14 +186,12 @@ const AccessoriesCatalogView = () => {
     <div className="relative flex w-full">
       {/* Sidebar Filter - Overlay mode */}
       <div className="absolute left-0 top-0 bottom-0 z-20">
-        <CategoryFilterSidebar
-          selectedCategories={selectedCategories}
-          onCategoryChange={setSelectedCategories}
-        />
+        <CategoryFilterSidebar selectedCategories={selectedCategories} onCategoryChange={setSelectedCategories} />
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 w-full space-y-6 pl-14">{/* pl-14 for collapsed sidebar space */}
+      <div className="flex-1 w-full space-y-6 pl-14">
+        {/* pl-14 for collapsed sidebar space */}
         <div className="flex gap-4 items-center flex-wrap">
           <div className="flex-1 min-w-[250px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -211,10 +203,7 @@ const AccessoriesCatalogView = () => {
             />
           </div>
           <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => setIsImportExportOpen(true)}
-            >
+            <Button variant="outline" onClick={() => setIsImportExportOpen(true)}>
               <FileDown className="h-4 w-4 mr-2" />
               Import/Export
             </Button>
@@ -254,9 +243,11 @@ const AccessoriesCatalogView = () => {
                 <div key={categoryName} className="space-y-3">
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold">{categoryName}</h3>
-                    <Badge variant="secondary">{items.length} article{items.length > 1 ? 's' : ''}</Badge>
+                    <Badge variant="secondary">
+                      {items.length} article{items.length > 1 ? "s" : ""}
+                    </Badge>
                   </div>
-                  
+
                   <div className="border rounded-lg">
                     <div className="overflow-x-auto">
                       <Table>
@@ -280,9 +271,10 @@ const AccessoriesCatalogView = () => {
                         </TableHeader>
                         <TableBody>
                           {items.map((accessory) => {
-                            const margeEuros = accessory.prix_vente_ttc && accessory.prix_reference
-                              ? (accessory.prix_vente_ttc / 1.20) - accessory.prix_reference
-                              : null;
+                            const margeEuros =
+                              accessory.prix_vente_ttc && accessory.prix_reference
+                                ? accessory.prix_vente_ttc / 1.2 - accessory.prix_reference
+                                : null;
 
                             return (
                               <TableRow key={accessory.id}>
@@ -308,27 +300,31 @@ const AccessoriesCatalogView = () => {
                                   </div>
                                 </TableCell>
                                 <TableCell>
-                                  {accessory.marque || (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
+                                  {accessory.marque || <span className="text-muted-foreground text-xs">-</span>}
                                 </TableCell>
                                 <TableCell>
                                   {accessory.prix_reference ? (
-                                    <span className="text-sm whitespace-nowrap">{accessory.prix_reference.toFixed(2)} €</span>
+                                    <span className="text-sm whitespace-nowrap">
+                                      {accessory.prix_reference.toFixed(2)} €
+                                    </span>
                                   ) : (
                                     <span className="text-muted-foreground text-xs">-</span>
                                   )}
                                 </TableCell>
                                 <TableCell>
                                   {accessory.prix_vente_ttc ? (
-                                    <span className="text-sm whitespace-nowrap">{accessory.prix_vente_ttc.toFixed(2)} €</span>
+                                    <span className="text-sm whitespace-nowrap">
+                                      {accessory.prix_vente_ttc.toFixed(2)} €
+                                    </span>
                                   ) : (
                                     <span className="text-muted-foreground text-xs">-</span>
                                   )}
                                 </TableCell>
                                 <TableCell>
                                   {margeEuros !== null ? (
-                                    <span className={`text-sm whitespace-nowrap ${margeEuros >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                    <span
+                                      className={`text-sm whitespace-nowrap ${margeEuros >= 0 ? "text-green-600" : "text-red-600"}`}
+                                    >
                                       {margeEuros.toFixed(2)} €
                                     </span>
                                   ) : (
@@ -337,7 +333,9 @@ const AccessoriesCatalogView = () => {
                                 </TableCell>
                                 <TableCell>
                                   {accessory.marge_pourcent !== null ? (
-                                    <span className={`text-sm whitespace-nowrap ${accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                    <span
+                                      className={`text-sm whitespace-nowrap ${accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}`}
+                                    >
                                       {accessory.marge_pourcent.toFixed(1)} %
                                     </span>
                                   ) : (
@@ -346,14 +344,17 @@ const AccessoriesCatalogView = () => {
                                 </TableCell>
                                 <TableCell>
                                   <span className="text-sm">
-                                    {accessory.fournisseur || (
-                                      <span className="text-muted-foreground text-xs">-</span>
-                                    )}
+                                    {accessory.fournisseur || <span className="text-muted-foreground text-xs">-</span>}
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-center">
                                   {accessory.type_electrique ? (
-                                    <div className="flex justify-center" title={accessory.type_electrique === "consommateur" ? "Consommateur" : "Producteur"}>
+                                    <div
+                                      className="flex justify-center"
+                                      title={
+                                        accessory.type_electrique === "consommateur" ? "Consommateur" : "Producteur"
+                                      }
+                                    >
                                       {accessory.type_electrique === "consommateur" ? (
                                         <Plug className="h-4 w-4 text-orange-500" />
                                       ) : (
@@ -410,8 +411,8 @@ const AccessoriesCatalogView = () => {
                                       </TooltipTrigger>
                                       <TooltipContent>
                                         <p>
-                                          {accessory.notice_id 
-                                            ? `Ouvrir la notice: ${accessory.notices_database?.titre}` 
+                                          {accessory.notice_id
+                                            ? `Ouvrir la notice: ${accessory.notices_database?.titre}`
                                             : "Rechercher et lier une notice"}
                                         </p>
                                       </TooltipContent>
@@ -421,9 +422,7 @@ const AccessoriesCatalogView = () => {
                                 <TableCell>
                                   <div className="max-w-[150px]">
                                     {accessory.description ? (
-                                      <span className="text-xs line-clamp-2">
-                                        {accessory.description}
-                                      </span>
+                                      <span className="text-xs line-clamp-2">{accessory.description}</span>
                                     ) : (
                                       <span className="text-muted-foreground text-xs">-</span>
                                     )}
@@ -454,56 +453,59 @@ const AccessoriesCatalogView = () => {
         )}
 
         <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer cet accessoire du catalogue ?
-              Cette action est irréversible.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && handleDelete(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+              <AlertDialogDescription>
+                Êtes-vous sûr de vouloir supprimer cet accessoire du catalogue ? Cette action est irréversible.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteId && handleDelete(deleteId)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      <AccessoryCatalogFormDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        accessory={null}
-        onSuccess={() => {
-          loadAccessories();
-          setIsDialogOpen(false);
-        }}
-      />
+        <AccessoryCatalogFormDialog
+          isOpen={isDialogOpen}
+          onClose={() => setIsDialogOpen(false)}
+          accessory={null}
+          onSuccess={() => {
+            loadAccessories();
+            setIsDialogOpen(false);
+          }}
+        />
 
         <AccessoryCatalogFormDialog
           isOpen={!!editingAccessory}
           onClose={() => setEditingAccessory(null)}
-          accessory={editingAccessory ? {
-            id: editingAccessory.id,
-            nom: editingAccessory.nom,
-            marque: editingAccessory.marque ?? undefined,
-            category_id: editingAccessory.category_id ?? undefined,
-            prix_reference: editingAccessory.prix_reference ?? undefined,
-            prix_vente_ttc: editingAccessory.prix_vente_ttc ?? undefined,
-            marge_pourcent: editingAccessory.marge_pourcent ?? undefined,
-            fournisseur: editingAccessory.fournisseur ?? undefined,
-            description: editingAccessory.description ?? undefined,
-            url_produit: editingAccessory.url_produit ?? undefined,
-            type_electrique: editingAccessory.type_electrique ?? undefined,
-            poids_kg: editingAccessory.poids_kg ?? undefined,
-            longueur_mm: editingAccessory.longueur_mm ?? undefined,
-            largeur_mm: editingAccessory.largeur_mm ?? undefined,
-            hauteur_mm: editingAccessory.hauteur_mm ?? undefined,
-          } : null}
+          accessory={
+            editingAccessory
+              ? {
+                  id: editingAccessory.id,
+                  nom: editingAccessory.nom,
+                  marque: editingAccessory.marque ?? undefined,
+                  category_id: editingAccessory.category_id || undefined,
+                  prix_reference: editingAccessory.prix_reference ?? undefined,
+                  prix_vente_ttc: editingAccessory.prix_vente_ttc ?? undefined,
+                  marge_pourcent: editingAccessory.marge_pourcent ?? undefined,
+                  fournisseur: editingAccessory.fournisseur ?? undefined,
+                  description: editingAccessory.description ?? undefined,
+                  url_produit: editingAccessory.url_produit ?? undefined,
+                  type_electrique: editingAccessory.type_electrique ?? undefined,
+                  poids_kg: editingAccessory.poids_kg ?? undefined,
+                  longueur_mm: editingAccessory.longueur_mm ?? undefined,
+                  largeur_mm: editingAccessory.largeur_mm ?? undefined,
+                  hauteur_mm: editingAccessory.hauteur_mm ?? undefined,
+                }
+              : null
+          }
           onSuccess={() => {
             loadAccessories();
             setEditingAccessory(null);
