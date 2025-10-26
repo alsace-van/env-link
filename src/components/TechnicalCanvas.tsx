@@ -380,7 +380,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
                 const point = new fabric.Point(line.x1 || 0, line.y1 || 0);
-                return fabric.util.transformPoint(point, group.calcTransformMatrix());
+                return fabric.util.transformPoint(point, finalMatrix);
               },
             }),
             p2: new Control({
@@ -450,7 +450,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
                 const point = new fabric.Point(line.x2 || 0, line.y2 || 0);
-                return fabric.util.transformPoint(point, group.calcTransformMatrix());
+                return fabric.util.transformPoint(point, finalMatrix);
               },
             }),
           };
@@ -549,7 +549,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 const point = new fabric.Point(line.x1 || 0, line.y1 || 0);
-                return fabric.util.transformPoint(point, line.calcTransformMatrix());
+                return fabric.util.transformPoint(point, finalMatrix);
               },
             }),
             p2: new Control({
@@ -600,7 +600,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 const point = new fabric.Point(line.x2 || 0, line.y2 || 0);
-                return fabric.util.transformPoint(point, line.calcTransformMatrix());
+                return fabric.util.transformPoint(point, finalMatrix);
               },
             }),
           };
