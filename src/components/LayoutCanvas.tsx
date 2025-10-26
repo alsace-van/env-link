@@ -634,9 +634,27 @@ export const LayoutCanvas = ({
       // Trouver et mettre à jour le groupe de meuble dans le canvas
       paper.project.activeLayer.children.forEach((child) => {
         if (child instanceof paper.Group && child.data.furnitureId === editingFurnitureId) {
+          const rect = child.children[0] as paper.Path.Rectangle;
           const text = child.children[1] as paper.PointText;
-          if (text) {
+
+          if (rect && text) {
+            // Calculer les nouvelles dimensions à l'échelle
+            const scaledWidth = furnitureForm.longueur_mm * scale;
+            const scaledHeight = furnitureForm.largeur_mm * scale;
+
+            // Obtenir le centre actuel
+            const center = rect.bounds.center;
+
+            // Redimensionner le rectangle avec les nouvelles dimensions
+            const newBounds = new paper.Rectangle(
+              center.subtract(new paper.Point(scaledWidth / 2, scaledHeight / 2)),
+              new paper.Size(scaledWidth, scaledHeight),
+            );
+            rect.bounds = newBounds;
+
+            // Mettre à jour le texte et le recentrer
             text.content = `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`;
+            text.position = rect.bounds.center;
           }
         }
       });
@@ -672,6 +690,20 @@ export const LayoutCanvas = ({
 
       // Créer le label sur le meuble
       setTimeout(() => {
+        // Redimensionner le rectangle selon les dimensions réelles
+        const scaledWidth = furnitureForm.longueur_mm * scale;
+        const scaledHeight = furnitureForm.largeur_mm * scale;
+
+        // Obtenir le centre actuel avant le redimensionnement
+        const center = pendingRectangle!.bounds.center;
+
+        // Créer un nouveau rectangle avec les bonnes dimensions
+        const newBounds = new paper.Rectangle(
+          center.subtract(new paper.Point(scaledWidth / 2, scaledHeight / 2)),
+          new paper.Size(scaledWidth, scaledHeight),
+        );
+        pendingRectangle!.bounds = newBounds;
+
         const text = new paper.PointText({
           point: pendingRectangle!.bounds.center,
           content: `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`,
