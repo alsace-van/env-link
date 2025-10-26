@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Canvas as FabricCanvas, FabricImage, Rect, Line, Triangle, Circle, Textbox, PencilBrush } from "fabric";
+import { Canvas as FabricCanvas, FabricImage, Rect, Line, Triangle, Circle, Textbox, PencilBrush, Group } from "fabric";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -204,28 +204,43 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             fabricCanvas.add(line);
             fabricCanvas.setActiveObject(line);
           } else if (isDrawingArrow) {
-            const line = new Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
+            // Calculer l'angle et la distance
+            const dx = pointer.x - startPoint.x;
+            const dy = pointer.y - startPoint.y;
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Créer la ligne de la flèche
+            const line = new Line([0, 0, distance, 0], {
               stroke: strokeColor,
               strokeWidth: strokeWidth,
+              originX: "left",
+              originY: "center",
             });
 
-            // Calculer l'angle de la flèche
-            const angle = Math.atan2(pointer.y - startPoint.y, pointer.x - startPoint.x) * 180 / Math.PI;
-
-            const triangle = new Triangle({
-              left: pointer.x,
-              top: pointer.y,
+            // Créer la pointe de la flèche
+            const arrowHead = new Triangle({
+              left: distance,
+              top: 0,
               width: 15,
               height: 15,
               fill: strokeColor,
-              angle: angle + 90,
+              angle: 90,
               originX: "center",
               originY: "center",
             });
 
-            fabricCanvas.add(line);
-            fabricCanvas.add(triangle);
-            fabricCanvas.setActiveObject(line);
+            // Grouper la ligne et la pointe ensemble
+            const arrowGroup = new Group([line, arrowHead], {
+              left: startPoint.x,
+              top: startPoint.y,
+              angle: angle,
+              originX: "left",
+              originY: "center",
+            });
+
+            fabricCanvas.add(arrowGroup);
+            fabricCanvas.setActiveObject(arrowGroup);
           }
 
           fabricCanvas.renderAll();
@@ -246,6 +261,21 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       fabricCanvas.off("mouse:down", handleMouseDown);
     };
   }, [fabricCanvas, isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth]);
+
+  // Gestionnaire pour la touche Suppr
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Delete" || event.key === "Backspace") {
+        deleteSelected();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [fabricCanvas]);
 
   const saveToHistory = () => {
     if (!fabricCanvas) return;
