@@ -55,47 +55,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     setFabricCanvas(canvas);
 
-    // Load image with better error handling
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    
-    img.onload = () => {
-      FabricImage.fromObject({
-        type: 'image',
-        version: '5.3.0',
-        originX: 'left',
-        originY: 'top',
-        left: 0,
-        top: 0,
-        width: img.width,
-        height: img.height,
-        fill: 'rgb(0,0,0)',
-        stroke: null,
-        strokeWidth: 0,
-        strokeDashArray: null,
-        strokeLineCap: 'butt',
-        strokeDashOffset: 0,
-        strokeLineJoin: 'miter',
-        strokeUniform: false,
-        strokeMiterLimit: 4,
-        scaleX: 1,
-        scaleY: 1,
-        angle: 0,
-        flipX: false,
-        flipY: false,
-        opacity: 1,
-        shadow: null,
-        visible: true,
-        backgroundColor: '',
-        fillRule: 'nonzero',
-        paintFirst: 'fill',
-        globalCompositeOperation: 'source-over',
-        skewX: 0,
-        skewY: 0,
-        cropX: 0,
-        cropY: 0,
-        src: img.src,
-      }).then((fabricImg) => {
+    // Load image using the correct Fabric.js v6 method
+    FabricImage.fromURL(photo.url, { crossOrigin: "anonymous" })
+      .then((fabricImg) => {
         if (!fabricImg || !fabricImg.width || !fabricImg.height) {
           toast.error("Erreur lors du chargement de l'image");
           return;
@@ -159,19 +121,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             console.error("Error loading annotations:", error);
           }
         }
-      }).catch((error) => {
-        console.error("Error creating fabric image:", error);
-        toast.error("Impossible de charger l'image");
+      })
+      .catch((error) => {
+        console.error("Failed to load image:", error);
+        toast.error("Impossible de charger l'image. Vérifiez l'URL.");
       });
-    };
-
-    img.onerror = () => {
-      console.error("Failed to load image from:", photo.url);
-      toast.error("Impossible de charger l'image. Vérifiez l'URL.");
-    };
-
-    // Try to load the image
-    img.src = photo.url;
 
     setHistory([]);
     setHistoryStep(-1);
