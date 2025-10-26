@@ -387,8 +387,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
-                // x1, y1 sont toujours 0, 0 (origine)
-                return fabric.util.transformPoint({ x: 0, y: 0 }, finalMatrix);
+                // p1 est à l'origine du groupe (left, top)
+                return { x: group.left || 0, y: group.top || 0 };
               },
             }),
             p2: new Control({
@@ -459,8 +459,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                // x2, y2 sont relatifs à l'origine
-                return fabric.util.transformPoint({ x: line.x2 || 0, y: line.y2 || 0 }, finalMatrix);
+                // p2 est à (left + x2, top + y2)
+                return { x: (group.left || 0) + (line.x2 || 0), y: (group.top || 0) + (line.y2 || 0) };
               },
             }),
           };
@@ -567,8 +567,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                // x1, y1 sont toujours 0, 0 (origine)
-                return fabric.util.transformPoint({ x: 0, y: 0 }, finalMatrix);
+                // p1 est à l'origine (left, top)
+                return { x: line.left || 0, y: line.top || 0 };
               },
             }),
             p2: new Control({
@@ -622,8 +622,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                // x2, y2 sont relatifs à l'origine
-                return fabric.util.transformPoint({ x: line.x2 || 0, y: line.y2 || 0 }, finalMatrix);
+                // p2 est à (left + x2, top + y2)
+                return { x: (line.left || 0) + (line.x2 || 0), y: (line.top || 0) + (line.y2 || 0) };
               },
             }),
           };
