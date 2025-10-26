@@ -1,18 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import {
-  Canvas as FabricCanvas,
-  FabricImage,
-  Rect,
-  Line,
-  Triangle,
-  Circle,
-  Textbox,
-  PencilBrush,
-  Group,
-  Control,
-  Point,
-} from "fabric";
-import * as fabric from "fabric";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -29,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
+import paper from "paper";
 
 interface TechnicalCanvasProps {
   projectId: string;
@@ -41,105 +28,120 @@ const SNAP_DISTANCE = 10; // Pixels pour le magnétisme des poignées
 
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fabricCanvasRef = useRef<FabricCanvas | null>(null);
+  const scopeRef = useRef<paper.PaperScope | null>(null);
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "circle" | "text" | "line" | "arrow">(
     "select",
   );
   const [color, setColor] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(2);
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
 
-  const isDrawingLineRef = useRef(false);
-  const lineRef = useRef<Line | null>(null);
-  const startPointRef = useRef<{ x: number; y: number } | null>(null);
-  const activeToolRef = useRef(activeTool);
-  const colorRef = useRef(color);
-  const strokeWidthRef = useRef(strokeWidth);
-
-  // Mettre à jour les refs quand les valeurs changent
-  useEffect(() => {
-    activeToolRef.current = activeTool;
-    colorRef.current = color;
-    strokeWidthRef.current = strokeWidth;
-  }, [activeTool, color, strokeWidth]);
+  const currentPathRef = useRef<paper.Path | null>(null);
+  const currentItemRef = useRef<paper.Item | null>(null);
+  const toolRef = useRef<paper.Tool | null>(null);
 
   // Fonction pour snapper à l'horizontal ou vertical
-  const snapToHorizontalOrVertical = (x1: number, y1: number, x2: number, y2: number): { x2: number; y2: number } => {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const angle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
+  const snapToHorizontalOrVertical = (from: paper.Point, to: paper.Point): paper.Point => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
 
     // Snapper à l'horizontal (0° ou 180°)
     if (angle < SNAP_ANGLE_THRESHOLD || angle > 180 - SNAP_ANGLE_THRESHOLD) {
-      return { x2, y2: y1 };
+      return new paper.Point(to.x, from.y);
     }
 
     // Snapper à la vertical (90°)
     if (Math.abs(angle - 90) < SNAP_ANGLE_THRESHOLD) {
-      return { x2: x1, y2 };
+      return new paper.Point(from.x, to.y);
     }
 
-    return { x2, y2 };
+    return to;
   };
 
   // Fonction pour trouver les points de snapping magnétique
-  const findSnapPoint = (x: number, y: number, currentObject?: any): { x: number; y: number; snapped: boolean } => {
-    if (!fabricCanvasRef.current) return { x, y, snapped: false };
+  const findSnapPoint = (point: paper.Point, excludeItem?: paper.Item): { point: paper.Point; snapped: boolean } => {
+    if (!scopeRef.current) return { point, snapped: false };
 
-    const objects = fabricCanvasRef.current.getObjects();
-    let closestPoint = { x, y, distance: Infinity };
+    let closestPoint = point;
+    let minDistance = Infinity;
 
-    for (const obj of objects) {
-      if (obj === currentObject) continue;
+    scopeRef.current.project.activeLayer.children.forEach((item) => {
+      if (item === excludeItem) return;
 
-      // Points à vérifier selon le type d'objet
-      const points: { x: number; y: number }[] = [];
+      const points: paper.Point[] = [];
 
-      if (obj.type === "line") {
-        const line = obj as Line;
-        // p1 est à l'origine (left, top)
-        const p1 = { x: line.left || 0, y: line.top || 0 };
-        // p2 est relatif à l'origine
-        const p2 = { x: (line.left || 0) + (line.x2 || 0), y: (line.top || 0) + (line.y2 || 0) };
-        points.push(p1, p2);
-      } else if (obj.type === "group") {
-        // Pour les flèches (groupes)
-        const group = obj as Group;
-        const line = group.getObjects()[0] as Line;
-        if (line) {
-          // p1 est à l'origine du groupe
-          const p1 = { x: group.left || 0, y: group.top || 0 };
-          // p2 est relatif à l'origine du groupe
-          const p2 = { x: (group.left || 0) + (line.x2 || 0), y: (group.top || 0) + (line.y2 || 0) };
-          points.push(p1, p2);
-        }
-      } else {
-        // Pour les autres objets (rectangles, cercles), utiliser uniquement les coins
-        const bound = obj.getBoundingRect();
+      if (item instanceof paper.Path && !item.closed) {
+        // Pour les lignes et flèches
+        points.push(...item.segments.map(s => s.point));
+      } else if (item.bounds) {
+        // Pour les autres objets (rectangles, cercles)
         points.push(
-          { x: bound.left, y: bound.top },
-          { x: bound.left + bound.width, y: bound.top },
-          { x: bound.left, y: bound.top + bound.height },
-          { x: bound.left + bound.width, y: bound.top + bound.height },
+          item.bounds.topLeft,
+          item.bounds.topRight,
+          item.bounds.bottomLeft,
+          item.bounds.bottomRight,
         );
       }
 
-      // Trouver le point le plus proche
-      for (const point of points) {
-        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
-        if (distance < closestPoint.distance && distance < SNAP_DISTANCE) {
-          closestPoint = { x: point.x, y: point.y, distance };
+      points.forEach(p => {
+        const distance = point.getDistance(p);
+        if (distance < minDistance && distance < SNAP_DISTANCE) {
+          minDistance = distance;
+          closestPoint = p;
         }
+      });
+    });
+
+    return { point: closestPoint, snapped: minDistance < SNAP_DISTANCE };
+  };
+
+  // Fonction pour créer des poignées de contrôle
+  const addHandles = (path: paper.Path) => {
+    if (!path || path.segments.length === 0) return;
+
+    const handles: paper.Path.Circle[] = [];
+    
+    path.segments.forEach((segment, index) => {
+      const handle = new paper.Path.Circle({
+        center: segment.point,
+        radius: 6,
+        fillColor: index === 0 ? '#2196F3' : '#FF5722',
+        strokeColor: 'white',
+        strokeWidth: 2,
+        data: { 
+          isHandle: true, 
+          segmentIndex: index,
+          parentPath: path 
+        }
+      });
+      handles.push(handle);
+    });
+
+    (path as any).handles = handles;
+  };
+
+  // Fonction pour mettre à jour les poignées
+  const updateHandles = (path: paper.Path) => {
+    const handles = (path as any).handles;
+    if (!handles) return;
+
+    path.segments.forEach((segment, index) => {
+      if (handles[index]) {
+        handles[index].position = segment.point;
       }
-    }
+    });
+  };
 
-    if (closestPoint.distance < SNAP_DISTANCE) {
-      return { x: closestPoint.x, y: closestPoint.y, snapped: true };
+  // Fonction pour supprimer les poignées
+  const removeHandles = (path: paper.Path) => {
+    const handles = (path as any).handles;
+    if (handles) {
+      handles.forEach((h: paper.Path) => h.remove());
+      delete (path as any).handles;
     }
-
-    return { x, y, snapped: false };
   };
 
   // Initialize canvas
@@ -154,626 +156,298 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   useEffect(() => {
     if (!isCanvasReady || !canvasRef.current) return;
 
-    let mounted = true;
+    // Setup Paper.js
+    const scope = new paper.PaperScope();
+    scope.setup(canvasRef.current);
+    scopeRef.current = scope;
 
-    const initCanvas = () => {
-      if (!mounted || !canvasRef.current) return;
+    // Set canvas size
+    scope.view.viewSize = new paper.Size(1200, 800);
 
-      const canvas = new FabricCanvas(canvasRef.current, {
-        width: 1200,
-        height: 800,
-        backgroundColor: "#ffffff",
+    // Create tool
+    const tool = new paper.Tool();
+    toolRef.current = tool;
+
+    let selectedItem: paper.Item | null = null;
+    let draggedHandle: any = null;
+
+    tool.onMouseDown = (event: paper.ToolEvent) => {
+      const hitResult = scope.project.hitTest(event.point, {
+        segments: false,
+        stroke: true,
+        fill: true,
+        tolerance: 5
       });
 
-      canvas.freeDrawingBrush = new PencilBrush(canvas);
-      canvas.freeDrawingBrush.color = color;
-      canvas.freeDrawingBrush.width = strokeWidth;
+      // Vérifier si on clique sur une poignée
+      if (hitResult?.item?.data?.isHandle) {
+        draggedHandle = hitResult.item;
+        return;
+      }
 
-      fabricCanvasRef.current = canvas;
-
-      canvas.on("object:added", () => {
-        if (mounted) {
-          saveToHistory();
+      if (activeTool === "select") {
+        // Désélectionner l'élément précédent
+        if (selectedItem) {
+          selectedItem.selected = false;
+          if (selectedItem instanceof paper.Path) {
+            removeHandles(selectedItem);
+          }
         }
-      });
 
-      canvas.on("object:modified", () => {
-        if (mounted) {
-          saveToHistory();
-        }
-      });
-
-      canvas.on("selection:created", () => {
-        if (mounted) {
-          canvas.requestRenderAll();
-        }
-      });
-
-      canvas.on("selection:updated", () => {
-        if (mounted) {
-          canvas.requestRenderAll();
-        }
-      });
-
-      canvas.on("mouse:down", (event) => {
-        if (!mounted) return;
-        if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
-          // Ne pas dessiner si on clique sur un objet existant
-          if (event.target) return;
-
-          const pointer = canvas.getPointer(event.e);
-          isDrawingLineRef.current = true;
-          startPointRef.current = { x: pointer.x, y: pointer.y };
-
-          const line = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-            stroke: colorRef.current,
-            strokeWidth: strokeWidthRef.current,
-            selectable: false,
-            strokeLineCap: "round",
-            strokeLineJoin: "round",
-            fill: "",
-          });
-          lineRef.current = line;
-          canvas.add(line);
-          canvas.renderAll();
-        }
-      });
-
-      canvas.on("mouse:move", (event) => {
-        if (!mounted || !isDrawingLineRef.current || !lineRef.current || !startPointRef.current) return;
-        const pointer = canvas.getPointer(event.e);
-
-        // Appliquer le snapping horizontal/vertical
-        const snapped = snapToHorizontalOrVertical(
-          startPointRef.current.x,
-          startPointRef.current.y,
-          pointer.x,
-          pointer.y,
-        );
-
-        lineRef.current.set({ x2: snapped.x2, y2: snapped.y2 });
-        canvas.renderAll();
-      });
-
-      canvas.on("mouse:up", () => {
-        if (!mounted || !isDrawingLineRef.current || !lineRef.current || !startPointRef.current) return;
-
-        const line = lineRef.current;
-        canvas.remove(line);
-
-        const x1 = line.x1 || 0;
-        const y1 = line.y1 || 0;
-        const x2 = line.x2 || 0;
-        const y2 = line.y2 || 0;
-
-        if (activeToolRef.current === "arrow") {
-          // Pour une flèche : origine au début du trait
-          const dx = x2 - x1;
-          const dy = y2 - y1;
-          const angle = Math.atan2(dy, dx);
-          const headLength = 15;
-
-          const arrowLine = new Line([0, 0, dx, dy], {
-            stroke: colorRef.current,
-            strokeWidth: strokeWidthRef.current,
-            selectable: true,
-            hasControls: true,
-            hasBorders: true,
-            lockMovementX: false,
-            lockMovementY: false,
-            strokeLineCap: "round",
-            strokeLineJoin: "round",
-            strokeUniform: true,
-            fill: "",
-            originX: "left",
-            originY: "top",
-            width: Math.abs(dx),
-            height: Math.abs(dy),
-          });
-
-          const arrowHead = new Triangle({
-            left: dx - Math.cos(angle) * (headLength / 2),
-            top: dy - Math.sin(angle) * (headLength / 2),
-            angle: (angle * 180) / Math.PI + 90,
-            width: headLength,
-            height: headLength,
-            fill: colorRef.current,
-            stroke: colorRef.current,
-            originX: "center",
-            originY: "center",
-            selectable: false,
-          });
-
-          const arrow = new Group([arrowLine, arrowHead], {
-            left: x1,
-            top: y1,
-            selectable: true,
-            hasControls: true,
-            hasBorders: false,
-            lockScalingX: true,
-            lockScalingY: true,
-            lockRotation: true,
-            lockMovementX: false,
-            lockMovementY: false,
-            perPixelTargetFind: true,
-            originX: "left",
-            originY: "top",
-          });
-
-          // Désactiver tous les contrôles par défaut
-          arrow.setControlsVisibility({
-            mt: false,
-            mb: false,
-            ml: false,
-            mr: false,
-            bl: false,
-            br: false,
-            tl: false,
-            tr: false,
-            mtr: false,
-          });
-
-          // Contrôles personnalisés aux extrémités de la flèche
-          arrow.controls = {
-            p1: new Control({
-              cursorStyle: "pointer",
-              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
-                const group = transformData.target as Group;
-                const line = group.getObjects()[0] as Line;
-                const head = group.getObjects()[1] as Triangle;
-
-                // Obtenir la position absolue du curseur
-                const pointer = canvas.getPointer(eventData);
-                let newX = pointer.x;
-                let newY = pointer.y;
-
-                // Position absolue actuelle de p2 (doit rester fixe)
-                const p2X = (group.left || 0) + (line.x2 || 0);
-                const p2Y = (group.top || 0) + (line.y2 || 0);
-
-                // Appliquer le snapping magnétique
-                if (!eventData.shiftKey) {
-                  const snappedPoint = findSnapPoint(newX, newY, group);
-                  if (snappedPoint.snapped) {
-                    newX = snappedPoint.x;
-                    newY = snappedPoint.y;
-                  } else {
-                    // Appliquer le snapping horizontal/vertical
-                    const snapped = snapToHorizontalOrVertical(newX, newY, p2X, p2Y);
-                    if (snapped.y2 === p2Y) newY = p2Y;
-                    if (snapped.x2 === p2X) newX = p2X;
-                  }
-                }
-
-                // Recalculer x2, y2 relatifs à la nouvelle origine
-                const newX2 = p2X - newX;
-                const newY2 = p2Y - newY;
-
-                // Mettre à jour l'origine du groupe
-                group.set({
-                  left: newX,
-                  top: newY,
-                });
-
-                // Mettre à jour la ligne
-                line.set({
-                  x2: newX2,
-                  y2: newY2,
-                  width: Math.abs(newX2),
-                  height: Math.abs(newY2),
-                });
-
-                // Mettre à jour la tête de flèche
-                const angle = Math.atan2(newY2, newX2);
-                const headLength = 15;
-
-                head.set({
-                  left: newX2 - Math.cos(angle) * (headLength / 2),
-                  top: newY2 - Math.sin(angle) * (headLength / 2),
-                  angle: (angle * 180) / Math.PI + 90,
-                });
-
-                group.setCoords();
-                canvas.requestRenderAll();
-                return true;
-              },
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
-                ctx.save();
-                ctx.strokeStyle = "#ffffff";
-                ctx.fillStyle = "#2196F3";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(left, top, 6, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.stroke();
-                ctx.restore();
-              },
-              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-                const group = fabricObject as Group;
-                // p1 est à l'origine du groupe (left, top)
-                return new Point(group.left || 0, group.top || 0);
-              },
-            }),
-            p2: new Control({
-              cursorStyle: "pointer",
-              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
-                const group = transformData.target as Group;
-                const line = group.getObjects()[0] as Line;
-                const head = group.getObjects()[1] as Triangle;
-
-                // Obtenir la position absolue du curseur
-                const pointer = canvas.getPointer(eventData);
-                let newX = pointer.x;
-                let newY = pointer.y;
-
-                // Position absolue de p1 (origine du groupe)
-                const p1X = group.left || 0;
-                const p1Y = group.top || 0;
-
-                // Appliquer le snapping magnétique
-                if (!eventData.shiftKey) {
-                  const snappedPoint = findSnapPoint(newX, newY, group);
-                  if (snappedPoint.snapped) {
-                    newX = snappedPoint.x;
-                    newY = snappedPoint.y;
-                  } else {
-                    // Appliquer le snapping horizontal/vertical
-                    const snapped = snapToHorizontalOrVertical(p1X, p1Y, newX, newY);
-                    newX = snapped.x2;
-                    newY = snapped.y2;
-                  }
-                }
-
-                // Calculer le nouveau x2, y2 relatif à l'origine
-                const newX2 = newX - p1X;
-                const newY2 = newY - p1Y;
-
-                line.set({
-                  x2: newX2,
-                  y2: newY2,
-                  width: Math.abs(newX2),
-                  height: Math.abs(newY2),
-                });
-
-                // Mettre à jour la tête de flèche
-                const angle = Math.atan2(newY2, newX2);
-                const headLength = 15;
-
-                head.set({
-                  left: newX2 - Math.cos(angle) * (headLength / 2),
-                  top: newY2 - Math.sin(angle) * (headLength / 2),
-                  angle: (angle * 180) / Math.PI + 90,
-                });
-
-                group.setCoords();
-                canvas.requestRenderAll();
-                return true;
-              },
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
-                ctx.save();
-                ctx.strokeStyle = "#ffffff";
-                ctx.fillStyle = "#FF5722";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(left, top, 6, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.stroke();
-                ctx.restore();
-              },
-              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-                const group = fabricObject as Group;
-                const line = group.getObjects()[0] as Line;
-                // p2 est à (left + x2, top + y2)
-                return new Point((group.left || 0) + (line.x2 || 0), (group.top || 0) + (line.y2 || 0));
-              },
-            }),
-          };
-
-          arrow.setCoords();
-          canvas.add(arrow);
-          canvas.renderAll();
+        if (hitResult && hitResult.item) {
+          selectedItem = hitResult.item;
+          selectedItem.selected = true;
+          
+          if (selectedItem instanceof paper.Path && !selectedItem.closed) {
+            addHandles(selectedItem);
+          }
         } else {
-          // Pour une ligne simple : origine au début du trait
-          const dx = x2 - x1;
-          const dy = y2 - y1;
-
-          const finalLine = new Line([0, 0, dx, dy], {
-            left: x1,
-            top: y1,
-            stroke: colorRef.current,
-            strokeWidth: strokeWidthRef.current,
-            selectable: true,
-            hasControls: true,
-            hasBorders: false,
-            lockMovementX: false,
-            lockMovementY: false,
-            lockScalingX: true,
-            lockScalingY: true,
-            lockRotation: true,
-            strokeLineCap: "round",
-            strokeLineJoin: "round",
-            strokeUniform: true,
-            fill: "",
-            perPixelTargetFind: true,
-            originX: "left",
-            originY: "top",
-            width: Math.abs(dx),
-            height: Math.abs(dy),
-          });
-
-          // Désactiver tous les contrôles par défaut
-          finalLine.setControlsVisibility({
-            mt: false,
-            mb: false,
-            ml: false,
-            mr: false,
-            bl: false,
-            br: false,
-            tl: false,
-            tr: false,
-            mtr: false,
-          });
-
-          // Contrôles personnalisés aux extrémités de la ligne
-          finalLine.controls = {
-            p1: new Control({
-              cursorStyle: "pointer",
-              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
-                const line = transformData.target as Line;
-
-                // Obtenir la position absolue du curseur
-                const pointer = canvas.getPointer(eventData);
-                let newX = pointer.x;
-                let newY = pointer.y;
-
-                // Position absolue actuelle de p2 (doit rester fixe)
-                const p2X = (line.left || 0) + (line.x2 || 0);
-                const p2Y = (line.top || 0) + (line.y2 || 0);
-
-                // Appliquer le snapping magnétique
-                if (!eventData.shiftKey) {
-                  const snappedPoint = findSnapPoint(newX, newY, line);
-                  if (snappedPoint.snapped) {
-                    newX = snappedPoint.x;
-                    newY = snappedPoint.y;
-                  } else {
-                    // Appliquer le snapping horizontal/vertical
-                    const snapped = snapToHorizontalOrVertical(newX, newY, p2X, p2Y);
-                    if (snapped.y2 === p2Y) newY = p2Y;
-                    if (snapped.x2 === p2X) newX = p2X;
-                  }
-                }
-
-                // Recalculer x2, y2 relatifs à la nouvelle origine
-                const newX2 = p2X - newX;
-                const newY2 = p2Y - newY;
-
-                // Mettre à jour la ligne avec les nouvelles dimensions
-                line.set({
-                  left: newX,
-                  top: newY,
-                  x2: newX2,
-                  y2: newY2,
-                  width: Math.abs(newX2),
-                  height: Math.abs(newY2),
-                });
-
-                line.setCoords();
-                canvas.requestRenderAll();
-                return true;
-              },
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
-                ctx.save();
-                ctx.strokeStyle = "#ffffff";
-                ctx.fillStyle = "#2196F3";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(left, top, 6, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.stroke();
-                ctx.restore();
-              },
-              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-                const line = fabricObject as Line;
-                // p1 est à l'origine (left, top)
-                return new Point(line.left || 0, line.top || 0);
-              },
-            }),
-            p2: new Control({
-              cursorStyle: "pointer",
-              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
-                const line = transformData.target as Line;
-
-                // Obtenir la position absolue du curseur
-                const pointer = canvas.getPointer(eventData);
-                let newX = pointer.x;
-                let newY = pointer.y;
-
-                // Position absolue de p1 (origine de la ligne)
-                const p1X = line.left || 0;
-                const p1Y = line.top || 0;
-
-                // Appliquer le snapping magnétique
-                if (!eventData.shiftKey) {
-                  const snappedPoint = findSnapPoint(newX, newY, line);
-                  if (snappedPoint.snapped) {
-                    newX = snappedPoint.x;
-                    newY = snappedPoint.y;
-                  } else {
-                    // Appliquer le snapping horizontal/vertical
-                    const snapped = snapToHorizontalOrVertical(p1X, p1Y, newX, newY);
-                    newX = snapped.x2;
-                    newY = snapped.y2;
-                  }
-                }
-
-                // Calculer le nouveau x2, y2 relatif à l'origine
-                const newX2 = newX - p1X;
-                const newY2 = newY - p1Y;
-
-                line.set({
-                  x2: newX2,
-                  y2: newY2,
-                  width: Math.abs(newX2),
-                  height: Math.abs(newY2),
-                });
-
-                line.setCoords();
-                canvas.requestRenderAll();
-                return true;
-              },
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
-                ctx.save();
-                ctx.strokeStyle = "#ffffff";
-                ctx.fillStyle = "#FF5722";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(left, top, 6, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.stroke();
-                ctx.restore();
-              },
-              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-                const line = fabricObject as Line;
-                // p2 est à (left + x2, top + y2)
-                return new Point((line.left || 0) + (line.x2 || 0), (line.top || 0) + (line.y2 || 0));
-              },
-            }),
-          };
-
-          finalLine.setCoords();
-          canvas.add(finalLine);
-          canvas.renderAll();
+          selectedItem = null;
         }
+      } else if (activeTool === "draw") {
+        currentPathRef.current = new paper.Path({
+          strokeColor: color,
+          strokeWidth: strokeWidth,
+          strokeCap: 'round',
+          strokeJoin: 'round',
+        });
+        currentPathRef.current.add(event.point);
+      } else if (activeTool === "line" || activeTool === "arrow") {
+        const snapped = findSnapPoint(event.point);
+        const startPoint = snapped.snapped ? snapped.point : event.point;
 
-        isDrawingLineRef.current = false;
-        lineRef.current = null;
-        startPointRef.current = null;
-        canvas.renderAll();
-      });
+        currentPathRef.current = new paper.Path.Line({
+          from: startPoint,
+          to: startPoint,
+          strokeColor: color,
+          strokeWidth: strokeWidth,
+          strokeCap: 'round',
+          data: { type: activeTool }
+        });
+      }
     };
 
-    initCanvas();
+    tool.onMouseDrag = (event: paper.ToolEvent) => {
+      if (draggedHandle) {
+        const parentPath = draggedHandle.data.parentPath;
+        const segmentIndex = draggedHandle.data.segmentIndex;
+        
+        if (parentPath && parentPath.segments[segmentIndex]) {
+          let newPoint = event.point;
+          
+          // Appliquer le snapping magnétique
+          if (!event.modifiers.shift) {
+            const snapped = findSnapPoint(event.point, parentPath);
+            if (snapped.snapped) {
+              newPoint = snapped.point;
+            } else {
+              // Snapping horizontal/vertical
+              const otherIndex = segmentIndex === 0 ? 1 : 0;
+              if (parentPath.segments[otherIndex]) {
+                newPoint = snapToHorizontalOrVertical(parentPath.segments[otherIndex].point, newPoint);
+              }
+            }
+          }
+          
+          parentPath.segments[segmentIndex].point = newPoint;
+          
+          // Mettre à jour la flèche si c'est une flèche
+          if (parentPath.data.type === 'arrow') {
+            updateArrowHead(parentPath);
+          }
+          
+          updateHandles(parentPath);
+        }
+        return;
+      }
+
+      if (activeTool === "draw" && currentPathRef.current) {
+        currentPathRef.current.add(event.point);
+      } else if ((activeTool === "line" || activeTool === "arrow") && currentPathRef.current) {
+        const from = currentPathRef.current.segments[0].point;
+        let to = event.point;
+
+        // Appliquer le snapping magnétique
+        if (!event.modifiers.shift) {
+          const snapped = findSnapPoint(to, currentPathRef.current);
+          if (snapped.snapped) {
+            to = snapped.point;
+          } else {
+            to = snapToHorizontalOrVertical(from, to);
+          }
+        }
+
+        currentPathRef.current.segments[1].point = to;
+      } else if (selectedItem && activeTool === "select") {
+        selectedItem.position = selectedItem.position.add(event.delta);
+        if (selectedItem instanceof paper.Path) {
+          updateHandles(selectedItem);
+        }
+      }
+    };
+
+    tool.onMouseUp = (event: paper.ToolEvent) => {
+      draggedHandle = null;
+
+      if (activeTool === "draw" && currentPathRef.current) {
+        currentPathRef.current.simplify(10);
+        currentPathRef.current = null;
+        saveToHistory();
+      } else if (activeTool === "line" && currentPathRef.current) {
+        addHandles(currentPathRef.current);
+        currentPathRef.current = null;
+        saveToHistory();
+      } else if (activeTool === "arrow" && currentPathRef.current) {
+        createArrowHead(currentPathRef.current);
+        addHandles(currentPathRef.current);
+        currentPathRef.current = null;
+        saveToHistory();
+      }
+    };
+
+    // Fonction pour créer la tête de flèche
+    const createArrowHead = (path: paper.Path) => {
+      if (path.segments.length < 2) return;
+      
+      const lastSegment = path.segments[path.segments.length - 1];
+      const secondLastSegment = path.segments[path.segments.length - 2];
+      
+      const vector = lastSegment.point.subtract(secondLastSegment.point);
+      const angle = vector.angle;
+      const headLength = 15;
+      
+      const arrowHead = new paper.Path([
+        lastSegment.point.add(new paper.Point({
+          angle: angle + 150,
+          length: headLength
+        })),
+        lastSegment.point,
+        lastSegment.point.add(new paper.Point({
+          angle: angle - 150,
+          length: headLength
+        }))
+      ]);
+      
+      arrowHead.strokeColor = new paper.Color(color);
+      arrowHead.strokeWidth = strokeWidth;
+      arrowHead.fillColor = new paper.Color(color);
+      arrowHead.strokeCap = 'round';
+      arrowHead.strokeJoin = 'round';
+      arrowHead.data = { isArrowHead: true, parentPath: path };
+      
+      (path as any).arrowHead = arrowHead;
+    };
+
+    // Fonction pour mettre à jour la tête de flèche
+    const updateArrowHead = (path: paper.Path) => {
+      const arrowHead = (path as any).arrowHead;
+      if (!arrowHead || path.segments.length < 2) return;
+      
+      const lastSegment = path.segments[path.segments.length - 1];
+      const secondLastSegment = path.segments[path.segments.length - 2];
+      
+      const vector = lastSegment.point.subtract(secondLastSegment.point);
+      const angle = vector.angle;
+      const headLength = 15;
+      
+      arrowHead.segments[0].point = lastSegment.point.add(new paper.Point({
+        angle: angle + 150,
+        length: headLength
+      }));
+      arrowHead.segments[1].point = lastSegment.point;
+      arrowHead.segments[2].point = lastSegment.point.add(new paper.Point({
+        angle: angle - 150,
+        length: headLength
+      }));
+    };
+
+    const saveToHistory = () => {
+      if (!scopeRef.current) return;
+      const json = scopeRef.current.project.exportJSON();
+      const newHistory = history.slice(0, historyStep + 1);
+      newHistory.push(json);
+      setHistory(newHistory);
+      setHistoryStep(newHistory.length - 1);
+    };
 
     return () => {
-      mounted = false;
-      fabricCanvasRef.current?.dispose();
-      fabricCanvasRef.current = null;
+      tool.remove();
+      scopeRef.current = null;
     };
-  }, [isCanvasReady]);
-
-  const saveToHistory = () => {
-    if (!fabricCanvasRef.current) return;
-    const json = fabricCanvasRef.current.toJSON();
-    const newHistory = history.slice(0, historyStep + 1);
-    newHistory.push(json);
-    setHistory(newHistory);
-    setHistoryStep(newHistory.length - 1);
-  };
+  }, [isCanvasReady, activeTool, color, strokeWidth]);
 
   const handleUndo = () => {
-    if (historyStep <= 0 || !fabricCanvasRef.current) return;
+    if (historyStep <= 0 || !scopeRef.current) return;
     const step = historyStep - 1;
     setHistoryStep(step);
-    fabricCanvasRef.current.loadFromJSON(history[step], () => {
-      fabricCanvasRef.current?.renderAll();
-    });
+    scopeRef.current.project.clear();
+    scopeRef.current.project.importJSON(history[step]);
   };
 
   const handleRedo = () => {
-    if (historyStep >= history.length - 1 || !fabricCanvasRef.current) return;
+    if (historyStep >= history.length - 1 || !scopeRef.current) return;
     const step = historyStep + 1;
     setHistoryStep(step);
-    fabricCanvasRef.current.loadFromJSON(history[step], () => {
-      fabricCanvasRef.current?.renderAll();
-    });
+    scopeRef.current.project.clear();
+    scopeRef.current.project.importJSON(history[step]);
   };
 
-  useEffect(() => {
-    if (!fabricCanvasRef.current) return;
-
-    if (activeTool === "draw") {
-      fabricCanvasRef.current.isDrawingMode = true;
-      fabricCanvasRef.current.freeDrawingBrush.color = color;
-      fabricCanvasRef.current.freeDrawingBrush.width = strokeWidth;
-    } else {
-      fabricCanvasRef.current.isDrawingMode = false;
-    }
-
-    if (activeTool === "select") {
-      fabricCanvasRef.current.selection = true;
-      fabricCanvasRef.current.forEachObject((obj) => {
-        obj.selectable = true;
-        fabricCanvasRef.current?.renderAll();
-      });
-    }
-  }, [activeTool, color, strokeWidth]);
-
   const handleDelete = () => {
-    if (!fabricCanvasRef.current) return;
-    const activeObjects = fabricCanvasRef.current.getActiveObjects();
-    if (activeObjects.length > 0) {
-      activeObjects.forEach((obj) => {
-        fabricCanvasRef.current?.remove(obj);
-      });
-      fabricCanvasRef.current.discardActiveObject();
-      fabricCanvasRef.current.renderAll();
-    }
+    if (!scopeRef.current) return;
+    const selectedItems = scopeRef.current.project.selectedItems;
+    selectedItems.forEach(item => {
+      if (item instanceof paper.Path) {
+        removeHandles(item);
+        const arrowHead = (item as any).arrowHead;
+        if (arrowHead) arrowHead.remove();
+      }
+      item.remove();
+    });
+    saveToHistory();
   };
 
   const handleToolClick = (tool: typeof activeTool) => {
     setActiveTool(tool);
-    if (!fabricCanvasRef.current) return;
+    if (!scopeRef.current) return;
 
     if (tool === "rectangle") {
-      const rect = new Rect({
-        left: 100,
-        top: 100,
-        fill: "transparent",
-        stroke: color,
+      const rect = new paper.Path.Rectangle({
+        point: [100, 100],
+        size: [150, 100],
+        strokeColor: color,
         strokeWidth: strokeWidth,
-        width: 150,
-        height: 100,
       });
-      fabricCanvasRef.current.add(rect);
+      saveToHistory();
     } else if (tool === "circle") {
-      const circle = new Circle({
-        left: 100,
-        top: 100,
-        fill: "transparent",
-        stroke: color,
-        strokeWidth: strokeWidth,
+      const circle = new paper.Path.Circle({
+        center: [150, 150],
         radius: 50,
+        strokeColor: color,
+        strokeWidth: strokeWidth,
       });
-      fabricCanvasRef.current.add(circle);
+      saveToHistory();
     } else if (tool === "text") {
-      const text = new Textbox("Texte", {
-        left: 100,
-        top: 100,
+      const text = new paper.PointText({
+        point: [100, 100],
+        content: 'Texte',
+        fillColor: color,
         fontSize: 20,
-        fill: color,
       });
-      fabricCanvasRef.current.add(text);
+      saveToHistory();
     }
   };
 
   const handleClear = () => {
-    if (!fabricCanvasRef.current) return;
-    fabricCanvasRef.current.clear();
-    fabricCanvasRef.current.backgroundColor = "#ffffff";
-    fabricCanvasRef.current.renderAll();
+    if (!scopeRef.current) return;
+    scopeRef.current.project.activeLayer.removeChildren();
     setHistory([]);
     setHistoryStep(-1);
     toast.success("Canevas effacé");
   };
 
   const handleDownload = () => {
-    if (!fabricCanvasRef.current) return;
-    const dataURL = fabricCanvasRef.current.toDataURL({
-      format: "png",
-      quality: 1,
-      multiplier: 1,
-    });
+    if (!canvasRef.current) return;
+    const dataURL = canvasRef.current.toDataURL('image/png');
     const link = document.createElement("a");
     link.href = dataURL;
     link.download = `schema-technique-${Date.now()}.png`;
@@ -781,31 +455,42 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     toast.success("Schéma téléchargé");
   };
 
+  const saveToHistory = () => {
+    if (!scopeRef.current) return;
+    const json = scopeRef.current.project.exportJSON();
+    const newHistory = history.slice(0, historyStep + 1);
+    newHistory.push(json);
+    setHistory(newHistory);
+    setHistoryStep(newHistory.length - 1);
+  };
+
   const handleSelectAccessory = (accessory: any, source: "expense" | "catalog") => {
-    if (!fabricCanvasRef.current) return;
+    if (!scopeRef.current) return;
 
     const name = accessory.nom_accessoire || accessory.nom || "Accessoire";
     const details = [accessory.marque, accessory.categorie || accessory.categories?.nom, accessory.type_electrique]
       .filter(Boolean)
       .join(" | ");
 
-    const text = new Textbox(`📦 ${name}\n${details}`, {
-      left: 100,
-      top: 100,
+    const text = new paper.PointText({
+      point: [100, 100],
+      content: `📦 ${name}\n${details}`,
+      fillColor: color,
       fontSize: 14,
-      fill: color,
-      backgroundColor: "#ffffff",
-      padding: 8,
-      borderColor: color,
-      cornerColor: color,
-      width: 200,
     });
 
-    fabricCanvasRef.current.add(text);
-    fabricCanvasRef.current.setActiveObject(text);
-    fabricCanvasRef.current.renderAll();
+    const background = new paper.Path.Rectangle({
+      rectangle: text.bounds.expand(8),
+      fillColor: 'white',
+      strokeColor: color,
+      strokeWidth: 1,
+    });
+
+    const group = new paper.Group([background, text]);
+    group.data = { isAccessory: true };
 
     toast.success(`${name} ajouté au schéma`);
+    saveToHistory();
   };
 
   return (
@@ -923,12 +608,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
           <strong>💡 Aide :</strong> Les traits se positionnent automatiquement à l'horizontal ou à la vertical. Les
           poignées s'accrochent magnétiquement aux autres éléments (distance : {SNAP_DISTANCE}px).
-          <strong>Maintenez Shift</strong> pour désactiver temporairement le snapping.
+          <strong> Maintenez Shift</strong> pour désactiver temporairement le snapping.
         </div>
       )}
 
       <div className="border border-border rounded-lg overflow-hidden shadow-lg bg-white">
-        <canvas ref={canvasRef} />
+        <canvas ref={canvasRef} style={{ width: '1200px', height: '800px' }} />
       </div>
     </div>
   );
