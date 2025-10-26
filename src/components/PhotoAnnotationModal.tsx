@@ -121,15 +121,16 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         canvas.renderAll();
 
         // Load saved annotations if they exist
-        if (photo.annotations) {
+        if (photo.annotations && photo.annotations.objects) {
           try {
-            canvas.loadFromJSON(photo.annotations, () => {
-              const objects = canvas.getObjects();
-              const imageObj = objects.find(obj => obj.type === 'image');
-              if (imageObj) {
-                canvas.sendObjectToBack(imageObj);
-              }
-              canvas.renderAll();
+            // Ne charger que les objets qui ne sont pas des images
+            const annotationObjects = photo.annotations.objects.filter((obj: any) => obj.type !== 'image');
+            
+            // Charger chaque objet d'annotation individuellement
+            annotationObjects.forEach((objData: any) => {
+              canvas.loadFromJSON({ objects: [objData] }, () => {
+                canvas.renderAll();
+              });
             });
           } catch (error) {
             console.error("Error loading annotations:", error);
