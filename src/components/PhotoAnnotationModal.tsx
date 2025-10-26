@@ -192,11 +192,19 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     };
 
     const initCanvas = async () => {
-      // Check if refs are available
+      // Check if refs are available and component is still mounted
+      if (!mounted) return;
+      
       if (!canvasRef.current || !containerRef.current) {
         console.log("Refs not ready yet, waiting...");
-        if (mounted) {
-          timeoutId = setTimeout(initCanvas, 100);
+        // Retry with backoff, max 5 attempts
+        const retryCount = (initCanvas as any).retryCount || 0;
+        if (retryCount < 5) {
+          (initCanvas as any).retryCount = retryCount + 1;
+          timeoutId = setTimeout(initCanvas, 150);
+        } else {
+          console.error("Failed to initialize canvas: refs not available after multiple retries");
+          setIsLoadingImage(false);
         }
         return;
       }
@@ -409,8 +417,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     setHistory([]);
     setHistoryStep(-1);
     
-    // Start initialization with a small delay to ensure Dialog is mounted
-    timeoutId = setTimeout(initCanvas, 200);
+    // Reset retry counter
+    (initCanvas as any).retryCount = 0;
+    
+    // Start initialization with a delay to ensure Dialog portal is mounted
+    timeoutId = setTimeout(initCanvas, 300);
 
     return () => {
       mounted = false;
@@ -659,7 +670,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-6">
+      <DialogContent key={photo?.id} className="max-w-[95vw] h-[90vh] flex flex-col p-6">
         <DialogHeader>
           <DialogTitle>Annoter la photo</DialogTitle>
         </DialogHeader>
