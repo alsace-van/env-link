@@ -72,33 +72,26 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     }
 
     let mounted = true;
-    let initAttempts = 0;
-    const maxAttempts = 30;
+    let timeoutId: NodeJS.Timeout | null = null;
 
-    const tryInitCanvas = async () => {
-      // Wait for canvas ref to be available
-      if (!canvasRef.current) {
-        initAttempts++;
-        if (initAttempts < maxAttempts) {
-          console.log(`Canvas ref not ready, attempt ${initAttempts}/${maxAttempts}`);
-          setTimeout(tryInitCanvas, 100);
-        } else {
-          console.error("Canvas ref never became available");
+    const initCanvas = async () => {
+      // Check if refs are available
+      if (!canvasRef.current || !containerRef.current) {
+        console.log("Refs not ready yet, waiting...");
+        if (mounted) {
+          timeoutId = setTimeout(initCanvas, 100);
         }
         return;
       }
 
+      if (!mounted) return;
+      
       setIsLoadingImage(true);
       console.log("Starting canvas initialization...");
 
       try {
         const container = containerRef.current;
         const canvasElement = canvasRef.current;
-
-        if (!container || !canvasElement) {
-          console.error("Container or canvas ref not found");
-          return;
-        }
 
         console.log("Container dimensions:", {
           width: container.clientWidth,
@@ -165,8 +158,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         if (!fabricImg || !fabricImg.width || !fabricImg.height) {
           console.error("Invalid image loaded:", fabricImg);
-          toast.error("Erreur lors du chargement de l'image");
-          setIsLoadingImage(false);
+          if (mounted) {
+            toast.error("Erreur lors du chargement de l'image");
+            setIsLoadingImage(false);
+          }
           return;
         }
 
@@ -260,8 +255,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         }
       } catch (error) {
         console.error("Failed to initialize canvas:", error);
-        toast.error("Impossible de charger l'image");
         if (mounted) {
+          toast.error("Impossible de charger l'image");
           setIsLoadingImage(false);
         }
       }
@@ -270,11 +265,16 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     setHistory([]);
     setHistoryStep(-1);
     
-    // Start trying to initialize
-    tryInitCanvas();
+    // Start initialization with a small delay to ensure Dialog is mounted
+    timeoutId = setTimeout(initCanvas, 200);
 
     return () => {
       mounted = false;
+      
+      // Clear any pending timeout
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
       if (fabricCanvasRef.current) {
         try {
