@@ -10,6 +10,7 @@ import {
   PencilBrush,
   Group,
   Control,
+  Point,
 } from "fabric";
 import * as fabric from "fabric";
 import { Button } from "@/components/ui/button";
@@ -372,7 +373,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
-                group.addWithUpdate();
                 group.setCoords();
                 canvas.requestRenderAll();
                 return true;
@@ -391,7 +391,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 // p1 est à l'origine du groupe (left, top)
-                return { x: group.left || 0, y: group.top || 0 };
+                return new Point(group.left || 0, group.top || 0);
               },
             }),
             p2: new Control({
@@ -445,7 +445,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
-                group.addWithUpdate();
                 group.setCoords();
                 canvas.requestRenderAll();
                 return true;
@@ -465,7 +464,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
                 // p2 est à (left + x2, top + y2)
-                return { x: (group.left || 0) + (line.x2 || 0), y: (group.top || 0) + (line.y2 || 0) };
+                return new Point((group.left || 0) + (line.x2 || 0), (group.top || 0) + (line.y2 || 0));
               },
             }),
           };
@@ -577,7 +576,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 // p1 est à l'origine (left, top)
-                return { x: line.left || 0, y: line.top || 0 };
+                return new Point(line.left || 0, line.top || 0);
               },
             }),
             p2: new Control({
@@ -637,7 +636,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 // p2 est à (left + x2, top + y2)
-                return { x: (line.left || 0) + (line.x2 || 0), y: (line.top || 0) + (line.y2 || 0) };
+                return new Point((line.left || 0) + (line.x2 || 0), (line.top || 0) + (line.y2 || 0));
               },
             }),
           };
