@@ -107,9 +107,11 @@ export const CableSectionCalculator = () => {
             <Input
               id="voltage"
               type="number"
+              min="1"
+              step="1"
               value={voltage}
               onChange={(e) => setVoltage(Number(e.target.value))}
-              disabled
+              placeholder="Ex: 12"
             />
           </div>
         </div>
