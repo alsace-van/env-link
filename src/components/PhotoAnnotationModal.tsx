@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Canvas as FabricCanvas, FabricImage, Rect, Line, Triangle, Circle, Textbox, PencilBrush, Group } from "fabric";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,6 +51,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [history, setHistory] = useState<any[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
+  const [isDialogReady, setIsDialogReady] = useState(false);
   
   // Using refs to avoid re-renders that break canvas display
   const isDrawingLineRef = useRef(false);
@@ -65,9 +66,23 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     }
   }, [photo]);
 
+  // Wait for Dialog portal to be fully mounted
+  useLayoutEffect(() => {
+    if (isOpen) {
+      setIsDialogReady(false);
+      // Wait for Dialog portal to mount
+      const timer = setTimeout(() => {
+        setIsDialogReady(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
+      setIsDialogReady(false);
+    }
+  }, [isOpen]);
+
   // Initialisation du canvas
   useEffect(() => {
-    if (!isOpen || !photo) {
+    if (!isOpen || !photo || !isDialogReady) {
       return;
     }
 
@@ -420,8 +435,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     // Reset retry counter
     (initCanvas as any).retryCount = 0;
     
-    // Start initialization with a delay to ensure Dialog portal is mounted
-    timeoutId = setTimeout(initCanvas, 300);
+    // Start initialization immediately since Dialog is ready
+    timeoutId = setTimeout(initCanvas, 50);
 
     return () => {
       mounted = false;
@@ -441,7 +456,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         fabricCanvasRef.current = null;
       }
     };
-  }, [isOpen, photo]);
+  }, [isOpen, photo, isDialogReady]);
 
   // Update refs when state changes
   useEffect(() => {
