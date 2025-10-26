@@ -372,41 +372,56 @@ const ProjectDetail = () => {
           </TabsContent>
 
           <TabsContent value="technical">
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Aménagement et Poids</CardTitle>
-                  <CardDescription>Planifiez votre aménagement et suivez la charge du véhicule</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <LayoutCanvas
-                    projectId={project.id}
-                    vehicleLength={project.longueur_mm}
-                    vehicleWidth={project.largeur_mm}
-                    loadAreaLength={project.longueur_chargement_mm}
-                    loadAreaWidth={project.largeur_chargement_mm}
-                    maxLoad={project.charge_utile_kg}
-                  />
-                </CardContent>
-              </Card>
+            <Tabs defaultValue="layout" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="layout">Aménagement</TabsTrigger>
+                <TabsTrigger value="schema">Schémas</TabsTrigger>
+                <TabsTrigger value="cables">Câbles</TabsTrigger>
+                <TabsTrigger value="energy">Énergie</TabsTrigger>
+              </TabsList>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Canevas de Schémas Techniques</CardTitle>
-                  <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <TechnicalCanvas 
-                    projectId={project.id} 
-                    onExpenseAdded={() => setExpenseRefresh(prev => prev + 1)}
-                  />
-                </CardContent>
-              </Card>
+              <TabsContent value="layout">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Aménagement et Poids</CardTitle>
+                    <CardDescription>Planifiez votre aménagement et suivez la charge du véhicule</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <LayoutCanvas
+                      projectId={project.id}
+                      vehicleLength={project.longueur_mm}
+                      vehicleWidth={project.largeur_mm}
+                      loadAreaLength={project.longueur_chargement_mm}
+                      loadAreaWidth={project.largeur_chargement_mm}
+                      maxLoad={project.charge_utile_kg}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-              <CableSectionCalculator />
+              <TabsContent value="schema">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Canevas de Schémas Techniques</CardTitle>
+                    <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <TechnicalCanvas 
+                      projectId={project.id} 
+                      onExpenseAdded={() => setExpenseRefresh(prev => prev + 1)}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-              <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
-            </div>
+              <TabsContent value="cables">
+                <CableSectionCalculator />
+              </TabsContent>
+
+              <TabsContent value="energy">
+                <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
         </Tabs>
 
