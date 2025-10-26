@@ -373,11 +373,10 @@ const ProjectDetail = () => {
 
           <TabsContent value="technical">
             <Tabs defaultValue="layout" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="layout">Aménagement</TabsTrigger>
                 <TabsTrigger value="schema">Schémas</TabsTrigger>
-                <TabsTrigger value="cables">Câbles</TabsTrigger>
-                <TabsTrigger value="energy">Énergie</TabsTrigger>
+                <TabsTrigger value="electrical">Câbles & Énergie</TabsTrigger>
               </TabsList>
 
               <TabsContent value="layout">
@@ -414,12 +413,11 @@ const ProjectDetail = () => {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="cables">
-                <CableSectionCalculator />
-              </TabsContent>
-
-              <TabsContent value="energy">
-                <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
+              <TabsContent value="electrical">
+                <div className="space-y-6">
+                  <CableSectionCalculator />
+                  <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
+                </div>
               </TabsContent>
             </Tabs>
           </TabsContent>
