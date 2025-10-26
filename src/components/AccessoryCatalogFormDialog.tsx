@@ -153,43 +153,27 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   const handlePricingChange = (field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
     const newFormData = { ...formData, [field]: value };
 
-    // Si le champ modifié est vide ou invalide, ne pas faire de calcul automatique
-    // Cela permet à l'utilisateur de supprimer le contenu sans que ça se recalcule
-    if (!value || value === "" || value === "-" || value === "." || parseFloat(value) === 0) {
-      setFormData(newFormData);
-      return;
-    }
+    // Déterminer quels champs sont remplis (non vides et non zéro)
+    const hasPrixReference = newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0;
+    const hasPrixVente = newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0;
+    const hasMarge = newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0;
 
-    // Déterminer quels champs sont remplis avec des valeurs valides (non vides et > 0)
-    const hasPrixReference =
-      newFormData.prix_reference && newFormData.prix_reference !== "" && parseFloat(newFormData.prix_reference) > 0;
-    const hasPrixVente =
-      newFormData.prix_vente_ttc && newFormData.prix_vente_ttc !== "" && parseFloat(newFormData.prix_vente_ttc) > 0;
-    const hasMarge =
-      newFormData.marge_pourcent && newFormData.marge_pourcent !== "" && parseFloat(newFormData.marge_pourcent) !== 0;
-
-    // Compter combien de champs sont remplis
-    const filledFieldsCount = [hasPrixReference, hasPrixVente, hasMarge].filter(Boolean).length;
-
-    // Ne calculer automatiquement que si on a exactement 2 champs remplis
-    // et que le champ qu'on vient de modifier en fait partie
-    if (filledFieldsCount === 2) {
-      if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
-        // Prix référence + Prix TTC remplis → calculer la marge
-        const prixReference = parseFloat(newFormData.prix_reference);
-        const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-        newFormData.marge_pourcent = (((prixVenteTTC - prixReference) / prixReference) * 100).toFixed(2);
-      } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
-        // Prix TTC + Marge remplis → calculer le prix référence
-        const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-        const margePourcent = parseFloat(newFormData.marge_pourcent);
-        newFormData.prix_reference = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
-      } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
-        // Prix référence + Marge remplis → calculer le prix TTC
-        const prixReference = parseFloat(newFormData.prix_reference);
-        const margePourcent = parseFloat(newFormData.marge_pourcent);
-        newFormData.prix_vente_ttc = (prixReference * (1 + margePourcent / 100)).toFixed(2);
-      }
+    // Si on a 2 champs remplis, calculer le 3ème
+    if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
+      // Prix référence + Prix TTC remplis → calculer la marge
+      const prixReference = parseFloat(newFormData.prix_reference);
+      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+      newFormData.marge_pourcent = (((prixVenteTTC - prixReference) / prixReference) * 100).toFixed(2);
+    } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
+      // Prix TTC + Marge remplis → calculer le prix référence
+      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+      const margePourcent = parseFloat(newFormData.marge_pourcent);
+      newFormData.prix_reference = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
+    } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
+      // Prix référence + Marge remplis → calculer le prix TTC
+      const prixReference = parseFloat(newFormData.prix_reference);
+      const margePourcent = parseFloat(newFormData.marge_pourcent);
+      newFormData.prix_vente_ttc = (prixReference * (1 + margePourcent / 100)).toFixed(2);
     }
 
     setFormData(newFormData);
