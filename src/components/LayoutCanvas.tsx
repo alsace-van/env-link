@@ -159,15 +159,16 @@ export const LayoutCanvas = ({
         const bounds = item.bounds;
         const corners = [bounds.topLeft, bounds.topRight, bounds.bottomRight, bounds.bottomLeft];
 
-        corners.forEach((corner) => {
+        corners.forEach((corner, index) => {
           const handle = new paper.Path.Circle({
             center: corner,
-            radius: 6,
-            fillColor: new paper.Color("#3b82f6"),
-            strokeColor: new paper.Color("#fff"),
-            strokeWidth: 2,
+            radius: 8,
+            fillColor: new paper.Color("#ffffff"),
+            strokeColor: new paper.Color("#3b82f6"),
+            strokeWidth: 3,
           });
           handle.data.isHandle = true;
+          handle.data.handleIndex = index;
           handles.push(handle);
         });
       }
@@ -319,11 +320,13 @@ export const LayoutCanvas = ({
         // Récupérer le rectangle à redimensionner
         let rectToResize: paper.Path.Rectangle | null = null;
         let textToUpdate: paper.PointText | null = null;
+        let furnitureId: string | null = null;
 
         if (selectedItem instanceof paper.Group && selectedItem.data.isFurniture) {
           // Si c'est un groupe de meuble, récupérer le rectangle et le texte
           rectToResize = selectedItem.children[0] as paper.Path.Rectangle;
           textToUpdate = selectedItem.children[1] as paper.PointText;
+          furnitureId = selectedItem.data.furnitureId;
         } else if (selectedItem instanceof paper.Path.Rectangle) {
           rectToResize = selectedItem;
         }
@@ -351,9 +354,31 @@ export const LayoutCanvas = ({
 
           rectToResize.bounds = newBounds;
 
-          // Mettre à jour la position du texte au centre du rectangle redimensionné
-          if (textToUpdate) {
-            textToUpdate.position = rectToResize.bounds.center;
+          // Calculer les nouvelles dimensions réelles en mm
+          const newWidthMm = Math.round(newBounds.width / scale);
+          const newHeightMm = Math.round(newBounds.height / scale);
+
+          // Mettre à jour les données du meuble
+          if (furnitureId) {
+            const furnitureData = furnitureItems.get(furnitureId);
+            if (furnitureData) {
+              const updatedData = {
+                ...furnitureData,
+                longueur_mm: newWidthMm,
+                largeur_mm: newHeightMm,
+              };
+              setFurnitureItems((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(furnitureId!, updatedData);
+                return newMap;
+              });
+
+              // Mettre à jour le texte avec les nouvelles dimensions
+              if (textToUpdate) {
+                textToUpdate.content = `${newWidthMm}x${newHeightMm}x${furnitureData.hauteur_mm}mm\n${furnitureData.poids_kg}kg`;
+                textToUpdate.position = rectToResize.bounds.center;
+              }
+            }
           }
 
           createHandles(rectToResize);
