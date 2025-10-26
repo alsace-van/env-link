@@ -34,6 +34,24 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const [color, setColor] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(2);
 
+  // Refs pour éviter la réinitialisation du canvas
+  const activeToolRef = useRef(activeTool);
+  const colorRef = useRef(color);
+  const strokeWidthRef = useRef(strokeWidth);
+
+  // Mettre à jour les refs quand les états changent
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+  }, [activeTool]);
+
+  useEffect(() => {
+    colorRef.current = color;
+  }, [color]);
+
+  useEffect(() => {
+    strokeWidthRef.current = strokeWidth;
+  }, [strokeWidth]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
 
@@ -59,7 +77,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           const handle = new paper.Path.Circle({
             center: segment.point,
             radius: 5,
-            fillColor: index === 0 ? "#2196F3" : "#FF5722",
+            fillColor: path.strokeColor, // Utiliser la couleur de la ligne
             strokeColor: "white",
             strokeWidth: 2,
           });
@@ -145,7 +163,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     const tool = new paper.Tool();
 
     tool.onMouseDown = (event: paper.ToolEvent) => {
-      console.log("Mouse down", activeTool, event.point);
+      console.log("Mouse down", activeToolRef.current, event.point);
 
       // Vérifier si on clique sur une poignée
       const hitHandle = handles.find((h) => h.contains(event.point));
@@ -161,7 +179,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         tolerance: 5,
       });
 
-      if (activeTool === "select") {
+      if (activeToolRef.current === "select") {
         // Désélectionner l'ancien
         if (selectedItem) {
           selectedItem.selected = false;
@@ -179,19 +197,19 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         } else {
           selectedItem = null;
         }
-      } else if (activeTool === "line" || activeTool === "arrow") {
+      } else if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
         currentPath = new paper.Path({
           segments: [event.point, event.point],
-          strokeColor: color,
-          strokeWidth: strokeWidth,
+          strokeColor: colorRef.current,
+          strokeWidth: strokeWidthRef.current,
           strokeCap: "round",
         });
-        currentPath.data.type = activeTool;
+        currentPath.data.type = activeToolRef.current;
         console.log("Created path", currentPath);
-      } else if (activeTool === "draw") {
+      } else if (activeToolRef.current === "draw") {
         currentPath = new paper.Path({
-          strokeColor: color,
-          strokeWidth: strokeWidth,
+          strokeColor: colorRef.current,
+          strokeWidth: strokeWidthRef.current,
           strokeCap: "round",
           strokeJoin: "round",
         });
@@ -226,9 +244,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
       // Dessiner
       if (currentPath) {
-        if (activeTool === "draw") {
+        if (activeToolRef.current === "draw") {
           currentPath.add(event.point);
-        } else if (activeTool === "line" || activeTool === "arrow") {
+        } else if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
           let newPoint = event.point;
 
           // Snapping
@@ -241,7 +259,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
 
       // Déplacer un objet sélectionné
-      if (selectedItem && activeTool === "select") {
+      if (selectedItem && activeToolRef.current === "select") {
         selectedItem.position = selectedItem.position.add(event.delta);
 
         // Mettre à jour la tête de flèche si c'est une flèche
@@ -259,9 +277,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       draggedHandle = null;
 
       if (currentPath) {
-        if (activeTool === "draw") {
+        if (activeToolRef.current === "draw") {
           currentPath.simplify(10);
-        } else if (activeTool === "arrow") {
+        } else if (activeToolRef.current === "arrow") {
           createArrowHead(currentPath);
         }
 
@@ -288,7 +306,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     return () => {
       tool.remove();
     };
-  }, [activeTool, color, strokeWidth]);
+  }, []); // ✅ Tableau vide = ne s'exécute qu'une seule fois au montage
 
   const handleDelete = () => {
     // Implémenter la suppression
@@ -326,21 +344,21 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       new paper.Path.Rectangle({
         point: [100, 100],
         size: [150, 100],
-        strokeColor: color,
-        strokeWidth: strokeWidth,
+        strokeColor: colorRef.current,
+        strokeWidth: strokeWidthRef.current,
       });
     } else if (tool === "circle" && paper.project) {
       new paper.Path.Circle({
         center: [150, 150],
         radius: 50,
-        strokeColor: color,
-        strokeWidth: strokeWidth,
+        strokeColor: colorRef.current,
+        strokeWidth: strokeWidthRef.current,
       });
     } else if (tool === "text" && paper.project) {
       new paper.PointText({
         point: [100, 100],
         content: "Texte",
-        fillColor: color,
+        fillColor: colorRef.current,
         fontSize: 20,
       });
     }
@@ -357,14 +375,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     const text = new paper.PointText({
       point: [100, 100],
       content: `📦 ${name}\n${details}`,
-      fillColor: color,
+      fillColor: colorRef.current,
       fontSize: 14,
     });
 
     const background = new paper.Path.Rectangle({
       rectangle: text.bounds.expand(8),
       fillColor: "white",
-      strokeColor: color,
+      strokeColor: colorRef.current,
       strokeWidth: 1,
     });
 
