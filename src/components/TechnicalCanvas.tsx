@@ -188,7 +188,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
         // Sélectionner le nouveau (sauf les poignées et têtes de flèches)
         if (hitResult && !hitResult.item.data.isHandle && !hitResult.item.data.isArrowHead) {
-          selectedItem = hitResult.item;
+          // Si l'élément fait partie d'un groupe, sélectionner le groupe entier
+          if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isAccessory) {
+            selectedItem = hitResult.item.parent;
+          } else {
+            selectedItem = hitResult.item;
+          }
+
           selectedItem.selected = true;
 
           if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
@@ -262,12 +268,15 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       if (selectedItem && activeToolRef.current === "select") {
         selectedItem.position = selectedItem.position.add(event.delta);
 
-        // Mettre à jour la tête de flèche si c'est une flèche
+        // Mettre à jour la tête de flèche si c'est une flèche (uniquement pour les Path)
         if (selectedItem instanceof paper.Path && selectedItem.data.type === "arrow") {
           updateArrowHead(selectedItem);
         }
 
-        updateHandles(selectedItem as paper.Path);
+        // Mettre à jour les handles uniquement pour les Path
+        if (selectedItem instanceof paper.Path) {
+          updateHandles(selectedItem);
+        }
       }
     };
 
@@ -372,6 +381,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       .filter(Boolean)
       .join(" | ");
 
+    // Créer le texte
     const text = new paper.PointText({
       point: [100, 100],
       content: `📦 ${name}\n${details}`,
@@ -379,6 +389,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       fontSize: 14,
     });
 
+    // Créer le cadre qui entoure le texte
     const background = new paper.Path.Rectangle({
       rectangle: text.bounds.expand(8),
       fillColor: "white",
@@ -386,7 +397,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       strokeWidth: 1,
     });
 
+    // Créer un groupe avec le cadre d'abord, puis le texte (ordre important pour le z-index)
     const group = new paper.Group([background, text]);
+
+    // Marquer le groupe comme un accessoire pour le déplacement unifié
+    group.data.isAccessory = true;
+    group.data.accessoryName = name;
 
     toast.success(`${name} ajouté au schéma`);
   };
