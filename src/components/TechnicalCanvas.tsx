@@ -305,48 +305,52 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               x: -0.5,
               y: -0.5,
               cursorStyle: "pointer",
-              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-                const group = transform.target as Group;
+              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
+                const group = transformData.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
-                const pointer = canvas.getPointer(eventData.e);
+                // Obtenir la position absolue du curseur
+                const pointer = canvas.getPointer(eventData);
+                let newX = pointer.x;
+                let newY = pointer.y;
+
+                // Calculer la position actuelle de p2 en coordonnées absolues
+                const groupMatrix = group.calcTransformMatrix();
+                const p2Absolute = fabric.util.transformPoint({ x: line.x2 || 0, y: line.y2 || 0 }, groupMatrix);
 
                 // Appliquer le snapping magnétique
-                const snappedPoint = findSnapPoint(pointer.x, pointer.y, group);
-                let finalX = snappedPoint.x;
-                let finalY = snappedPoint.y;
-
-                // Appliquer le snapping horizontal/vertical
-                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const p2 = {
-                    x: (group.left || 0) + (line.x2 || 0),
-                    y: (group.top || 0) + (line.y2 || 0),
-                  };
-                  const snapped = snapToHorizontalOrVertical(finalX, finalY, p2.x, p2.y);
-                  if (snapped.y2 === p2.y) finalY = p2.y;
-                  if (snapped.x2 === p2.x) finalX = p2.x;
+                if (!eventData.shiftKey) {
+                  const snappedPoint = findSnapPoint(newX, newY, group);
+                  if (snappedPoint.snapped) {
+                    newX = snappedPoint.x;
+                    newY = snappedPoint.y;
+                  } else {
+                    // Appliquer le snapping horizontal/vertical
+                    const snapped = snapToHorizontalOrVertical(newX, newY, p2Absolute.x, p2Absolute.y);
+                    if (snapped.y2 === p2Absolute.y) newY = p2Absolute.y;
+                    if (snapped.x2 === p2Absolute.x) newX = p2Absolute.x;
+                  }
                 }
 
-                // Calculer le delta et mettre à jour
-                const currentP1X = (group.left || 0) + (line.x1 || 0);
-                const currentP1Y = (group.top || 0) + (line.y1 || 0);
-                const dx = finalX - currentP1X;
-                const dy = finalY - currentP1Y;
+                // Calculer le delta de déplacement
+                const currentP1 = fabric.util.transformPoint({ x: line.x1 || 0, y: line.y1 || 0 }, groupMatrix);
+                const dx = newX - currentP1.x;
+                const dy = newY - currentP1.y;
 
-                line.set({
-                  x1: line.x1 || 0,
-                  y1: line.y1 || 0,
-                  x2: (line.x2 || 0) - dx,
-                  y2: (line.y2 || 0) - dy,
-                });
-
+                // Déplacer le groupe
                 group.set({
                   left: (group.left || 0) + dx,
                   top: (group.top || 0) + dy,
                 });
 
-                // Recalculer la tête de flèche
+                // Ajuster x2, y2 pour compenser le déplacement du groupe
+                line.set({
+                  x2: (line.x2 || 0) - dx,
+                  y2: (line.y2 || 0) - dy,
+                });
+
+                // Mettre à jour la tête de flèche
                 const x1 = line.x1 || 0;
                 const y1 = line.y1 || 0;
                 const x2 = line.x2 || 0;
@@ -387,36 +391,45 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               x: 0.5,
               y: 0.5,
               cursorStyle: "pointer",
-              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-                const group = transform.target as Group;
+              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
+                const group = transformData.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
-                const pointer = canvas.getPointer(eventData.e);
+                // Obtenir la position absolue du curseur
+                const pointer = canvas.getPointer(eventData);
+                let newX = pointer.x;
+                let newY = pointer.y;
+
+                // Calculer la position actuelle de p1 en coordonnées absolues
+                const groupMatrix = group.calcTransformMatrix();
+                const p1Absolute = fabric.util.transformPoint({ x: line.x1 || 0, y: line.y1 || 0 }, groupMatrix);
 
                 // Appliquer le snapping magnétique
-                const snappedPoint = findSnapPoint(pointer.x, pointer.y, group);
-                let finalX = snappedPoint.x;
-                let finalY = snappedPoint.y;
-
-                // Appliquer le snapping horizontal/vertical
-                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const p1 = {
-                    x: (group.left || 0) + (line.x1 || 0),
-                    y: (group.top || 0) + (line.y1 || 0),
-                  };
-                  const snapped = snapToHorizontalOrVertical(p1.x, p1.y, finalX, finalY);
-                  finalX = snapped.x2;
-                  finalY = snapped.y2;
+                if (!eventData.shiftKey) {
+                  const snappedPoint = findSnapPoint(newX, newY, group);
+                  if (snappedPoint.snapped) {
+                    newX = snappedPoint.x;
+                    newY = snappedPoint.y;
+                  } else {
+                    // Appliquer le snapping horizontal/vertical
+                    const snapped = snapToHorizontalOrVertical(p1Absolute.x, p1Absolute.y, newX, newY);
+                    newX = snapped.x2;
+                    newY = snapped.y2;
+                  }
                 }
 
-                // Mettre à jour x2 et y2
+                // Convertir la nouvelle position en coordonnées relatives au groupe
+                const groupInverse = fabric.util.invertTransform(groupMatrix);
+                const newP2Local = fabric.util.transformPoint({ x: newX, y: newY }, groupInverse);
+
+                // Mettre à jour la ligne
                 line.set({
-                  x2: finalX - (group.left || 0),
-                  y2: finalY - (group.top || 0),
+                  x2: newP2Local.x,
+                  y2: newP2Local.y,
                 });
 
-                // Recalculer la tête de flèche
+                // Mettre à jour la tête de flèche
                 const x1 = line.x1 || 0;
                 const y1 = line.y1 || 0;
                 const x2 = line.x2 || 0;
@@ -496,37 +509,41 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               x: -0.5,
               y: -0.5,
               cursorStyle: "pointer",
-              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-                const line = transform.target as Line;
-                const pointer = canvas.getPointer(eventData.e);
+              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
+                const line = transformData.target as Line;
+
+                // Obtenir la position absolue du curseur
+                const pointer = canvas.getPointer(eventData);
+                let newX = pointer.x;
+                let newY = pointer.y;
+
+                // Calculer la position actuelle de p2 en coordonnées absolues
+                const lineMatrix = line.calcTransformMatrix();
+                const p2Absolute = fabric.util.transformPoint({ x: line.x2 || 0, y: line.y2 || 0 }, lineMatrix);
 
                 // Appliquer le snapping magnétique
-                const snappedPoint = findSnapPoint(pointer.x, pointer.y, line);
-                let finalX = snappedPoint.x;
-                let finalY = snappedPoint.y;
-
-                // Appliquer le snapping horizontal/vertical
-                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const p2 = {
-                    x: (line.left || 0) + (line.x2 || 0),
-                    y: (line.top || 0) + (line.y2 || 0),
-                  };
-                  const snapped = snapToHorizontalOrVertical(finalX, finalY, p2.x, p2.y);
-                  if (snapped.y2 === p2.y) finalY = p2.y;
-                  if (snapped.x2 === p2.x) finalX = p2.x;
+                if (!eventData.shiftKey) {
+                  const snappedPoint = findSnapPoint(newX, newY, line);
+                  if (snappedPoint.snapped) {
+                    newX = snappedPoint.x;
+                    newY = snappedPoint.y;
+                  } else {
+                    // Appliquer le snapping horizontal/vertical
+                    const snapped = snapToHorizontalOrVertical(newX, newY, p2Absolute.x, p2Absolute.y);
+                    if (snapped.y2 === p2Absolute.y) newY = p2Absolute.y;
+                    if (snapped.x2 === p2Absolute.x) newX = p2Absolute.x;
+                  }
                 }
 
-                // Calculer le delta et mettre à jour
-                const currentP1X = (line.left || 0) + (line.x1 || 0);
-                const currentP1Y = (line.top || 0) + (line.y1 || 0);
-                const dx = finalX - currentP1X;
-                const dy = finalY - currentP1Y;
+                // Calculer le delta de déplacement
+                const currentP1 = fabric.util.transformPoint({ x: line.x1 || 0, y: line.y1 || 0 }, lineMatrix);
+                const dx = newX - currentP1.x;
+                const dy = newY - currentP1.y;
 
+                // Déplacer la ligne
                 line.set({
                   left: (line.left || 0) + dx,
                   top: (line.top || 0) + dy,
-                  x1: line.x1 || 0,
-                  y1: line.y1 || 0,
                   x2: (line.x2 || 0) - dx,
                   y2: (line.y2 || 0) - dy,
                 });
@@ -556,30 +573,40 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               x: 0.5,
               y: 0.5,
               cursorStyle: "pointer",
-              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-                const line = transform.target as Line;
-                const pointer = canvas.getPointer(eventData.e);
+              actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
+                const line = transformData.target as Line;
+
+                // Obtenir la position absolue du curseur
+                const pointer = canvas.getPointer(eventData);
+                let newX = pointer.x;
+                let newY = pointer.y;
+
+                // Calculer la position actuelle de p1 en coordonnées absolues
+                const lineMatrix = line.calcTransformMatrix();
+                const p1Absolute = fabric.util.transformPoint({ x: line.x1 || 0, y: line.y1 || 0 }, lineMatrix);
 
                 // Appliquer le snapping magnétique
-                const snappedPoint = findSnapPoint(pointer.x, pointer.y, line);
-                let finalX = snappedPoint.x;
-                let finalY = snappedPoint.y;
-
-                // Appliquer le snapping horizontal/vertical
-                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const p1 = {
-                    x: (line.left || 0) + (line.x1 || 0),
-                    y: (line.top || 0) + (line.y1 || 0),
-                  };
-                  const snapped = snapToHorizontalOrVertical(p1.x, p1.y, finalX, finalY);
-                  finalX = snapped.x2;
-                  finalY = snapped.y2;
+                if (!eventData.shiftKey) {
+                  const snappedPoint = findSnapPoint(newX, newY, line);
+                  if (snappedPoint.snapped) {
+                    newX = snappedPoint.x;
+                    newY = snappedPoint.y;
+                  } else {
+                    // Appliquer le snapping horizontal/vertical
+                    const snapped = snapToHorizontalOrVertical(p1Absolute.x, p1Absolute.y, newX, newY);
+                    newX = snapped.x2;
+                    newY = snapped.y2;
+                  }
                 }
 
-                // Mettre à jour x2 et y2
+                // Convertir la nouvelle position en coordonnées relatives à la ligne
+                const lineInverse = fabric.util.invertTransform(lineMatrix);
+                const newP2Local = fabric.util.transformPoint({ x: newX, y: newY }, lineInverse);
+
+                // Mettre à jour la ligne
                 line.set({
-                  x2: finalX - (line.left || 0),
-                  y2: finalY - (line.top || 0),
+                  x2: newP2Local.x,
+                  y2: newP2Local.y,
                 });
 
                 line.setCoords();
