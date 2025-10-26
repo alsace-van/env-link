@@ -167,81 +167,151 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           const arrow = new Group([arrowLine, arrowHead], {
             selectable: true,
             hasControls: true,
-            hasBorders: true,
+            hasBorders: false,
             lockScalingX: true,
             lockScalingY: true,
             lockRotation: true,
+            lockMovementX: false,
+            lockMovementY: false,
+            perPixelTargetFind: true,
           });
 
-          // Contrôles personnalisés pour redimensionner la flèche
+          // Désactiver tous les contrôles par défaut
+          arrow.setControlsVisibility({
+            mt: false,
+            mb: false,
+            ml: false,
+            mr: false,
+            bl: false,
+            br: false,
+            tl: false,
+            tr: false,
+            mtr: false,
+          });
+
+          // Contrôles personnalisés aux extrémités de la flèche
           arrow.controls = {
-            tl: new Control({
-              x: -0.5,
-              y: -0.5,
-              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
+            p1: new Control({
+              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
+                const group = fabricObject as Group;
+                const line = group.getObjects()[0] as Line;
+                const x = line.x1 || 0;
+                const y = line.y1 || 0;
+                return fabric.util.transformPoint(
+                  { x: x, y: y },
+                  fabric.util.multiplyTransformMatrices(
+                    fabricObject.canvas!.viewportTransform!,
+                    fabricObject.calcTransformMatrix(),
+                  ),
+                );
+              },
+              actionHandler: (eventData: any, transform: any) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
                 const pointer = canvas.getPointer(eventData.e);
-                line.set({ x1: pointer.x, y1: pointer.y });
+                const localPointer = fabric.util.transformPoint(
+                  pointer,
+                  fabric.util.invertTransform(group.calcTransformMatrix()),
+                );
 
-                const angle = Math.atan2((line.y2 || 0) - pointer.y, (line.x2 || 0) - pointer.x);
+                const x2 = line.x2 || 0;
+                const y2 = line.y2 || 0;
+
+                line.set({ x1: localPointer.x, y1: localPointer.y });
+
+                // Recalculer l'angle et la position de la tête de flèche
+                const angle = Math.atan2(y2 - localPointer.y, x2 - localPointer.x);
                 const headLength = 15;
+
                 head.set({
-                  left: (line.x2 || 0) - Math.cos(angle) * (headLength / 2),
-                  top: (line.y2 || 0) - Math.sin(angle) * (headLength / 2),
+                  left: x2 - Math.cos(angle) * (headLength / 2),
+                  top: y2 - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
-                canvas.renderAll();
+                group.addWithUpdate();
                 return true;
               },
-              cursorStyle: "pointer",
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+              cursorStyle: "move",
+              render: (
+                ctx: CanvasRenderingContext2D,
+                left: number,
+                top: number,
+                styleOverride: any,
+                fabricObject: any,
+              ) => {
                 const size = 8;
                 ctx.save();
                 ctx.fillStyle = "#2196F3";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.arc(0, 0, size, 0, 2 * Math.PI);
                 ctx.fill();
                 ctx.stroke();
                 ctx.restore();
               },
             }),
-            br: new Control({
-              x: 0.5,
-              y: 0.5,
-              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
+            p2: new Control({
+              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
+                const group = fabricObject as Group;
+                const line = group.getObjects()[0] as Line;
+                const x = line.x2 || 0;
+                const y = line.y2 || 0;
+                return fabric.util.transformPoint(
+                  { x: x, y: y },
+                  fabric.util.multiplyTransformMatrices(
+                    fabricObject.canvas!.viewportTransform!,
+                    fabricObject.calcTransformMatrix(),
+                  ),
+                );
+              },
+              actionHandler: (eventData: any, transform: any) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
                 const pointer = canvas.getPointer(eventData.e);
-                line.set({ x2: pointer.x, y2: pointer.y });
+                const localPointer = fabric.util.transformPoint(
+                  pointer,
+                  fabric.util.invertTransform(group.calcTransformMatrix()),
+                );
 
-                const angle = Math.atan2(pointer.y - (line.y1 || 0), pointer.x - (line.x1 || 0));
+                const x1 = line.x1 || 0;
+                const y1 = line.y1 || 0;
+
+                line.set({ x2: localPointer.x, y2: localPointer.y });
+
+                // Recalculer l'angle et la position de la tête de flèche
+                const angle = Math.atan2(localPointer.y - y1, localPointer.x - x1);
                 const headLength = 15;
+
                 head.set({
-                  left: pointer.x - Math.cos(angle) * (headLength / 2),
-                  top: pointer.y - Math.sin(angle) * (headLength / 2),
+                  left: localPointer.x - Math.cos(angle) * (headLength / 2),
+                  top: localPointer.y - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
-                canvas.renderAll();
+                group.addWithUpdate();
                 return true;
               },
-              cursorStyle: "pointer",
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+              cursorStyle: "move",
+              render: (
+                ctx: CanvasRenderingContext2D,
+                left: number,
+                top: number,
+                styleOverride: any,
+                fabricObject: any,
+              ) => {
                 const size = 8;
                 ctx.save();
-                ctx.fillStyle = "#2196F3";
+                ctx.fillStyle = "#FF5722";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.arc(0, 0, size, 0, 2 * Math.PI);
                 ctx.fill();
                 ctx.stroke();
                 ctx.restore();
@@ -256,60 +326,115 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             strokeWidth: strokeWidth,
             selectable: true,
             hasControls: true,
-            hasBorders: true,
+            hasBorders: false,
             lockMovementX: false,
             lockMovementY: false,
+            lockScalingX: true,
+            lockScalingY: true,
+            lockRotation: true,
             strokeLineCap: "round",
             strokeLineJoin: "round",
             strokeUniform: true,
             fill: "",
+            perPixelTargetFind: true,
           });
 
-          // Contrôles personnalisés pour redimensionner la ligne
+          // Désactiver tous les contrôles par défaut
+          finalLine.setControlsVisibility({
+            mt: false,
+            mb: false,
+            ml: false,
+            mr: false,
+            bl: false,
+            br: false,
+            tl: false,
+            tr: false,
+            mtr: false,
+          });
+
+          // Contrôles personnalisés aux extrémités de la ligne
           finalLine.controls = {
-            tl: new Control({
-              x: -0.5,
-              y: -0.5,
+            p1: new Control({
+              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
+                const line = fabricObject as Line;
+                const x = line.x1 || 0;
+                const y = line.y1 || 0;
+                return fabric.util.transformPoint(
+                  { x: x, y: y },
+                  fabric.util.multiplyTransformMatrices(
+                    fabricObject.canvas!.viewportTransform!,
+                    fabricObject.calcTransformMatrix(),
+                  ),
+                );
+              },
               actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
-                line.set({ x1: pointer.x, y1: pointer.y });
-                canvas.renderAll();
+                const localPointer = fabric.util.transformPoint(
+                  pointer,
+                  fabric.util.invertTransform(line.calcTransformMatrix()),
+                );
+                line.set({ x1: localPointer.x, y1: localPointer.y });
                 return true;
               },
-              cursorStyle: "pointer",
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+              cursorStyle: "move",
+              render: (
+                ctx: CanvasRenderingContext2D,
+                left: number,
+                top: number,
+                styleOverride: any,
+                fabricObject: any,
+              ) => {
                 const size = 8;
                 ctx.save();
                 ctx.fillStyle = "#2196F3";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.arc(0, 0, size, 0, 2 * Math.PI);
                 ctx.fill();
                 ctx.stroke();
                 ctx.restore();
               },
             }),
-            br: new Control({
-              x: 0.5,
-              y: 0.5,
+            p2: new Control({
+              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
+                const line = fabricObject as Line;
+                const x = line.x2 || 0;
+                const y = line.y2 || 0;
+                return fabric.util.transformPoint(
+                  { x: x, y: y },
+                  fabric.util.multiplyTransformMatrices(
+                    fabricObject.canvas!.viewportTransform!,
+                    fabricObject.calcTransformMatrix(),
+                  ),
+                );
+              },
               actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
-                line.set({ x2: pointer.x, y2: pointer.y });
-                canvas.renderAll();
+                const localPointer = fabric.util.transformPoint(
+                  pointer,
+                  fabric.util.invertTransform(line.calcTransformMatrix()),
+                );
+                line.set({ x2: localPointer.x, y2: localPointer.y });
                 return true;
               },
-              cursorStyle: "pointer",
-              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+              cursorStyle: "move",
+              render: (
+                ctx: CanvasRenderingContext2D,
+                left: number,
+                top: number,
+                styleOverride: any,
+                fabricObject: any,
+              ) => {
                 const size = 8;
                 ctx.save();
-                ctx.fillStyle = "#2196F3";
+                ctx.fillStyle = "#FF5722";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.arc(0, 0, size, 0, 2 * Math.PI);
                 ctx.fill();
                 ctx.stroke();
                 ctx.restore();
