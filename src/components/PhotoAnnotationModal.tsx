@@ -110,7 +110,22 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             const line = new Line([startPointRef.current.x, startPointRef.current.y, endX, endY], {
               stroke: strokeColorRef.current,
               strokeWidth: strokeWidthRef.current,
+              strokeUniform: true,
             });
+            
+            // Configure controls for line: only endpoints, no rotation handle
+            line.setControlsVisibility({
+              mtr: false, // rotation handle
+              ml: false, // middle left
+              mr: false, // middle right
+              mt: false, // middle top
+              mb: false, // middle bottom
+              tl: true, // top left (start point)
+              tr: false,
+              bl: false,
+              br: true, // bottom right (end point)
+            });
+            
             canvas.add(line);
             canvas.setActiveObject(line);
           } else if (isDrawingArrowRef.current) {
@@ -122,6 +137,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             const line = new Line([0, 0, distance, 0], {
               stroke: strokeColorRef.current,
               strokeWidth: strokeWidthRef.current,
+              strokeUniform: true,
               originX: "left",
               originY: "center",
             });
@@ -143,6 +159,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               angle: angle,
               originX: "left",
               originY: "center",
+              strokeUniform: true,
+            });
+            
+            // Configure controls for arrow: only endpoints, no rotation handle
+            arrowGroup.setControlsVisibility({
+              mtr: false, // rotation handle
+              ml: false, // middle left
+              mr: false, // middle right
+              mt: false, // middle top
+              mb: false, // middle bottom
+              tl: true, // left endpoint
+              tr: false,
+              bl: false,
+              br: true, // right endpoint
             });
 
             canvas.add(arrowGroup);
@@ -310,6 +340,18 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                     newCanvas.add(circle);
                   } else if (objData.type === "line") {
                     const line = new Line(objData.points, objData);
+                    // Configure controls for loaded lines
+                    line.setControlsVisibility({
+                      mtr: false,
+                      ml: false,
+                      mr: false,
+                      mt: false,
+                      mb: false,
+                      tl: true,
+                      tr: false,
+                      bl: false,
+                      br: true,
+                    });
                     newCanvas.add(line);
                   } else if (objData.type === "triangle") {
                     const triangle = new Triangle(objData);
@@ -320,6 +362,18 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                   } else if (objData.type === "group") {
                     const group = await Group.fromObject(objData);
                     if (mounted && fabricCanvasRef.current) {
+                      // Configure controls for loaded groups (arrows)
+                      group.setControlsVisibility({
+                        mtr: false,
+                        ml: false,
+                        mr: false,
+                        mt: false,
+                        mb: false,
+                        tl: true,
+                        tr: false,
+                        bl: false,
+                        br: true,
+                      });
                       newCanvas.add(group);
                     }
                   } else if (objData.type === "path") {
