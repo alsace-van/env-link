@@ -86,19 +86,36 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         if (!startPointRef.current) {
           // First click: set start point
           startPointRef.current = { x: pointer.x, y: pointer.y };
-          toast.info("Cliquez pour le point d'arrivée");
+          toast.info("Cliquez pour le point d'arrivée (Maj pour ligne droite)");
         } else {
           // Second click: draw line or arrow
+          let endX = pointer.x;
+          let endY = pointer.y;
+
+          // If Shift is pressed, constrain to horizontal or vertical
+          if (event.e.shiftKey) {
+            const dx = Math.abs(endX - startPointRef.current.x);
+            const dy = Math.abs(endY - startPointRef.current.y);
+            
+            if (dx > dy) {
+              // Horizontal line
+              endY = startPointRef.current.y;
+            } else {
+              // Vertical line
+              endX = startPointRef.current.x;
+            }
+          }
+
           if (isDrawingLineRef.current) {
-            const line = new Line([startPointRef.current.x, startPointRef.current.y, pointer.x, pointer.y], {
+            const line = new Line([startPointRef.current.x, startPointRef.current.y, endX, endY], {
               stroke: strokeColorRef.current,
               strokeWidth: strokeWidthRef.current,
             });
             canvas.add(line);
             canvas.setActiveObject(line);
           } else if (isDrawingArrowRef.current) {
-            const dx = pointer.x - startPointRef.current.x;
-            const dy = pointer.y - startPointRef.current.y;
+            const dx = endX - startPointRef.current.x;
+            const dy = endY - startPointRef.current.y;
             const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
