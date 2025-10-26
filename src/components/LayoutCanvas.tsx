@@ -3,16 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Square,
-  Trash2,
-  Undo,
-  Redo,
-  Download,
-  Save,
-  Upload,
-  Ruler,
-} from "lucide-react";
+import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
@@ -112,18 +103,12 @@ export const LayoutCanvas = ({
 
   // Calculer le poids total
   useEffect(() => {
-    const furnitureWeight = Array.from(furnitureItems.values()).reduce(
-      (sum, item) => sum + item.poids_kg,
-      0
-    );
+    const furnitureWeight = Array.from(furnitureItems.values()).reduce((sum, item) => sum + item.poids_kg, 0);
     setTotalWeight(furnitureWeight + accessoriesWeight);
   }, [furnitureItems, accessoriesWeight]);
 
   // Calcul de l'échelle pour adapter la zone de chargement au canvas (avec marge)
-  const scale = Math.min(
-    (CANVAS_WIDTH - 100) / loadAreaLength,
-    (CANVAS_HEIGHT - 100) / loadAreaWidth
-  );
+  const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
 
   const scaledLoadAreaLength = loadAreaLength * scale;
   const scaledLoadAreaWidth = loadAreaWidth * scale;
@@ -135,10 +120,7 @@ export const LayoutCanvas = ({
 
     // Dessiner le contour de la zone de chargement
     const loadAreaOutline = new paper.Path.Rectangle({
-      point: [
-        (CANVAS_WIDTH - scaledLoadAreaLength) / 2,
-        (CANVAS_HEIGHT - scaledLoadAreaWidth) / 2,
-      ],
+      point: [(CANVAS_WIDTH - scaledLoadAreaLength) / 2, (CANVAS_HEIGHT - scaledLoadAreaWidth) / 2],
       size: [scaledLoadAreaLength, scaledLoadAreaWidth],
       strokeColor: new paper.Color("#3b82f6"),
       strokeWidth: 3,
@@ -172,12 +154,7 @@ export const LayoutCanvas = ({
 
       if (item instanceof paper.Path.Rectangle) {
         const bounds = item.bounds;
-        const corners = [
-          bounds.topLeft,
-          bounds.topRight,
-          bounds.bottomRight,
-          bounds.bottomLeft,
-        ];
+        const corners = [bounds.topLeft, bounds.topRight, bounds.bottomRight, bounds.bottomLeft];
 
         corners.forEach((corner) => {
           const handle = new paper.Path.Circle({
@@ -213,7 +190,7 @@ export const LayoutCanvas = ({
           itemsToRemove.push(child);
         }
       });
-      itemsToRemove.forEach(item => item.remove());
+      itemsToRemove.forEach((item) => item.remove());
       toast.success("Mesures effacées");
     };
 
@@ -226,7 +203,7 @@ export const LayoutCanvas = ({
         content: `${furnitureData.longueur_mm}x${furnitureData.largeur_mm}x${furnitureData.hauteur_mm}mm\n${furnitureData.poids_kg}kg`,
         fillColor: new paper.Color("#000"),
         fontSize: 12,
-        justification: 'center',
+        justification: "center",
       });
       text.data.isFurnitureLabel = true;
       text.data.furnitureId = furnitureId;
@@ -247,9 +224,29 @@ export const LayoutCanvas = ({
           draggedHandle = hitResult.item as paper.Path.Circle;
         } else if (hitResult?.item && !hitResult.item.locked) {
           clearSelection();
-          selectedItem = hitResult.item;
+
+          // Si l'élément fait partie d'un groupe de meuble, sélectionner le groupe
+          if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
+            selectedItem = hitResult.item.parent;
+          } else {
+            selectedItem = hitResult.item;
+          }
+
           selectedItem.selected = true;
-          createHandles(selectedItem);
+
+          // Créer des poignées sur le rectangle du groupe (premier enfant)
+          if (
+            selectedItem instanceof paper.Group &&
+            selectedItem.data.isFurniture &&
+            selectedItem.children.length > 0
+          ) {
+            const rect = selectedItem.children[0];
+            if (rect instanceof paper.Path.Rectangle) {
+              createHandles(rect);
+            }
+          } else if (selectedItem instanceof paper.Path.Rectangle) {
+            createHandles(selectedItem);
+          }
         } else {
           clearSelection();
         }
@@ -266,7 +263,7 @@ export const LayoutCanvas = ({
       } else if (activeToolRef.current === "measure") {
         if (currentMeasureLine) currentMeasureLine.remove();
         if (currentMeasureText) currentMeasureText.remove();
-        
+
         currentMeasureLine = new paper.Path.Line({
           from: event.point,
           to: event.point,
@@ -279,29 +276,49 @@ export const LayoutCanvas = ({
     };
 
     tool.onMouseDrag = (event: paper.ToolEvent) => {
-      if (draggedHandle && selectedItem instanceof paper.Path.Rectangle) {
-        const handleIndex = handles.indexOf(draggedHandle);
-        const bounds = selectedItem.bounds;
-        
-        let newBounds = bounds.clone();
+      if (draggedHandle) {
+        // Récupérer le rectangle à redimensionner
+        let rectToResize: paper.Path.Rectangle | null = null;
+        let textToUpdate: paper.PointText | null = null;
 
-        switch (handleIndex) {
-          case 0: // Top-left
-            newBounds.topLeft = event.point;
-            break;
-          case 1: // Top-right
-            newBounds.topRight = event.point;
-            break;
-          case 2: // Bottom-right
-            newBounds.bottomRight = event.point;
-            break;
-          case 3: // Bottom-left
-            newBounds.bottomLeft = event.point;
-            break;
+        if (selectedItem instanceof paper.Group && selectedItem.data.isFurniture) {
+          // Si c'est un groupe de meuble, récupérer le rectangle et le texte
+          rectToResize = selectedItem.children[0] as paper.Path.Rectangle;
+          textToUpdate = selectedItem.children[1] as paper.PointText;
+        } else if (selectedItem instanceof paper.Path.Rectangle) {
+          rectToResize = selectedItem;
         }
 
-        selectedItem.bounds = newBounds;
-        createHandles(selectedItem);
+        if (rectToResize) {
+          const handleIndex = handles.indexOf(draggedHandle);
+          const bounds = rectToResize.bounds;
+
+          let newBounds = bounds.clone();
+
+          switch (handleIndex) {
+            case 0: // Top-left
+              newBounds.topLeft = event.point;
+              break;
+            case 1: // Top-right
+              newBounds.topRight = event.point;
+              break;
+            case 2: // Bottom-right
+              newBounds.bottomRight = event.point;
+              break;
+            case 3: // Bottom-left
+              newBounds.bottomLeft = event.point;
+              break;
+          }
+
+          rectToResize.bounds = newBounds;
+
+          // Mettre à jour la position du texte au centre du rectangle redimensionné
+          if (textToUpdate) {
+            textToUpdate.position = rectToResize.bounds.center;
+          }
+
+          createHandles(rectToResize);
+        }
       } else if (activeToolRef.current === "rectangle" && currentPath) {
         currentPath.remove();
         currentPath = new paper.Path.Rectangle({
@@ -316,25 +333,38 @@ export const LayoutCanvas = ({
         currentMeasureLine.removeSegments();
         currentMeasureLine.add(event.downPoint);
         currentMeasureLine.add(event.point);
-        
+
         if (currentMeasureText) currentMeasureText.remove();
-        
+
         const distance = event.point.subtract(event.downPoint).length;
         const realDistance = (distance / scale).toFixed(0);
         const midPoint = event.downPoint.add(event.point).divide(2);
-        
+
         currentMeasureText = new paper.PointText({
           point: midPoint.add(new paper.Point(0, -10)),
           content: `${realDistance} mm`,
           fillColor: new paper.Color("#ff0000"),
           fontSize: 14,
-          fontWeight: 'bold',
+          fontWeight: "bold",
         });
         currentMeasureText.data.isMeasure = true;
       } else if (activeToolRef.current === "select" && selectedItem && !draggedHandle) {
         if (!selectedItem.locked && !selectedItem.data.isHandle) {
           selectedItem.position = selectedItem.position.add(event.delta);
-          createHandles(selectedItem);
+
+          // Mettre à jour les poignées
+          if (
+            selectedItem instanceof paper.Group &&
+            selectedItem.data.isFurniture &&
+            selectedItem.children.length > 0
+          ) {
+            const rect = selectedItem.children[0];
+            if (rect instanceof paper.Path.Rectangle) {
+              createHandles(rect);
+            }
+          } else {
+            createHandles(selectedItem);
+          }
         }
       }
     };
@@ -359,7 +389,7 @@ export const LayoutCanvas = ({
     };
 
     // Gestionnaire clic droit pour effacer les mesures
-    canvasRef.current.addEventListener('contextmenu', (e) => {
+    canvasRef.current.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       if (activeToolRef.current === "measure") {
         clearAllMeasures();
@@ -386,13 +416,6 @@ export const LayoutCanvas = ({
       if (selectedItem && !selectedItem.locked && !selectedItem.data.isHandle) {
         const itemId = selectedItem.data.furnitureId;
         if (itemId) {
-          // Supprimer aussi le label associé
-          paper.project.activeLayer.children.forEach((child) => {
-            if (child.data.isFurnitureLabel && child.data.furnitureId === itemId) {
-              child.remove();
-            }
-          });
-          
           setFurnitureItems((prev) => {
             const newMap = new Map(prev);
             newMap.delete(itemId);
@@ -403,6 +426,7 @@ export const LayoutCanvas = ({
         removeHandles();
         selectedItem = null;
         saveState();
+        toast.success("Élément supprimé");
       }
     };
 
@@ -452,11 +476,12 @@ export const LayoutCanvas = ({
 
         if (data?.layout_canvas_data) {
           paper.project.clear();
-          const canvasData = typeof data.layout_canvas_data === 'string' 
-            ? data.layout_canvas_data 
-            : JSON.stringify(data.layout_canvas_data);
+          const canvasData =
+            typeof data.layout_canvas_data === "string"
+              ? data.layout_canvas_data
+              : JSON.stringify(data.layout_canvas_data);
           paper.project.importJSON(canvasData);
-          
+
           if (data.furniture_data && Array.isArray(data.furniture_data)) {
             const newMap = new Map<string, FurnitureData>();
             data.furniture_data.forEach((item: any) => {
@@ -488,7 +513,7 @@ export const LayoutCanvas = ({
     (window as any).layoutCanvasLoad = handleLoad;
 
     saveState();
-    
+
     // Charger automatiquement les données sauvegardées au montage
     handleLoad();
 
@@ -526,7 +551,6 @@ export const LayoutCanvas = ({
     if (!pendingRectangle) return;
 
     const furnitureId = `furniture-${Date.now()}`;
-    pendingRectangle.data.furnitureId = furnitureId;
 
     const newFurnitureData = {
       id: furnitureId,
@@ -539,18 +563,25 @@ export const LayoutCanvas = ({
       return newMap;
     });
 
-    // Ajouter le label sur le meuble
+    // Créer le label sur le meuble
     setTimeout(() => {
       const text = new paper.PointText({
         point: pendingRectangle!.bounds.center,
         content: `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`,
         fillColor: new paper.Color("#000"),
         fontSize: 12,
-        justification: 'center',
+        justification: "center",
       });
       text.data.isFurnitureLabel = true;
       text.data.furnitureId = furnitureId;
-      text.locked = true;
+
+      // Créer un groupe avec le rectangle et le texte
+      const group = new paper.Group([pendingRectangle!, text]);
+      group.data.isFurniture = true;
+      group.data.furnitureId = furnitureId;
+
+      // Transférer les données du rectangle au groupe
+      pendingRectangle!.data = {};
     }, 0);
 
     setPendingRectangle(null);
@@ -591,9 +622,9 @@ export const LayoutCanvas = ({
               Véhicule : {vehicleLength}mm x {vehicleWidth}mm
             </div>
           </div>
-          
+
           <Progress value={Math.min(weightPercentage, 100)} className="h-4" />
-          
+
           <div className="grid grid-cols-4 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">Charge utile max</p>
@@ -601,9 +632,7 @@ export const LayoutCanvas = ({
             </div>
             <div>
               <p className="text-muted-foreground">Meubles</p>
-              <p className="font-bold text-lg">
-                {(totalWeight - accessoriesWeight).toFixed(1)} kg
-              </p>
+              <p className="font-bold text-lg">{(totalWeight - accessoriesWeight).toFixed(1)} kg</p>
             </div>
             <div>
               <p className="text-muted-foreground">Accessoires</p>
@@ -666,15 +695,13 @@ export const LayoutCanvas = ({
               </>
             ) : (
               <>
-                <span className="font-mono">{loadAreaLength} x {loadAreaWidth} mm</span>
+                <span className="font-mono">
+                  {loadAreaLength} x {loadAreaWidth} mm
+                </span>
                 <span className="text-muted-foreground">
                   ({((loadAreaLength * loadAreaWidth) / 1000000).toFixed(2)} m²)
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditingDimensions(true)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setIsEditingDimensions(true)}>
                   Modifier
                 </Button>
               </>
@@ -741,51 +768,27 @@ export const LayoutCanvas = ({
 
           <Separator orientation="vertical" className="h-6" />
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => (window as any).layoutCanvasUndo?.()}
-          >
+          <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasUndo?.()}>
             <Undo className="h-4 w-4" />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => (window as any).layoutCanvasRedo?.()}
-          >
+          <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasRedo?.()}>
             <Redo className="h-4 w-4" />
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => (window as any).layoutCanvasDelete?.()}
-          >
+          <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasDelete?.()}>
             <Trash2 className="h-4 w-4" />
           </Button>
 
           <Separator orientation="vertical" className="h-6" />
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => (window as any).layoutCanvasSave?.()}
-          >
+          <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasSave?.()}>
             <Save className="h-4 w-4 mr-2" />
             Sauvegarder
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => (window as any).layoutCanvasLoad?.()}
-          >
+          <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasLoad?.()}>
             <Upload className="h-4 w-4 mr-2" />
             Charger
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => (window as any).layoutCanvasExport?.()}
-          >
+          <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasExport?.()}>
             <Download className="h-4 w-4 mr-2" />
             Exporter
           </Button>
@@ -801,7 +804,8 @@ export const LayoutCanvas = ({
         </div>
 
         <div className="mt-2 text-xs text-muted-foreground">
-          Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés bleus = zone de chargement utile ({loadAreaLength} x {loadAreaWidth} mm)
+          Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés bleus = zone de chargement utile ({loadAreaLength} x{" "}
+          {loadAreaWidth} mm)
         </div>
       </div>
 
@@ -809,9 +813,7 @@ export const LayoutCanvas = ({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Propriétés du meuble</DialogTitle>
-            <DialogDescription>
-              Renseignez les dimensions et le poids du meuble
-            </DialogDescription>
+            <DialogDescription>Renseignez les dimensions et le poids du meuble</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -829,7 +831,7 @@ export const LayoutCanvas = ({
                     }))
                   }
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       handleFurnitureSubmit();
                     }
                     e.stopPropagation();
@@ -849,7 +851,7 @@ export const LayoutCanvas = ({
                     }))
                   }
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       handleFurnitureSubmit();
                     }
                     e.stopPropagation();
@@ -872,7 +874,7 @@ export const LayoutCanvas = ({
                     }))
                   }
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       handleFurnitureSubmit();
                     }
                     e.stopPropagation();
@@ -893,7 +895,7 @@ export const LayoutCanvas = ({
                     }))
                   }
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
+                    if (e.key === "Enter") {
                       handleFurnitureSubmit();
                     }
                     e.stopPropagation();
