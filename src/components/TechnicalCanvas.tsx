@@ -39,14 +39,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const [isCanvasReady, setIsCanvasReady] = useState(false);
 
   const currentPathRef = useRef<paper.Path | null>(null);
-  const currentItemRef = useRef<paper.Item | null>(null);
-  const toolRef = useRef<paper.Tool | null>(null);
+  const handlesLayerRef = useRef<paper.Layer | null>(null);
+  const selectedItemRef = useRef<paper.Item | null>(null);
 
   // Fonction pour snapper à l'horizontal ou vertical
   const snapToHorizontalOrVertical = (from: paper.Point, to: paper.Point): paper.Point => {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
-    const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+    const angle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
 
     // Snapper à l'horizontal (0° ou 180°)
     if (angle < SNAP_ANGLE_THRESHOLD || angle > 180 - SNAP_ANGLE_THRESHOLD) {
@@ -68,25 +68,24 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     let closestPoint = point;
     let minDistance = Infinity;
 
-    scopeRef.current.project.activeLayer.children.forEach((item) => {
-      if (item === excludeItem) return;
+    // Chercher dans la couche principale (pas dans la couche des poignées)
+    scopeRef.current.project.layers[0].children.forEach((item) => {
+      if (item === excludeItem || item.data.isArrowHead) return;
 
       const points: paper.Point[] = [];
 
       if (item instanceof paper.Path && !item.closed) {
-        // Pour les lignes et flèches
-        points.push(...item.segments.map(s => s.point));
+        // Pour les lignes et flèches - utiliser les extrémités
+        if (item.segments.length >= 2) {
+          points.push(item.segments[0].point);
+          points.push(item.segments[item.segments.length - 1].point);
+        }
       } else if (item.bounds) {
-        // Pour les autres objets (rectangles, cercles)
-        points.push(
-          item.bounds.topLeft,
-          item.bounds.topRight,
-          item.bounds.bottomLeft,
-          item.bounds.bottomRight,
-        );
+        // Pour les autres objets (rectangles, cercles) - utiliser les coins
+        points.push(item.bounds.topLeft, item.bounds.topRight, item.bounds.bottomLeft, item.bounds.bottomRight);
       }
 
-      points.forEach(p => {
+      points.forEach((p) => {
         const distance = point.getDistance(p);
         if (distance < minDistance && distance < SNAP_DISTANCE) {
           minDistance = distance;
@@ -98,49 +97,77 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     return { point: closestPoint, snapped: minDistance < SNAP_DISTANCE };
   };
 
-  // Fonction pour créer des poignées de contrôle
-  const addHandles = (path: paper.Path) => {
-    if (!path || path.segments.length === 0) return;
+  // Fonction pour créer/mettre à jour toutes les poignées
+  const updateAllHandles = () => {
+    if (!scopeRef.current || !handlesLayerRef.current) return;
 
-    const handles: paper.Path.Circle[] = [];
-    
-    path.segments.forEach((segment, index) => {
-      const handle = new paper.Path.Circle({
-        center: segment.point,
-        radius: 6,
-        fillColor: index === 0 ? '#2196F3' : '#FF5722',
-        strokeColor: 'white',
-        strokeWidth: 2,
-        data: { 
-          isHandle: true, 
+    // Effacer toutes les poignées existantes
+    handlesLayerRef.current.removeChildren();
+
+    // Si rien n'est sélectionné, ne rien faire
+    if (!selectedItemRef.current) return;
+
+    const item = selectedItemRef.current;
+
+    // Créer des poignées seulement pour les lignes et flèches
+    if (item instanceof paper.Path && !item.closed && item.segments.length === 2) {
+      item.segments.forEach((segment, index) => {
+        const handle = new paper.Path.Circle({
+          center: segment.point,
+          radius: 5,
+          fillColor: index === 0 ? "#2196F3" : "#FF5722",
+          strokeColor: "white",
+          strokeWidth: 2,
+        });
+
+        handle.data = {
+          isHandle: true,
           segmentIndex: index,
-          parentPath: path 
-        }
-      });
-      handles.push(handle);
-    });
+          parentPath: item,
+        };
 
-    (path as any).handles = handles;
+        handlesLayerRef.current?.addChild(handle);
+      });
+    }
   };
 
-  // Fonction pour mettre à jour les poignées
-  const updateHandles = (path: paper.Path) => {
-    const handles = (path as any).handles;
-    if (!handles) return;
+  // Fonction pour mettre à jour la tête de flèche
+  const updateArrowHead = (path: paper.Path) => {
+    if (!scopeRef.current || path.segments.length < 2) return;
 
-    path.segments.forEach((segment, index) => {
-      if (handles[index]) {
-        handles[index].position = segment.point;
+    // Trouver la tête de flèche existante
+    let arrowHead: paper.Path | null = null;
+    scopeRef.current.project.layers[0].children.forEach((item) => {
+      if (item.data.isArrowHead && item.data.parentId === path.id) {
+        arrowHead = item as paper.Path;
       }
     });
-  };
 
-  // Fonction pour supprimer les poignées
-  const removeHandles = (path: paper.Path) => {
-    const handles = (path as any).handles;
-    if (handles) {
-      handles.forEach((h: paper.Path) => h.remove());
-      delete (path as any).handles;
+    const lastSegment = path.segments[path.segments.length - 1];
+    const secondLastSegment = path.segments[path.segments.length - 2];
+    const vector = lastSegment.point.subtract(secondLastSegment.point);
+    const angle = vector.angle;
+    const headLength = 15;
+
+    if (!arrowHead) {
+      // Créer une nouvelle tête de flèche
+      arrowHead = new paper.Path([
+        lastSegment.point.add(new paper.Point({ angle: angle + 150, length: headLength })),
+        lastSegment.point,
+        lastSegment.point.add(new paper.Point({ angle: angle - 150, length: headLength })),
+      ]);
+
+      arrowHead.strokeColor = path.strokeColor;
+      arrowHead.strokeWidth = path.strokeWidth;
+      arrowHead.fillColor = path.strokeColor;
+      arrowHead.strokeCap = "round";
+      arrowHead.strokeJoin = "round";
+      arrowHead.data = { isArrowHead: true, parentId: path.id };
+    } else {
+      // Mettre à jour la tête existante
+      arrowHead.segments[0].point = lastSegment.point.add(new paper.Point({ angle: angle + 150, length: headLength }));
+      arrowHead.segments[1].point = lastSegment.point;
+      arrowHead.segments[2].point = lastSegment.point.add(new paper.Point({ angle: angle - 150, length: headLength }));
     }
   };
 
@@ -164,52 +191,62 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     // Set canvas size
     scope.view.viewSize = new paper.Size(1200, 800);
 
+    // Créer une couche séparée pour les poignées
+    const handlesLayer = new paper.Layer();
+    handlesLayerRef.current = handlesLayer;
+
+    // Revenir à la couche principale
+    scope.project.layers[0].activate();
+
     // Create tool
     const tool = new paper.Tool();
-    toolRef.current = tool;
 
-    let selectedItem: paper.Item | null = null;
     let draggedHandle: any = null;
+    let draggedItem: paper.Item | null = null;
 
     tool.onMouseDown = (event: paper.ToolEvent) => {
-      const hitResult = scope.project.hitTest(event.point, {
-        segments: false,
-        stroke: true,
+      // Vérifier d'abord si on clique sur une poignée
+      const handleHit = handlesLayer.hitTest(event.point, {
         fill: true,
-        tolerance: 5
+        tolerance: 5,
       });
 
-      // Vérifier si on clique sur une poignée
-      if (hitResult?.item?.data?.isHandle) {
-        draggedHandle = hitResult.item;
+      if (handleHit?.item?.data?.isHandle) {
+        draggedHandle = handleHit.item;
         return;
       }
 
+      // Sinon, tester la couche principale
+      const hitResult = scope.project.layers[0].hitTest(event.point, {
+        segments: false,
+        stroke: true,
+        fill: true,
+        tolerance: 5,
+      });
+
       if (activeTool === "select") {
         // Désélectionner l'élément précédent
-        if (selectedItem) {
-          selectedItem.selected = false;
-          if (selectedItem instanceof paper.Path) {
-            removeHandles(selectedItem);
-          }
+        if (selectedItemRef.current) {
+          selectedItemRef.current.selected = false;
         }
 
-        if (hitResult && hitResult.item) {
-          selectedItem = hitResult.item;
-          selectedItem.selected = true;
-          
-          if (selectedItem instanceof paper.Path && !selectedItem.closed) {
-            addHandles(selectedItem);
-          }
+        // Ignorer les têtes de flèches
+        if (hitResult && hitResult.item && !hitResult.item.data.isArrowHead) {
+          selectedItemRef.current = hitResult.item;
+          selectedItemRef.current.selected = true;
+          draggedItem = selectedItemRef.current;
         } else {
-          selectedItem = null;
+          selectedItemRef.current = null;
+          draggedItem = null;
         }
+
+        updateAllHandles();
       } else if (activeTool === "draw") {
         currentPathRef.current = new paper.Path({
           strokeColor: color,
           strokeWidth: strokeWidth,
-          strokeCap: 'round',
-          strokeJoin: 'round',
+          strokeCap: "round",
+          strokeJoin: "round",
         });
         currentPathRef.current.add(event.point);
       } else if (activeTool === "line" || activeTool === "arrow") {
@@ -221,20 +258,21 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           to: startPoint,
           strokeColor: color,
           strokeWidth: strokeWidth,
-          strokeCap: 'round',
-          data: { type: activeTool }
+          strokeCap: "round",
+          data: { type: activeTool },
         });
       }
     };
 
     tool.onMouseDrag = (event: paper.ToolEvent) => {
+      // Déplacer une poignée
       if (draggedHandle) {
-        const parentPath = draggedHandle.data.parentPath;
+        const parentPath = draggedHandle.data.parentPath as paper.Path;
         const segmentIndex = draggedHandle.data.segmentIndex;
-        
+
         if (parentPath && parentPath.segments[segmentIndex]) {
           let newPoint = event.point;
-          
+
           // Appliquer le snapping magnétique
           if (!event.modifiers.shift) {
             const snapped = findSnapPoint(event.point, parentPath);
@@ -248,22 +286,27 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               }
             }
           }
-          
+
+          // Mettre à jour le point du segment
           parentPath.segments[segmentIndex].point = newPoint;
-          
+
           // Mettre à jour la flèche si c'est une flèche
-          if (parentPath.data.type === 'arrow') {
+          if (parentPath.data.type === "arrow") {
             updateArrowHead(parentPath);
           }
-          
-          updateHandles(parentPath);
+
+          // Mettre à jour les poignées
+          updateAllHandles();
         }
         return;
       }
 
+      // Dessiner à main levée
       if (activeTool === "draw" && currentPathRef.current) {
         currentPathRef.current.add(event.point);
-      } else if ((activeTool === "line" || activeTool === "arrow") && currentPathRef.current) {
+      }
+      // Dessiner ligne/flèche
+      else if ((activeTool === "line" || activeTool === "arrow") && currentPathRef.current) {
         const from = currentPathRef.current.segments[0].point;
         let to = event.point;
 
@@ -278,97 +321,54 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         }
 
         currentPathRef.current.segments[1].point = to;
-      } else if (selectedItem && activeTool === "select") {
-        selectedItem.position = selectedItem.position.add(event.delta);
-        if (selectedItem instanceof paper.Path) {
-          updateHandles(selectedItem);
+      }
+      // Déplacer un objet
+      else if (draggedItem && activeTool === "select") {
+        draggedItem.position = draggedItem.position.add(event.delta);
+
+        // Si c'est une ligne/flèche, mettre à jour la tête de flèche
+        if (draggedItem instanceof paper.Path && draggedItem.data.type === "arrow") {
+          updateArrowHead(draggedItem);
         }
+
+        updateAllHandles();
       }
     };
 
     tool.onMouseUp = (event: paper.ToolEvent) => {
       draggedHandle = null;
+      draggedItem = null;
 
       if (activeTool === "draw" && currentPathRef.current) {
         currentPathRef.current.simplify(10);
         currentPathRef.current = null;
         saveToHistory();
       } else if (activeTool === "line" && currentPathRef.current) {
-        addHandles(currentPathRef.current);
         currentPathRef.current = null;
+        updateAllHandles();
         saveToHistory();
       } else if (activeTool === "arrow" && currentPathRef.current) {
-        createArrowHead(currentPathRef.current);
-        addHandles(currentPathRef.current);
+        updateArrowHead(currentPathRef.current);
         currentPathRef.current = null;
+        updateAllHandles();
+        saveToHistory();
+      } else if (draggedItem) {
         saveToHistory();
       }
     };
 
-    // Fonction pour créer la tête de flèche
-    const createArrowHead = (path: paper.Path) => {
-      if (path.segments.length < 2) return;
-      
-      const lastSegment = path.segments[path.segments.length - 1];
-      const secondLastSegment = path.segments[path.segments.length - 2];
-      
-      const vector = lastSegment.point.subtract(secondLastSegment.point);
-      const angle = vector.angle;
-      const headLength = 15;
-      
-      const arrowHead = new paper.Path([
-        lastSegment.point.add(new paper.Point({
-          angle: angle + 150,
-          length: headLength
-        })),
-        lastSegment.point,
-        lastSegment.point.add(new paper.Point({
-          angle: angle - 150,
-          length: headLength
-        }))
-      ]);
-      
-      arrowHead.strokeColor = new paper.Color(color);
-      arrowHead.strokeWidth = strokeWidth;
-      arrowHead.fillColor = new paper.Color(color);
-      arrowHead.strokeCap = 'round';
-      arrowHead.strokeJoin = 'round';
-      arrowHead.data = { isArrowHead: true, parentPath: path };
-      
-      (path as any).arrowHead = arrowHead;
-    };
-
-    // Fonction pour mettre à jour la tête de flèche
-    const updateArrowHead = (path: paper.Path) => {
-      const arrowHead = (path as any).arrowHead;
-      if (!arrowHead || path.segments.length < 2) return;
-      
-      const lastSegment = path.segments[path.segments.length - 1];
-      const secondLastSegment = path.segments[path.segments.length - 2];
-      
-      const vector = lastSegment.point.subtract(secondLastSegment.point);
-      const angle = vector.angle;
-      const headLength = 15;
-      
-      arrowHead.segments[0].point = lastSegment.point.add(new paper.Point({
-        angle: angle + 150,
-        length: headLength
-      }));
-      arrowHead.segments[1].point = lastSegment.point;
-      arrowHead.segments[2].point = lastSegment.point.add(new paper.Point({
-        angle: angle - 150,
-        length: headLength
-      }));
-    };
-
     const saveToHistory = () => {
       if (!scopeRef.current) return;
-      const json = scopeRef.current.project.exportJSON();
+      // Sauvegarder uniquement la couche principale
+      const json = scopeRef.current.project.layers[0].exportJSON();
       const newHistory = history.slice(0, historyStep + 1);
       newHistory.push(json);
       setHistory(newHistory);
       setHistoryStep(newHistory.length - 1);
     };
+
+    // Sauvegarder l'état initial
+    saveToHistory();
 
     return () => {
       tool.remove();
@@ -380,29 +380,47 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     if (historyStep <= 0 || !scopeRef.current) return;
     const step = historyStep - 1;
     setHistoryStep(step);
-    scopeRef.current.project.clear();
-    scopeRef.current.project.importJSON(history[step]);
+
+    // Effacer et recharger la couche principale
+    scopeRef.current.project.layers[0].removeChildren();
+    scopeRef.current.project.layers[0].importJSON(history[step]);
+
+    // Désélectionner
+    selectedItemRef.current = null;
+    updateAllHandles();
   };
 
   const handleRedo = () => {
     if (historyStep >= history.length - 1 || !scopeRef.current) return;
     const step = historyStep + 1;
     setHistoryStep(step);
-    scopeRef.current.project.clear();
-    scopeRef.current.project.importJSON(history[step]);
+
+    // Effacer et recharger la couche principale
+    scopeRef.current.project.layers[0].removeChildren();
+    scopeRef.current.project.layers[0].importJSON(history[step]);
+
+    // Désélectionner
+    selectedItemRef.current = null;
+    updateAllHandles();
   };
 
   const handleDelete = () => {
-    if (!scopeRef.current) return;
-    const selectedItems = scopeRef.current.project.selectedItems;
-    selectedItems.forEach(item => {
-      if (item instanceof paper.Path) {
-        removeHandles(item);
-        const arrowHead = (item as any).arrowHead;
-        if (arrowHead) arrowHead.remove();
-      }
-      item.remove();
-    });
+    if (!scopeRef.current || !selectedItemRef.current) return;
+
+    const itemToDelete = selectedItemRef.current;
+
+    // Si c'est une ligne/flèche, supprimer aussi la tête de flèche
+    if (itemToDelete instanceof paper.Path && itemToDelete.data.type === "arrow") {
+      scopeRef.current.project.layers[0].children.forEach((item) => {
+        if (item.data.isArrowHead && item.data.parentId === itemToDelete.id) {
+          item.remove();
+        }
+      });
+    }
+
+    itemToDelete.remove();
+    selectedItemRef.current = null;
+    updateAllHandles();
     saveToHistory();
   };
 
@@ -429,7 +447,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     } else if (tool === "text") {
       const text = new paper.PointText({
         point: [100, 100],
-        content: 'Texte',
+        content: "Texte",
         fillColor: color,
         fontSize: 20,
       });
@@ -439,15 +457,31 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
   const handleClear = () => {
     if (!scopeRef.current) return;
-    scopeRef.current.project.activeLayer.removeChildren();
+    scopeRef.current.project.layers[0].removeChildren();
+    selectedItemRef.current = null;
+    updateAllHandles();
     setHistory([]);
     setHistoryStep(-1);
+    saveToHistory();
     toast.success("Canevas effacé");
   };
 
   const handleDownload = () => {
-    if (!canvasRef.current) return;
-    const dataURL = canvasRef.current.toDataURL('image/png');
+    if (!canvasRef.current || !scopeRef.current) return;
+
+    // Cacher temporairement les poignées
+    if (handlesLayerRef.current) {
+      handlesLayerRef.current.visible = false;
+    }
+
+    // Exporter
+    const dataURL = canvasRef.current.toDataURL("image/png");
+
+    // Réafficher les poignées
+    if (handlesLayerRef.current) {
+      handlesLayerRef.current.visible = true;
+    }
+
     const link = document.createElement("a");
     link.href = dataURL;
     link.download = `schema-technique-${Date.now()}.png`;
@@ -457,7 +491,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
   const saveToHistory = () => {
     if (!scopeRef.current) return;
-    const json = scopeRef.current.project.exportJSON();
+    const json = scopeRef.current.project.layers[0].exportJSON();
     const newHistory = history.slice(0, historyStep + 1);
     newHistory.push(json);
     setHistory(newHistory);
@@ -481,7 +515,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
     const background = new paper.Path.Rectangle({
       rectangle: text.bounds.expand(8),
-      fillColor: 'white',
+      fillColor: "white",
       strokeColor: color,
       strokeWidth: 1,
     });
@@ -613,7 +647,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       )}
 
       <div className="border border-border rounded-lg overflow-hidden shadow-lg bg-white">
-        <canvas ref={canvasRef} style={{ width: '1200px', height: '800px' }} />
+        <canvas ref={canvasRef} style={{ width: "1200px", height: "800px" }} />
       </div>
     </div>
   );
