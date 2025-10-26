@@ -1,39 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Search,
-  Trash2,
-  ExternalLink,
-  Edit,
-  Plus,
-  FileDown,
-  FileUp,
-  Zap,
-  Plug,
-  FileText,
-  Link as LinkIcon,
-} from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import AccessoryCatalogFormDialog from "./AccessoryCatalogFormDialog";
-import CategoryFilterSidebar from "./CategoryFilterSidebar";
-import AccessoryImportExportDialog from "./AccessoryImportExportDialog";
-import { NoticeUploadDialog } from "./NoticeUploadDialog";
-import { NoticeSearchDialog } from "./NoticeSearchDialog";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 interface Category {
   id: string;
@@ -41,68 +15,107 @@ interface Category {
   parent_id: string | null;
 }
 
-interface Accessory {
-  id: string;
-  nom: string;
-  marque?: string | null;
-  category_id?: string | null;
-  prix_reference: number | null;
-  prix_vente_ttc: number | null;
-  marge_pourcent: number | null;
-  description: string | null;
-  fournisseur: string | null;
-  url_produit: string | null;
-  type_electrique?: string | null;
-  poids_kg?: number | null;
-  longueur_mm?: number | null;
-  largeur_mm?: number | null;
-  hauteur_mm?: number | null;
-  created_at: string;
-  categories?: Category | null;
-  notice_id?: string | null;
-  notices_database?: {
+interface AccessoryCatalogFormDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  accessory?: {
     id: string;
-    titre: string;
-    url_notice: string;
+    nom: string;
+    marque?: string;
+    category_id?: string | null;
+    prix_reference?: number;
+    prix_vente_ttc?: number;
+    marge_pourcent?: number;
+    fournisseur?: string;
+    description?: string;
+    url_produit?: string;
+    type_electrique?: string | null;
+    poids_kg?: number | null;
+    longueur_mm?: number | null;
+    largeur_mm?: number | null;
+    hauteur_mm?: number | null;
+    puissance_watts?: number | null;
+    intensite_amperes?: number | null;
   } | null;
 }
 
-const AccessoriesCatalogView = () => {
-  const [accessories, setAccessories] = useState<Accessory[]>([]);
-  const [filteredAccessories, setFilteredAccessories] = useState<Accessory[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [editingAccessory, setEditingAccessory] = useState<Accessory | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: AccessoryCatalogFormDialogProps) => {
+  const [formData, setFormData] = useState({
+    nom: "",
+    marque: "",
+    category_id: "",
+    prix_reference: "",
+    prix_vente_ttc: "",
+    marge_pourcent: "",
+    fournisseur: "",
+    description: "",
+    url_produit: "",
+    type_electrique: "",
+    poids_kg: "",
+    longueur_mm: "",
+    largeur_mm: "",
+    hauteur_mm: "",
+    puissance_watts: "",
+    intensite_amperes: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [noticeDialogAccessoryId, setNoticeDialogAccessoryId] = useState<string>("");
-  const [noticeSearchOpen, setNoticeSearchOpen] = useState(false);
-  const [selectedAccessoryForNotice, setSelectedAccessoryForNotice] = useState<{
-    id: string;
-    nom: string;
-    marque?: string | null;
-  } | null>(null);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParent, setNewCategoryParent] = useState<string | null>(null);
 
   useEffect(() => {
-    loadAccessories();
-    loadCategories();
-
-    // Recharger les données quand la page redevient visible
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        loadAccessories();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
+    if (isOpen) {
+      setCategoriesLoaded(false);
+      loadCategories().then(() => {
+        setCategoriesLoaded(true);
+        // Initialiser le formulaire après le chargement des catégories
+        if (accessory) {
+          // Mode édition - utiliser ?? pour préserver les valeurs null
+          setFormData({
+            nom: accessory.nom,
+            marque: accessory.marque ?? "",
+            category_id: accessory.category_id || "",
+            prix_reference: accessory.prix_reference?.toString() ?? "",
+            prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
+            marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
+            fournisseur: accessory.fournisseur ?? "",
+            description: accessory.description ?? "",
+            url_produit: accessory.url_produit ?? "",
+            type_electrique: accessory.type_electrique ?? "",
+            poids_kg: accessory.poids_kg?.toString() ?? "",
+            longueur_mm: accessory.longueur_mm?.toString() ?? "",
+            largeur_mm: accessory.largeur_mm?.toString() ?? "",
+            hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
+            puissance_watts: accessory.puissance_watts?.toString() ?? "",
+            intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
+          });
+        } else {
+          // Mode création
+          setFormData({
+            nom: "",
+            marque: "",
+            category_id: "",
+            prix_reference: "",
+            prix_vente_ttc: "",
+            marge_pourcent: "",
+            fournisseur: "",
+            description: "",
+            url_produit: "",
+            type_electrique: "",
+            poids_kg: "",
+            longueur_mm: "",
+            largeur_mm: "",
+            hauteur_mm: "",
+            puissance_watts: "",
+            intensite_amperes: "",
+          });
+        }
+      });
+    }
+  }, [isOpen, accessory?.id]);
 
   const loadCategories = async () => {
     const { data, error } = await supabase.from("categories").select("*").order("nom");
@@ -112,446 +125,528 @@ const AccessoriesCatalogView = () => {
     }
   };
 
-  useEffect(() => {
-    let filtered = accessories;
-
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (acc) =>
-          acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase()),
-      );
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      toast.error("Veuillez entrer un nom de catégorie");
+      return;
     }
 
-    // Filter by selected categories
-    if (selectedCategories.length > 0) {
-      filtered = filtered.filter((acc) => acc.category_id && selectedCategories.includes(acc.category_id));
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      return;
     }
 
-    setFilteredAccessories(filtered);
-  }, [searchTerm, selectedCategories, accessories]);
-
-  const loadAccessories = async () => {
-    setLoading(true);
     const { data, error } = await supabase
-      .from("accessories_catalog")
-      .select(
-        `
-        *,
-        categories (
-          id,
-          nom,
-          parent_id
-        ),
-        notices_database (
-          id,
-          titre,
-          url_notice
-        )
-      `,
-      )
-      .order("created_at", { ascending: false });
+      .from("categories")
+      .insert({
+        nom: newCategoryName.trim(),
+        parent_id: newCategoryParent,
+        user_id: user.id,
+      })
+      .select()
+      .single();
 
     if (error) {
-      toast.error("Erreur lors du chargement du catalogue");
+      toast.error("Erreur lors de la création de la catégorie");
       console.error(error);
     } else {
-      setAccessories(data || []);
-      setFilteredAccessories(data || []);
+      toast.success("Catégorie créée");
+      setFormData({ ...formData, category_id: data.id });
+      setIsCreatingCategory(false);
+      setNewCategoryName("");
+      setNewCategoryParent(null);
+      loadCategories();
     }
-    setLoading(false);
   };
 
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("accessories_catalog").delete().eq("id", id);
+  const handlePricingChange = (field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
+    const newFormData = { ...formData, [field]: value };
 
-    if (error) {
-      toast.error("Erreur lors de la suppression");
-      console.error(error);
+    // Déterminer quels champs sont remplis (non vides et non zéro)
+    const hasPrixReference = newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0;
+    const hasPrixVente = newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0;
+    const hasMarge = newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0;
+
+    // Si on a 2 champs remplis, calculer le 3ème
+    if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
+      // Prix référence + Prix TTC remplis → calculer la marge
+      const prixReference = parseFloat(newFormData.prix_reference);
+      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+      newFormData.marge_pourcent = (((prixVenteTTC - prixReference) / prixReference) * 100).toFixed(2);
+    } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
+      // Prix TTC + Marge remplis → calculer le prix référence
+      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+      const margePourcent = parseFloat(newFormData.marge_pourcent);
+      newFormData.prix_reference = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
+    } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
+      // Prix référence + Marge remplis → calculer le prix TTC
+      const prixReference = parseFloat(newFormData.prix_reference);
+      const margePourcent = parseFloat(newFormData.marge_pourcent);
+      newFormData.prix_vente_ttc = (prixReference * (1 + margePourcent / 100)).toFixed(2);
+    }
+
+    setFormData(newFormData);
+  };
+
+  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes", value: string) => {
+    const newFormData = { ...formData, [field]: value };
+    const voltage = 12; // 12V system
+
+    if (field === "puissance_watts" && value) {
+      // Calculate intensity from power: I = P / U
+      const power = parseFloat(value);
+      if (!isNaN(power) && power > 0) {
+        newFormData.intensite_amperes = (power / voltage).toFixed(2);
+      }
+    } else if (field === "intensite_amperes" && value) {
+      // Calculate power from intensity: P = U × I
+      const intensity = parseFloat(value);
+      if (!isNaN(intensity) && intensity > 0) {
+        newFormData.puissance_watts = (intensity * voltage).toFixed(1);
+      }
+    }
+
+    setFormData(newFormData);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      setIsSubmitting(false);
+      return;
+    }
+
+    if (accessory) {
+      // Mode édition
+      const { error } = await supabase
+        .from("accessories_catalog")
+        .update({
+          nom: formData.nom,
+          marque: formData.marque || null,
+          category_id: formData.category_id || null,
+          prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
+          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
+          fournisseur: formData.fournisseur || null,
+          description: formData.description || null,
+          url_produit: formData.url_produit || null,
+          type_electrique: formData.type_electrique || null,
+          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+        })
+        .eq("id", accessory.id);
+
+      if (error) {
+        toast.error("Erreur lors de la modification");
+        console.error(error);
+      } else {
+        toast.success("Accessoire modifié");
+        onSuccess();
+        onClose();
+      }
     } else {
-      toast.success("Accessoire supprimé du catalogue");
-      loadAccessories();
-    }
-    setDeleteId(null);
-  };
+      // Mode création
+      const { error } = await supabase.from("accessories_catalog").insert({
+        nom: formData.nom,
+        marque: formData.marque || null,
+        category_id: formData.category_id || null,
+        prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
+        prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+        marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
+        fournisseur: formData.fournisseur || null,
+        description: formData.description || null,
+        url_produit: formData.url_produit || null,
+        type_electrique: formData.type_electrique || null,
+        poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+        longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+        largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+        hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+        puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+        intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+        user_id: user.id,
+      });
 
-  if (loading) {
-    return <div className="text-center py-12">Chargement...</div>;
-  }
+      if (error) {
+        toast.error("Erreur lors de l'ajout");
+        console.error(error);
+      } else {
+        toast.success("Accessoire ajouté au catalogue");
+        onSuccess();
+        onClose();
+      }
+    }
+
+    setIsSubmitting(false);
+  };
 
   return (
-    <div className="relative flex w-full">
-      {/* Sidebar Filter - Overlay mode */}
-      <div className="absolute left-0 top-0 bottom-0 z-20">
-        <CategoryFilterSidebar selectedCategories={selectedCategories} onCategoryChange={setSelectedCategories} />
-      </div>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{accessory ? "Modifier l'accessoire" : "Ajouter un accessoire au catalogue"}</DialogTitle>
+        </DialogHeader>
 
-      {/* Main Content */}
-      <div className="flex-1 w-full space-y-6 pl-14">
-        {/* pl-14 for collapsed sidebar space */}
-        <div className="flex gap-4 items-center flex-wrap">
-          <div className="flex-1 min-w-[250px] relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher un accessoire..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="nom">
+                Nom <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="nom"
+                required
+                value={formData.nom}
+                onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: Panneau solaire 400W"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="marque">Marque</Label>
+              <Input
+                id="marque"
+                value={formData.marque}
+                onChange={(e) => setFormData({ ...formData, marque: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: Victron Energy"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {isCreatingCategory ? (
+              <div className="space-y-3 p-4 border rounded-lg bg-muted/50">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">Nouvelle catégorie</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsCreatingCategory(false);
+                      setNewCategoryName("");
+                      setNewCategoryParent(null);
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="new_category_name">Nom de la catégorie</Label>
+                  <Input
+                    id="new_category_name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    placeholder="Ex: Panneaux solaires"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="category_parent">Catégorie parente (optionnel)</Label>
+                  <Select
+                    value={newCategoryParent || "none"}
+                    onValueChange={(value) => setNewCategoryParent(value === "none" ? null : value)}
+                  >
+                    <SelectTrigger id="category_parent">
+                      <SelectValue placeholder="Aucune (catégorie principale)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
+                      {categories
+                        .filter((cat) => cat.parent_id === null)
+                        .map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.nom}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button type="button" onClick={handleCreateCategory} className="w-full">
+                  Créer la catégorie
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="category_id">Catégorie</Label>
+                <Select
+                  key={`category-${formData.category_id}-${categoriesLoaded}`}
+                  value={formData.category_id || "none"}
+                  onValueChange={(value) => {
+                    if (value === "__create__") {
+                      setIsCreatingCategory(true);
+                    } else {
+                      setFormData({ ...formData, category_id: value === "none" ? "" : value });
+                    }
+                  }}
+                >
+                  <SelectTrigger id="category_id">
+                    <SelectValue placeholder="Sélectionner une catégorie" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-background z-50">
+                    <SelectItem value="__create__">+ Créer une nouvelle catégorie</SelectItem>
+                    <SelectItem value="none">Aucune catégorie</SelectItem>
+                    {categories
+                      .filter((cat) => cat.parent_id === null)
+                      .map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.nom}
+                        </SelectItem>
+                      ))}
+                    {categories
+                      .filter((cat) => cat.parent_id !== null)
+                      .map((cat) => {
+                        const parent = categories.find((p) => p.id === cat.parent_id);
+                        return (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {parent?.nom} → {cat.nom}
+                          </SelectItem>
+                        );
+                      })}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">Calcul de prix (remplir 2 sur 3)</Label>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="prix_reference">Prix de référence (€)</Label>
+                <Input
+                  id="prix_reference"
+                  type="number"
+                  step="0.01"
+                  value={formData.prix_reference}
+                  onChange={(e) => handlePricingChange("prix_reference", e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="Prix d'achat"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="prix_vente">Prix de vente TTC (€)</Label>
+                <Input
+                  id="prix_vente"
+                  type="number"
+                  step="0.01"
+                  value={formData.prix_vente_ttc}
+                  onChange={(e) => handlePricingChange("prix_vente_ttc", e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="Prix de vente"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="marge">Marge (%)</Label>
+                <Input
+                  id="marge"
+                  type="number"
+                  step="0.01"
+                  value={formData.marge_pourcent}
+                  onChange={(e) => handlePricingChange("marge_pourcent", e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="% de marge"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="marge_euros">Marge nette (€)</Label>
+                <Input
+                  id="marge_euros"
+                  type="text"
+                  value={
+                    formData.prix_reference && formData.prix_vente_ttc
+                      ? (parseFloat(formData.prix_vente_ttc) / 1.2 - parseFloat(formData.prix_reference)).toFixed(2)
+                      : ""
+                  }
+                  readOnly
+                  disabled
+                  placeholder="Auto"
+                  className="bg-muted"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="type_electrique">Type électrique</Label>
+              <Select
+                value={formData.type_electrique || "none"}
+                onValueChange={(value) => setFormData({ ...formData, type_electrique: value === "none" ? "" : value })}
+              >
+                <SelectTrigger id="type_electrique">
+                  <SelectValue placeholder="Sélectionner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Non applicable</SelectItem>
+                  <SelectItem value="consommateur">Consommateur</SelectItem>
+                  <SelectItem value="producteur">Producteur</SelectItem>
+                  <SelectItem value="stockage">Stockage</SelectItem>
+                  <SelectItem value="convertisseur">Convertisseur</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="puissance">Puissance (W) - 12V</Label>
+              <Input
+                id="puissance"
+                type="number"
+                step="0.1"
+                value={formData.puissance_watts}
+                onChange={(e) => handleElectricalChange("puissance_watts", e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 400"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="intensite">Intensité (A) - 12V</Label>
+              <Input
+                id="intensite"
+                type="number"
+                step="0.1"
+                value={formData.intensite_amperes}
+                onChange={(e) => handleElectricalChange("intensite_amperes", e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 33.3"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="poids">Poids (kg)</Label>
+              <Input
+                id="poids"
+                type="number"
+                step="0.01"
+                value={formData.poids_kg}
+                onChange={(e) => setFormData({ ...formData, poids_kg: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 12.5"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dimensions (mm)</Label>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="longueur" className="text-xs text-muted-foreground">
+                  Longueur
+                </Label>
+                <Input
+                  id="longueur"
+                  type="number"
+                  value={formData.longueur_mm}
+                  onChange={(e) => setFormData({ ...formData, longueur_mm: e.target.value })}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="largeur" className="text-xs text-muted-foreground">
+                  Largeur
+                </Label>
+                <Input
+                  id="largeur"
+                  type="number"
+                  value={formData.largeur_mm}
+                  onChange={(e) => setFormData({ ...formData, largeur_mm: e.target.value })}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">
+                  Hauteur
+                </Label>
+                <Input
+                  id="hauteur"
+                  type="number"
+                  value={formData.hauteur_mm}
+                  onChange={(e) => setFormData({ ...formData, hauteur_mm: e.target.value })}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="fournisseur">Fournisseur</Label>
+              <Input
+                id="fournisseur"
+                value={formData.fournisseur}
+                onChange={(e) => setFormData({ ...formData, fournisseur: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Nom du fournisseur"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="url_produit">URL du produit</Label>
+              <Input
+                id="url_produit"
+                type="url"
+                value={formData.url_produit}
+                onChange={(e) => setFormData({ ...formData, url_produit: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="https://..."
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onKeyDown={(e) => e.stopPropagation()}
+              rows={3}
+              placeholder="Caractéristiques techniques, notes..."
             />
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsImportExportOpen(true)}>
-              <FileDown className="h-4 w-4 mr-2" />
-              Import/Export
+
+          <div className="flex gap-2 justify-end pt-4">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Annuler
             </Button>
-            <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter un article
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "En cours..." : accessory ? "Modifier" : "Ajouter"}
             </Button>
           </div>
-        </div>
-
-        {filteredAccessories.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">
-              {searchTerm || selectedCategories.length > 0
-                ? "Aucun accessoire trouvé"
-                : "Aucun accessoire dans le catalogue"}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Ajoutez des accessoires depuis l'onglet "Dépenses" avec le bouton "Ajouter au catalogue"
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Grouper par catégorie */}
-            {(() => {
-              // Grouper les accessoires par catégorie
-              const grouped: Record<string, typeof filteredAccessories> = {};
-              filteredAccessories.forEach((acc) => {
-                const categoryName = acc.categories?.nom || "Sans catégorie";
-                if (!grouped[categoryName]) {
-                  grouped[categoryName] = [];
-                }
-                grouped[categoryName].push(acc);
-              });
-
-              return Object.entries(grouped).map(([categoryName, items]) => (
-                <div key={categoryName} className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-semibold">{categoryName}</h3>
-                    <Badge variant="secondary">
-                      {items.length} article{items.length > 1 ? "s" : ""}
-                    </Badge>
-                  </div>
-
-                  <div className="border rounded-lg">
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="min-w-[180px] pl-[4.5rem]">Nom</TableHead>
-                            <TableHead className="min-w-[80px]">Marque</TableHead>
-                            <TableHead className="min-w-[70px]">Prix réf.</TableHead>
-                            <TableHead className="min-w-[70px]">Prix TTC</TableHead>
-                            <TableHead className="min-w-[65px]">Marge €</TableHead>
-                            <TableHead className="min-w-[65px]">Marge %</TableHead>
-                            <TableHead className="min-w-[100px]">Fournisseur</TableHead>
-                            <TableHead className="min-w-[40px] text-center">
-                              <Zap className="h-4 w-4 mx-auto" />
-                            </TableHead>
-                            <TableHead className="min-w-[60px]">Poids</TableHead>
-                            <TableHead className="min-w-[90px]">Dim.</TableHead>
-                            <TableHead className="min-w-[50px] text-center">Notice</TableHead>
-                            <TableHead className="min-w-[130px]">Description</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {items.map((accessory) => {
-                            const margeEuros =
-                              accessory.prix_vente_ttc && accessory.prix_reference
-                                ? accessory.prix_vente_ttc / 1.2 - accessory.prix_reference
-                                : null;
-
-                            return (
-                              <TableRow key={accessory.id}>
-                                <TableCell className="font-medium">
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 shrink-0"
-                                      onClick={() => setEditingAccessory(accessory)}
-                                    >
-                                      <Edit className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
-                                      onClick={() => setDeleteId(accessory.id)}
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <span>{accessory.nom}</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  {accessory.marque || <span className="text-muted-foreground text-xs">-</span>}
-                                </TableCell>
-                                <TableCell>
-                                  {accessory.prix_reference ? (
-                                    <span className="text-sm whitespace-nowrap">
-                                      {accessory.prix_reference.toFixed(2)} €
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {accessory.prix_vente_ttc ? (
-                                    <span className="text-sm whitespace-nowrap">
-                                      {accessory.prix_vente_ttc.toFixed(2)} €
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {margeEuros !== null ? (
-                                    <span
-                                      className={`text-sm whitespace-nowrap ${margeEuros >= 0 ? "text-green-600" : "text-red-600"}`}
-                                    >
-                                      {margeEuros.toFixed(2)} €
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {accessory.marge_pourcent !== null ? (
-                                    <span
-                                      className={`text-sm whitespace-nowrap ${accessory.marge_pourcent >= 0 ? "text-green-600" : "text-red-600"}`}
-                                    >
-                                      {accessory.marge_pourcent.toFixed(1)} %
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <span className="text-sm">
-                                    {accessory.fournisseur || <span className="text-muted-foreground text-xs">-</span>}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  {accessory.type_electrique ? (
-                                    <div
-                                      className="flex justify-center"
-                                      title={
-                                        accessory.type_electrique === "consommateur" ? "Consommateur" : "Producteur"
-                                      }
-                                    >
-                                      {accessory.type_electrique === "consommateur" ? (
-                                        <Plug className="h-4 w-4 text-orange-500" />
-                                      ) : (
-                                        <Zap className="h-4 w-4 text-green-500" />
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {accessory.poids_kg ? (
-                                    <span className="text-sm whitespace-nowrap">{accessory.poids_kg} kg</span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  {accessory.longueur_mm && accessory.largeur_mm && accessory.hauteur_mm ? (
-                                    <span className="text-xs whitespace-nowrap">
-                                      {accessory.longueur_mm}×{accessory.largeur_mm}×{accessory.hauteur_mm} mm
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground text-xs">-</span>
-                                  )}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8"
-                                          onClick={() => {
-                                            if (accessory.notice_id && accessory.notices_database) {
-                                              window.open(accessory.notices_database.url_notice, "_blank");
-                                            } else {
-                                              setSelectedAccessoryForNotice({
-                                                id: accessory.id,
-                                                nom: accessory.nom,
-                                                marque: accessory.marque,
-                                              });
-                                              setNoticeSearchOpen(true);
-                                            }
-                                          }}
-                                        >
-                                          {accessory.notice_id ? (
-                                            <FileText className="h-4 w-4 text-primary" />
-                                          ) : (
-                                            <LinkIcon className="h-4 w-4 text-muted-foreground" />
-                                          )}
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>
-                                          {accessory.notice_id
-                                            ? `Ouvrir la notice: ${accessory.notices_database?.titre}`
-                                            : "Rechercher et lier une notice"}
-                                        </p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="max-w-[150px]">
-                                    {accessory.description ? (
-                                      <span className="text-xs line-clamp-2">{accessory.description}</span>
-                                    ) : (
-                                      <span className="text-muted-foreground text-xs">-</span>
-                                    )}
-                                    {accessory.url_produit && (
-                                      <a
-                                        href={accessory.url_produit}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-primary hover:underline inline-flex items-center gap-1 text-xs mt-1"
-                                      >
-                                        Lien
-                                        <ExternalLink className="h-3 w-3" />
-                                      </a>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                </div>
-              ));
-            })()}
-          </div>
-        )}
-
-        <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-              <AlertDialogDescription>
-                Êtes-vous sûr de vouloir supprimer cet accessoire du catalogue ? Cette action est irréversible.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => deleteId && handleDelete(deleteId)}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                Supprimer
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AccessoryCatalogFormDialog
-          isOpen={isDialogOpen}
-          onClose={() => setIsDialogOpen(false)}
-          accessory={null}
-          onSuccess={() => {
-            loadAccessories();
-            setIsDialogOpen(false);
-          }}
-        />
-
-        <AccessoryCatalogFormDialog
-          isOpen={!!editingAccessory}
-          onClose={() => setEditingAccessory(null)}
-          accessory={
-            editingAccessory
-              ? {
-                  id: editingAccessory.id,
-                  nom: editingAccessory.nom,
-                  marque: editingAccessory.marque ?? undefined,
-                  category_id: editingAccessory.category_id || undefined,
-                  prix_reference: editingAccessory.prix_reference ?? undefined,
-                  prix_vente_ttc: editingAccessory.prix_vente_ttc ?? undefined,
-                  marge_pourcent: editingAccessory.marge_pourcent ?? undefined,
-                  fournisseur: editingAccessory.fournisseur ?? undefined,
-                  description: editingAccessory.description ?? undefined,
-                  url_produit: editingAccessory.url_produit ?? undefined,
-                  type_electrique: editingAccessory.type_electrique ?? undefined,
-                  poids_kg: editingAccessory.poids_kg ?? undefined,
-                  longueur_mm: editingAccessory.longueur_mm ?? undefined,
-                  largeur_mm: editingAccessory.largeur_mm ?? undefined,
-                  hauteur_mm: editingAccessory.hauteur_mm ?? undefined,
-                }
-              : null
-          }
-          onSuccess={() => {
-            loadAccessories();
-            setEditingAccessory(null);
-          }}
-        />
-
-        <AccessoryImportExportDialog
-          isOpen={isImportExportOpen}
-          onClose={() => setIsImportExportOpen(false)}
-          onSuccess={() => {
-            loadAccessories();
-            setIsImportExportOpen(false);
-          }}
-          categories={categories}
-        />
-
-        {noticeDialogAccessoryId && (
-          <NoticeUploadDialog
-            preselectedAccessoryId={noticeDialogAccessoryId}
-            onSuccess={() => {
-              loadAccessories();
-              setNoticeDialogAccessoryId("");
-            }}
-          />
-        )}
-
-        {selectedAccessoryForNotice && (
-          <NoticeSearchDialog
-            isOpen={noticeSearchOpen}
-            onClose={() => {
-              setNoticeSearchOpen(false);
-              setSelectedAccessoryForNotice(null);
-            }}
-            accessoryId={selectedAccessoryForNotice.id}
-            accessoryMarque={selectedAccessoryForNotice.marque || undefined}
-            accessoryNom={selectedAccessoryForNotice.nom}
-            onSuccess={() => {
-              loadAccessories();
-              setNoticeSearchOpen(false);
-              setSelectedAccessoryForNotice(null);
-            }}
-          />
-        )}
-      </div>
-    </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 };
 
-export default AccessoriesCatalogView;
+export default AccessoryCatalogFormDialog;
