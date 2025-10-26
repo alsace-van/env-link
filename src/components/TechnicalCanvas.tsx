@@ -49,6 +49,16 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const isDrawingLineRef = useRef(false);
   const lineRef = useRef<Line | null>(null);
   const startPointRef = useRef<{ x: number; y: number } | null>(null);
+  const activeToolRef = useRef(activeTool);
+  const colorRef = useRef(color);
+  const strokeWidthRef = useRef(strokeWidth);
+
+  // Mettre à jour les refs quand les valeurs changent
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+    colorRef.current = color;
+    strokeWidthRef.current = strokeWidth;
+  }, [activeTool, color, strokeWidth]);
 
   // Initialize canvas
   useLayoutEffect(() => {
@@ -93,7 +103,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
       canvas.on("mouse:down", (event) => {
         if (!mounted) return;
-        if (activeTool === "line" || activeTool === "arrow") {
+        if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
           // Ne pas dessiner si on clique sur un objet existant
           if (event.target) return;
 
@@ -102,8 +112,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           startPointRef.current = { x: pointer.x, y: pointer.y };
 
           const line = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-            stroke: color,
-            strokeWidth: strokeWidth,
+            stroke: colorRef.current,
+            strokeWidth: strokeWidthRef.current,
             selectable: false,
             strokeLineCap: "round",
             strokeLineJoin: "round",
@@ -133,13 +143,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         const x2 = line.x2 || 0;
         const y2 = line.y2 || 0;
 
-        if (activeTool === "arrow") {
+        if (activeToolRef.current === "arrow") {
           const angle = Math.atan2(y2 - y1, x2 - x1);
           const headLength = 15;
 
           const arrowLine = new Line([x1, y1, x2, y2], {
-            stroke: color,
-            strokeWidth: strokeWidth,
+            stroke: colorRef.current,
+            strokeWidth: strokeWidthRef.current,
             selectable: true,
             hasControls: true,
             hasBorders: true,
@@ -157,8 +167,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             angle: (angle * 180) / Math.PI + 90,
             width: headLength,
             height: headLength,
-            fill: color,
-            stroke: color,
+            fill: colorRef.current,
+            stroke: colorRef.current,
             originX: "center",
             originY: "center",
             selectable: false,
@@ -322,8 +332,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           canvas.add(arrow);
         } else {
           const finalLine = new Line([x1, y1, x2, y2], {
-            stroke: color,
-            strokeWidth: strokeWidth,
+            stroke: colorRef.current,
+            strokeWidth: strokeWidthRef.current,
             selectable: true,
             hasControls: true,
             hasBorders: false,
@@ -459,7 +469,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       fabricCanvasRef.current?.dispose();
       fabricCanvasRef.current = null;
     };
-  }, [isCanvasReady, activeTool, color, strokeWidth]);
+  }, [isCanvasReady]);
 
   const saveToHistory = () => {
     if (!fabricCanvasRef.current) return;
