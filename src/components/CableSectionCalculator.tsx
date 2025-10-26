@@ -100,6 +100,7 @@ export const CableSectionCalculator = () => {
               onChange={(e) => setLength(Number(e.target.value))}
               placeholder="Ex: 5"
             />
+            <p className="text-xs text-muted-foreground">Aller-retour déjà pris en compte</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="voltage">Tension (V)</Label>
