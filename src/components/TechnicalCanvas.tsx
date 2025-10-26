@@ -188,9 +188,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     scope.setup(canvasRef.current);
     scopeRef.current = scope;
 
-    // Set canvas size
-    scope.view.viewSize = new paper.Size(1200, 800);
-
     // Créer une couche séparée pour les poignées
     const handlesLayer = new paper.Layer();
     handlesLayerRef.current = handlesLayer;
@@ -242,6 +239,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
         updateAllHandles();
       } else if (activeTool === "draw") {
+        // Activer la couche principale
+        scope.project.layers[0].activate();
+
         currentPathRef.current = new paper.Path({
           strokeColor: color,
           strokeWidth: strokeWidth,
@@ -250,12 +250,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         });
         currentPathRef.current.add(event.point);
       } else if (activeTool === "line" || activeTool === "arrow") {
+        // Activer la couche principale
+        scope.project.layers[0].activate();
+
         const snapped = findSnapPoint(event.point);
         const startPoint = snapped.snapped ? snapped.point : event.point;
 
-        currentPathRef.current = new paper.Path.Line({
-          from: startPoint,
-          to: startPoint,
+        currentPathRef.current = new paper.Path({
+          segments: [startPoint, startPoint],
           strokeColor: color,
           strokeWidth: strokeWidth,
           strokeCap: "round",
@@ -336,23 +338,39 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     };
 
     tool.onMouseUp = (event: paper.ToolEvent) => {
+      const wasDraggingHandle = draggedHandle !== null;
+      const wasDraggingItem = draggedItem !== null;
+
       draggedHandle = null;
       draggedItem = null;
 
       if (activeTool === "draw" && currentPathRef.current) {
         currentPathRef.current.simplify(10);
+        selectedItemRef.current = currentPathRef.current;
+        selectedItemRef.current.selected = true;
         currentPathRef.current = null;
         saveToHistory();
       } else if (activeTool === "line" && currentPathRef.current) {
+        // Sélectionner la ligne créée
+        selectedItemRef.current = currentPathRef.current;
+        selectedItemRef.current.selected = true;
         currentPathRef.current = null;
         updateAllHandles();
         saveToHistory();
       } else if (activeTool === "arrow" && currentPathRef.current) {
+        // Créer la tête de flèche
         updateArrowHead(currentPathRef.current);
+        // Sélectionner la flèche créée
+        selectedItemRef.current = currentPathRef.current;
+        selectedItemRef.current.selected = true;
         currentPathRef.current = null;
         updateAllHandles();
         saveToHistory();
-      } else if (draggedItem) {
+      } else if (wasDraggingHandle) {
+        // Sauvegarder après avoir déplacé une poignée
+        saveToHistory();
+      } else if (wasDraggingItem) {
+        // Sauvegarder après avoir déplacé un objet
         saveToHistory();
       }
     };
@@ -647,7 +665,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       )}
 
       <div className="border border-border rounded-lg overflow-hidden shadow-lg bg-white">
-        <canvas ref={canvasRef} style={{ width: "1200px", height: "800px" }} />
+        <canvas ref={canvasRef} width={1200} height={800} />
       </div>
     </div>
   );
