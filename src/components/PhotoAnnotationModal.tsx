@@ -126,12 +126,35 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             // Ne charger que les objets qui ne sont pas des images
             const annotationObjects = photo.annotations.objects.filter((obj: any) => obj.type !== 'image');
             
-            // Charger chaque objet d'annotation individuellement
-            annotationObjects.forEach((objData: any) => {
-              canvas.loadFromJSON({ objects: [objData] }, () => {
-                canvas.renderAll();
+            // Charger tous les objets d'annotation en une seule fois
+            if (annotationObjects.length > 0) {
+              annotationObjects.forEach((objData: any) => {
+                // Recréer l'objet selon son type sans utiliser loadFromJSON
+                if (objData.type === 'rect') {
+                  const rect = new Rect(objData);
+                  canvas.add(rect);
+                } else if (objData.type === 'circle') {
+                  const circle = new Circle(objData);
+                  canvas.add(circle);
+                } else if (objData.type === 'line') {
+                  const line = new Line(objData.points, objData);
+                  canvas.add(line);
+                } else if (objData.type === 'triangle') {
+                  const triangle = new Triangle(objData);
+                  canvas.add(triangle);
+                } else if (objData.type === 'textbox' || objData.type === 'text') {
+                  const text = new Textbox(objData.text || '', objData);
+                  canvas.add(text);
+                } else if (objData.type === 'group') {
+                  // Pour les groupes (flèches), on les recrée manuellement
+                  Group.fromObject(objData).then((group) => {
+                    canvas.add(group);
+                    canvas.renderAll();
+                  });
+                }
               });
-            });
+              canvas.renderAll();
+            }
           } catch (error) {
             console.error("Error loading annotations:", error);
           }
