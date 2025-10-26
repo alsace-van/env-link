@@ -90,7 +90,7 @@ const Dashboard = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           <div className="lg:col-span-2">
             <div className="mb-4">
               <h2 className="text-xl font-semibold mb-1">Mes Projets</h2>
@@ -101,7 +101,7 @@ const Dashboard = () => {
             <ProjectsList refresh={refreshKey} onProjectSelect={handleProjectSelect} />
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-3">
             <ProjectForm onProjectCreated={handleProjectCreated} />
           </div>
         </div>
