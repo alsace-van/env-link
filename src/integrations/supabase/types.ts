@@ -444,17 +444,21 @@ export type Database = {
           adresse_proprietaire: string | null
           charge_utile_kg: number | null
           created_at: string
+          date_mise_circulation: string | null
           email_proprietaire: string | null
           hauteur_mm: number | null
           id: string
+          immatriculation: string | null
           largeur_mm: number | null
           longueur_mm: number | null
           marque_custom: string | null
           modele_custom: string | null
           nom_proprietaire: string
+          numero_chassis: string | null
           poids_vide_kg: number | null
           ptac_kg: number | null
           telephone_proprietaire: string | null
+          type_mine: string | null
           updated_at: string
           user_id: string
           vehicle_catalog_id: string | null
@@ -463,17 +467,21 @@ export type Database = {
           adresse_proprietaire?: string | null
           charge_utile_kg?: number | null
           created_at?: string
+          date_mise_circulation?: string | null
           email_proprietaire?: string | null
           hauteur_mm?: number | null
           id?: string
+          immatriculation?: string | null
           largeur_mm?: number | null
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
           nom_proprietaire: string
+          numero_chassis?: string | null
           poids_vide_kg?: number | null
           ptac_kg?: number | null
           telephone_proprietaire?: string | null
+          type_mine?: string | null
           updated_at?: string
           user_id: string
           vehicle_catalog_id?: string | null
@@ -482,17 +490,21 @@ export type Database = {
           adresse_proprietaire?: string | null
           charge_utile_kg?: number | null
           created_at?: string
+          date_mise_circulation?: string | null
           email_proprietaire?: string | null
           hauteur_mm?: number | null
           id?: string
+          immatriculation?: string | null
           largeur_mm?: number | null
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
           nom_proprietaire?: string
+          numero_chassis?: string | null
           poids_vide_kg?: number | null
           ptac_kg?: number | null
           telephone_proprietaire?: string | null
+          type_mine?: string | null
           updated_at?: string
           user_id?: string
           vehicle_catalog_id?: string | null
