@@ -70,6 +70,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     let selectedItem: paper.Item | null = null;
     let handles: paper.Path.Circle[] = [];
     let draggedHandle: paper.Path.Circle | null = null;
+    let lastClickTime = 0;
+    let lastClickItem: paper.Item | null = null;
 
     // Fonction pour créer des poignées
     const createHandles = (item: paper.Item) => {
@@ -213,6 +215,34 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         tolerance: 5,
       });
 
+      // Détecter le double-clic manuellement
+      const currentTime = Date.now();
+      const isDoubleClick = hitResult && lastClickItem === hitResult.item && currentTime - lastClickTime < 300; // 300ms pour le double-clic
+
+      lastClickTime = currentTime;
+      lastClickItem = hitResult?.item || null;
+
+      // Double-clic sur un texte = édition
+      if (isDoubleClick && hitResult && hitResult.item instanceof paper.PointText) {
+        const textItem = hitResult.item;
+        const canvasRect = canvasRef.current?.getBoundingClientRect();
+        if (canvasRect) {
+          setTextInputPosition({ x: textItem.point.x, y: textItem.point.y });
+          setEditingTextItem(textItem);
+          setIsEditingText(true);
+
+          // Focus sur l'input au prochain render
+          setTimeout(() => {
+            if (textInputRef.current) {
+              textInputRef.current.value = textItem.content;
+              textInputRef.current.focus();
+              textInputRef.current.select();
+            }
+          }, 0);
+        }
+        return;
+      }
+
       if (activeToolRef.current === "select") {
         // Désélectionner l'ancien
         if (selectedItem) {
@@ -272,34 +302,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           strokeJoin: "round",
         });
         currentPath.add(event.point);
-      }
-    };
-
-    tool.onDoubleClick = (event: paper.ToolEvent) => {
-      // Double-clic pour éditer le texte
-      const hitResult = paper.project.activeLayer.hitTest(event.point, {
-        fill: true,
-        stroke: true,
-        tolerance: 5,
-      });
-
-      if (hitResult && hitResult.item instanceof paper.PointText) {
-        const textItem = hitResult.item;
-        const canvasRect = canvasRef.current?.getBoundingClientRect();
-        if (canvasRect) {
-          setTextInputPosition({ x: textItem.point.x, y: textItem.point.y });
-          setEditingTextItem(textItem);
-          setIsEditingText(true);
-
-          // Focus sur l'input au prochain render
-          setTimeout(() => {
-            if (textInputRef.current) {
-              textInputRef.current.value = textItem.content;
-              textInputRef.current.focus();
-              textInputRef.current.select();
-            }
-          }, 0);
-        }
       }
     };
 
@@ -683,8 +685,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
       {activeTool === "text" && (
         <div className="px-4 py-2 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-800">
-          <strong>💡 Aide :</strong> Cliquez sur le canvas pour ajouter du texte. Double-cliquez sur un texte existant
-          pour le modifier.
+          <strong>💡 Aide :</strong> Cliquez sur le canvas pour ajouter du texte. Pour modifier un texte : passez en
+          mode <strong>Sélection</strong> puis double-cliquez sur le texte.
         </div>
       )}
 
