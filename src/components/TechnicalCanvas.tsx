@@ -178,44 +178,27 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             tl: new Control({
               x: -0.5,
               y: -0.5,
-              actionHandler: (eventData: any, transform: any) => {
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
                 const pointer = canvas.getPointer(eventData.e);
-                const center = group.getCenterPoint();
+                line.set({ x1: pointer.x, y1: pointer.y });
 
-                // Calculer les nouvelles coordonnées relatives
-                const newX1 = pointer.x - center.x;
-                const newY1 = pointer.y - center.y;
-                const x2 = line.x2 || 0;
-                const y2 = line.y2 || 0;
-
-                line.set({ x1: newX1, y1: newY1 });
-
-                // Recalculer l'angle et la position de la tête de flèche
-                const angle = Math.atan2(y2 - newY1, x2 - newX1);
+                const angle = Math.atan2((line.y2 || 0) - pointer.y, (line.x2 || 0) - pointer.x);
                 const headLength = 15;
-
                 head.set({
-                  left: x2 - Math.cos(angle) * (headLength / 2),
-                  top: y2 - Math.sin(angle) * (headLength / 2),
+                  left: (line.x2 || 0) - Math.cos(angle) * (headLength / 2),
+                  top: (line.y2 || 0) - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
-                group.setCoords();
-                canvas.requestRenderAll();
+                canvas.renderAll();
                 return true;
               },
-              cursorStyle: "move",
-              render: (
-                ctx: CanvasRenderingContext2D,
-                left: number,
-                top: number,
-                styleOverride: any,
-                fabricObject: any,
-              ) => {
+              cursorStyle: "pointer",
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
                 ctx.fillStyle = "#2196F3";
@@ -231,44 +214,27 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             br: new Control({
               x: 0.5,
               y: 0.5,
-              actionHandler: (eventData: any, transform: any) => {
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
                 const pointer = canvas.getPointer(eventData.e);
-                const center = group.getCenterPoint();
+                line.set({ x2: pointer.x, y2: pointer.y });
 
-                // Calculer les nouvelles coordonnées relatives
-                const newX2 = pointer.x - center.x;
-                const newY2 = pointer.y - center.y;
-                const x1 = line.x1 || 0;
-                const y1 = line.y1 || 0;
-
-                line.set({ x2: newX2, y2: newY2 });
-
-                // Recalculer l'angle et la position de la tête de flèche
-                const angle = Math.atan2(newY2 - y1, newX2 - x1);
+                const angle = Math.atan2(pointer.y - (line.y1 || 0), pointer.x - (line.x1 || 0));
                 const headLength = 15;
-
                 head.set({
-                  left: newX2 - Math.cos(angle) * (headLength / 2),
-                  top: newY2 - Math.sin(angle) * (headLength / 2),
+                  left: pointer.x - Math.cos(angle) * (headLength / 2),
+                  top: pointer.y - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
-                group.setCoords();
-                canvas.requestRenderAll();
+                canvas.renderAll();
                 return true;
               },
-              cursorStyle: "move",
-              render: (
-                ctx: CanvasRenderingContext2D,
-                left: number,
-                top: number,
-                styleOverride: any,
-                fabricObject: any,
-              ) => {
+              cursorStyle: "pointer",
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
                 ctx.fillStyle = "#2196F3";
@@ -304,33 +270,15 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             tl: new Control({
               x: -0.5,
               y: -0.5,
-              actionHandler: (eventData: any, transform: any) => {
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
-
-                // Calculer la position relative au centre de la ligne
-                const center = line.getCenterPoint();
-                const x2 = line.x2 || 0;
-                const y2 = line.y2 || 0;
-
-                // Mettre à jour les coordonnées
-                line.set({
-                  x1: pointer.x - center.x,
-                  y1: pointer.y - center.y,
-                });
-
-                line.setCoords();
-                canvas.requestRenderAll();
+                line.set({ x1: pointer.x, y1: pointer.y });
+                canvas.renderAll();
                 return true;
               },
-              cursorStyle: "move",
-              render: (
-                ctx: CanvasRenderingContext2D,
-                left: number,
-                top: number,
-                styleOverride: any,
-                fabricObject: any,
-              ) => {
+              cursorStyle: "pointer",
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
                 ctx.fillStyle = "#2196F3";
@@ -346,31 +294,15 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             br: new Control({
               x: 0.5,
               y: 0.5,
-              actionHandler: (eventData: any, transform: any) => {
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
-
-                // Calculer la position relative au centre de la ligne
-                const center = line.getCenterPoint();
-
-                // Mettre à jour les coordonnées
-                line.set({
-                  x2: pointer.x - center.x,
-                  y2: pointer.y - center.y,
-                });
-
-                line.setCoords();
-                canvas.requestRenderAll();
+                line.set({ x2: pointer.x, y2: pointer.y });
+                canvas.renderAll();
                 return true;
               },
-              cursorStyle: "move",
-              render: (
-                ctx: CanvasRenderingContext2D,
-                left: number,
-                top: number,
-                styleOverride: any,
-                fabricObject: any,
-              ) => {
+              cursorStyle: "pointer",
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
                 ctx.fillStyle = "#2196F3";
