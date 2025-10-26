@@ -1,652 +1,348 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Search, Trash2, Edit, Plus, Settings } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import AccessoryCatalogFormDialog from "@/components/AccessoryCatalogFormDialog";
+import CategoryManagementDialog from "@/components/CategoryManagementDialog";
+import AccessoryImportExportDialog from "@/components/AccessoryImportExportDialog";
 
 interface Category {
   id: string;
   nom: string;
   parent_id: string | null;
+  user_id: string;
 }
 
-interface AccessoryCatalogFormDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-  accessory?: {
-    id: string;
-    nom: string;
-    marque?: string;
-    category_id?: string | null;
-    prix_reference?: number;
-    prix_vente_ttc?: number;
-    marge_pourcent?: number;
-    fournisseur?: string;
-    description?: string;
-    url_produit?: string;
-    type_electrique?: string | null;
-    poids_kg?: number | null;
-    longueur_mm?: number | null;
-    largeur_mm?: number | null;
-    hauteur_mm?: number | null;
-    puissance_watts?: number | null;
-    intensite_amperes?: number | null;
-  } | null;
+interface Accessory {
+  id: string;
+  nom: string;
+  marque?: string;
+  category_id?: string | null;
+  prix_reference?: number;
+  prix_vente_ttc?: number;
+  marge_pourcent?: number;
+  fournisseur?: string;
+  description?: string;
+  url_produit?: string;
+  type_electrique?: string;
+  poids_kg?: number;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
+  puissance_watts?: number;
+  intensite_amperes?: number;
+  categories?: Category;
 }
 
-const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: AccessoryCatalogFormDialogProps) => {
-  const [formData, setFormData] = useState({
-    nom: "",
-    marque: "",
-    category_id: "",
-    prix_reference: "",
-    prix_vente_ttc: "",
-    marge_pourcent: "",
-    fournisseur: "",
-    description: "",
-    url_produit: "",
-    type_electrique: "",
-    poids_kg: "",
-    longueur_mm: "",
-    largeur_mm: "",
-    hauteur_mm: "",
-    puissance_watts: "",
-    intensite_amperes: "",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+const AccessoriesCatalogView = () => {
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [filteredAccessories, setFilteredAccessories] = useState<Accessory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryParent, setNewCategoryParent] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null);
+  const [isCategoryManagementOpen, setIsCategoryManagementOpen] = useState(false);
+  const [isImportExportOpen, setIsImportExportOpen] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      setCategoriesLoaded(false);
-      loadCategories().then(() => {
-        setCategoriesLoaded(true);
-        // Initialiser le formulaire après le chargement des catégories
-        if (accessory) {
-          // Mode édition - utiliser ?? pour préserver les valeurs null
-          setFormData({
-            nom: accessory.nom,
-            marque: accessory.marque ?? "",
-            category_id: accessory.category_id || "",
-            prix_reference: accessory.prix_reference?.toString() ?? "",
-            prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
-            marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
-            fournisseur: accessory.fournisseur ?? "",
-            description: accessory.description ?? "",
-            url_produit: accessory.url_produit ?? "",
-            type_electrique: accessory.type_electrique ?? "",
-            poids_kg: accessory.poids_kg?.toString() ?? "",
-            longueur_mm: accessory.longueur_mm?.toString() ?? "",
-            largeur_mm: accessory.largeur_mm?.toString() ?? "",
-            hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
-            puissance_watts: accessory.puissance_watts?.toString() ?? "",
-            intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
-          });
-        } else {
-          // Mode création
-          setFormData({
-            nom: "",
-            marque: "",
-            category_id: "",
-            prix_reference: "",
-            prix_vente_ttc: "",
-            marge_pourcent: "",
-            fournisseur: "",
-            description: "",
-            url_produit: "",
-            type_electrique: "",
-            poids_kg: "",
-            longueur_mm: "",
-            largeur_mm: "",
-            hauteur_mm: "",
-            puissance_watts: "",
-            intensite_amperes: "",
-          });
-        }
-      });
+    loadAccessories();
+    loadCategories();
+  }, []);
+
+  useEffect(() => {
+    if (searchTerm) {
+      setFilteredAccessories(
+        accessories.filter(
+          (acc) =>
+            acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+    } else {
+      setFilteredAccessories(accessories);
     }
-  }, [isOpen, accessory?.id]);
+  }, [searchTerm, accessories]);
 
   const loadCategories = async () => {
-    const { data, error } = await supabase.from("categories").select("*").order("nom");
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .order("nom");
 
     if (!error && data) {
       setCategories(data);
     }
   };
 
-  const handleCreateCategory = async () => {
-    if (!newCategoryName.trim()) {
-      toast.error("Veuillez entrer un nom de catégorie");
-      return;
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Vous devez être connecté");
-      return;
-    }
-
+  const loadAccessories = async () => {
+    setLoading(true);
     const { data, error } = await supabase
-      .from("categories")
-      .insert({
-        nom: newCategoryName.trim(),
-        parent_id: newCategoryParent,
-        user_id: user.id,
-      })
-      .select()
-      .single();
+      .from("accessories_catalog")
+      .select("*, categories(*)")
+      .order("created_at", { ascending: false });
 
     if (error) {
-      toast.error("Erreur lors de la création de la catégorie");
+      toast.error("Erreur lors du chargement du catalogue");
       console.error(error);
     } else {
-      toast.success("Catégorie créée");
-      setFormData({ ...formData, category_id: data.id });
-      setIsCreatingCategory(false);
-      setNewCategoryName("");
-      setNewCategoryParent(null);
-      loadCategories();
+      setAccessories(data || []);
+      setFilteredAccessories(data || []);
     }
+    setLoading(false);
   };
 
-  const handlePricingChange = (field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
-    const newFormData = { ...formData, [field]: value };
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase
+      .from("accessories_catalog")
+      .delete()
+      .eq("id", id);
 
-    // Déterminer quels champs sont remplis (non vides et non zéro)
-    const hasPrixReference = newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0;
-    const hasPrixVente = newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0;
-    const hasMarge = newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0;
-
-    // Si on a 2 champs remplis, calculer le 3ème
-    if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
-      // Prix référence + Prix TTC remplis → calculer la marge
-      const prixReference = parseFloat(newFormData.prix_reference);
-      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      newFormData.marge_pourcent = (((prixVenteTTC - prixReference) / prixReference) * 100).toFixed(2);
-    } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
-      // Prix TTC + Marge remplis → calculer le prix référence
-      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      const margePourcent = parseFloat(newFormData.marge_pourcent);
-      newFormData.prix_reference = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
-    } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
-      // Prix référence + Marge remplis → calculer le prix TTC
-      const prixReference = parseFloat(newFormData.prix_reference);
-      const margePourcent = parseFloat(newFormData.marge_pourcent);
-      newFormData.prix_vente_ttc = (prixReference * (1 + margePourcent / 100)).toFixed(2);
-    }
-
-    setFormData(newFormData);
-  };
-
-  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes", value: string) => {
-    const newFormData = { ...formData, [field]: value };
-    const voltage = 12; // 12V system
-
-    if (field === "puissance_watts" && value) {
-      // Calculate intensity from power: I = P / U
-      const power = parseFloat(value);
-      if (!isNaN(power) && power > 0) {
-        newFormData.intensite_amperes = (power / voltage).toFixed(2);
-      }
-    } else if (field === "intensite_amperes" && value) {
-      // Calculate power from intensity: P = U × I
-      const intensity = parseFloat(value);
-      if (!isNaN(intensity) && intensity > 0) {
-        newFormData.puissance_watts = (intensity * voltage).toFixed(1);
-      }
-    }
-
-    setFormData(newFormData);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Vous devez être connecté");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (accessory) {
-      // Mode édition
-      const { error } = await supabase
-        .from("accessories_catalog")
-        .update({
-          nom: formData.nom,
-          marque: formData.marque || null,
-          category_id: formData.category_id || null,
-          prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-          fournisseur: formData.fournisseur || null,
-          description: formData.description || null,
-          url_produit: formData.url_produit || null,
-          type_electrique: formData.type_electrique || null,
-          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
-          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
-          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-        })
-        .eq("id", accessory.id);
-
-      if (error) {
-        toast.error("Erreur lors de la modification");
-        console.error(error);
-      } else {
-        toast.success("Accessoire modifié");
-        onSuccess();
-        onClose();
-      }
+    if (error) {
+      toast.error("Erreur lors de la suppression");
+      console.error(error);
     } else {
-      // Mode création
-      const { error } = await supabase.from("accessories_catalog").insert({
-        nom: formData.nom,
-        marque: formData.marque || null,
-        category_id: formData.category_id || null,
-        prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-        prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-        marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-        fournisseur: formData.fournisseur || null,
-        description: formData.description || null,
-        url_produit: formData.url_produit || null,
-        type_electrique: formData.type_electrique || null,
-        poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-        longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-        largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-        hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
-        puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
-        intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-        user_id: user.id,
-      });
-
-      if (error) {
-        toast.error("Erreur lors de l'ajout");
-        console.error(error);
-      } else {
-        toast.success("Accessoire ajouté au catalogue");
-        onSuccess();
-        onClose();
-      }
+      toast.success("Accessoire supprimé du catalogue");
+      loadAccessories();
     }
+    setDeleteId(null);
+  };
 
-    setIsSubmitting(false);
+  const handleEdit = (accessory: Accessory) => {
+    setSelectedAccessory(accessory);
+    setIsFormOpen(true);
+  };
+
+  const handleAdd = () => {
+    setSelectedAccessory(null);
+    setIsFormOpen(true);
+  };
+
+  const handleFormClose = () => {
+    setIsFormOpen(false);
+    setSelectedAccessory(null);
+  };
+
+  const handleFormSuccess = () => {
+    loadAccessories();
+    handleFormClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{accessory ? "Modifier l'accessoire" : "Ajouter un accessoire au catalogue"}</DialogTitle>
-        </DialogHeader>
+    <div>
+      <div className="mb-6 flex gap-4 flex-wrap">
+        <div className="flex-1 relative min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher un accessoire..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Button onClick={() => setIsCategoryManagementOpen(true)} variant="outline">
+          <Settings className="h-4 w-4 mr-2" />
+          Catégories
+        </Button>
+        <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
+          Import/Export
+        </Button>
+        <Button onClick={handleAdd}>
+          <Plus className="h-4 w-4 mr-2" />
+          Ajouter un accessoire
+        </Button>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="nom">
-                Nom <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="nom"
-                required
-                value={formData.nom}
-                onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: Panneau solaire 400W"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="marque">Marque</Label>
-              <Input
-                id="marque"
-                value={formData.marque}
-                onChange={(e) => setFormData({ ...formData, marque: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: Victron Energy"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {isCreatingCategory ? (
-              <div className="space-y-3 p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Nouvelle catégorie</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setIsCreatingCategory(false);
-                      setNewCategoryName("");
-                      setNewCategoryParent(null);
-                    }}
-                  >
-                    Annuler
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="new_category_name">Nom de la catégorie</Label>
-                  <Input
-                    id="new_category_name"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    placeholder="Ex: Panneaux solaires"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="category_parent">Catégorie parente (optionnel)</Label>
-                  <Select
-                    value={newCategoryParent || "none"}
-                    onValueChange={(value) => setNewCategoryParent(value === "none" ? null : value)}
-                  >
-                    <SelectTrigger id="category_parent">
-                      <SelectValue placeholder="Aucune (catégorie principale)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
-                      {categories
-                        .filter((cat) => cat.parent_id === null)
-                        .map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.nom}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button type="button" onClick={handleCreateCategory} className="w-full">
-                  Créer la catégorie
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="category_id">Catégorie</Label>
-                <Select
-                  key={`category-${formData.category_id}-${categoriesLoaded}`}
-                  value={formData.category_id || "none"}
-                  onValueChange={(value) => {
-                    if (value === "__create__") {
-                      setIsCreatingCategory(true);
-                    } else {
-                      setFormData({ ...formData, category_id: value === "none" ? "" : value });
-                    }
-                  }}
-                >
-                  <SelectTrigger id="category_id">
-                    <SelectValue placeholder="Sélectionner une catégorie" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-background z-50">
-                    <SelectItem value="__create__">+ Créer une nouvelle catégorie</SelectItem>
-                    <SelectItem value="none">Aucune catégorie</SelectItem>
-                    {categories
-                      .filter((cat) => cat.parent_id === null)
-                      .map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.nom}
-                        </SelectItem>
-                      ))}
-                    {categories
-                      .filter((cat) => cat.parent_id !== null)
-                      .map((cat) => {
-                        const parent = categories.find((p) => p.id === cat.parent_id);
-                        return (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {parent?.nom} → {cat.nom}
-                          </SelectItem>
-                        );
-                      })}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label className="text-base font-semibold">Calcul de prix (remplir 2 sur 3)</Label>
-            <div className="grid grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="prix_reference">Prix de référence (€)</Label>
-                <Input
-                  id="prix_reference"
-                  type="number"
-                  step="0.01"
-                  value={formData.prix_reference}
-                  onChange={(e) => handlePricingChange("prix_reference", e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="Prix d'achat"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="prix_vente">Prix de vente TTC (€)</Label>
-                <Input
-                  id="prix_vente"
-                  type="number"
-                  step="0.01"
-                  value={formData.prix_vente_ttc}
-                  onChange={(e) => handlePricingChange("prix_vente_ttc", e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="Prix de vente"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="marge">Marge (%)</Label>
-                <Input
-                  id="marge"
-                  type="number"
-                  step="0.01"
-                  value={formData.marge_pourcent}
-                  onChange={(e) => handlePricingChange("marge_pourcent", e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="% de marge"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="marge_euros">Marge nette (€)</Label>
-                <Input
-                  id="marge_euros"
-                  type="text"
-                  value={
-                    formData.prix_reference && formData.prix_vente_ttc
-                      ? (parseFloat(formData.prix_vente_ttc) / 1.2 - parseFloat(formData.prix_reference)).toFixed(2)
-                      : ""
-                  }
-                  readOnly
-                  disabled
-                  placeholder="Auto"
-                  className="bg-muted"
-                />
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="type_electrique">Type électrique</Label>
-              <Select
-                value={formData.type_electrique || "none"}
-                onValueChange={(value) => setFormData({ ...formData, type_electrique: value === "none" ? "" : value })}
-              >
-                <SelectTrigger id="type_electrique">
-                  <SelectValue placeholder="Sélectionner" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Non applicable</SelectItem>
-                  <SelectItem value="consommateur">Consommateur</SelectItem>
-                  <SelectItem value="producteur">Producteur</SelectItem>
-                  <SelectItem value="stockage">Stockage</SelectItem>
-                  <SelectItem value="convertisseur">Convertisseur</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="puissance">Puissance (W) - 12V</Label>
-              <Input
-                id="puissance"
-                type="number"
-                step="0.1"
-                value={formData.puissance_watts}
-                onChange={(e) => handleElectricalChange("puissance_watts", e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 400"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="intensite">Intensité (A) - 12V</Label>
-              <Input
-                id="intensite"
-                type="number"
-                step="0.1"
-                value={formData.intensite_amperes}
-                onChange={(e) => handleElectricalChange("intensite_amperes", e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 33.3"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="poids">Poids (kg)</Label>
-              <Input
-                id="poids"
-                type="number"
-                step="0.01"
-                value={formData.poids_kg}
-                onChange={(e) => setFormData({ ...formData, poids_kg: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 12.5"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Dimensions (mm)</Label>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="longueur" className="text-xs text-muted-foreground">
-                  Longueur
-                </Label>
-                <Input
-                  id="longueur"
-                  type="number"
-                  value={formData.longueur_mm}
-                  onChange={(e) => setFormData({ ...formData, longueur_mm: e.target.value })}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="largeur" className="text-xs text-muted-foreground">
-                  Largeur
-                </Label>
-                <Input
-                  id="largeur"
-                  type="number"
-                  value={formData.largeur_mm}
-                  onChange={(e) => setFormData({ ...formData, largeur_mm: e.target.value })}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">
-                  Hauteur
-                </Label>
-                <Input
-                  id="hauteur"
-                  type="number"
-                  value={formData.hauteur_mm}
-                  onChange={(e) => setFormData({ ...formData, hauteur_mm: e.target.value })}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="fournisseur">Fournisseur</Label>
-              <Input
-                id="fournisseur"
-                value={formData.fournisseur}
-                onChange={(e) => setFormData({ ...formData, fournisseur: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Nom du fournisseur"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="url_produit">URL du produit</Label>
-              <Input
-                id="url_produit"
-                type="url"
-                value={formData.url_produit}
-                onChange={(e) => setFormData({ ...formData, url_produit: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="https://..."
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              onKeyDown={(e) => e.stopPropagation()}
-              rows={3}
-              placeholder="Caractéristiques techniques, notes..."
-            />
-          </div>
-
-          <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Annuler
+      {loading ? (
+        <div className="text-center py-12">Chargement...</div>
+      ) : filteredAccessories.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground mb-4">
+              {searchTerm
+                ? "Aucun accessoire trouvé"
+                : "Aucun accessoire dans le catalogue"}
+            </p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Créez votre catalogue d'accessoires personnel pour faciliter l'ajout aux projets
+            </p>
+            <Button onClick={handleAdd}>
+              <Plus className="h-4 w-4 mr-2" />
+              Ajouter le premier accessoire
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "En cours..." : accessory ? "Modifier" : "Ajouter"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredAccessories.map((accessory) => (
+            <Card key={accessory.id}>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg mb-2">
+                      {accessory.nom}
+                    </CardTitle>
+                    {accessory.marque && (
+                      <p className="text-sm text-muted-foreground mb-2">
+                        {accessory.marque}
+                      </p>
+                    )}
+                    {accessory.categories && (
+                      <Badge variant="secondary" className="mb-2">
+                        {accessory.categories.nom}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEdit(accessory)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteId(accessory.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                {accessory.description && (
+                  <CardDescription className="line-clamp-2">
+                    {accessory.description}
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 text-sm">
+                  {accessory.prix_reference && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Prix référence:</span>
+                      <span className="font-medium">
+                        {accessory.prix_reference.toFixed(2)} €
+                      </span>
+                    </div>
+                  )}
+                  {accessory.prix_vente_ttc && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Prix vente TTC:</span>
+                      <span className="font-medium">
+                        {accessory.prix_vente_ttc.toFixed(2)} €
+                      </span>
+                    </div>
+                  )}
+                  {accessory.marge_pourcent !== null && accessory.marge_pourcent !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Marge:</span>
+                      <span className="font-medium">
+                        {accessory.marge_pourcent.toFixed(1)} %
+                      </span>
+                    </div>
+                  )}
+                  {accessory.puissance_watts && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Puissance:</span>
+                      <span>{accessory.puissance_watts} W</span>
+                    </div>
+                  )}
+                  {accessory.intensite_amperes && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Intensité:</span>
+                      <span>{accessory.intensite_amperes} A</span>
+                    </div>
+                  )}
+                  {accessory.fournisseur && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Fournisseur:</span>
+                      <span>{accessory.fournisseur}</span>
+                    </div>
+                  )}
+                  {accessory.url_produit && (
+                    <div>
+                      <a
+                        href={accessory.url_produit}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline text-sm"
+                      >
+                        Voir le produit
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer cet accessoire du catalogue ?
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteId && handleDelete(deleteId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AccessoryCatalogFormDialog
+        isOpen={isFormOpen}
+        onClose={handleFormClose}
+        onSuccess={handleFormSuccess}
+        accessory={selectedAccessory}
+      />
+
+      <CategoryManagementDialog
+        isOpen={isCategoryManagementOpen}
+        onClose={() => setIsCategoryManagementOpen(false)}
+        onSuccess={() => {
+          loadCategories();
+          loadAccessories();
+        }}
+        categories={categories}
+      />
+
+      <AccessoryImportExportDialog
+        isOpen={isImportExportOpen}
+        onClose={() => setIsImportExportOpen(false)}
+        onSuccess={loadAccessories}
+        categories={categories}
+      />
+    </div>
   );
 };
 
-export default AccessoryCatalogFormDialog;
+export default AccessoriesCatalogView;
