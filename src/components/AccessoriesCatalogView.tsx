@@ -236,7 +236,7 @@ const AccessoriesCatalogView = () => {
                     <div className="md:col-span-1 text-sm">
                       {accessory.prix_reference && (
                         <div>
-                          <span className="text-muted-foreground">Réf: </span>
+                          <span className="text-muted-foreground">HT: </span>
                           {accessory.prix_reference.toFixed(2)} €
                         </div>
                       )}
@@ -336,7 +336,7 @@ const AccessoriesCatalogView = () => {
                 <div className="space-y-2 text-sm">
                   {accessory.prix_reference && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Prix référence:</span>
+                      <span className="text-muted-foreground">Prix achat HT:</span>
                       <span className="font-medium">
                         {accessory.prix_reference.toFixed(2)} €
                       </span>
