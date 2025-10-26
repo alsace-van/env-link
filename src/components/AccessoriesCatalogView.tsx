@@ -89,6 +89,19 @@ const AccessoriesCatalogView = () => {
   useEffect(() => {
     loadAccessories();
     loadCategories();
+
+    // Recharger les données quand la page redevient visible
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadAccessories();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const loadCategories = async () => {
@@ -477,19 +490,19 @@ const AccessoriesCatalogView = () => {
           accessory={editingAccessory ? {
             id: editingAccessory.id,
             nom: editingAccessory.nom,
-            marque: editingAccessory.marque || undefined,
-            category_id: editingAccessory.category_id,
-            prix_reference: editingAccessory.prix_reference || undefined,
-            prix_vente_ttc: editingAccessory.prix_vente_ttc || undefined,
-            marge_pourcent: editingAccessory.marge_pourcent || undefined,
-            fournisseur: editingAccessory.fournisseur || undefined,
-            description: editingAccessory.description || undefined,
-            url_produit: editingAccessory.url_produit || undefined,
-            type_electrique: editingAccessory.type_electrique || undefined,
-            poids_kg: editingAccessory.poids_kg || undefined,
-            longueur_mm: editingAccessory.longueur_mm || undefined,
-            largeur_mm: editingAccessory.largeur_mm || undefined,
-            hauteur_mm: editingAccessory.hauteur_mm || undefined,
+            marque: editingAccessory.marque ?? undefined,
+            category_id: editingAccessory.category_id ?? undefined,
+            prix_reference: editingAccessory.prix_reference ?? undefined,
+            prix_vente_ttc: editingAccessory.prix_vente_ttc ?? undefined,
+            marge_pourcent: editingAccessory.marge_pourcent ?? undefined,
+            fournisseur: editingAccessory.fournisseur ?? undefined,
+            description: editingAccessory.description ?? undefined,
+            url_produit: editingAccessory.url_produit ?? undefined,
+            type_electrique: editingAccessory.type_electrique ?? undefined,
+            poids_kg: editingAccessory.poids_kg ?? undefined,
+            longueur_mm: editingAccessory.longueur_mm ?? undefined,
+            largeur_mm: editingAccessory.largeur_mm ?? undefined,
+            hauteur_mm: editingAccessory.hauteur_mm ?? undefined,
           } : null}
           onSuccess={() => {
             loadAccessories();
