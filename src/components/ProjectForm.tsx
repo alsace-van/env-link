@@ -26,8 +26,25 @@ interface ProjectFormProps {
 
 const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const [vehicles, setVehicles] = useState<VehicleCatalog[]>([]);
+  const [selectedMarque, setSelectedMarque] = useState<string>("");
+  const [selectedModele, setSelectedModele] = useState<string>("");
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleCatalog | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Compute available options for cascade dropdowns
+  const availableMarques = Array.from(new Set(vehicles.map(v => v.marque))).sort();
+  
+  const availableModeles = selectedMarque
+    ? Array.from(new Set(
+        vehicles
+          .filter(v => v.marque === selectedMarque)
+          .map(v => v.modele)
+      )).sort()
+    : [];
+  
+  const availableDimensions = (selectedMarque && selectedModele)
+    ? vehicles.filter(v => v.marque === selectedMarque && v.modele === selectedModele)
+    : [];
 
   useEffect(() => {
     loadVehicles();
@@ -48,7 +65,18 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     setVehicles(data || []);
   };
 
-  const handleVehicleChange = (vehicleId: string) => {
+  const handleMarqueChange = (marque: string) => {
+    setSelectedMarque(marque);
+    setSelectedModele("");
+    setSelectedVehicle(null);
+  };
+
+  const handleModeleChange = (modele: string) => {
+    setSelectedModele(modele);
+    setSelectedVehicle(null);
+  };
+
+  const handleDimensionChange = (vehicleId: string) => {
     const vehicle = vehicles.find((v) => v.id === vehicleId);
     setSelectedVehicle(vehicle || null);
   };
@@ -93,6 +121,8 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
     toast.success("Projet créé avec succès !");
     e.currentTarget.reset();
+    setSelectedMarque("");
+    setSelectedModele("");
     setSelectedVehicle(null);
     onProjectCreated();
   };
@@ -159,20 +189,56 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
             <h3 className="text-sm font-semibold text-muted-foreground">Informations Véhicule</h3>
             
             <div className="space-y-2">
-              <Label htmlFor="vehicle">Modèle de véhicule *</Label>
-              <Select onValueChange={handleVehicleChange} required disabled={isLoading}>
+              <Label htmlFor="marque">Marque *</Label>
+              <Select value={selectedMarque} onValueChange={handleMarqueChange} required disabled={isLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez un modèle" />
+                  <SelectValue placeholder="Sélectionnez une marque" />
                 </SelectTrigger>
                 <SelectContent>
-                  {vehicles.map((vehicle) => (
-                    <SelectItem key={vehicle.id} value={vehicle.id}>
-                      {vehicle.marque} {vehicle.modele}
+                  {availableMarques.map((marque) => (
+                    <SelectItem key={marque} value={marque}>
+                      {marque}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            {selectedMarque && (
+              <div className="space-y-2">
+                <Label htmlFor="modele">Modèle *</Label>
+                <Select value={selectedModele} onValueChange={handleModeleChange} required disabled={isLoading}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionnez un modèle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModeles.map((modele) => (
+                      <SelectItem key={modele} value={modele}>
+                        {modele}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {selectedMarque && selectedModele && availableDimensions.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="dimension">Dimensions *</Label>
+                <Select value={selectedVehicle?.id} onValueChange={handleDimensionChange} required disabled={isLoading}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionnez les dimensions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDimensions.map((vehicle) => (
+                      <SelectItem key={vehicle.id} value={vehicle.id}>
+                        L: {vehicle.longueur_mm}mm × l: {vehicle.largeur_mm}mm × H: {vehicle.hauteur_mm}mm
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {selectedVehicle && (
               <div className="p-4 bg-muted/50 rounded-lg space-y-2 text-sm">
