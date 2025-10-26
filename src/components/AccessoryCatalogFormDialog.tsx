@@ -428,7 +428,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             <Label className="text-base font-semibold">Calcul de prix (remplir 2 sur 3)</Label>
             <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="prix_reference">Prix de référence (€)</Label>
+                <Label htmlFor="prix_reference">Prix d'achat HT (€)</Label>
                 <Input
                   id="prix_reference"
                   type="number"
@@ -436,7 +436,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   value={formData.prix_reference}
                   onChange={(e) => handlePricingChange("prix_reference", e.target.value)}
                   onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="Prix d'achat"
+                  placeholder="Prix d'achat HT"
                 />
               </div>
 
