@@ -362,6 +362,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
+                group.addWithUpdate();
                 group.setCoords();
                 canvas.requestRenderAll();
                 return true;
@@ -380,8 +381,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                const point = new fabric.Point(line.x1 || 0, line.y1 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                // Les coordonnées x1, y1 sont dans le système de coordonnées de la ligne
+                // Il faut les centrer car l'origine de transformation est au centre
+                const x = line.x1 - line.width / 2;
+                const y = line.y1 - line.height / 2;
+                return fabric.util.transformPoint({ x, y }, finalMatrix);
               },
             }),
             p2: new Control({
@@ -438,6 +442,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
+                group.addWithUpdate();
                 group.setCoords();
                 canvas.requestRenderAll();
                 return true;
@@ -456,8 +461,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                const point = new fabric.Point(line.x2 || 0, line.y2 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                // Les coordonnées x2, y2 sont dans le système de coordonnées de la ligne
+                // Il faut les centrer car l'origine de transformation est au centre
+                const x = line.x2 - line.width / 2;
+                const y = line.y2 - line.height / 2;
+                return fabric.util.transformPoint({ x, y }, finalMatrix);
               },
             }),
           };
@@ -557,8 +565,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                const point = new fabric.Point(line.x1 || 0, line.y1 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                // Les coordonnées x1, y1 sont dans le système de coordonnées de l'objet
+                // Il faut les centrer car l'origine de transformation est au centre
+                const x = line.x1 - line.width / 2;
+                const y = line.y1 - line.height / 2;
+                return fabric.util.transformPoint({ x, y }, finalMatrix);
               },
             }),
             p2: new Control({
@@ -616,8 +627,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                const point = new fabric.Point(line.x2 || 0, line.y2 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                // Les coordonnées x2, y2 sont dans le système de coordonnées de l'objet
+                // Il faut les centrer car l'origine de transformation est au centre
+                const x = line.x2 - line.width / 2;
+                const y = line.y2 - line.height / 2;
+                return fabric.util.transformPoint({ x, y }, finalMatrix);
               },
             }),
           };
