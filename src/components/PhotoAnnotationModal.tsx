@@ -34,6 +34,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [history, setHistory] = useState<any[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
+  const [isDrawingLine, setIsDrawingLine] = useState(false);
+  const [isDrawingArrow, setIsDrawingArrow] = useState(false);
+  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (photo) {
@@ -174,8 +177,70 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
     });
 
+    // Gestionnaire de clic pour dessiner les lignes et flèches
+    const handleMouseDown = (event: any) => {
+      if (!event.pointer) return;
+
+      if (isDrawingLine || isDrawingArrow) {
+        const pointer = event.pointer;
+
+        if (!startPoint) {
+          // Premier clic : enregistrer le point de départ
+          setStartPoint({ x: pointer.x, y: pointer.y });
+        } else {
+          // Deuxième clic : créer la ligne ou flèche
+          if (isDrawingLine) {
+            const line = new Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+            });
+            fabricCanvas.add(line);
+            fabricCanvas.setActiveObject(line);
+          } else if (isDrawingArrow) {
+            const line = new Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+            });
+
+            // Calculer l'angle de la flèche
+            const angle = Math.atan2(pointer.y - startPoint.y, pointer.x - startPoint.x) * 180 / Math.PI;
+
+            const triangle = new Triangle({
+              left: pointer.x,
+              top: pointer.y,
+              width: 15,
+              height: 15,
+              fill: strokeColor,
+              angle: angle + 90,
+              originX: "center",
+              originY: "center",
+            });
+
+            fabricCanvas.add(line);
+            fabricCanvas.add(triangle);
+            fabricCanvas.setActiveObject(line);
+          }
+
+          fabricCanvas.renderAll();
+          saveToHistory();
+
+          // Réinitialiser
+          setStartPoint(null);
+          setIsDrawingLine(false);
+          setIsDrawingArrow(false);
+          setActiveTool("select");
+        }
+      }
+    };
+
+    fabricCanvas.on("mouse:down", handleMouseDown);
+
     fabricCanvas.renderAll();
-  }, [activeTool, strokeColor, strokeWidth, fabricCanvas]);
+
+    return () => {
+      fabricCanvas.off("mouse:down", handleMouseDown);
+    };
+  }, [activeTool, strokeColor, strokeWidth, fabricCanvas, isDrawingLine, isDrawingArrow, startPoint]);
 
   const saveToHistory = () => {
     if (!fabricCanvas) return;
@@ -235,29 +300,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     if (!fabricCanvas) return;
     
     setActiveTool("arrow");
-
-    const line = new Line([50, 50, 200, 50], {
-      stroke: strokeColor,
-      strokeWidth: strokeWidth,
-    });
-
-    const triangle = new Triangle({
-      left: 200,
-      top: 50,
-      width: 20,
-      height: 20,
-      fill: strokeColor,
-      angle: 90,
-      originX: "center",
-      originY: "center",
-    });
-
-    fabricCanvas.add(line);
-    fabricCanvas.add(triangle);
-    fabricCanvas.renderAll();
-    saveToHistory();
-    
-    setTimeout(() => setActiveTool("select"), 100);
+    setIsDrawingArrow(true);
+    setIsDrawingLine(false);
+    setStartPoint(null);
+    toast.info("Cliquez pour définir le point de départ, puis cliquez à nouveau pour définir le point d'arrivée");
   };
 
   const addCircle = () => {
@@ -286,18 +332,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     if (!fabricCanvas) return;
     
     setActiveTool("line");
-
-    const line = new Line([50, 50, 200, 50], {
-      stroke: strokeColor,
-      strokeWidth: strokeWidth,
-    });
-
-    fabricCanvas.add(line);
-    fabricCanvas.setActiveObject(line);
-    fabricCanvas.renderAll();
-    saveToHistory();
-    
-    setTimeout(() => setActiveTool("select"), 100);
+    setIsDrawingLine(true);
+    setIsDrawingArrow(false);
+    setStartPoint(null);
+    toast.info("Cliquez pour définir le point de départ, puis cliquez à nouveau pour définir le point d'arrivée");
   };
 
   const addText = () => {
