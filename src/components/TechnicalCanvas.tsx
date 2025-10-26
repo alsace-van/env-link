@@ -257,22 +257,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
     };
 
-    tool.onDoubleClick = (event: paper.ToolEvent) => {
-      // Double-clic pour éditer le texte
-      const hitResult = paper.project.activeLayer.hitTest(event.point, {
-        fill: true,
-        stroke: true,
-        tolerance: 5,
-      });
-
-      if (hitResult && hitResult.item instanceof paper.PointText) {
-        const textItem = hitResult.item;
-        const newText = prompt("Modifier le texte :", textItem.content);
-        if (newText !== null) {
-          textItem.content = newText;
-        }
-      }
-    };
+    // Paper.js doesn't have onDoubleClick, we'll handle text editing differently
+    // Users can use the text tool to create new text
 
     tool.onMouseDrag = (event: paper.ToolEvent) => {
       // Déplacer une poignée
@@ -398,7 +384,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         selectedItem = currentPath;
         selectedItem.selected = true;
 
-        if (selectedItem.segments.length === 2) {
+        if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
           createHandles(selectedItem);
         }
 
