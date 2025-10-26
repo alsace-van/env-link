@@ -208,7 +208,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   // Gestionnaire séparé pour le dessin de lignes et flèches avec drag
   useEffect(() => {
-    if (!fabricCanvas) return;
+    if (!fabricCanvas || (!isDrawingLine && !isDrawingArrow)) return;
 
     const handleMouseDown = (event: any) => {
       if (!event.pointer) return;
@@ -342,7 +342,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       fabricCanvas.off("mouse:move", handleMouseMove);
       fabricCanvas.off("mouse:up", handleMouseUp);
     };
-  }, [fabricCanvas, isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth, isDragging, currentLine]);
+  }, [fabricCanvas, isDrawingLine, isDrawingArrow, strokeColor, strokeWidth]);
 
   // Gestionnaire pour la touche Suppr
   useEffect(() => {
