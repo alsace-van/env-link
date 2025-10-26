@@ -527,70 +527,61 @@ export const LayoutCanvas = ({
         </div>
       </Card>
 
-      <Card className="p-4">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Dimensions de la zone de chargement</h3>
-            {!isEditingDimensions ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditingDimensions(true)}
-              >
-                Modifier
-              </Button>
+      <Card className="p-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 text-sm">
+            <span className="font-medium">Zone de chargement :</span>
+            {isEditingDimensions ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={loadAreaLength}
+                    onChange={(e) => setLoadAreaLength(Number(e.target.value))}
+                    className="w-24 h-8"
+                  />
+                  <span className="text-muted-foreground">x</span>
+                  <Input
+                    type="number"
+                    value={loadAreaWidth}
+                    onChange={(e) => setLoadAreaWidth(Number(e.target.value))}
+                    className="w-24 h-8"
+                  />
+                  <span className="text-muted-foreground">mm</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setLoadAreaLength(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
+                      setLoadAreaWidth(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
+                      setIsEditingDimensions(false);
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                  <Button size="sm" onClick={handleSaveDimensions}>
+                    Sauvegarder
+                  </Button>
+                </div>
+              </>
             ) : (
-              <div className="flex gap-2">
+              <>
+                <span className="font-mono">{loadAreaLength} x {loadAreaWidth} mm</span>
+                <span className="text-muted-foreground">
+                  ({((loadAreaLength * loadAreaWidth) / 1000000).toFixed(2)} m²)
+                </span>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setLoadAreaLength(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
-                    setLoadAreaWidth(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
-                    setIsEditingDimensions(false);
-                  }}
+                  onClick={() => setIsEditingDimensions(true)}
                 >
-                  Annuler
+                  Modifier
                 </Button>
-                <Button size="sm" onClick={handleSaveDimensions}>
-                  Sauvegarder
-                </Button>
-              </div>
+              </>
             )}
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="load-length">Longueur utile (mm)</Label>
-              {isEditingDimensions ? (
-                <Input
-                  id="load-length"
-                  type="number"
-                  value={loadAreaLength}
-                  onChange={(e) => setLoadAreaLength(Number(e.target.value))}
-                />
-              ) : (
-                <p className="text-lg font-medium">{loadAreaLength} mm</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="load-width">Largeur utile (mm)</Label>
-              {isEditingDimensions ? (
-                <Input
-                  id="load-width"
-                  type="number"
-                  value={loadAreaWidth}
-                  onChange={(e) => setLoadAreaWidth(Number(e.target.value))}
-                />
-              ) : (
-                <p className="text-lg font-medium">{loadAreaWidth} mm</p>
-              )}
-            </div>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            Surface utile : {((loadAreaLength * loadAreaWidth) / 1000000).toFixed(2)} m²
-          </p>
         </div>
       </Card>
 
