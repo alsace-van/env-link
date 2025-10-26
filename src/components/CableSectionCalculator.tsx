@@ -119,34 +119,26 @@ export const CableSectionCalculator = () => {
         {current > 0 && length > 0 && (
           <>
             {recommendedSection ? (
-              <div className="space-y-4">
-                <div className="p-6 rounded-lg border-2 border-primary bg-primary/5">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      <CheckCircle className="h-8 w-8 text-primary" />
+              <div className="p-4 rounded-lg border-2 border-primary bg-primary/5">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-6 w-6 text-primary flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-primary">Section recommandée</h3>
+                    <div className="text-3xl font-bold text-primary my-2">
+                      {recommendedSection.section} mm²
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-primary mb-2">
-                        Section recommandée
-                      </h3>
-                      <div className="text-4xl font-bold text-primary mb-4">
-                        {recommendedSection.section} mm²
+                    <div className="flex flex-wrap gap-3 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Chute:</span>{" "}
+                        <span className="font-semibold">{recommendedSection.voltageDrop}V ({recommendedSection.voltageDropPercent}%)</span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                        <div className="bg-background/50 p-3 rounded">
-                          <div className="text-muted-foreground">Chute de tension</div>
-                          <div className="font-semibold">
-                            {recommendedSection.voltageDrop}V ({recommendedSection.voltageDropPercent}%)
-                          </div>
-                        </div>
-                        <div className="bg-background/50 p-3 rounded">
-                          <div className="text-muted-foreground">Intensité max du câble</div>
-                          <div className="font-semibold">{recommendedSection.maxCurrent}A</div>
-                        </div>
-                        <div className="bg-background/50 p-3 rounded">
-                          <div className="text-muted-foreground">Votre intensité</div>
-                          <div className="font-semibold">{current}A</div>
-                        </div>
+                      <div>
+                        <span className="text-muted-foreground">I max:</span>{" "}
+                        <span className="font-semibold">{recommendedSection.maxCurrent}A</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Votre I:</span>{" "}
+                        <span className="font-semibold">{current}A</span>
                       </div>
                     </div>
                   </div>
