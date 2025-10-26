@@ -36,6 +36,7 @@ interface AccessoryCatalogFormDialogProps {
     largeur_mm?: number | null;
     hauteur_mm?: number | null;
     puissance_watts?: number | null;
+    intensite_amperes?: number | null;
   } | null;
 }
 
@@ -56,6 +57,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     largeur_mm: "",
     hauteur_mm: "",
     puissance_watts: "",
+    intensite_amperes: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -85,6 +87,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           largeur_mm: accessory.largeur_mm?.toString() || "",
           hauteur_mm: accessory.hauteur_mm?.toString() || "",
           puissance_watts: accessory.puissance_watts?.toString() || "",
+          intensite_amperes: accessory.intensite_amperes?.toString() || "",
         });
       } else {
         // Mode création
@@ -104,6 +107,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           largeur_mm: "",
           hauteur_mm: "",
           puissance_watts: "",
+          intensite_amperes: "",
         });
       }
     }
@@ -183,6 +187,27 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     setFormData(newFormData);
   };
 
+  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes", value: string) => {
+    const newFormData = { ...formData, [field]: value };
+    const voltage = 12; // 12V system
+
+    if (field === "puissance_watts" && value) {
+      // Calculate intensity from power: I = P / U
+      const power = parseFloat(value);
+      if (!isNaN(power) && power > 0) {
+        newFormData.intensite_amperes = (power / voltage).toFixed(2);
+      }
+    } else if (field === "intensite_amperes" && value) {
+      // Calculate power from intensity: P = U × I
+      const intensity = parseFloat(value);
+      if (!isNaN(intensity) && intensity > 0) {
+        newFormData.puissance_watts = (intensity * voltage).toFixed(1);
+      }
+    }
+
+    setFormData(newFormData);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -216,6 +241,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         })
         .eq("id", accessory.id);
 
@@ -245,6 +271,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
         hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
         puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+        intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         user_id: user.id,
       });
 
@@ -459,7 +486,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
           <Separator />
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type_electrique">Type électrique</Label>
               <Select
@@ -480,15 +507,28 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="puissance">Puissance (W)</Label>
+              <Label htmlFor="puissance">Puissance (W) - 12V</Label>
               <Input
                 id="puissance"
                 type="number"
                 step="0.1"
                 value={formData.puissance_watts}
-                onChange={(e) => setFormData({ ...formData, puissance_watts: e.target.value })}
+                onChange={(e) => handleElectricalChange("puissance_watts", e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Ex: 400"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="intensite">Intensité (A) - 12V</Label>
+              <Input
+                id="intensite"
+                type="number"
+                step="0.1"
+                value={formData.intensite_amperes}
+                onChange={(e) => handleElectricalChange("intensite_amperes", e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 33.3"
               />
             </div>
 

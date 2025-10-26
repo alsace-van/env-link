@@ -35,6 +35,7 @@ interface ExpenseFormDialogProps {
     largeur_mm?: number;
     hauteur_mm?: number;
     puissance_watts?: number;
+    intensite_amperes?: number;
   } | null;
 }
 
@@ -56,6 +57,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     largeur_mm: "",
     hauteur_mm: "",
     puissance_watts: "",
+    intensite_amperes: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNewCategory, setIsNewCategory] = useState(false);
@@ -100,6 +102,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           largeur_mm: expense.largeur_mm?.toString() || "",
           hauteur_mm: expense.hauteur_mm?.toString() || "",
           puissance_watts: expense.puissance_watts?.toString() || "",
+          intensite_amperes: expense.intensite_amperes?.toString() || "",
         });
         setSelectedAccessoryId(expense.accessory_id || null);
       } else {
@@ -121,6 +124,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           largeur_mm: "",
           hauteur_mm: "",
           puissance_watts: "",
+          intensite_amperes: "",
         });
         setSelectedAccessoryId(null);
       }
@@ -216,6 +220,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       largeur_mm: accessory.largeur_mm?.toString() || "",
       hauteur_mm: accessory.hauteur_mm?.toString() || "",
       puissance_watts: accessory.puissance_watts?.toString() || "",
+      intensite_amperes: accessory.intensite_amperes?.toString() || "",
     });
     setSelectedAccessoryId(accessory.id);
     setShowAccessoriesList(false);
@@ -246,6 +251,27 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       const prixAchat = parseFloat(newFormData.prix_achat);
       const margePourcent = parseFloat(newFormData.marge_pourcent);
       newFormData.prix_vente_ttc = (prixAchat * (1 + margePourcent / 100)).toFixed(2);
+    }
+
+    setFormData(newFormData);
+  };
+
+  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes", value: string) => {
+    const newFormData = { ...formData, [field]: value };
+    const voltage = 12; // 12V system
+
+    if (field === "puissance_watts" && value) {
+      // Calculate intensity from power: I = P / U
+      const power = parseFloat(value);
+      if (!isNaN(power) && power > 0) {
+        newFormData.intensite_amperes = (power / voltage).toFixed(2);
+      }
+    } else if (field === "intensite_amperes" && value) {
+      // Calculate power from intensity: P = U × I
+      const intensity = parseFloat(value);
+      if (!isNaN(intensity) && intensity > 0) {
+        newFormData.puissance_watts = (intensity * voltage).toFixed(1);
+      }
     }
 
     setFormData(newFormData);
@@ -300,6 +326,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
         largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
         hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
         puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+        intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         user_id: user.id,
       });
 
@@ -341,6 +368,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         })
         .eq("id", expense.id);
 
@@ -427,6 +455,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         });
 
       if (error) {
@@ -455,6 +484,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           largeur_mm: "",
           hauteur_mm: "",
           puissance_watts: "",
+          intensite_amperes: "",
         });
         setIsNewCategory(false);
         setShowAddToCatalog(false);
@@ -562,7 +592,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
 
           <Separator />
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type_electrique">Type électrique</Label>
               <Select
@@ -583,14 +613,26 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="puissance">Puissance (W)</Label>
+              <Label htmlFor="puissance">Puissance (W) - 12V</Label>
               <Input
                 id="puissance"
                 type="number"
                 step="0.1"
                 value={formData.puissance_watts}
-                onChange={(e) => setFormData({ ...formData, puissance_watts: e.target.value })}
+                onChange={(e) => handleElectricalChange("puissance_watts", e.target.value)}
                 placeholder="Ex: 400"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="intensite">Intensité (A) - 12V</Label>
+              <Input
+                id="intensite"
+                type="number"
+                step="0.1"
+                value={formData.intensite_amperes}
+                onChange={(e) => handleElectricalChange("intensite_amperes", e.target.value)}
+                placeholder="Ex: 33.3"
               />
             </div>
 

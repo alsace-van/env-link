@@ -14,6 +14,7 @@ interface ElectricalItem {
   type_electrique: string;
   quantite: number;
   puissance_watts?: number | null;
+  intensite_amperes?: number | null;
   temps_utilisation_heures?: number | null;
   temps_production_heures?: number | null;
 }

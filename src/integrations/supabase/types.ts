@@ -23,6 +23,7 @@ export type Database = {
           fournisseur: string | null
           hauteur_mm: number | null
           id: string
+          intensite_amperes: number | null
           largeur_mm: number | null
           longueur_mm: number | null
           marge_pourcent: number | null
@@ -45,6 +46,7 @@ export type Database = {
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          intensite_amperes?: number | null
           largeur_mm?: number | null
           longueur_mm?: number | null
           marge_pourcent?: number | null
@@ -67,6 +69,7 @@ export type Database = {
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          intensite_amperes?: number | null
           largeur_mm?: number | null
           longueur_mm?: number | null
           marge_pourcent?: number | null
@@ -249,6 +252,7 @@ export type Database = {
           fournisseur: string | null
           hauteur_mm: number | null
           id: string
+          intensite_amperes: number | null
           largeur_mm: number | null
           longueur_mm: number | null
           marge_pourcent: number | null
@@ -275,6 +279,7 @@ export type Database = {
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          intensite_amperes?: number | null
           largeur_mm?: number | null
           longueur_mm?: number | null
           marge_pourcent?: number | null
@@ -301,6 +306,7 @@ export type Database = {
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          intensite_amperes?: number | null
           largeur_mm?: number | null
           longueur_mm?: number | null
           marge_pourcent?: number | null

@@ -28,6 +28,7 @@ interface Accessory {
   largeur_mm?: number;
   hauteur_mm?: number;
   puissance_watts?: number;
+  intensite_amperes?: number;
 }
 
 interface AccessorySelectorProps {
@@ -108,6 +109,7 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
         largeur_mm: accessoryToAdd.largeur_mm,
         hauteur_mm: accessoryToAdd.hauteur_mm,
         puissance_watts: accessoryToAdd.puissance_watts,
+        intensite_amperes: accessoryToAdd.intensite_amperes,
       });
 
     if (error) {
