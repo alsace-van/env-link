@@ -67,15 +67,30 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   // Initialisation du canvas
   useEffect(() => {
-    if (!canvasRef.current || !isOpen || !photo) {
-      console.log("Canvas init skipped:", { canvasRef: !!canvasRef.current, isOpen, photo: !!photo });
+    if (!isOpen || !photo) {
       return;
     }
 
     let mounted = true;
-    setIsLoadingImage(true);
+    let initAttempts = 0;
+    const maxAttempts = 30;
 
-    const initCanvas = async () => {
+    const tryInitCanvas = async () => {
+      // Wait for canvas ref to be available
+      if (!canvasRef.current) {
+        initAttempts++;
+        if (initAttempts < maxAttempts) {
+          console.log(`Canvas ref not ready, attempt ${initAttempts}/${maxAttempts}`);
+          setTimeout(tryInitCanvas, 100);
+        } else {
+          console.error("Canvas ref never became available");
+        }
+        return;
+      }
+
+      setIsLoadingImage(true);
+      console.log("Starting canvas initialization...");
+
       try {
         const container = containerRef.current;
         const canvasElement = canvasRef.current;
@@ -252,14 +267,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
     };
 
-    const timeoutId = setTimeout(initCanvas, 150);
-
     setHistory([]);
     setHistoryStep(-1);
+    
+    // Start trying to initialize
+    tryInitCanvas();
 
     return () => {
       mounted = false;
-      clearTimeout(timeoutId);
 
       if (fabricCanvasRef.current) {
         try {
