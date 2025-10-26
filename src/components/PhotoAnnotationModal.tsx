@@ -177,7 +177,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
     });
 
-    // Gestionnaire de clic pour dessiner les lignes et flèches
+    fabricCanvas.renderAll();
+  }, [activeTool, strokeColor, strokeWidth, fabricCanvas]);
+
+  // Gestionnaire séparé pour le dessin de lignes et flèches
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
     const handleMouseDown = (event: any) => {
       if (!event.pointer) return;
 
@@ -235,12 +241,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     fabricCanvas.on("mouse:down", handleMouseDown);
 
-    fabricCanvas.renderAll();
-
     return () => {
       fabricCanvas.off("mouse:down", handleMouseDown);
     };
-  }, [activeTool, strokeColor, strokeWidth, fabricCanvas, isDrawingLine, isDrawingArrow, startPoint]);
+  }, [fabricCanvas, isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth]);
 
   const saveToHistory = () => {
     if (!fabricCanvas) return;
