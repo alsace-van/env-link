@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Pencil, Square, Circle as CircleIcon, Type, Minus, ArrowRight, Trash2, Undo, Redo, Download } from "lucide-react";
 import { toast } from "sonner";
+import { AccessorySelector } from "./AccessorySelector";
 
 interface TechnicalCanvasProps {
   projectId: string;
+  onExpenseAdded?: () => void;
 }
 
-export const TechnicalCanvas = ({ projectId }: TechnicalCanvasProps) => {
+export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "circle" | "text" | "line" | "arrow">("select");
@@ -310,6 +312,37 @@ export const TechnicalCanvas = ({ projectId }: TechnicalCanvasProps) => {
     toast.success("Schéma téléchargé");
   };
 
+  const handleSelectAccessory = (accessory: any, source: "expense" | "catalog") => {
+    if (!fabricCanvasRef.current) return;
+
+    const name = accessory.nom_accessoire || accessory.nom || "Accessoire";
+    const details = [
+      accessory.marque,
+      accessory.categorie || accessory.categories?.nom,
+      accessory.type_electrique,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const text = new Textbox(`📦 ${name}\n${details}`, {
+      left: 100,
+      top: 100,
+      fontSize: 14,
+      fill: color,
+      backgroundColor: "#ffffff",
+      padding: 8,
+      borderColor: color,
+      cornerColor: color,
+      width: 200,
+    });
+
+    fabricCanvasRef.current.add(text);
+    fabricCanvasRef.current.setActiveObject(text);
+    fabricCanvasRef.current.renderAll();
+    
+    toast.success(`${name} ajouté au schéma`);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 p-4 bg-muted/50 rounded-lg">
@@ -426,6 +459,15 @@ export const TechnicalCanvas = ({ projectId }: TechnicalCanvasProps) => {
         >
           Effacer tout
         </Button>
+
+        <Separator orientation="vertical" className="h-8" />
+
+        <AccessorySelector
+          projectId={projectId}
+          onSelectAccessory={handleSelectAccessory}
+          onAddToCatalog={onExpenseAdded}
+        />
+
         <Button
           variant="default"
           size="sm"

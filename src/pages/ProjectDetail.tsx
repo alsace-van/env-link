@@ -376,7 +376,10 @@ const ProjectDetail = () => {
                   <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <TechnicalCanvas projectId={project.id} />
+                  <TechnicalCanvas 
+                    projectId={project.id} 
+                    onExpenseAdded={() => setExpenseRefresh(prev => prev + 1)}
+                  />
                 </CardContent>
               </Card>
 
