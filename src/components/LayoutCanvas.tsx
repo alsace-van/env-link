@@ -207,11 +207,13 @@ export const LayoutCanvas = ({
     };
 
     const clearAllMeasures = () => {
+      const itemsToRemove: paper.Item[] = [];
       paper.project.activeLayer.children.forEach((child) => {
         if (child.data.isMeasure) {
-          child.remove();
+          itemsToRemove.push(child);
         }
       });
+      itemsToRemove.forEach(item => item.remove());
       toast.success("Mesures effacées");
     };
 
