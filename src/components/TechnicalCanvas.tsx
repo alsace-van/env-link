@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -23,483 +23,295 @@ interface TechnicalCanvasProps {
 }
 
 // Constantes pour le snapping
-const SNAP_ANGLE_THRESHOLD = 15; // Degrés pour snapper à l'horizontal/vertical
-const SNAP_DISTANCE = 10; // Pixels pour le magnétisme des poignées
+const SNAP_ANGLE_THRESHOLD = 15;
+const SNAP_DISTANCE = 10;
 
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scopeRef = useRef<paper.PaperScope | null>(null);
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "circle" | "text" | "line" | "arrow">(
     "select",
   );
   const [color, setColor] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(2);
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyStep, setHistoryStep] = useState(-1);
-  const [isCanvasReady, setIsCanvasReady] = useState(false);
 
-  const currentPathRef = useRef<paper.Path | null>(null);
-  const handlesLayerRef = useRef<paper.Layer | null>(null);
-  const selectedItemRef = useRef<paper.Item | null>(null);
+  useEffect(() => {
+    if (!canvasRef.current) return;
 
-  // Fonction pour snapper à l'horizontal ou vertical
-  const snapToHorizontalOrVertical = (from: paper.Point, to: paper.Point): paper.Point => {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const angle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
+    // Setup Paper.js - IMPORTANT: ne pas utiliser new PaperScope()
+    paper.setup(canvasRef.current);
 
-    // Snapper à l'horizontal (0° ou 180°)
-    if (angle < SNAP_ANGLE_THRESHOLD || angle > 180 - SNAP_ANGLE_THRESHOLD) {
-      return new paper.Point(to.x, from.y);
-    }
+    console.log("Paper.js initialized", paper.project);
 
-    // Snapper à la vertical (90°)
-    if (Math.abs(angle - 90) < SNAP_ANGLE_THRESHOLD) {
-      return new paper.Point(from.x, to.y);
-    }
+    // Variables pour le dessin
+    let currentPath: paper.Path | null = null;
+    let selectedItem: paper.Item | null = null;
+    let handles: paper.Path.Circle[] = [];
+    let draggedHandle: paper.Path.Circle | null = null;
 
-    return to;
-  };
+    // Fonction pour créer des poignées
+    const createHandles = (path: paper.Path) => {
+      // Supprimer les anciennes poignées
+      handles.forEach((h) => h.remove());
+      handles = [];
 
-  // Fonction pour trouver les points de snapping magnétique
-  const findSnapPoint = (point: paper.Point, excludeItem?: paper.Item): { point: paper.Point; snapped: boolean } => {
-    if (!scopeRef.current) return { point, snapped: false };
-
-    let closestPoint = point;
-    let minDistance = Infinity;
-
-    // Chercher dans la couche principale (pas dans la couche des poignées)
-    scopeRef.current.project.layers[0].children.forEach((item) => {
-      if (item === excludeItem || item.data.isArrowHead) return;
-
-      const points: paper.Point[] = [];
-
-      if (item instanceof paper.Path && !item.closed) {
-        // Pour les lignes et flèches - utiliser les extrémités
-        if (item.segments.length >= 2) {
-          points.push(item.segments[0].point);
-          points.push(item.segments[item.segments.length - 1].point);
-        }
-      } else if (item.bounds) {
-        // Pour les autres objets (rectangles, cercles) - utiliser les coins
-        points.push(item.bounds.topLeft, item.bounds.topRight, item.bounds.bottomLeft, item.bounds.bottomRight);
-      }
-
-      points.forEach((p) => {
-        const distance = point.getDistance(p);
-        if (distance < minDistance && distance < SNAP_DISTANCE) {
-          minDistance = distance;
-          closestPoint = p;
-        }
-      });
-    });
-
-    return { point: closestPoint, snapped: minDistance < SNAP_DISTANCE };
-  };
-
-  // Fonction pour créer/mettre à jour toutes les poignées
-  const updateAllHandles = () => {
-    if (!scopeRef.current || !handlesLayerRef.current) return;
-
-    // Effacer toutes les poignées existantes
-    handlesLayerRef.current.removeChildren();
-
-    // Si rien n'est sélectionné, ne rien faire
-    if (!selectedItemRef.current) return;
-
-    const item = selectedItemRef.current;
-
-    // Créer des poignées seulement pour les lignes et flèches
-    if (item instanceof paper.Path && !item.closed && item.segments.length === 2) {
-      item.segments.forEach((segment, index) => {
-        const handle = new paper.Path.Circle({
-          center: segment.point,
-          radius: 5,
-          fillColor: index === 0 ? "#2196F3" : "#FF5722",
-          strokeColor: "white",
-          strokeWidth: 2,
+      if (path.segments.length === 2) {
+        path.segments.forEach((segment, index) => {
+          const handle = new paper.Path.Circle({
+            center: segment.point,
+            radius: 5,
+            fillColor: index === 0 ? "#2196F3" : "#FF5722",
+            strokeColor: "white",
+            strokeWidth: 2,
+          });
+          handle.data.isHandle = true;
+          handle.data.segmentIndex = index;
+          handle.data.parentPath = path;
+          handles.push(handle);
         });
-
-        handle.data = {
-          isHandle: true,
-          segmentIndex: index,
-          parentPath: item,
-        };
-
-        handlesLayerRef.current?.addChild(handle);
-      });
-    }
-  };
-
-  // Fonction pour mettre à jour la tête de flèche
-  const updateArrowHead = (path: paper.Path) => {
-    if (!scopeRef.current || path.segments.length < 2) return;
-
-    // Trouver la tête de flèche existante
-    let arrowHead: paper.Path | null = null;
-    scopeRef.current.project.layers[0].children.forEach((item) => {
-      if (item.data.isArrowHead && item.data.parentId === path.id) {
-        arrowHead = item as paper.Path;
       }
-    });
+    };
 
-    const lastSegment = path.segments[path.segments.length - 1];
-    const secondLastSegment = path.segments[path.segments.length - 2];
-    const vector = lastSegment.point.subtract(secondLastSegment.point);
-    const angle = vector.angle;
-    const headLength = 15;
+    // Fonction pour mettre à jour les poignées
+    const updateHandles = (path: paper.Path) => {
+      if (handles.length === 2 && path.segments.length === 2) {
+        handles[0].position = path.segments[0].point;
+        handles[1].position = path.segments[1].point;
+      }
+    };
 
-    if (!arrowHead) {
-      // Créer une nouvelle tête de flèche
-      arrowHead = new paper.Path([
-        lastSegment.point.add(new paper.Point({ angle: angle + 150, length: headLength })),
-        lastSegment.point,
-        lastSegment.point.add(new paper.Point({ angle: angle - 150, length: headLength })),
+    // Fonction pour supprimer les poignées
+    const removeHandles = () => {
+      handles.forEach((h) => h.remove());
+      handles = [];
+    };
+
+    // Fonction pour snapper horizontal/vertical
+    const snapToHV = (from: paper.Point, to: paper.Point): paper.Point => {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const angle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
+
+      if (angle < SNAP_ANGLE_THRESHOLD || angle > 180 - SNAP_ANGLE_THRESHOLD) {
+        return new paper.Point(to.x, from.y);
+      }
+      if (Math.abs(angle - 90) < SNAP_ANGLE_THRESHOLD) {
+        return new paper.Point(from.x, to.y);
+      }
+      return to;
+    };
+
+    // Fonction pour créer une tête de flèche
+    const createArrowHead = (path: paper.Path): paper.Path => {
+      if (path.segments.length < 2) return path;
+
+      const lastPoint = path.segments[1].point;
+      const firstPoint = path.segments[0].point;
+      const vector = lastPoint.subtract(firstPoint);
+      const angle = vector.angle;
+      const headLength = 15;
+
+      const arrowHead = new paper.Path([
+        lastPoint.add(new paper.Point({ angle: angle + 150, length: headLength })),
+        lastPoint,
+        lastPoint.add(new paper.Point({ angle: angle - 150, length: headLength })),
       ]);
 
       arrowHead.strokeColor = path.strokeColor;
       arrowHead.strokeWidth = path.strokeWidth;
       arrowHead.fillColor = path.strokeColor;
-      arrowHead.strokeCap = "round";
-      arrowHead.strokeJoin = "round";
-      arrowHead.data = { isArrowHead: true, parentId: path.id };
-    } else {
-      // Mettre à jour la tête existante
-      arrowHead.segments[0].point = lastSegment.point.add(new paper.Point({ angle: angle + 150, length: headLength }));
-      arrowHead.segments[1].point = lastSegment.point;
-      arrowHead.segments[2].point = lastSegment.point.add(new paper.Point({ angle: angle - 150, length: headLength }));
-    }
-  };
+      arrowHead.closed = true;
+      arrowHead.data.isArrowHead = true;
+      arrowHead.data.parentId = path.id;
 
-  // Initialize canvas
-  useLayoutEffect(() => {
-    setIsCanvasReady(false);
-    const timer = setTimeout(() => {
-      setIsCanvasReady(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
+      return arrowHead;
+    };
 
-  useEffect(() => {
-    if (!isCanvasReady || !canvasRef.current) return;
+    // Fonction pour mettre à jour la tête de flèche
+    const updateArrowHead = (path: paper.Path) => {
+      if (path.segments.length < 2) return;
 
-    // Setup Paper.js
-    const scope = new paper.PaperScope();
-    scope.setup(canvasRef.current);
-    scopeRef.current = scope;
-
-    // Créer une couche séparée pour les poignées
-    const handlesLayer = new paper.Layer();
-    handlesLayerRef.current = handlesLayer;
-
-    // Revenir à la couche principale
-    scope.project.layers[0].activate();
-
-    // Create tool
-    const tool = new paper.Tool();
-
-    let draggedHandle: any = null;
-    let draggedItem: paper.Item | null = null;
-
-    tool.onMouseDown = (event: paper.ToolEvent) => {
-      // Vérifier d'abord si on clique sur une poignée
-      const handleHit = handlesLayer.hitTest(event.point, {
-        fill: true,
-        tolerance: 5,
+      // Trouver et supprimer l'ancienne tête
+      paper.project.activeLayer.children.forEach((item) => {
+        if (item.data.isArrowHead && item.data.parentId === path.id) {
+          item.remove();
+        }
       });
 
-      if (handleHit?.item?.data?.isHandle) {
-        draggedHandle = handleHit.item;
+      // Créer une nouvelle tête
+      createArrowHead(path);
+    };
+
+    // Créer le tool
+    const tool = new paper.Tool();
+
+    tool.onMouseDown = (event: paper.ToolEvent) => {
+      console.log("Mouse down", activeTool, event.point);
+
+      // Vérifier si on clique sur une poignée
+      const hitHandle = handles.find((h) => h.contains(event.point));
+      if (hitHandle) {
+        draggedHandle = hitHandle;
         return;
       }
 
-      // Sinon, tester la couche principale
-      const hitResult = scope.project.layers[0].hitTest(event.point, {
-        segments: false,
-        stroke: true,
+      // Vérifier si on clique sur un objet
+      const hitResult = paper.project.activeLayer.hitTest(event.point, {
         fill: true,
+        stroke: true,
         tolerance: 5,
       });
 
       if (activeTool === "select") {
-        // Désélectionner l'élément précédent
-        if (selectedItemRef.current) {
-          selectedItemRef.current.selected = false;
+        // Désélectionner l'ancien
+        if (selectedItem) {
+          selectedItem.selected = false;
         }
+        removeHandles();
 
-        // Ignorer les têtes de flèches
-        if (hitResult && hitResult.item && !hitResult.item.data.isArrowHead) {
-          selectedItemRef.current = hitResult.item;
-          selectedItemRef.current.selected = true;
-          draggedItem = selectedItemRef.current;
+        // Sélectionner le nouveau (sauf les poignées et têtes de flèches)
+        if (hitResult && !hitResult.item.data.isHandle && !hitResult.item.data.isArrowHead) {
+          selectedItem = hitResult.item;
+          selectedItem.selected = true;
+
+          if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
+            createHandles(selectedItem);
+          }
         } else {
-          selectedItemRef.current = null;
-          draggedItem = null;
+          selectedItem = null;
         }
-
-        updateAllHandles();
+      } else if (activeTool === "line" || activeTool === "arrow") {
+        currentPath = new paper.Path({
+          segments: [event.point, event.point],
+          strokeColor: color,
+          strokeWidth: strokeWidth,
+          strokeCap: "round",
+        });
+        currentPath.data.type = activeTool;
+        console.log("Created path", currentPath);
       } else if (activeTool === "draw") {
-        // Activer la couche principale
-        scope.project.layers[0].activate();
-
-        currentPathRef.current = new paper.Path({
+        currentPath = new paper.Path({
           strokeColor: color,
           strokeWidth: strokeWidth,
           strokeCap: "round",
           strokeJoin: "round",
         });
-        currentPathRef.current.add(event.point);
-      } else if (activeTool === "line" || activeTool === "arrow") {
-        // Activer la couche principale
-        scope.project.layers[0].activate();
-
-        const snapped = findSnapPoint(event.point);
-        const startPoint = snapped.snapped ? snapped.point : event.point;
-
-        currentPathRef.current = new paper.Path({
-          segments: [startPoint, startPoint],
-          strokeColor: color,
-          strokeWidth: strokeWidth,
-          strokeCap: "round",
-          data: { type: activeTool },
-        });
+        currentPath.add(event.point);
       }
     };
 
     tool.onMouseDrag = (event: paper.ToolEvent) => {
       // Déplacer une poignée
-      if (draggedHandle) {
-        const parentPath = draggedHandle.data.parentPath as paper.Path;
-        const segmentIndex = draggedHandle.data.segmentIndex;
+      if (draggedHandle && draggedHandle.data.parentPath) {
+        const path = draggedHandle.data.parentPath as paper.Path;
+        const index = draggedHandle.data.segmentIndex;
 
-        if (parentPath && parentPath.segments[segmentIndex]) {
-          let newPoint = event.point;
+        let newPoint = event.point;
 
-          // Appliquer le snapping magnétique
-          if (!event.modifiers.shift) {
-            const snapped = findSnapPoint(event.point, parentPath);
-            if (snapped.snapped) {
-              newPoint = snapped.point;
-            } else {
-              // Snapping horizontal/vertical
-              const otherIndex = segmentIndex === 0 ? 1 : 0;
-              if (parentPath.segments[otherIndex]) {
-                newPoint = snapToHorizontalOrVertical(parentPath.segments[otherIndex].point, newPoint);
-              }
-            }
-          }
-
-          // Mettre à jour le point du segment
-          parentPath.segments[segmentIndex].point = newPoint;
-
-          // Mettre à jour la flèche si c'est une flèche
-          if (parentPath.data.type === "arrow") {
-            updateArrowHead(parentPath);
-          }
-
-          // Mettre à jour les poignées
-          updateAllHandles();
+        // Snapping horizontal/vertical
+        if (!event.modifiers.shift) {
+          const otherIndex = index === 0 ? 1 : 0;
+          newPoint = snapToHV(path.segments[otherIndex].point, newPoint);
         }
+
+        path.segments[index].point = newPoint;
+
+        // Mettre à jour la tête de flèche si nécessaire
+        if (path.data.type === "arrow") {
+          updateArrowHead(path);
+        }
+
+        updateHandles(path);
         return;
       }
 
-      // Dessiner à main levée
-      if (activeTool === "draw" && currentPathRef.current) {
-        currentPathRef.current.add(event.point);
-      }
-      // Dessiner ligne/flèche
-      else if ((activeTool === "line" || activeTool === "arrow") && currentPathRef.current) {
-        const from = currentPathRef.current.segments[0].point;
-        let to = event.point;
+      // Dessiner
+      if (currentPath) {
+        if (activeTool === "draw") {
+          currentPath.add(event.point);
+        } else if (activeTool === "line" || activeTool === "arrow") {
+          let newPoint = event.point;
 
-        // Appliquer le snapping magnétique
-        if (!event.modifiers.shift) {
-          const snapped = findSnapPoint(to, currentPathRef.current);
-          if (snapped.snapped) {
-            to = snapped.point;
-          } else {
-            to = snapToHorizontalOrVertical(from, to);
+          // Snapping
+          if (!event.modifiers.shift) {
+            newPoint = snapToHV(currentPath.segments[0].point, newPoint);
           }
-        }
 
-        currentPathRef.current.segments[1].point = to;
+          currentPath.segments[1].point = newPoint;
+        }
       }
-      // Déplacer un objet
-      else if (draggedItem && activeTool === "select") {
-        draggedItem.position = draggedItem.position.add(event.delta);
 
-        // Si c'est une ligne/flèche, mettre à jour la tête de flèche
-        if (draggedItem instanceof paper.Path && draggedItem.data.type === "arrow") {
-          updateArrowHead(draggedItem);
+      // Déplacer un objet sélectionné
+      if (selectedItem && activeTool === "select") {
+        selectedItem.position = selectedItem.position.add(event.delta);
+
+        // Mettre à jour la tête de flèche si c'est une flèche
+        if (selectedItem instanceof paper.Path && selectedItem.data.type === "arrow") {
+          updateArrowHead(selectedItem);
         }
 
-        updateAllHandles();
+        updateHandles(selectedItem as paper.Path);
       }
     };
 
     tool.onMouseUp = (event: paper.ToolEvent) => {
-      const wasDraggingHandle = draggedHandle !== null;
-      const wasDraggingItem = draggedItem !== null;
+      console.log("Mouse up", currentPath);
 
       draggedHandle = null;
-      draggedItem = null;
 
-      if (activeTool === "draw" && currentPathRef.current) {
-        currentPathRef.current.simplify(10);
-        selectedItemRef.current = currentPathRef.current;
-        selectedItemRef.current.selected = true;
-        currentPathRef.current = null;
-        saveToHistory();
-      } else if (activeTool === "line" && currentPathRef.current) {
-        // Sélectionner la ligne créée
-        selectedItemRef.current = currentPathRef.current;
-        selectedItemRef.current.selected = true;
-        currentPathRef.current = null;
-        updateAllHandles();
-        saveToHistory();
-      } else if (activeTool === "arrow" && currentPathRef.current) {
-        // Créer la tête de flèche
-        updateArrowHead(currentPathRef.current);
-        // Sélectionner la flèche créée
-        selectedItemRef.current = currentPathRef.current;
-        selectedItemRef.current.selected = true;
-        currentPathRef.current = null;
-        updateAllHandles();
-        saveToHistory();
-      } else if (wasDraggingHandle) {
-        // Sauvegarder après avoir déplacé une poignée
-        saveToHistory();
-      } else if (wasDraggingItem) {
-        // Sauvegarder après avoir déplacé un objet
-        saveToHistory();
+      if (currentPath) {
+        if (activeTool === "draw") {
+          currentPath.simplify(10);
+        } else if (activeTool === "arrow") {
+          createArrowHead(currentPath);
+        }
+
+        // Sélectionner le path créé
+        if (selectedItem) {
+          selectedItem.selected = false;
+        }
+        removeHandles();
+
+        selectedItem = currentPath;
+        selectedItem.selected = true;
+
+        if (selectedItem.segments.length === 2) {
+          createHandles(selectedItem);
+        }
+
+        currentPath = null;
+
+        console.log("Active layer children:", paper.project.activeLayer.children.length);
       }
     };
 
-    const saveToHistory = () => {
-      if (!scopeRef.current) return;
-      // Sauvegarder uniquement la couche principale
-      const json = scopeRef.current.project.layers[0].exportJSON();
-      const newHistory = history.slice(0, historyStep + 1);
-      newHistory.push(json);
-      setHistory(newHistory);
-      setHistoryStep(newHistory.length - 1);
-    };
-
-    // Sauvegarder l'état initial
-    saveToHistory();
-
+    // Cleanup
     return () => {
       tool.remove();
-      scopeRef.current = null;
     };
-  }, [isCanvasReady, activeTool, color, strokeWidth]);
+  }, [activeTool, color, strokeWidth]);
+
+  const handleDelete = () => {
+    // Implémenter la suppression
+    console.log("Delete");
+  };
 
   const handleUndo = () => {
-    if (historyStep <= 0 || !scopeRef.current) return;
-    const step = historyStep - 1;
-    setHistoryStep(step);
-
-    // Effacer et recharger la couche principale
-    scopeRef.current.project.layers[0].removeChildren();
-    scopeRef.current.project.layers[0].importJSON(history[step]);
-
-    // Désélectionner
-    selectedItemRef.current = null;
-    updateAllHandles();
+    console.log("Undo");
   };
 
   const handleRedo = () => {
-    if (historyStep >= history.length - 1 || !scopeRef.current) return;
-    const step = historyStep + 1;
-    setHistoryStep(step);
-
-    // Effacer et recharger la couche principale
-    scopeRef.current.project.layers[0].removeChildren();
-    scopeRef.current.project.layers[0].importJSON(history[step]);
-
-    // Désélectionner
-    selectedItemRef.current = null;
-    updateAllHandles();
-  };
-
-  const handleDelete = () => {
-    if (!scopeRef.current || !selectedItemRef.current) return;
-
-    const itemToDelete = selectedItemRef.current;
-
-    // Si c'est une ligne/flèche, supprimer aussi la tête de flèche
-    if (itemToDelete instanceof paper.Path && itemToDelete.data.type === "arrow") {
-      scopeRef.current.project.layers[0].children.forEach((item) => {
-        if (item.data.isArrowHead && item.data.parentId === itemToDelete.id) {
-          item.remove();
-        }
-      });
-    }
-
-    itemToDelete.remove();
-    selectedItemRef.current = null;
-    updateAllHandles();
-    saveToHistory();
-  };
-
-  const handleToolClick = (tool: typeof activeTool) => {
-    setActiveTool(tool);
-    if (!scopeRef.current) return;
-
-    if (tool === "rectangle") {
-      const rect = new paper.Path.Rectangle({
-        point: [100, 100],
-        size: [150, 100],
-        strokeColor: color,
-        strokeWidth: strokeWidth,
-      });
-      saveToHistory();
-    } else if (tool === "circle") {
-      const circle = new paper.Path.Circle({
-        center: [150, 150],
-        radius: 50,
-        strokeColor: color,
-        strokeWidth: strokeWidth,
-      });
-      saveToHistory();
-    } else if (tool === "text") {
-      const text = new paper.PointText({
-        point: [100, 100],
-        content: "Texte",
-        fillColor: color,
-        fontSize: 20,
-      });
-      saveToHistory();
-    }
+    console.log("Redo");
   };
 
   const handleClear = () => {
-    if (!scopeRef.current) return;
-    scopeRef.current.project.layers[0].removeChildren();
-    selectedItemRef.current = null;
-    updateAllHandles();
-    setHistory([]);
-    setHistoryStep(-1);
-    saveToHistory();
+    if (!paper.project) return;
+    paper.project.activeLayer.removeChildren();
     toast.success("Canevas effacé");
   };
 
   const handleDownload = () => {
-    if (!canvasRef.current || !scopeRef.current) return;
-
-    // Cacher temporairement les poignées
-    if (handlesLayerRef.current) {
-      handlesLayerRef.current.visible = false;
-    }
-
-    // Exporter
+    if (!canvasRef.current) return;
     const dataURL = canvasRef.current.toDataURL("image/png");
-
-    // Réafficher les poignées
-    if (handlesLayerRef.current) {
-      handlesLayerRef.current.visible = true;
-    }
-
     const link = document.createElement("a");
     link.href = dataURL;
     link.download = `schema-technique-${Date.now()}.png`;
@@ -507,17 +319,35 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     toast.success("Schéma téléchargé");
   };
 
-  const saveToHistory = () => {
-    if (!scopeRef.current) return;
-    const json = scopeRef.current.project.layers[0].exportJSON();
-    const newHistory = history.slice(0, historyStep + 1);
-    newHistory.push(json);
-    setHistory(newHistory);
-    setHistoryStep(newHistory.length - 1);
+  const handleToolClick = (tool: typeof activeTool) => {
+    setActiveTool(tool);
+
+    if (tool === "rectangle" && paper.project) {
+      new paper.Path.Rectangle({
+        point: [100, 100],
+        size: [150, 100],
+        strokeColor: color,
+        strokeWidth: strokeWidth,
+      });
+    } else if (tool === "circle" && paper.project) {
+      new paper.Path.Circle({
+        center: [150, 150],
+        radius: 50,
+        strokeColor: color,
+        strokeWidth: strokeWidth,
+      });
+    } else if (tool === "text" && paper.project) {
+      new paper.PointText({
+        point: [100, 100],
+        content: "Texte",
+        fillColor: color,
+        fontSize: 20,
+      });
+    }
   };
 
   const handleSelectAccessory = (accessory: any, source: "expense" | "catalog") => {
-    if (!scopeRef.current) return;
+    if (!paper.project) return;
 
     const name = accessory.nom_accessoire || accessory.nom || "Accessoire";
     const details = [accessory.marque, accessory.categorie || accessory.categories?.nom, accessory.type_electrique]
@@ -539,10 +369,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     });
 
     const group = new paper.Group([background, text]);
-    group.data = { isAccessory: true };
 
     toast.success(`${name} ajouté au schéma`);
-    saveToHistory();
   };
 
   return (
@@ -562,7 +390,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         <Button
           variant={activeTool === "line" ? "default" : "outline"}
           size="sm"
-          onClick={() => handleToolClick("line")}
+          onClick={() => setActiveTool("line")}
           title="Ligne (se snape automatiquement à l'horizontal/vertical, maintenez Shift pour désactiver)"
         >
           <Minus className="h-4 w-4 mr-2" />
@@ -571,7 +399,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         <Button
           variant={activeTool === "arrow" ? "default" : "outline"}
           size="sm"
-          onClick={() => handleToolClick("arrow")}
+          onClick={() => setActiveTool("arrow")}
           title="Flèche (se snape automatiquement à l'horizontal/vertical, maintenez Shift pour désactiver)"
         >
           <ArrowRight className="h-4 w-4 mr-2" />
@@ -629,10 +457,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
         <Separator orientation="vertical" className="h-8" />
 
-        <Button variant="outline" size="sm" onClick={handleUndo} disabled={historyStep <= 0}>
+        <Button variant="outline" size="sm" onClick={handleUndo} disabled={true}>
           <Undo className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="sm" onClick={handleRedo} disabled={historyStep >= history.length - 1}>
+        <Button variant="outline" size="sm" onClick={handleRedo} disabled={true}>
           <Redo className="h-4 w-4" />
         </Button>
         <Button variant="outline" size="sm" onClick={handleDelete}>
@@ -658,14 +486,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
       {(activeTool === "line" || activeTool === "arrow") && (
         <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-          <strong>💡 Aide :</strong> Les traits se positionnent automatiquement à l'horizontal ou à la vertical. Les
-          poignées s'accrochent magnétiquement aux autres éléments (distance : {SNAP_DISTANCE}px).
+          <strong>💡 Aide :</strong> Les traits se positionnent automatiquement à l'horizontal ou à la vertical.
           <strong> Maintenez Shift</strong> pour désactiver temporairement le snapping.
         </div>
       )}
 
       <div className="border border-border rounded-lg overflow-hidden shadow-lg bg-white">
-        <canvas ref={canvasRef} width={1200} height={800} />
+        <canvas ref={canvasRef} width={1200} height={800} style={{ display: "block" }} />
       </div>
     </div>
   );
