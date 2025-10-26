@@ -714,9 +714,12 @@ export const LayoutCanvas = ({
   };
 
   const handleContextMenuEdit = () => {
+    console.log("handleContextMenuEdit called", contextMenu);
     if (!contextMenu) return;
 
     const furnitureData = furnitureItems.get(contextMenu.furnitureId);
+    console.log("Furniture data:", furnitureData);
+
     if (furnitureData) {
       setEditingFurnitureId(contextMenu.furnitureId);
       setFurnitureForm({
@@ -727,6 +730,7 @@ export const LayoutCanvas = ({
       });
       setShowFurnitureDialog(true);
       setContextMenu(null);
+      console.log("Dialog should open now");
     }
   };
 
@@ -1045,10 +1049,14 @@ export const LayoutCanvas = ({
               left: `${contextMenu.x}px`,
               top: `${contextMenu.y}px`,
             }}
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               className="w-full px-4 py-2 text-left hover:bg-muted transition-colors flex items-center gap-2"
-              onClick={handleContextMenuEdit}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleContextMenuEdit();
+              }}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
