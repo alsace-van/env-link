@@ -152,8 +152,8 @@ export const LayoutCanvas = ({
     let selectedItem: paper.Item | null = null;
     let handles: paper.Path.Circle[] = [];
     let draggedHandle: paper.Path.Circle | null = null;
-    let measureLine: paper.Path.Line | null = null;
-    let measureText: paper.PointText | null = null;
+    let currentMeasureLine: paper.Path.Line | null = null;
+    let currentMeasureText: paper.PointText | null = null;
     const history: string[] = [];
     let historyIndex = -1;
 
@@ -206,15 +206,13 @@ export const LayoutCanvas = ({
       removeHandles();
     };
 
-    const clearMeasure = () => {
-      if (measureLine) {
-        measureLine.remove();
-        measureLine = null;
-      }
-      if (measureText) {
-        measureText.remove();
-        measureText = null;
-      }
+    const clearAllMeasures = () => {
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child.data.isMeasure) {
+          child.remove();
+        }
+      });
+      toast.success("Mesures effacées");
     };
 
     const addFurnitureLabel = (rect: paper.Path.Rectangle, furnitureId: string) => {
@@ -264,15 +262,17 @@ export const LayoutCanvas = ({
         });
         currentPath.data.isFurniture = true;
       } else if (activeToolRef.current === "measure") {
-        clearMeasure();
-        measureLine = new paper.Path.Line({
+        if (currentMeasureLine) currentMeasureLine.remove();
+        if (currentMeasureText) currentMeasureText.remove();
+        
+        currentMeasureLine = new paper.Path.Line({
           from: event.point,
           to: event.point,
           strokeColor: new paper.Color("#ff0000"),
           strokeWidth: 2,
           dashArray: [5, 3],
         });
-        measureLine.locked = true;
+        currentMeasureLine.data.isMeasure = true;
       }
     };
 
@@ -310,25 +310,25 @@ export const LayoutCanvas = ({
           fillColor: new paper.Color(colorRef.current + "40"),
         });
         currentPath.data.isFurniture = true;
-      } else if (activeToolRef.current === "measure" && measureLine) {
-        measureLine.removeSegments();
-        measureLine.add(event.downPoint);
-        measureLine.add(event.point);
+      } else if (activeToolRef.current === "measure" && currentMeasureLine) {
+        currentMeasureLine.removeSegments();
+        currentMeasureLine.add(event.downPoint);
+        currentMeasureLine.add(event.point);
         
-        if (measureText) measureText.remove();
+        if (currentMeasureText) currentMeasureText.remove();
         
         const distance = event.point.subtract(event.downPoint).length;
         const realDistance = (distance / scale).toFixed(0);
         const midPoint = event.downPoint.add(event.point).divide(2);
         
-        measureText = new paper.PointText({
+        currentMeasureText = new paper.PointText({
           point: midPoint.add(new paper.Point(0, -10)),
           content: `${realDistance} mm`,
           fillColor: new paper.Color("#ff0000"),
           fontSize: 14,
           fontWeight: 'bold',
         });
-        measureText.locked = true;
+        currentMeasureText.data.isMeasure = true;
       } else if (activeToolRef.current === "select" && selectedItem && !draggedHandle) {
         if (!selectedItem.locked && !selectedItem.data.isHandle) {
           selectedItem.position = selectedItem.position.add(event.delta);
@@ -345,12 +345,24 @@ export const LayoutCanvas = ({
         // Ouvrir le dialogue pour renseigner les dimensions
         setPendingRectangle(currentPath);
         setShowFurnitureDialog(true);
+      } else if (activeToolRef.current === "measure" && currentMeasureLine) {
+        // La mesure est maintenant permanente, réinitialiser pour la prochaine
+        currentMeasureLine = null;
+        currentMeasureText = null;
       } else if (activeToolRef.current === "select" && selectedItem) {
         saveState();
       }
 
       currentPath = null;
     };
+
+    // Gestionnaire clic droit pour effacer les mesures
+    canvasRef.current.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (activeToolRef.current === "measure") {
+        clearAllMeasures();
+      }
+    });
 
     const handleUndo = () => {
       if (historyIndex > 0) {
