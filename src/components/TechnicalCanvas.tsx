@@ -69,6 +69,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       canvas.on("mouse:down", (event) => {
         if (!mounted) return;
         if (activeTool === "line" || activeTool === "arrow") {
+          // Ne pas dessiner si on clique sur un objet existant
+          if (event.target) return;
+          
           const pointer = canvas.getPointer(event.e);
           isDrawingLineRef.current = true;
           startPointRef.current = { x: pointer.x, y: pointer.y };
