@@ -23,6 +23,10 @@ interface Accessory {
   quantite?: number;
   category_id?: string;
   categories?: { nom: string };
+  poids_kg?: number;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
 }
 
 interface AccessorySelectorProps {
@@ -75,20 +79,33 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
   };
 
   const handleAddToExpenses = async (accessory: Accessory) => {
+    // Charger les données complètes de l'accessoire depuis le catalogue pour obtenir tous les champs
+    const { data: fullAccessory } = await supabase
+      .from("accessories_catalog")
+      .select("*")
+      .eq("id", accessory.id)
+      .single();
+
+    const accessoryToAdd = fullAccessory || accessory;
+
     const { error } = await supabase
       .from("project_expenses")
       .insert({
         project_id: projectId,
-        nom_accessoire: accessory.nom || "Accessoire",
-        marque: accessory.marque,
-        prix: accessory.prix_reference || 0,
+        nom_accessoire: accessoryToAdd.nom || "Accessoire",
+        marque: accessoryToAdd.marque,
+        prix: accessoryToAdd.prix_reference || 0,
         quantite: 1,
-        fournisseur: accessory.fournisseur,
-        categorie: accessory.categories?.nom || accessory.categorie,
-        type_electrique: accessory.type_electrique,
-        accessory_id: accessory.id,
-        prix_vente_ttc: accessory.prix_vente_ttc,
-        marge_pourcent: accessory.marge_pourcent,
+        fournisseur: accessoryToAdd.fournisseur,
+        categorie: accessory.categories?.nom || accessoryToAdd.categorie,
+        type_electrique: accessoryToAdd.type_electrique,
+        accessory_id: accessoryToAdd.id,
+        prix_vente_ttc: accessoryToAdd.prix_vente_ttc,
+        marge_pourcent: accessoryToAdd.marge_pourcent,
+        poids_kg: accessoryToAdd.poids_kg,
+        longueur_mm: accessoryToAdd.longueur_mm,
+        largeur_mm: accessoryToAdd.largeur_mm,
+        hauteur_mm: accessoryToAdd.hauteur_mm,
       });
 
     if (error) {
@@ -98,7 +115,7 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
       toast.success("Accessoire ajouté aux dépenses");
       loadData();
       if (onAddToCatalog) {
-        onAddToCatalog(accessory);
+        onAddToCatalog(accessoryToAdd);
       }
     }
   };
