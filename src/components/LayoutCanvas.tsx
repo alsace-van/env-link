@@ -286,7 +286,6 @@ export const LayoutCanvas = ({
         // Ouvrir le dialogue pour renseigner les dimensions
         setPendingRectangle(currentPath);
         setShowFurnitureDialog(true);
-        setActiveTool("select");
       } else if (activeToolRef.current === "select" && selectedItem) {
         saveState();
       }
