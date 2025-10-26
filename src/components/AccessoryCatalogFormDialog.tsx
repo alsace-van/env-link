@@ -64,7 +64,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   useEffect(() => {
     if (isOpen) {
       loadCategories();
-      
+
       if (accessory) {
         // Mode édition
         setFormData({
@@ -103,13 +103,10 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         });
       }
     }
-  }, [isOpen, accessory]);
+  }, [isOpen, accessory?.id]);
 
   const loadCategories = async () => {
-    const { data, error } = await supabase
-      .from("categories")
-      .select("*")
-      .order("nom");
+    const { data, error } = await supabase.from("categories").select("*").order("nom");
 
     if (!error && data) {
       setCategories(data);
@@ -122,7 +119,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       toast.error("Vous devez être connecté");
       return;
@@ -153,28 +152,44 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
   const handlePricingChange = (field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
     const newFormData = { ...formData, [field]: value };
-    
-    // Déterminer quels champs sont remplis (non vides et non zéro)
-    const hasPrixReference = newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0;
-    const hasPrixVente = newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0;
-    const hasMarge = newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0;
 
-    // Si on a 2 champs remplis, calculer le 3ème
-    if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
-      // Prix référence + Prix TTC remplis → calculer la marge
-      const prixReference = parseFloat(newFormData.prix_reference);
-      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      newFormData.marge_pourcent = (((prixVenteTTC - prixReference) / prixReference) * 100).toFixed(2);
-    } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
-      // Prix TTC + Marge remplis → calculer le prix référence
-      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      const margePourcent = parseFloat(newFormData.marge_pourcent);
-      newFormData.prix_reference = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
-    } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
-      // Prix référence + Marge remplis → calculer le prix TTC
-      const prixReference = parseFloat(newFormData.prix_reference);
-      const margePourcent = parseFloat(newFormData.marge_pourcent);
-      newFormData.prix_vente_ttc = (prixReference * (1 + margePourcent / 100)).toFixed(2);
+    // Si le champ modifié est vide ou invalide, ne pas faire de calcul automatique
+    // Cela permet à l'utilisateur de supprimer le contenu sans que ça se recalcule
+    if (!value || value === "" || value === "-" || value === "." || parseFloat(value) === 0) {
+      setFormData(newFormData);
+      return;
+    }
+
+    // Déterminer quels champs sont remplis avec des valeurs valides (non vides et > 0)
+    const hasPrixReference =
+      newFormData.prix_reference && newFormData.prix_reference !== "" && parseFloat(newFormData.prix_reference) > 0;
+    const hasPrixVente =
+      newFormData.prix_vente_ttc && newFormData.prix_vente_ttc !== "" && parseFloat(newFormData.prix_vente_ttc) > 0;
+    const hasMarge =
+      newFormData.marge_pourcent && newFormData.marge_pourcent !== "" && parseFloat(newFormData.marge_pourcent) !== 0;
+
+    // Compter combien de champs sont remplis
+    const filledFieldsCount = [hasPrixReference, hasPrixVente, hasMarge].filter(Boolean).length;
+
+    // Ne calculer automatiquement que si on a exactement 2 champs remplis
+    // et que le champ qu'on vient de modifier en fait partie
+    if (filledFieldsCount === 2) {
+      if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
+        // Prix référence + Prix TTC remplis → calculer la marge
+        const prixReference = parseFloat(newFormData.prix_reference);
+        const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+        newFormData.marge_pourcent = (((prixVenteTTC - prixReference) / prixReference) * 100).toFixed(2);
+      } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
+        // Prix TTC + Marge remplis → calculer le prix référence
+        const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+        const margePourcent = parseFloat(newFormData.marge_pourcent);
+        newFormData.prix_reference = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
+      } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
+        // Prix référence + Marge remplis → calculer le prix TTC
+        const prixReference = parseFloat(newFormData.prix_reference);
+        const margePourcent = parseFloat(newFormData.marge_pourcent);
+        newFormData.prix_vente_ttc = (prixReference * (1 + margePourcent / 100)).toFixed(2);
+      }
     }
 
     setFormData(newFormData);
@@ -184,7 +199,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     e.preventDefault();
     setIsSubmitting(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       toast.error("Vous devez être connecté");
       setIsSubmitting(false);
@@ -217,116 +234,37 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         toast.error("Erreur lors de la modification");
         console.error(error);
       } else {
-        // Mettre à jour toutes les dépenses liées
-        const { error: expenseError } = await supabase
-          .from("project_expenses")
-          .update({
-            nom_accessoire: formData.nom,
-            prix: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-            fournisseur: formData.fournisseur || null,
-          })
-          .eq("accessory_id", accessory.id);
-
-        if (expenseError) {
-          console.error("Erreur lors de la mise à jour des dépenses:", expenseError);
-          toast.warning("Article modifié mais erreur lors de la mise à jour des dépenses");
-        } else {
-          toast.success("Article et dépenses liées mis à jour");
-        }
-
+        toast.success("Accessoire modifié");
         onSuccess();
+        onClose();
       }
     } else {
       // Mode création
-      const { error } = await supabase
-        .from("accessories_catalog")
-        .insert({
-          user_id: user.id,
-          nom: formData.nom,
-          marque: formData.marque || null,
-          category_id: formData.category_id || null,
-          prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-          fournisseur: formData.fournisseur || null,
-          description: formData.description || null,
-          url_produit: formData.url_produit || null,
-          type_electrique: formData.type_electrique || null,
-          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
-        });
+      const { error } = await supabase.from("accessories_catalog").insert({
+        nom: formData.nom,
+        marque: formData.marque || null,
+        category_id: formData.category_id || null,
+        prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
+        prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+        marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
+        fournisseur: formData.fournisseur || null,
+        description: formData.description || null,
+        url_produit: formData.url_produit || null,
+        type_electrique: formData.type_electrique || null,
+        poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+        longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+        largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+        hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+        user_id: user.id,
+      });
 
       if (error) {
-        toast.error("Erreur lors de l'ajout au catalogue");
+        toast.error("Erreur lors de l'ajout");
         console.error(error);
       } else {
-        toast.success("Article ajouté au catalogue");
-        
-        // Chercher et lier les dépenses correspondantes
-        const { data: newAccessory } = await supabase
-          .from("accessories_catalog")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("nom", formData.nom)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-
-        if (newAccessory) {
-          // Trouver les dépenses qui correspondent
-          const { data: matchingExpenses } = await supabase
-            .from("project_expenses")
-            .select("id, nom_accessoire, prix, fournisseur")
-            .is("accessory_id", null);
-
-          if (matchingExpenses && matchingExpenses.length > 0) {
-            let linkedCount = 0;
-            
-            for (const expense of matchingExpenses) {
-              const nameMatch = formData.nom.toLowerCase().includes(expense.nom_accessoire.toLowerCase()) ||
-                               expense.nom_accessoire.toLowerCase().includes(formData.nom.toLowerCase());
-              const priceMatch = formData.prix_reference && 
-                                Math.abs(parseFloat(formData.prix_reference) - expense.prix) < 0.01;
-              const supplierMatch = formData.fournisseur && expense.fournisseur && 
-                                   formData.fournisseur.toLowerCase() === expense.fournisseur.toLowerCase();
-              
-              if (nameMatch || priceMatch || supplierMatch) {
-                const { error: linkError } = await supabase
-                  .from("project_expenses")
-                  .update({ accessory_id: newAccessory.id })
-                  .eq("id", expense.id);
-
-                if (!linkError) {
-                  linkedCount++;
-                }
-              }
-            }
-
-            if (linkedCount > 0) {
-              toast.success(`Article ajouté et ${linkedCount} dépense(s) liée(s)`);
-            }
-          }
-        }
-
-        setFormData({
-          nom: "",
-          marque: "",
-          category_id: "",
-          prix_reference: "",
-          prix_vente_ttc: "",
-          marge_pourcent: "",
-          fournisseur: "",
-          description: "",
-          url_produit: "",
-          type_electrique: "",
-          poids_kg: "",
-          longueur_mm: "",
-          largeur_mm: "",
-          hauteur_mm: "",
-        });
+        toast.success("Accessoire ajouté au catalogue");
         onSuccess();
+        onClose();
       }
     }
 
@@ -335,21 +273,24 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{accessory ? "Modifier l'article" : "Ajouter un article au catalogue"}</DialogTitle>
+          <DialogTitle>{accessory ? "Modifier l'accessoire" : "Ajouter un accessoire au catalogue"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="nom">Nom de l'article *</Label>
+              <Label htmlFor="nom">
+                Nom <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="nom"
                 required
                 value={formData.nom}
                 onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
-                placeholder="Ex: Batterie lithium 100Ah"
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: Panneau solaire 400W"
               />
             </div>
 
@@ -359,57 +300,21 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 id="marque"
                 value={formData.marque}
                 onChange={(e) => setFormData({ ...formData, marque: e.target.value })}
-                placeholder="Ex: Victron"
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: Victron Energy"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="category_id">Catégorie</Label>
             {isCreatingCategory ? (
-              <div className="space-y-3 p-4 border rounded-lg">
-                <div className="space-y-2">
-                  <Label htmlFor="new-category-name">Nom de la catégorie</Label>
-                  <Input
-                    id="new-category-name"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    placeholder="Ex: Électronique"
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="new-category-parent">Catégorie parente (optionnel)</Label>
-                  <Select
-                    value={newCategoryParent || "none"}
-                    onValueChange={(value) => setNewCategoryParent(value === "none" ? null : value)}
-                  >
-                    <SelectTrigger id="new-category-parent">
-                      <SelectValue placeholder="Aucune" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
-                      {categories
-                        .filter(cat => cat.parent_id === null)
-                        .map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.nom}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-2">
+              <div className="space-y-3 p-4 border rounded-lg bg-muted/50">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">Nouvelle catégorie</Label>
                   <Button
                     type="button"
-                    onClick={handleCreateCategory}
-                    className="flex-1"
-                  >
-                    Créer
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setIsCreatingCategory(false);
                       setNewCategoryName("");
@@ -419,9 +324,47 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                     Annuler
                   </Button>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="new_category_name">Nom de la catégorie</Label>
+                  <Input
+                    id="new_category_name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    placeholder="Ex: Panneaux solaires"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="category_parent">Catégorie parente (optionnel)</Label>
+                  <Select
+                    value={newCategoryParent || "none"}
+                    onValueChange={(value) => setNewCategoryParent(value === "none" ? null : value)}
+                  >
+                    <SelectTrigger id="category_parent">
+                      <SelectValue placeholder="Aucune (catégorie principale)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
+                      {categories
+                        .filter((cat) => cat.parent_id === null)
+                        .map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.nom}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button type="button" onClick={handleCreateCategory} className="w-full">
+                  Créer la catégorie
+                </Button>
               </div>
             ) : (
               <div className="space-y-2">
+                <Label htmlFor="category_id">Catégorie</Label>
                 <Select
                   value={formData.category_id || "none"}
                   onValueChange={(value) => {
@@ -439,16 +382,16 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                     <SelectItem value="__create__">+ Créer une nouvelle catégorie</SelectItem>
                     <SelectItem value="none">Aucune catégorie</SelectItem>
                     {categories
-                      .filter(cat => cat.parent_id === null)
+                      .filter((cat) => cat.parent_id === null)
                       .map((cat) => (
                         <SelectItem key={cat.id} value={cat.id}>
                           {cat.nom}
                         </SelectItem>
                       ))}
                     {categories
-                      .filter(cat => cat.parent_id !== null)
+                      .filter((cat) => cat.parent_id !== null)
                       .map((cat) => {
-                        const parent = categories.find(p => p.id === cat.parent_id);
+                        const parent = categories.find((p) => p.id === cat.parent_id);
                         return (
                           <SelectItem key={cat.id} value={cat.id}>
                             {parent?.nom} → {cat.nom}
@@ -462,7 +405,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           </div>
 
           <Separator />
-          
+
           <div className="space-y-2">
             <Label className="text-base font-semibold">Calcul de prix (remplir 2 sur 3)</Label>
             <div className="grid grid-cols-4 gap-4">
@@ -474,6 +417,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   step="0.01"
                   value={formData.prix_reference}
                   onChange={(e) => handlePricingChange("prix_reference", e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
                   placeholder="Prix d'achat"
                 />
               </div>
@@ -486,6 +430,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   step="0.01"
                   value={formData.prix_vente_ttc}
                   onChange={(e) => handlePricingChange("prix_vente_ttc", e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
                   placeholder="Prix de vente"
                 />
               </div>
@@ -498,6 +443,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   step="0.01"
                   value={formData.marge_pourcent}
                   onChange={(e) => handlePricingChange("marge_pourcent", e.target.value)}
+                  onKeyDown={(e) => e.stopPropagation()}
                   placeholder="% de marge"
                 />
               </div>
@@ -509,7 +455,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   type="text"
                   value={
                     formData.prix_reference && formData.prix_vente_ttc
-                      ? ((parseFloat(formData.prix_vente_ttc) / 1.20) - parseFloat(formData.prix_reference)).toFixed(2)
+                      ? (parseFloat(formData.prix_vente_ttc) / 1.2 - parseFloat(formData.prix_reference)).toFixed(2)
                       : ""
                   }
                   readOnly
@@ -550,6 +496,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 step="0.01"
                 value={formData.poids_kg}
                 onChange={(e) => setFormData({ ...formData, poids_kg: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Ex: 12.5"
               />
             </div>
@@ -559,32 +506,41 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             <Label>Dimensions (mm)</Label>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="longueur" className="text-xs text-muted-foreground">Longueur</Label>
+                <Label htmlFor="longueur" className="text-xs text-muted-foreground">
+                  Longueur
+                </Label>
                 <Input
                   id="longueur"
                   type="number"
                   value={formData.longueur_mm}
                   onChange={(e) => setFormData({ ...formData, longueur_mm: e.target.value })}
+                  onKeyDown={(e) => e.stopPropagation()}
                   placeholder="0"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="largeur" className="text-xs text-muted-foreground">Largeur</Label>
+                <Label htmlFor="largeur" className="text-xs text-muted-foreground">
+                  Largeur
+                </Label>
                 <Input
                   id="largeur"
                   type="number"
                   value={formData.largeur_mm}
                   onChange={(e) => setFormData({ ...formData, largeur_mm: e.target.value })}
+                  onKeyDown={(e) => e.stopPropagation()}
                   placeholder="0"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">Hauteur</Label>
+                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">
+                  Hauteur
+                </Label>
                 <Input
                   id="hauteur"
                   type="number"
                   value={formData.hauteur_mm}
                   onChange={(e) => setFormData({ ...formData, hauteur_mm: e.target.value })}
+                  onKeyDown={(e) => e.stopPropagation()}
                   placeholder="0"
                 />
               </div>
@@ -600,6 +556,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 id="fournisseur"
                 value={formData.fournisseur}
                 onChange={(e) => setFormData({ ...formData, fournisseur: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Nom du fournisseur"
               />
             </div>
@@ -611,6 +568,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 type="url"
                 value={formData.url_produit}
                 onChange={(e) => setFormData({ ...formData, url_produit: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
                 placeholder="https://..."
               />
             </div>
@@ -622,6 +580,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               id="description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              onKeyDown={(e) => e.stopPropagation()}
               rows={3}
               placeholder="Caractéristiques techniques, notes..."
             />
