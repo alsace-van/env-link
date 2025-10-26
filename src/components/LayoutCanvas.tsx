@@ -69,6 +69,7 @@ export const LayoutCanvas = ({
   const activeToolRef = useRef(activeTool);
   const colorRef = useRef(color);
   const strokeWidthRef = useRef(strokeWidth);
+  const furnitureItemsRef = useRef(furnitureItems);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -81,6 +82,10 @@ export const LayoutCanvas = ({
   useEffect(() => {
     strokeWidthRef.current = strokeWidth;
   }, [strokeWidth]);
+
+  useEffect(() => {
+    furnitureItemsRef.current = furnitureItems;
+  }, [furnitureItems]);
 
   // Charger le poids des accessoires depuis les dépenses
   useEffect(() => {
@@ -234,17 +239,28 @@ export const LayoutCanvas = ({
         // Double-clic sur un meuble = ouvrir le dialog d'édition
         if (isDoubleClick && hitResult?.item) {
           let furnitureGroup: paper.Group | null = null;
+          let furnitureRect: paper.Path.Rectangle | null = null;
 
-          // Trouver le groupe de meuble
+          // Trouver le groupe de meuble ou le rectangle
           if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
             furnitureGroup = hitResult.item;
           } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
             furnitureGroup = hitResult.item.parent;
+          } else if (hitResult.item instanceof paper.Path.Rectangle && hitResult.item.data.isFurniture) {
+            furnitureRect = hitResult.item;
+          } else if (hitResult.item.data.isFurnitureLabel) {
+            // Si on clique sur le label, chercher le groupe parent
+            paper.project.activeLayer.children.forEach((child) => {
+              if (child instanceof paper.Group && child.data.furnitureId === hitResult.item.data.furnitureId) {
+                furnitureGroup = child;
+              }
+            });
           }
 
-          if (furnitureGroup && furnitureGroup.data.furnitureId) {
-            const furnitureId = furnitureGroup.data.furnitureId;
-            const furnitureData = furnitureItems.get(furnitureId);
+          const furnitureId = furnitureGroup?.data.furnitureId || furnitureRect?.data.furnitureId;
+          
+          if (furnitureId) {
+            const furnitureData = furnitureItemsRef.current.get(furnitureId);
 
             if (furnitureData) {
               setEditingFurnitureId(furnitureId);
@@ -255,6 +271,7 @@ export const LayoutCanvas = ({
                 poids_kg: furnitureData.poids_kg,
               });
               setShowFurnitureDialog(true);
+              console.log("Opening edit dialog for furniture:", furnitureId);
             }
           }
           return;
@@ -360,7 +377,7 @@ export const LayoutCanvas = ({
 
           // Mettre à jour les données du meuble
           if (furnitureId) {
-            const furnitureData = furnitureItems.get(furnitureId);
+            const furnitureData = furnitureItemsRef.current.get(furnitureId);
             if (furnitureData) {
               const updatedData = {
                 ...furnitureData,
