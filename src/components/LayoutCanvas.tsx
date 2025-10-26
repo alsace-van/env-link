@@ -11,6 +11,7 @@ import {
   Download,
   Save,
   Upload,
+  Ruler,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
@@ -55,7 +56,7 @@ export const LayoutCanvas = ({
   maxLoad = 500,
 }: LayoutCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [activeTool, setActiveTool] = useState<"select" | "rectangle">("select");
+  const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure">("select");
   const [color, setColor] = useState("#3b82f6");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [totalWeight, setTotalWeight] = useState(0);
@@ -151,6 +152,8 @@ export const LayoutCanvas = ({
     let selectedItem: paper.Item | null = null;
     let handles: paper.Path.Circle[] = [];
     let draggedHandle: paper.Path.Circle | null = null;
+    let measureLine: paper.Path.Line | null = null;
+    let measureText: paper.PointText | null = null;
     const history: string[] = [];
     let historyIndex = -1;
 
@@ -203,6 +206,33 @@ export const LayoutCanvas = ({
       removeHandles();
     };
 
+    const clearMeasure = () => {
+      if (measureLine) {
+        measureLine.remove();
+        measureLine = null;
+      }
+      if (measureText) {
+        measureText.remove();
+        measureText = null;
+      }
+    };
+
+    const addFurnitureLabel = (rect: paper.Path.Rectangle, furnitureId: string) => {
+      const furnitureData = furnitureItems.get(furnitureId);
+      if (!furnitureData) return;
+
+      const text = new paper.PointText({
+        point: rect.bounds.center,
+        content: `${furnitureData.longueur_mm}x${furnitureData.largeur_mm}x${furnitureData.hauteur_mm}mm\n${furnitureData.poids_kg}kg`,
+        fillColor: new paper.Color("#000"),
+        fontSize: 12,
+        justification: 'center',
+      });
+      text.data.isFurnitureLabel = true;
+      text.data.furnitureId = furnitureId;
+      text.locked = true;
+    };
+
     const tool = new paper.Tool();
 
     tool.onMouseDown = (event: paper.ToolEvent) => {
@@ -233,6 +263,16 @@ export const LayoutCanvas = ({
           fillColor: new paper.Color(colorRef.current + "40"),
         });
         currentPath.data.isFurniture = true;
+      } else if (activeToolRef.current === "measure") {
+        clearMeasure();
+        measureLine = new paper.Path.Line({
+          from: event.point,
+          to: event.point,
+          strokeColor: new paper.Color("#ff0000"),
+          strokeWidth: 2,
+          dashArray: [5, 3],
+        });
+        measureLine.locked = true;
       }
     };
 
@@ -270,6 +310,25 @@ export const LayoutCanvas = ({
           fillColor: new paper.Color(colorRef.current + "40"),
         });
         currentPath.data.isFurniture = true;
+      } else if (activeToolRef.current === "measure" && measureLine) {
+        measureLine.removeSegments();
+        measureLine.add(event.downPoint);
+        measureLine.add(event.point);
+        
+        if (measureText) measureText.remove();
+        
+        const distance = event.point.subtract(event.downPoint).length;
+        const realDistance = (distance / scale).toFixed(0);
+        const midPoint = event.downPoint.add(event.point).divide(2);
+        
+        measureText = new paper.PointText({
+          point: midPoint.add(new paper.Point(0, -10)),
+          content: `${realDistance} mm`,
+          fillColor: new paper.Color("#ff0000"),
+          fontSize: 14,
+          fontWeight: 'bold',
+        });
+        measureText.locked = true;
       } else if (activeToolRef.current === "select" && selectedItem && !draggedHandle) {
         if (!selectedItem.locked && !selectedItem.data.isHandle) {
           selectedItem.position = selectedItem.position.add(event.delta);
@@ -313,6 +372,13 @@ export const LayoutCanvas = ({
       if (selectedItem && !selectedItem.locked && !selectedItem.data.isHandle) {
         const itemId = selectedItem.data.furnitureId;
         if (itemId) {
+          // Supprimer aussi le label associé
+          paper.project.activeLayer.children.forEach((child) => {
+            if (child.data.isFurnitureLabel && child.data.furnitureId === itemId) {
+              child.remove();
+            }
+          });
+          
           setFurnitureItems((prev) => {
             const newMap = new Map(prev);
             newMap.delete(itemId);
@@ -445,14 +511,30 @@ export const LayoutCanvas = ({
     const furnitureId = `furniture-${Date.now()}`;
     pendingRectangle.data.furnitureId = furnitureId;
 
+    const newFurnitureData = {
+      id: furnitureId,
+      ...furnitureForm,
+    };
+
     setFurnitureItems((prev) => {
       const newMap = new Map(prev);
-      newMap.set(furnitureId, {
-        id: furnitureId,
-        ...furnitureForm,
-      });
+      newMap.set(furnitureId, newFurnitureData);
       return newMap;
     });
+
+    // Ajouter le label sur le meuble
+    setTimeout(() => {
+      const text = new paper.PointText({
+        point: pendingRectangle!.bounds.center,
+        content: `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`,
+        fillColor: new paper.Color("#000"),
+        fontSize: 12,
+        justification: 'center',
+      });
+      text.data.isFurnitureLabel = true;
+      text.data.furnitureId = furnitureId;
+      text.locked = true;
+    }, 0);
 
     setPendingRectangle(null);
     setShowFurnitureDialog(false);
@@ -601,6 +683,14 @@ export const LayoutCanvas = ({
             <Square className="h-4 w-4 mr-2" />
             Meuble
           </Button>
+          <Button
+            variant={activeTool === "measure" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTool("measure")}
+          >
+            <Ruler className="h-4 w-4 mr-2" />
+            Mesurer
+          </Button>
 
           <Separator orientation="vertical" className="h-6" />
 
@@ -721,6 +811,12 @@ export const LayoutCanvas = ({
                       longueur_mm: Number(e.target.value),
                     }))
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleFurnitureSubmit();
+                    }
+                    e.stopPropagation();
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -735,6 +831,12 @@ export const LayoutCanvas = ({
                       largeur_mm: Number(e.target.value),
                     }))
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleFurnitureSubmit();
+                    }
+                    e.stopPropagation();
+                  }}
                 />
               </div>
             </div>
@@ -752,6 +854,12 @@ export const LayoutCanvas = ({
                       hauteur_mm: Number(e.target.value),
                     }))
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleFurnitureSubmit();
+                    }
+                    e.stopPropagation();
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -767,6 +875,12 @@ export const LayoutCanvas = ({
                       poids_kg: Number(e.target.value),
                     }))
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleFurnitureSubmit();
+                    }
+                    e.stopPropagation();
+                  }}
                 />
               </div>
             </div>
