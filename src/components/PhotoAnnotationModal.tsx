@@ -209,6 +209,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   const addRectangle = () => {
     if (!fabricCanvas) return;
+    
+    setActiveTool("rectangle");
 
     const rect = new Rect({
       left: 100,
@@ -224,11 +226,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.setActiveObject(rect);
     fabricCanvas.renderAll();
     saveToHistory();
-    setActiveTool("select");
+    
+    // Revenir en mode sélection après un court délai
+    setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addArrow = () => {
     if (!fabricCanvas) return;
+    
+    setActiveTool("arrow");
 
     const line = new Line([50, 50, 200, 50], {
       stroke: strokeColor,
@@ -250,11 +256,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.add(triangle);
     fabricCanvas.renderAll();
     saveToHistory();
-    setActiveTool("select");
+    
+    setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addCircle = () => {
     if (!fabricCanvas) return;
+    
+    setActiveTool("circle");
 
     const circle = new Circle({
       left: 100,
@@ -269,11 +278,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.setActiveObject(circle);
     fabricCanvas.renderAll();
     saveToHistory();
-    setActiveTool("select");
+    
+    setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addLine = () => {
     if (!fabricCanvas) return;
+    
+    setActiveTool("line");
 
     const line = new Line([50, 50, 200, 50], {
       stroke: strokeColor,
@@ -284,11 +296,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.setActiveObject(line);
     fabricCanvas.renderAll();
     saveToHistory();
-    setActiveTool("select");
+    
+    setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addText = () => {
     if (!fabricCanvas) return;
+    
+    setActiveTool("text");
 
     const text = new Textbox("Texte", {
       left: 100,
@@ -302,7 +317,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.setActiveObject(text);
     fabricCanvas.renderAll();
     saveToHistory();
-    setActiveTool("select");
+    
+    setTimeout(() => setActiveTool("select"), 100);
   };
 
   const deleteSelected = () => {
