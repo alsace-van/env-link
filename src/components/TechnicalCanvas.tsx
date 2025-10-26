@@ -302,11 +302,15 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           // Contrôles personnalisés aux extrémités de la flèche
           arrow.controls = {
             p1: new Control({
-              x: -0.5,
-              y: -0.5,
+              x: 0,
+              y: 0,
               offsetX: 0,
               offsetY: 0,
               cursorStyle: "move",
+              sizeX: 10,
+              sizeY: 10,
+              touchSizeX: 20,
+              touchSizeY: 20,
               actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
@@ -322,36 +326,36 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 let finalY = snappedPoint.y;
 
                 if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const x2 = line.x2 || 0;
-                  const y2 = line.y2 || 0;
+                  // Obtenir la position absolue du point 2
+                  const absX2 = (group.left || 0) + (line.x2 || 0);
+                  const absY2 = (group.top || 0) + (line.y2 || 0);
 
-                  // Convertir les coordonnées de la ligne en coordonnées canvas
-                  const matrix = group.calcTransformMatrix();
-                  const p2Canvas = fabric.util.transformPoint({ x: x2, y: y2 }, matrix);
-
-                  const snapped = snapToHorizontalOrVertical(finalX, finalY, p2Canvas.x, p2Canvas.y);
+                  const snapped = snapToHorizontalOrVertical(finalX, finalY, absX2, absY2);
 
                   // Inverser le snapping (on snap p1 vers p2)
-                  if (snapped.y2 === p2Canvas.y) {
-                    finalY = p2Canvas.y;
+                  if (snapped.y2 === absY2) {
+                    finalY = absY2;
                   }
-                  if (snapped.x2 === p2Canvas.x) {
-                    finalX = p2Canvas.x;
+                  if (snapped.x2 === absX2) {
+                    finalX = absX2;
                   }
                 }
 
-                const localPointer = fabric.util.transformPoint(
-                  { x: finalX, y: finalY },
-                  fabric.util.invertTransform(group.calcTransformMatrix()),
-                );
+                // Mettre à jour la position
+                const deltaX = finalX - ((group.left || 0) + (line.x1 || 0));
+                const deltaY = finalY - ((group.top || 0) + (line.y1 || 0));
 
-                const x2 = line.x2 || 0;
-                const y2 = line.y2 || 0;
-
-                line.set({ x1: localPointer.x, y1: localPointer.y });
+                line.set({
+                  x1: (line.x1 || 0) + deltaX,
+                  y1: (line.y1 || 0) + deltaY,
+                });
 
                 // Recalculer l'angle et la position de la tête de flèche
-                const angle = Math.atan2(y2 - localPointer.y, x2 - localPointer.x);
+                const x1 = line.x1 || 0;
+                const y1 = line.y1 || 0;
+                const x2 = line.x2 || 0;
+                const y2 = line.y2 || 0;
+                const angle = Math.atan2(y2 - y1, x2 - x1);
                 const headLength = 15;
 
                 head.set({
@@ -375,7 +379,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
                 ctx.save();
-                ctx.translate(left, top);
                 ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
@@ -388,17 +391,19 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                const x = (line.x1 || 0) + (line.pathOffset?.x || 0);
-                const y = (line.y1 || 0) + (line.pathOffset?.y || 0);
-                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
+                return new fabric.Point(line.x1 || 0, line.y1 || 0);
               },
             }),
             p2: new Control({
-              x: 0.5,
-              y: 0.5,
+              x: 0,
+              y: 0,
               offsetX: 0,
               offsetY: 0,
               cursorStyle: "move",
+              sizeX: 10,
+              sizeY: 10,
+              touchSizeX: 20,
+              touchSizeY: 20,
               actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
@@ -414,36 +419,36 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 let finalY = snappedPoint.y;
 
                 if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const x1 = line.x1 || 0;
-                  const y1 = line.y1 || 0;
+                  // Obtenir la position absolue du point 1
+                  const absX1 = (group.left || 0) + (line.x1 || 0);
+                  const absY1 = (group.top || 0) + (line.y1 || 0);
 
-                  // Convertir les coordonnées de la ligne en coordonnées canvas
-                  const matrix = group.calcTransformMatrix();
-                  const p1Canvas = fabric.util.transformPoint({ x: x1, y: y1 }, matrix);
-
-                  const snapped = snapToHorizontalOrVertical(p1Canvas.x, p1Canvas.y, finalX, finalY);
+                  const snapped = snapToHorizontalOrVertical(absX1, absY1, finalX, finalY);
 
                   finalX = snapped.x2;
                   finalY = snapped.y2;
                 }
 
-                const localPointer = fabric.util.transformPoint(
-                  { x: finalX, y: finalY },
-                  fabric.util.invertTransform(group.calcTransformMatrix()),
-                );
+                // Mettre à jour la position
+                const deltaX = finalX - ((group.left || 0) + (line.x2 || 0));
+                const deltaY = finalY - ((group.top || 0) + (line.y2 || 0));
 
-                const x1 = line.x1 || 0;
-                const y1 = line.y1 || 0;
-
-                line.set({ x2: localPointer.x, y2: localPointer.y });
+                line.set({
+                  x2: (line.x2 || 0) + deltaX,
+                  y2: (line.y2 || 0) + deltaY,
+                });
 
                 // Recalculer l'angle et la position de la tête de flèche
-                const angle = Math.atan2(localPointer.y - y1, localPointer.x - x1);
+                const x1 = line.x1 || 0;
+                const y1 = line.y1 || 0;
+                const x2 = line.x2 || 0;
+                const y2 = line.y2 || 0;
+                const angle = Math.atan2(y2 - y1, x2 - x1);
                 const headLength = 15;
 
                 head.set({
-                  left: localPointer.x - Math.cos(angle) * (headLength / 2),
-                  top: localPointer.y - Math.sin(angle) * (headLength / 2),
+                  left: x2 - Math.cos(angle) * (headLength / 2),
+                  top: y2 - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
@@ -462,7 +467,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
                 ctx.save();
-                ctx.translate(left, top);
                 ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
@@ -475,9 +479,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                const x = (line.x2 || 0) + (line.pathOffset?.x || 0);
-                const y = (line.y2 || 0) + (line.pathOffset?.y || 0);
-                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
+                return new fabric.Point(line.x2 || 0, line.y2 || 0);
               },
             }),
           };
@@ -520,11 +522,15 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           // Contrôles personnalisés aux extrémités de la ligne
           finalLine.controls = {
             p1: new Control({
-              x: -0.5,
-              y: -0.5,
+              x: 0,
+              y: 0,
               offsetX: 0,
               offsetY: 0,
               cursorStyle: "move",
+              sizeX: 10,
+              sizeY: 10,
+              touchSizeX: 20,
+              touchSizeY: 20,
               actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
@@ -537,29 +543,29 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 let finalY = snappedPoint.y;
 
                 if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const x2 = line.x2 || 0;
-                  const y2 = line.y2 || 0;
+                  // Obtenir la position absolue du point 2
+                  const absX2 = (line.left || 0) + (line.x2 || 0);
+                  const absY2 = (line.top || 0) + (line.y2 || 0);
 
-                  // Convertir les coordonnées de la ligne en coordonnées canvas
-                  const matrix = line.calcTransformMatrix();
-                  const p2Canvas = fabric.util.transformPoint({ x: x2, y: y2 }, matrix);
-
-                  const snapped = snapToHorizontalOrVertical(finalX, finalY, p2Canvas.x, p2Canvas.y);
+                  const snapped = snapToHorizontalOrVertical(finalX, finalY, absX2, absY2);
 
                   // Inverser le snapping (on snap p1 vers p2)
-                  if (snapped.y2 === p2Canvas.y) {
-                    finalY = p2Canvas.y;
+                  if (snapped.y2 === absY2) {
+                    finalY = absY2;
                   }
-                  if (snapped.x2 === p2Canvas.x) {
-                    finalX = p2Canvas.x;
+                  if (snapped.x2 === absX2) {
+                    finalX = absX2;
                   }
                 }
 
-                const localPointer = fabric.util.transformPoint(
-                  { x: finalX, y: finalY },
-                  fabric.util.invertTransform(line.calcTransformMatrix()),
-                );
-                line.set({ x1: localPointer.x, y1: localPointer.y });
+                // Mettre à jour la position
+                const deltaX = finalX - ((line.left || 0) + (line.x1 || 0));
+                const deltaY = finalY - ((line.top || 0) + (line.y1 || 0));
+
+                line.set({
+                  x1: (line.x1 || 0) + deltaX,
+                  y1: (line.y1 || 0) + deltaY,
+                });
                 line.setCoords();
                 return true;
               },
@@ -573,7 +579,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const size = 5;
                 const line = fabricObject as Line;
                 ctx.save();
-                ctx.translate(left, top);
                 ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
@@ -585,17 +590,19 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                const x = (line.x1 || 0) + (line.pathOffset?.x || 0);
-                const y = (line.y1 || 0) + (line.pathOffset?.y || 0);
-                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
+                return new fabric.Point(line.x1 || 0, line.y1 || 0);
               },
             }),
             p2: new Control({
-              x: 0.5,
-              y: 0.5,
+              x: 0,
+              y: 0,
               offsetX: 0,
               offsetY: 0,
               cursorStyle: "move",
+              sizeX: 10,
+              sizeY: 10,
+              touchSizeX: 20,
+              touchSizeY: 20,
               actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
@@ -608,24 +615,24 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 let finalY = snappedPoint.y;
 
                 if (!eventData.e.shiftKey && !snappedPoint.snapped) {
-                  const x1 = line.x1 || 0;
-                  const y1 = line.y1 || 0;
+                  // Obtenir la position absolue du point 1
+                  const absX1 = (line.left || 0) + (line.x1 || 0);
+                  const absY1 = (line.top || 0) + (line.y1 || 0);
 
-                  // Convertir les coordonnées de la ligne en coordonnées canvas
-                  const matrix = line.calcTransformMatrix();
-                  const p1Canvas = fabric.util.transformPoint({ x: x1, y: y1 }, matrix);
-
-                  const snapped = snapToHorizontalOrVertical(p1Canvas.x, p1Canvas.y, finalX, finalY);
+                  const snapped = snapToHorizontalOrVertical(absX1, absY1, finalX, finalY);
 
                   finalX = snapped.x2;
                   finalY = snapped.y2;
                 }
 
-                const localPointer = fabric.util.transformPoint(
-                  { x: finalX, y: finalY },
-                  fabric.util.invertTransform(line.calcTransformMatrix()),
-                );
-                line.set({ x2: localPointer.x, y2: localPointer.y });
+                // Mettre à jour la position
+                const deltaX = finalX - ((line.left || 0) + (line.x2 || 0));
+                const deltaY = finalY - ((line.top || 0) + (line.y2 || 0));
+
+                line.set({
+                  x2: (line.x2 || 0) + deltaX,
+                  y2: (line.y2 || 0) + deltaY,
+                });
                 line.setCoords();
                 return true;
               },
@@ -639,7 +646,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const size = 5;
                 const line = fabricObject as Line;
                 ctx.save();
-                ctx.translate(left, top);
                 ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
@@ -651,9 +657,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                const x = (line.x2 || 0) + (line.pathOffset?.x || 0);
-                const y = (line.y2 || 0) + (line.pathOffset?.y || 0);
-                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
+                return new fabric.Point(line.x2 || 0, line.y2 || 0);
               },
             }),
           };
