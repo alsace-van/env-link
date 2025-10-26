@@ -93,7 +93,14 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   const handleTimeUpdate = async (itemId: string, field: 'temps_utilisation_heures' | 'temps_production_heures', value: string) => {
     const numValue = value === '' ? null : parseFloat(value);
     
-    if (numValue !== null && (numValue < 0 || numValue > 24)) {
+    // Pour l'autonomie (stockage), pas de limite de 24h
+    const item = items.find(i => i.id === itemId);
+    if (numValue !== null && numValue < 0) {
+      toast.error("La valeur doit être positive");
+      return;
+    }
+    
+    if (numValue !== null && item?.type_electrique !== 'stockage' && numValue > 24) {
       toast.error("Le temps doit être entre 0 et 24 heures");
       return;
     }
@@ -107,13 +114,26 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
       console.error("Erreur lors de la mise à jour:", error);
       toast.error("Erreur lors de la mise à jour");
     } else {
-      toast.success("Temps mis à jour");
+      toast.success(item?.type_electrique === 'stockage' ? "Autonomie mise à jour" : "Temps mis à jour");
       loadElectricalItems();
     }
   };
 
-  const renderItemsTable = (itemsList: ElectricalItem[], title: string, icon: React.ReactNode, showTimeField: 'production' | 'utilisation' | null) => {
+  const renderItemsTable = (itemsList: ElectricalItem[], title: string, icon: React.ReactNode, showTimeField: 'production' | 'utilisation' | 'autonomie' | null) => {
     if (itemsList.length === 0) return null;
+
+    const getTimeLabel = () => {
+      switch (showTimeField) {
+        case 'production':
+          return 'Temps de production (h/24h)';
+        case 'utilisation':
+          return "Temps d'utilisation (h/24h)";
+        case 'autonomie':
+          return "Durée d'autonomie (h)";
+        default:
+          return '';
+      }
+    };
 
     return (
       <div className="space-y-2">
@@ -130,7 +150,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 <TableHead className="text-right">Quantité</TableHead>
                 {showTimeField && (
                   <TableHead className="text-right">
-                    Temps {showTimeField === 'production' ? 'de production' : "d'utilisation"} (h/24h)
+                    {getTimeLabel()}
                   </TableHead>
                 )}
               </TableRow>
@@ -145,15 +165,15 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                       <Input
                         type="number"
                         min="0"
-                        max="24"
+                        max={showTimeField === 'autonomie' ? undefined : 24}
                         step="0.5"
-                        placeholder="0-24h"
-                        value={showTimeField === 'production' 
-                          ? (item.temps_production_heures ?? '') 
-                          : (item.temps_utilisation_heures ?? '')}
+                        placeholder={showTimeField === 'autonomie' ? '0h' : '0-24h'}
+                        value={showTimeField === 'utilisation' 
+                          ? (item.temps_utilisation_heures ?? '') 
+                          : (item.temps_production_heures ?? '')}
                         onChange={(e) => handleTimeUpdate(
                           item.id,
-                          showTimeField === 'production' ? 'temps_production_heures' : 'temps_utilisation_heures',
+                          showTimeField === 'utilisation' ? 'temps_utilisation_heures' : 'temps_production_heures',
                           e.target.value
                         )}
                         className="w-24 ml-auto"
@@ -263,7 +283,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
             storage,
             "Systèmes de stockage",
             <Battery className="h-5 w-5 text-blue-600" />,
-            null
+            'autonomie'
           )}
           {renderItemsTable(
             converters,
