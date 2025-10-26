@@ -113,78 +113,51 @@ export const CableSectionCalculator = () => {
           </div>
         </div>
 
-        {recommendedSection && (
-          <Alert className="border-primary bg-primary/5">
-            <CheckCircle className="h-4 w-4 text-primary" />
-            <AlertDescription className="text-primary font-medium">
-              Section recommandée : <span className="text-lg font-bold">{recommendedSection.section} mm²</span>
-              <br />
-              <span className="text-sm font-normal">
-                Chute de tension : {recommendedSection.voltageDrop}V ({recommendedSection.voltageDropPercent}%)
-                | Intensité max : {recommendedSection.maxCurrent}A
-              </span>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {current > 0 && length > 0 && !recommendedSection && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Aucune section standard ne convient pour ces paramètres. Vérifiez vos valeurs ou envisagez une tension plus élevée.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {results.length > 0 && (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Section (mm²)</TableHead>
-                  <TableHead>Chute de tension (V)</TableHead>
-                  <TableHead>Chute de tension (%)</TableHead>
-                  <TableHead>Intensité max (A)</TableHead>
-                  <TableHead>Statut</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {results.map((result) => (
-                  <TableRow
-                    key={result.section}
-                    className={result.recommended ? "bg-primary/5" : ""}
-                  >
-                    <TableCell className="font-medium">
-                      {result.section}
-                      {result.recommended && (
-                        <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-1 rounded">
-                          Recommandé
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>{result.voltageDrop}</TableCell>
-                    <TableCell>
-                      <span className={result.voltageOk ? "text-green-600" : "text-red-600"}>
-                        {result.voltageDropPercent}%
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={result.currentOk ? "text-green-600" : "text-red-600"}>
-                        {result.maxCurrent}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {result.voltageOk && result.currentOk ? (
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                      ) : (
-                        <AlertCircle className="h-5 w-5 text-red-600" />
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+        {current > 0 && length > 0 && (
+          <>
+            {recommendedSection ? (
+              <div className="space-y-4">
+                <div className="p-6 rounded-lg border-2 border-primary bg-primary/5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0">
+                      <CheckCircle className="h-8 w-8 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-primary mb-2">
+                        Section recommandée
+                      </h3>
+                      <div className="text-4xl font-bold text-primary mb-4">
+                        {recommendedSection.section} mm²
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        <div className="bg-background/50 p-3 rounded">
+                          <div className="text-muted-foreground">Chute de tension</div>
+                          <div className="font-semibold">
+                            {recommendedSection.voltageDrop}V ({recommendedSection.voltageDropPercent}%)
+                          </div>
+                        </div>
+                        <div className="bg-background/50 p-3 rounded">
+                          <div className="text-muted-foreground">Intensité max du câble</div>
+                          <div className="font-semibold">{recommendedSection.maxCurrent}A</div>
+                        </div>
+                        <div className="bg-background/50 p-3 rounded">
+                          <div className="text-muted-foreground">Votre intensité</div>
+                          <div className="font-semibold">{current}A</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Aucune section standard ne convient pour ces paramètres. Vérifiez vos valeurs ou envisagez une tension plus élevée.
+                </AlertDescription>
+              </Alert>
+            )}
+          </>
         )}
 
         <div className="text-sm text-muted-foreground space-y-1">
