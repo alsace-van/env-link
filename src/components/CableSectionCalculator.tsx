@@ -8,8 +8,33 @@ import { AlertCircle, CheckCircle } from "lucide-react";
 
 export const CableSectionCalculator = () => {
   const [current, setCurrent] = useState<number>(0);
+  const [power, setPower] = useState<number>(0);
   const [length, setLength] = useState<number>(0);
   const [voltage, setVoltage] = useState<number>(12);
+
+  // Gestionnaire pour le changement de puissance
+  const handlePowerChange = (value: number) => {
+    setPower(value);
+    if (voltage > 0) {
+      setCurrent(value / voltage);
+    }
+  };
+
+  // Gestionnaire pour le changement d'intensité
+  const handleCurrentChange = (value: number) => {
+    setCurrent(value);
+    if (voltage > 0) {
+      setPower(value * voltage);
+    }
+  };
+
+  // Gestionnaire pour le changement de tension
+  const handleVoltageChange = (value: number) => {
+    setVoltage(value);
+    if (value > 0 && current > 0) {
+      setPower(current * value);
+    }
+  };
 
   // Tableau de résistivité pour câbles souples en cuivre (Ω/m/mm²)
   const resistivity = 0.023; // pour cuivre à 20°C
@@ -76,7 +101,19 @@ export const CableSectionCalculator = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="power">Puissance (W)</Label>
+            <Input
+              id="power"
+              type="number"
+              min="0"
+              step="0.1"
+              value={power || ""}
+              onChange={(e) => handlePowerChange(Number(e.target.value))}
+              placeholder="Ex: 120"
+            />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="current">Intensité (A)</Label>
             <Input
@@ -85,7 +122,7 @@ export const CableSectionCalculator = () => {
               min="0"
               step="0.1"
               value={current || ""}
-              onChange={(e) => setCurrent(Number(e.target.value))}
+              onChange={(e) => handleCurrentChange(Number(e.target.value))}
               placeholder="Ex: 10"
             />
           </div>
@@ -110,7 +147,7 @@ export const CableSectionCalculator = () => {
               min="1"
               step="1"
               value={voltage}
-              onChange={(e) => setVoltage(Number(e.target.value))}
+              onChange={(e) => handleVoltageChange(Number(e.target.value))}
               placeholder="Ex: 12"
             />
           </div>
