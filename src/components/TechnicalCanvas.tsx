@@ -371,10 +371,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 styleOverride: any,
                 fabricObject: any,
               ) => {
-                const size = 10;
+                const size = 5;
+                const group = fabricObject as Group;
+                const line = group.getObjects()[0] as Line;
                 ctx.save();
                 ctx.translate(left, top);
-                ctx.fillStyle = "#2196F3";
+                ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -386,15 +388,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                const x = line.x1 || 0;
-                const y = line.y1 || 0;
-                return fabric.util.transformPoint(
-                  { x: x, y: y },
-                  fabric.util.multiplyTransformMatrices(
-                    fabricObject.canvas!.viewportTransform!,
-                    fabricObject.calcTransformMatrix(),
-                  ),
-                );
+                const x = (line.x1 || 0) + (line.pathOffset?.x || 0);
+                const y = (line.y1 || 0) + (line.pathOffset?.y || 0);
+                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
               },
             }),
             p2: new Control({
@@ -462,10 +458,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 styleOverride: any,
                 fabricObject: any,
               ) => {
-                const size = 10;
+                const size = 5;
+                const group = fabricObject as Group;
+                const line = group.getObjects()[0] as Line;
                 ctx.save();
                 ctx.translate(left, top);
-                ctx.fillStyle = "#FF5722";
+                ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -477,15 +475,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                const x = line.x2 || 0;
-                const y = line.y2 || 0;
-                return fabric.util.transformPoint(
-                  { x: x, y: y },
-                  fabric.util.multiplyTransformMatrices(
-                    fabricObject.canvas!.viewportTransform!,
-                    fabricObject.calcTransformMatrix(),
-                  ),
-                );
+                const x = (line.x2 || 0) + (line.pathOffset?.x || 0);
+                const y = (line.y2 || 0) + (line.pathOffset?.y || 0);
+                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
               },
             }),
           };
@@ -578,10 +570,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 styleOverride: any,
                 fabricObject: any,
               ) => {
-                const size = 10;
+                const size = 5;
+                const line = fabricObject as Line;
                 ctx.save();
                 ctx.translate(left, top);
-                ctx.fillStyle = "#2196F3";
+                ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -592,15 +585,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                const x = line.x1 || 0;
-                const y = line.y1 || 0;
-                return fabric.util.transformPoint(
-                  { x: x, y: y },
-                  fabric.util.multiplyTransformMatrices(
-                    fabricObject.canvas!.viewportTransform!,
-                    fabricObject.calcTransformMatrix(),
-                  ),
-                );
+                const x = (line.x1 || 0) + (line.pathOffset?.x || 0);
+                const y = (line.y1 || 0) + (line.pathOffset?.y || 0);
+                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
               },
             }),
             p2: new Control({
@@ -649,10 +636,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 styleOverride: any,
                 fabricObject: any,
               ) => {
-                const size = 10;
+                const size = 5;
+                const line = fabricObject as Line;
                 ctx.save();
                 ctx.translate(left, top);
-                ctx.fillStyle = "#FF5722";
+                ctx.fillStyle = line.stroke?.toString() || "#000000";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -663,15 +651,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
-                const x = line.x2 || 0;
-                const y = line.y2 || 0;
-                return fabric.util.transformPoint(
-                  { x: x, y: y },
-                  fabric.util.multiplyTransformMatrices(
-                    fabricObject.canvas!.viewportTransform!,
-                    fabricObject.calcTransformMatrix(),
-                  ),
-                );
+                const x = (line.x2 || 0) + (line.pathOffset?.x || 0);
+                const y = (line.y2 || 0) + (line.pathOffset?.y || 0);
+                return fabric.util.transformPoint({ x: x, y: y }, fabricObject.calcTransformMatrix());
               },
             }),
           };
