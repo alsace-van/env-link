@@ -266,6 +266,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             fill: "",
             originX: "left",
             originY: "top",
+            width: Math.abs(dx),
+            height: Math.abs(dy),
           });
 
           const arrowHead = new Triangle({
@@ -324,7 +326,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 let newX = pointer.x;
                 let newY = pointer.y;
 
-                // Position absolue actuelle de p2
+                // Position absolue actuelle de p2 (doit rester fixe)
                 const p2X = (group.left || 0) + (line.x2 || 0);
                 const p2Y = (group.top || 0) + (line.y2 || 0);
 
@@ -342,30 +344,31 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   }
                 }
 
-                // Calculer le delta
-                const dx = newX - (group.left || 0);
-                const dy = newY - (group.top || 0);
+                // Recalculer x2, y2 relatifs à la nouvelle origine
+                const newX2 = p2X - newX;
+                const newY2 = p2Y - newY;
 
-                // Déplacer l'origine et ajuster x2, y2
+                // Mettre à jour l'origine du groupe
                 group.set({
                   left: newX,
                   top: newY,
                 });
 
+                // Mettre à jour la ligne
                 line.set({
-                  x2: (line.x2 || 0) - dx,
-                  y2: (line.y2 || 0) - dy,
+                  x2: newX2,
+                  y2: newY2,
+                  width: Math.abs(newX2),
+                  height: Math.abs(newY2),
                 });
 
                 // Mettre à jour la tête de flèche
-                const x2 = line.x2 || 0;
-                const y2 = line.y2 || 0;
-                const angle = Math.atan2(y2, x2);
+                const angle = Math.atan2(newY2, newX2);
                 const headLength = 15;
 
                 head.set({
-                  left: x2 - Math.cos(angle) * (headLength / 2),
-                  top: y2 - Math.sin(angle) * (headLength / 2),
+                  left: newX2 - Math.cos(angle) * (headLength / 2),
+                  top: newY2 - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
@@ -422,21 +425,23 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 }
 
                 // Calculer le nouveau x2, y2 relatif à l'origine
-                const dx = newX - p1X;
-                const dy = newY - p1Y;
+                const newX2 = newX - p1X;
+                const newY2 = newY - p1Y;
 
                 line.set({
-                  x2: dx,
-                  y2: dy,
+                  x2: newX2,
+                  y2: newY2,
+                  width: Math.abs(newX2),
+                  height: Math.abs(newY2),
                 });
 
                 // Mettre à jour la tête de flèche
-                const angle = Math.atan2(dy, dx);
+                const angle = Math.atan2(newY2, newX2);
                 const headLength = 15;
 
                 head.set({
-                  left: dx - Math.cos(angle) * (headLength / 2),
-                  top: dy - Math.sin(angle) * (headLength / 2),
+                  left: newX2 - Math.cos(angle) * (headLength / 2),
+                  top: newY2 - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
 
@@ -493,6 +498,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             perPixelTargetFind: true,
             originX: "left",
             originY: "top",
+            width: Math.abs(dx),
+            height: Math.abs(dy),
           });
 
           // Désactiver tous les contrôles par défaut
@@ -520,7 +527,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 let newX = pointer.x;
                 let newY = pointer.y;
 
-                // Position absolue actuelle de p2
+                // Position absolue actuelle de p2 (doit rester fixe)
                 const p2X = (line.left || 0) + (line.x2 || 0);
                 const p2Y = (line.top || 0) + (line.y2 || 0);
 
@@ -538,16 +545,18 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   }
                 }
 
-                // Calculer le delta
-                const dx = newX - (line.left || 0);
-                const dy = newY - (line.top || 0);
+                // Recalculer x2, y2 relatifs à la nouvelle origine
+                const newX2 = p2X - newX;
+                const newY2 = p2Y - newY;
 
-                // Déplacer l'origine et ajuster x2, y2
+                // Mettre à jour la ligne avec les nouvelles dimensions
                 line.set({
                   left: newX,
                   top: newY,
-                  x2: (line.x2 || 0) - dx,
-                  y2: (line.y2 || 0) - dy,
+                  x2: newX2,
+                  y2: newY2,
+                  width: Math.abs(newX2),
+                  height: Math.abs(newY2),
                 });
 
                 line.setCoords();
@@ -600,9 +609,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 }
 
                 // Calculer le nouveau x2, y2 relatif à l'origine
+                const newX2 = newX - p1X;
+                const newY2 = newY - p1Y;
+
                 line.set({
-                  x2: newX - p1X,
-                  y2: newY - p1Y,
+                  x2: newX2,
+                  y2: newY2,
+                  width: Math.abs(newX2),
+                  height: Math.abs(newY2),
                 });
 
                 line.setCoords();
