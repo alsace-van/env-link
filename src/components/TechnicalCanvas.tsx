@@ -302,8 +302,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           // Contrôles personnalisés aux extrémités de la flèche
           arrow.controls = {
             p1: new Control({
-              x: -0.5,
-              y: -0.5,
               cursorStyle: "pointer",
               actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
                 const group = transformData.target as Group;
@@ -384,12 +382,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
                 const point = new fabric.Point(line.x1 || 0, line.y1 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                return fabric.util.transformPoint(point, group.calcOwnMatrix());
               },
             }),
             p2: new Control({
-              x: 0.5,
-              y: 0.5,
               cursorStyle: "pointer",
               actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
                 const group = transformData.target as Group;
@@ -463,7 +459,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
                 const point = new fabric.Point(line.x2 || 0, line.y2 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                return fabric.util.transformPoint(point, group.calcOwnMatrix());
               },
             }),
           };
@@ -506,8 +502,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           // Contrôles personnalisés aux extrémités de la ligne
           finalLine.controls = {
             p1: new Control({
-              x: -0.5,
-              y: -0.5,
               cursorStyle: "pointer",
               actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
                 const line = transformData.target as Line;
@@ -566,12 +560,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 const point = new fabric.Point(line.x1 || 0, line.y1 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                return fabric.util.transformPoint(point, line.calcOwnMatrix());
               },
             }),
             p2: new Control({
-              x: 0.5,
-              y: 0.5,
               cursorStyle: "pointer",
               actionHandler: (eventData: MouseEvent, transformData: any, x: number, y: number) => {
                 const line = transformData.target as Line;
@@ -627,7 +619,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 const point = new fabric.Point(line.x2 || 0, line.y2 || 0);
-                return fabric.util.transformPoint(point, finalMatrix);
+                return fabric.util.transformPoint(point, line.calcOwnMatrix());
               },
             }),
           };
