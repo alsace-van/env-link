@@ -70,24 +70,24 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       loadCategories();
 
       if (accessory) {
-        // Mode édition
+        // Mode édition - utiliser ?? pour préserver les valeurs null
         setFormData({
           nom: accessory.nom,
-          marque: accessory.marque || "",
-          category_id: accessory.category_id || "",
-          prix_reference: accessory.prix_reference?.toString() || "",
-          prix_vente_ttc: accessory.prix_vente_ttc?.toString() || "",
-          marge_pourcent: accessory.marge_pourcent?.toString() || "",
-          fournisseur: accessory.fournisseur || "",
-          description: accessory.description || "",
-          url_produit: accessory.url_produit || "",
-          type_electrique: accessory.type_electrique || "",
-          poids_kg: accessory.poids_kg?.toString() || "",
-          longueur_mm: accessory.longueur_mm?.toString() || "",
-          largeur_mm: accessory.largeur_mm?.toString() || "",
-          hauteur_mm: accessory.hauteur_mm?.toString() || "",
-          puissance_watts: accessory.puissance_watts?.toString() || "",
-          intensite_amperes: accessory.intensite_amperes?.toString() || "",
+          marque: accessory.marque ?? "",
+          category_id: accessory.category_id ?? "",
+          prix_reference: accessory.prix_reference?.toString() ?? "",
+          prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
+          marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
+          fournisseur: accessory.fournisseur ?? "",
+          description: accessory.description ?? "",
+          url_produit: accessory.url_produit ?? "",
+          type_electrique: accessory.type_electrique ?? "",
+          poids_kg: accessory.poids_kg?.toString() ?? "",
+          longueur_mm: accessory.longueur_mm?.toString() ?? "",
+          largeur_mm: accessory.largeur_mm?.toString() ?? "",
+          hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
+          puissance_watts: accessory.puissance_watts?.toString() ?? "",
+          intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
         });
       } else {
         // Mode création
@@ -395,7 +395,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   <SelectTrigger id="category_id">
                     <SelectValue placeholder="Sélectionner une catégorie" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-background z-50">
                     <SelectItem value="__create__">+ Créer une nouvelle catégorie</SelectItem>
                     <SelectItem value="none">Aucune catégorie</SelectItem>
                     {categories
