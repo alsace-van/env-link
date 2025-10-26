@@ -67,33 +67,62 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     let draggedHandle: paper.Path.Circle | null = null;
 
     // Fonction pour créer des poignées
-    const createHandles = (path: paper.Path) => {
+    const createHandles = (item: paper.Item) => {
       // Supprimer les anciennes poignées
       handles.forEach((h) => h.remove());
       handles = [];
 
-      if (path.segments.length === 2) {
-        path.segments.forEach((segment, index) => {
+      if (item instanceof paper.Path && item.segments.length === 2) {
+        // Poignées pour les lignes/flèches
+        item.segments.forEach((segment, index) => {
           const handle = new paper.Path.Circle({
             center: segment.point,
             radius: 5,
-            fillColor: path.strokeColor, // Utiliser la couleur de la ligne
+            fillColor: item.strokeColor, // Utiliser la couleur de la ligne
             strokeColor: "white",
             strokeWidth: 2,
           });
           handle.data.isHandle = true;
           handle.data.segmentIndex = index;
-          handle.data.parentPath = path;
+          handle.data.parentPath = item;
+          handle.data.handleType = "line";
+          handles.push(handle);
+        });
+      } else if (item instanceof paper.Path || item instanceof paper.Shape) {
+        // Poignées pour les rectangles et cercles (4 coins + 4 bords)
+        const bounds = item.bounds;
+        const corners = [bounds.topLeft, bounds.topRight, bounds.bottomRight, bounds.bottomLeft];
+
+        corners.forEach((corner, index) => {
+          const handle = new paper.Path.Circle({
+            center: corner,
+            radius: 6,
+            fillColor: "#2196F3",
+            strokeColor: "white",
+            strokeWidth: 2,
+          });
+          handle.data.isHandle = true;
+          handle.data.cornerIndex = index;
+          handle.data.parentItem = item;
+          handle.data.handleType = "corner";
           handles.push(handle);
         });
       }
     };
 
     // Fonction pour mettre à jour les poignées
-    const updateHandles = (path: paper.Path) => {
-      if (handles.length === 2 && path.segments.length === 2) {
-        handles[0].position = path.segments[0].point;
-        handles[1].position = path.segments[1].point;
+    const updateHandles = (item: paper.Item) => {
+      if (item instanceof paper.Path && item.segments.length === 2 && handles.length === 2) {
+        // Poignées de ligne
+        handles[0].position = item.segments[0].point;
+        handles[1].position = item.segments[1].point;
+      } else if (handles.length === 4 && (item instanceof paper.Path || item instanceof paper.Shape)) {
+        // Poignées de rectangle/cercle
+        const bounds = item.bounds;
+        handles[0].position = bounds.topLeft;
+        handles[1].position = bounds.topRight;
+        handles[2].position = bounds.bottomRight;
+        handles[3].position = bounds.bottomLeft;
       }
     };
 
@@ -197,7 +226,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
           selectedItem.selected = true;
 
+          // Créer des poignées pour les lignes/flèches
           if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
+            createHandles(selectedItem);
+          }
+          // Créer des poignées pour les rectangles et cercles
+          else if (selectedItem instanceof paper.Path || selectedItem instanceof paper.Shape) {
             createHandles(selectedItem);
           }
         } else {
@@ -223,28 +257,93 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
     };
 
+    tool.onDoubleClick = (event: paper.ToolEvent) => {
+      // Double-clic pour éditer le texte
+      const hitResult = paper.project.activeLayer.hitTest(event.point, {
+        fill: true,
+        stroke: true,
+        tolerance: 5,
+      });
+
+      if (hitResult && hitResult.item instanceof paper.PointText) {
+        const textItem = hitResult.item;
+        const newText = prompt("Modifier le texte :", textItem.content);
+        if (newText !== null) {
+          textItem.content = newText;
+        }
+      }
+    };
+
     tool.onMouseDrag = (event: paper.ToolEvent) => {
       // Déplacer une poignée
-      if (draggedHandle && draggedHandle.data.parentPath) {
-        const path = draggedHandle.data.parentPath as paper.Path;
-        const index = draggedHandle.data.segmentIndex;
+      if (draggedHandle) {
+        if (draggedHandle.data.handleType === "line" && draggedHandle.data.parentPath) {
+          // Poignée de ligne/flèche
+          const path = draggedHandle.data.parentPath as paper.Path;
+          const index = draggedHandle.data.segmentIndex;
 
-        let newPoint = event.point;
+          let newPoint = event.point;
 
-        // Snapping horizontal/vertical
-        if (!event.modifiers.shift) {
-          const otherIndex = index === 0 ? 1 : 0;
-          newPoint = snapToHV(path.segments[otherIndex].point, newPoint);
+          // Snapping horizontal/vertical
+          if (!event.modifiers.shift) {
+            const otherIndex = index === 0 ? 1 : 0;
+            newPoint = snapToHV(path.segments[otherIndex].point, newPoint);
+          }
+
+          path.segments[index].point = newPoint;
+
+          // Mettre à jour la tête de flèche si nécessaire
+          if (path.data.type === "arrow") {
+            updateArrowHead(path);
+          }
+
+          updateHandles(path);
+        } else if (draggedHandle.data.handleType === "corner" && draggedHandle.data.parentItem) {
+          // Poignée de rectangle/cercle
+          const item = draggedHandle.data.parentItem;
+          const cornerIndex = draggedHandle.data.cornerIndex;
+          const bounds = item.bounds;
+
+          // Calculer les nouvelles dimensions selon le coin déplacé
+          let newBounds;
+          if (cornerIndex === 0) {
+            // Top Left
+            newBounds = new paper.Rectangle(event.point, bounds.bottomRight);
+          } else if (cornerIndex === 1) {
+            // Top Right
+            newBounds = new paper.Rectangle(
+              new paper.Point(bounds.left, event.point.y),
+              new paper.Point(event.point.x, bounds.bottom),
+            );
+          } else if (cornerIndex === 2) {
+            // Bottom Right
+            newBounds = new paper.Rectangle(bounds.topLeft, event.point);
+          } else {
+            // Bottom Left
+            newBounds = new paper.Rectangle(
+              new paper.Point(event.point.x, bounds.top),
+              new paper.Point(bounds.right, event.point.y),
+            );
+          }
+
+          // Appliquer les nouvelles dimensions
+          if (item instanceof paper.Shape.Circle) {
+            // Pour un cercle, garder le ratio et utiliser le plus grand côté
+            const width = Math.abs(newBounds.width);
+            const height = Math.abs(newBounds.height);
+            const size = Math.max(width, height);
+            const squareBounds = new paper.Rectangle(
+              newBounds.center.subtract(new paper.Point(size / 2, size / 2)),
+              new paper.Size(size, size),
+            );
+            item.bounds = squareBounds;
+          } else {
+            // Pour un rectangle
+            item.bounds = newBounds;
+          }
+
+          updateHandles(item);
         }
-
-        path.segments[index].point = newPoint;
-
-        // Mettre à jour la tête de flèche si nécessaire
-        if (path.data.type === "arrow") {
-          updateArrowHead(path);
-        }
-
-        updateHandles(path);
         return;
       }
 
@@ -265,7 +364,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
 
       // Déplacer un objet sélectionné
-      if (selectedItem && activeToolRef.current === "select") {
+      if (selectedItem && activeToolRef.current === "select" && !draggedHandle) {
         selectedItem.position = selectedItem.position.add(event.delta);
 
         // Mettre à jour la tête de flèche si c'est une flèche (uniquement pour les Path)
@@ -273,10 +372,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           updateArrowHead(selectedItem);
         }
 
-        // Mettre à jour les handles uniquement pour les Path
-        if (selectedItem instanceof paper.Path) {
-          updateHandles(selectedItem);
-        }
+        // Mettre à jour les handles pour tous les types d'objets
+        updateHandles(selectedItem);
       }
     };
 
@@ -350,14 +447,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     setActiveTool(tool);
 
     if (tool === "rectangle" && paper.project) {
-      new paper.Path.Rectangle({
+      new paper.Shape.Rectangle({
         point: [100, 100],
         size: [150, 100],
         strokeColor: colorRef.current,
         strokeWidth: strokeWidthRef.current,
       });
     } else if (tool === "circle" && paper.project) {
-      new paper.Path.Circle({
+      new paper.Shape.Circle({
         center: [150, 150],
         radius: 50,
         strokeColor: colorRef.current,
