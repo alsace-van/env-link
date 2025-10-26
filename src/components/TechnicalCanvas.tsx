@@ -34,6 +34,10 @@ interface TechnicalCanvasProps {
   onExpenseAdded?: () => void;
 }
 
+// Constantes pour le snapping
+const SNAP_ANGLE_THRESHOLD = 15; // Degrés pour snapper à l'horizontal/vertical
+const SNAP_DISTANCE = 10; // Pixels pour le magnétisme des poignées
+
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
@@ -59,6 +63,81 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     colorRef.current = color;
     strokeWidthRef.current = strokeWidth;
   }, [activeTool, color, strokeWidth]);
+
+  // Fonction pour snapper à l'horizontal ou vertical
+  const snapToHorizontalOrVertical = (x1: number, y1: number, x2: number, y2: number): { x2: number; y2: number } => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const angle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
+
+    // Snapper à l'horizontal (0° ou 180°)
+    if (angle < SNAP_ANGLE_THRESHOLD || angle > 180 - SNAP_ANGLE_THRESHOLD) {
+      return { x2, y2: y1 };
+    }
+
+    // Snapper à la vertical (90°)
+    if (Math.abs(angle - 90) < SNAP_ANGLE_THRESHOLD) {
+      return { x2: x1, y2 };
+    }
+
+    return { x2, y2 };
+  };
+
+  // Fonction pour trouver les points de snapping magnétique
+  const findSnapPoint = (x: number, y: number, currentObject?: any): { x: number; y: number; snapped: boolean } => {
+    if (!fabricCanvasRef.current) return { x, y, snapped: false };
+
+    const objects = fabricCanvasRef.current.getObjects();
+    let closestPoint = { x, y, distance: Infinity };
+
+    for (const obj of objects) {
+      if (obj === currentObject) continue;
+
+      // Points à vérifier selon le type d'objet
+      const points: { x: number; y: number }[] = [];
+
+      if (obj.type === "line") {
+        const line = obj as Line;
+        const matrix = line.calcTransformMatrix();
+        const p1 = fabric.util.transformPoint({ x: line.x1 || 0, y: line.y1 || 0 }, matrix);
+        const p2 = fabric.util.transformPoint({ x: line.x2 || 0, y: line.y2 || 0 }, matrix);
+        points.push(p1, p2);
+      } else if (obj.type === "group") {
+        // Pour les flèches (groupes)
+        const group = obj as Group;
+        const line = group.getObjects()[0] as Line;
+        if (line) {
+          const matrix = group.calcTransformMatrix();
+          const p1 = fabric.util.transformPoint({ x: line.x1 || 0, y: line.y1 || 0 }, matrix);
+          const p2 = fabric.util.transformPoint({ x: line.x2 || 0, y: line.y2 || 0 }, matrix);
+          points.push(p1, p2);
+        }
+      } else {
+        // Pour les autres objets (rectangles, cercles), utiliser uniquement les coins
+        const bound = obj.getBoundingRect();
+        points.push(
+          { x: bound.left, y: bound.top },
+          { x: bound.left + bound.width, y: bound.top },
+          { x: bound.left, y: bound.top + bound.height },
+          { x: bound.left + bound.width, y: bound.top + bound.height },
+        );
+      }
+
+      // Trouver le point le plus proche
+      for (const point of points) {
+        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+        if (distance < closestPoint.distance && distance < SNAP_DISTANCE) {
+          closestPoint = { x: point.x, y: point.y, distance };
+        }
+      }
+    }
+
+    if (closestPoint.distance < SNAP_DISTANCE) {
+      return { x: closestPoint.x, y: closestPoint.y, snapped: true };
+    }
+
+    return { x, y, snapped: false };
+  };
 
   // Initialize canvas
   useLayoutEffect(() => {
@@ -101,6 +180,18 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         }
       });
 
+      canvas.on("selection:created", () => {
+        if (mounted) {
+          canvas.requestRenderAll();
+        }
+      });
+
+      canvas.on("selection:updated", () => {
+        if (mounted) {
+          canvas.requestRenderAll();
+        }
+      });
+
       canvas.on("mouse:down", (event) => {
         if (!mounted) return;
         if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
@@ -126,9 +217,18 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       });
 
       canvas.on("mouse:move", (event) => {
-        if (!mounted || !isDrawingLineRef.current || !lineRef.current) return;
+        if (!mounted || !isDrawingLineRef.current || !lineRef.current || !startPointRef.current) return;
         const pointer = canvas.getPointer(event.e);
-        lineRef.current.set({ x2: pointer.x, y2: pointer.y });
+
+        // Appliquer le snapping horizontal/vertical
+        const snapped = snapToHorizontalOrVertical(
+          startPointRef.current.x,
+          startPointRef.current.y,
+          pointer.x,
+          pointer.y,
+        );
+
+        lineRef.current.set({ x2: snapped.x2, y2: snapped.y2 });
         canvas.renderAll();
       });
 
@@ -202,27 +302,46 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           // Contrôles personnalisés aux extrémités de la flèche
           arrow.controls = {
             p1: new Control({
-              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-                const group = fabricObject as Group;
-                const line = group.getObjects()[0] as Line;
-                const x = line.x1 || 0;
-                const y = line.y1 || 0;
-                return fabric.util.transformPoint(
-                  { x: x, y: y },
-                  fabric.util.multiplyTransformMatrices(
-                    fabricObject.canvas!.viewportTransform!,
-                    fabricObject.calcTransformMatrix(),
-                  ),
-                );
-              },
-              actionHandler: (eventData: any, transform: any) => {
+              x: -0.5,
+              y: -0.5,
+              offsetX: 0,
+              offsetY: 0,
+              cursorStyle: "move",
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
                 const pointer = canvas.getPointer(eventData.e);
+
+                // Appliquer le snapping magnétique
+                const snappedPoint = findSnapPoint(pointer.x, pointer.y, group);
+
+                // Appliquer le snapping horizontal/vertical si Shift n'est pas enfoncé
+                let finalX = snappedPoint.x;
+                let finalY = snappedPoint.y;
+
+                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
+                  const x2 = line.x2 || 0;
+                  const y2 = line.y2 || 0;
+
+                  // Convertir les coordonnées de la ligne en coordonnées canvas
+                  const matrix = group.calcTransformMatrix();
+                  const p2Canvas = fabric.util.transformPoint({ x: x2, y: y2 }, matrix);
+
+                  const snapped = snapToHorizontalOrVertical(finalX, finalY, p2Canvas.x, p2Canvas.y);
+
+                  // Inverser le snapping (on snap p1 vers p2)
+                  if (snapped.y2 === p2Canvas.y) {
+                    finalY = p2Canvas.y;
+                  }
+                  if (snapped.x2 === p2Canvas.x) {
+                    finalX = p2Canvas.x;
+                  }
+                }
+
                 const localPointer = fabric.util.transformPoint(
-                  pointer,
+                  { x: finalX, y: finalY },
                   fabric.util.invertTransform(group.calcTransformMatrix()),
                 );
 
@@ -242,9 +361,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 });
 
                 group.addWithUpdate();
+                group.setCoords();
                 return true;
               },
-              cursorStyle: "move",
               render: (
                 ctx: CanvasRenderingContext2D,
                 left: number,
@@ -252,8 +371,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 styleOverride: any,
                 fabricObject: any,
               ) => {
-                const size = 8;
+                const size = 10;
                 ctx.save();
+                ctx.translate(left, top);
                 ctx.fillStyle = "#2196F3";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
@@ -263,13 +383,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 ctx.stroke();
                 ctx.restore();
               },
-            }),
-            p2: new Control({
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const group = fabricObject as Group;
                 const line = group.getObjects()[0] as Line;
-                const x = line.x2 || 0;
-                const y = line.y2 || 0;
+                const x = line.x1 || 0;
+                const y = line.y1 || 0;
                 return fabric.util.transformPoint(
                   { x: x, y: y },
                   fabric.util.multiplyTransformMatrices(
@@ -278,14 +396,43 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   ),
                 );
               },
-              actionHandler: (eventData: any, transform: any) => {
+            }),
+            p2: new Control({
+              x: 0.5,
+              y: 0.5,
+              offsetX: 0,
+              offsetY: 0,
+              cursorStyle: "move",
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
 
                 const pointer = canvas.getPointer(eventData.e);
+
+                // Appliquer le snapping magnétique
+                const snappedPoint = findSnapPoint(pointer.x, pointer.y, group);
+
+                // Appliquer le snapping horizontal/vertical si Shift n'est pas enfoncé
+                let finalX = snappedPoint.x;
+                let finalY = snappedPoint.y;
+
+                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
+                  const x1 = line.x1 || 0;
+                  const y1 = line.y1 || 0;
+
+                  // Convertir les coordonnées de la ligne en coordonnées canvas
+                  const matrix = group.calcTransformMatrix();
+                  const p1Canvas = fabric.util.transformPoint({ x: x1, y: y1 }, matrix);
+
+                  const snapped = snapToHorizontalOrVertical(p1Canvas.x, p1Canvas.y, finalX, finalY);
+
+                  finalX = snapped.x2;
+                  finalY = snapped.y2;
+                }
+
                 const localPointer = fabric.util.transformPoint(
-                  pointer,
+                  { x: finalX, y: finalY },
                   fabric.util.invertTransform(group.calcTransformMatrix()),
                 );
 
@@ -305,9 +452,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 });
 
                 group.addWithUpdate();
+                group.setCoords();
                 return true;
               },
-              cursorStyle: "move",
               render: (
                 ctx: CanvasRenderingContext2D,
                 left: number,
@@ -315,8 +462,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 styleOverride: any,
                 fabricObject: any,
               ) => {
-                const size = 8;
+                const size = 10;
                 ctx.save();
+                ctx.translate(left, top);
                 ctx.fillStyle = "#FF5722";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
@@ -326,10 +474,25 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 ctx.stroke();
                 ctx.restore();
               },
+              positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
+                const group = fabricObject as Group;
+                const line = group.getObjects()[0] as Line;
+                const x = line.x2 || 0;
+                const y = line.y2 || 0;
+                return fabric.util.transformPoint(
+                  { x: x, y: y },
+                  fabric.util.multiplyTransformMatrices(
+                    fabricObject.canvas!.viewportTransform!,
+                    fabricObject.calcTransformMatrix(),
+                  ),
+                );
+              },
             }),
           };
 
+          arrow.setCoords();
           canvas.add(arrow);
+          canvas.renderAll();
         } else {
           const finalLine = new Line([x1, y1, x2, y2], {
             stroke: colorRef.current,
@@ -365,6 +528,68 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           // Contrôles personnalisés aux extrémités de la ligne
           finalLine.controls = {
             p1: new Control({
+              x: -0.5,
+              y: -0.5,
+              offsetX: 0,
+              offsetY: 0,
+              cursorStyle: "move",
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
+                const line = transform.target as Line;
+                const pointer = canvas.getPointer(eventData.e);
+
+                // Appliquer le snapping magnétique
+                const snappedPoint = findSnapPoint(pointer.x, pointer.y, line);
+
+                // Appliquer le snapping horizontal/vertical si Shift n'est pas enfoncé
+                let finalX = snappedPoint.x;
+                let finalY = snappedPoint.y;
+
+                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
+                  const x2 = line.x2 || 0;
+                  const y2 = line.y2 || 0;
+
+                  // Convertir les coordonnées de la ligne en coordonnées canvas
+                  const matrix = line.calcTransformMatrix();
+                  const p2Canvas = fabric.util.transformPoint({ x: x2, y: y2 }, matrix);
+
+                  const snapped = snapToHorizontalOrVertical(finalX, finalY, p2Canvas.x, p2Canvas.y);
+
+                  // Inverser le snapping (on snap p1 vers p2)
+                  if (snapped.y2 === p2Canvas.y) {
+                    finalY = p2Canvas.y;
+                  }
+                  if (snapped.x2 === p2Canvas.x) {
+                    finalX = p2Canvas.x;
+                  }
+                }
+
+                const localPointer = fabric.util.transformPoint(
+                  { x: finalX, y: finalY },
+                  fabric.util.invertTransform(line.calcTransformMatrix()),
+                );
+                line.set({ x1: localPointer.x, y1: localPointer.y });
+                line.setCoords();
+                return true;
+              },
+              render: (
+                ctx: CanvasRenderingContext2D,
+                left: number,
+                top: number,
+                styleOverride: any,
+                fabricObject: any,
+              ) => {
+                const size = 10;
+                ctx.save();
+                ctx.translate(left, top);
+                ctx.fillStyle = "#2196F3";
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, size, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+              },
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 const x = line.x1 || 0;
@@ -377,17 +602,46 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   ),
                 );
               },
+            }),
+            p2: new Control({
+              x: 0.5,
+              y: 0.5,
+              offsetX: 0,
+              offsetY: 0,
+              cursorStyle: "move",
               actionHandler: (eventData: any, transform: any, x: number, y: number) => {
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
+
+                // Appliquer le snapping magnétique
+                const snappedPoint = findSnapPoint(pointer.x, pointer.y, line);
+
+                // Appliquer le snapping horizontal/vertical si Shift n'est pas enfoncé
+                let finalX = snappedPoint.x;
+                let finalY = snappedPoint.y;
+
+                if (!eventData.e.shiftKey && !snappedPoint.snapped) {
+                  const x1 = line.x1 || 0;
+                  const y1 = line.y1 || 0;
+
+                  // Convertir les coordonnées de la ligne en coordonnées canvas
+                  const matrix = line.calcTransformMatrix();
+                  const p1Canvas = fabric.util.transformPoint({ x: x1, y: y1 }, matrix);
+
+                  const snapped = snapToHorizontalOrVertical(p1Canvas.x, p1Canvas.y, finalX, finalY);
+
+                  finalX = snapped.x2;
+                  finalY = snapped.y2;
+                }
+
                 const localPointer = fabric.util.transformPoint(
-                  pointer,
+                  { x: finalX, y: finalY },
                   fabric.util.invertTransform(line.calcTransformMatrix()),
                 );
-                line.set({ x1: localPointer.x, y1: localPointer.y });
+                line.set({ x2: localPointer.x, y2: localPointer.y });
+                line.setCoords();
                 return true;
               },
-              cursorStyle: "move",
               render: (
                 ctx: CanvasRenderingContext2D,
                 left: number,
@@ -395,9 +649,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 styleOverride: any,
                 fabricObject: any,
               ) => {
-                const size = 8;
+                const size = 10;
                 ctx.save();
-                ctx.fillStyle = "#2196F3";
+                ctx.translate(left, top);
+                ctx.fillStyle = "#FF5722";
                 ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -406,8 +661,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 ctx.stroke();
                 ctx.restore();
               },
-            }),
-            p2: new Control({
               positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
                 const line = fabricObject as Line;
                 const x = line.x2 || 0;
@@ -420,39 +673,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   ),
                 );
               },
-              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-                const line = transform.target as Line;
-                const pointer = canvas.getPointer(eventData.e);
-                const localPointer = fabric.util.transformPoint(
-                  pointer,
-                  fabric.util.invertTransform(line.calcTransformMatrix()),
-                );
-                line.set({ x2: localPointer.x, y2: localPointer.y });
-                return true;
-              },
-              cursorStyle: "move",
-              render: (
-                ctx: CanvasRenderingContext2D,
-                left: number,
-                top: number,
-                styleOverride: any,
-                fabricObject: any,
-              ) => {
-                const size = 8;
-                ctx.save();
-                ctx.fillStyle = "#FF5722";
-                ctx.strokeStyle = "#ffffff";
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(0, 0, size, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.stroke();
-                ctx.restore();
-              },
             }),
           };
 
+          finalLine.setCoords();
           canvas.add(finalLine);
+          canvas.renderAll();
         }
 
         isDrawingLineRef.current = false;
@@ -635,6 +861,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           variant={activeTool === "line" ? "default" : "outline"}
           size="sm"
           onClick={() => handleToolClick("line")}
+          title="Ligne (se snape automatiquement à l'horizontal/vertical, maintenez Shift pour désactiver)"
         >
           <Minus className="h-4 w-4 mr-2" />
           Ligne
@@ -643,6 +870,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           variant={activeTool === "arrow" ? "default" : "outline"}
           size="sm"
           onClick={() => handleToolClick("arrow")}
+          title="Flèche (se snape automatiquement à l'horizontal/vertical, maintenez Shift pour désactiver)"
         >
           <ArrowRight className="h-4 w-4 mr-2" />
           Flèche
@@ -725,6 +953,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           Télécharger
         </Button>
       </div>
+
+      {(activeTool === "line" || activeTool === "arrow") && (
+        <div className="px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+          <strong>💡 Aide :</strong> Les traits se positionnent automatiquement à l'horizontal ou à la vertical. Les
+          poignées s'accrochent magnétiquement aux autres éléments (distance : {SNAP_DISTANCE}px).
+          <strong>Maintenez Shift</strong> pour désactiver temporairement le snapping.
+        </div>
+      )}
 
       <div className="border border-border rounded-lg overflow-hidden shadow-lg bg-white">
         <canvas ref={canvasRef} />
