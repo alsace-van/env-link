@@ -32,6 +32,8 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [customPoidsVide, setCustomPoidsVide] = useState<string>("");
   const [customPtac, setCustomPtac] = useState<string>("");
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   // Compute available options for cascade dropdowns
   const availableMarques = Array.from(new Set(vehicles.map(v => v.marque))).sort();
@@ -87,6 +89,18 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     }
   };
 
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPhotoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -100,8 +114,35 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       return;
     }
 
+    let photoUrl = null;
+
+    // Upload photo if selected
+    if (photoFile) {
+      const fileExt = photoFile.name.split('.').pop();
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('project-photos')
+        .upload(filePath, photoFile);
+
+      if (uploadError) {
+        toast.error("Erreur lors de l'upload de la photo");
+        console.error(uploadError);
+        setIsLoading(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('project-photos')
+        .getPublicUrl(filePath);
+
+      photoUrl = urlData.publicUrl;
+    }
+
     const projectData = {
       user_id: user.id,
+      nom_projet: formData.get("nom_projet") as string || null,
       nom_proprietaire: formData.get("nom_proprietaire") as string,
       adresse_proprietaire: formData.get("adresse_proprietaire") as string,
       telephone_proprietaire: formData.get("telephone_proprietaire") as string,
@@ -110,6 +151,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       immatriculation: formData.get("immatriculation") as string || null,
       date_mise_circulation: formData.get("date_mise_circulation") as string || null,
       type_mine: formData.get("type_mine") as string || null,
+      photo_url: photoUrl,
       vehicle_catalog_id: selectedVehicle?.id || null,
       longueur_mm: selectedVehicle?.longueur_mm || null,
       largeur_mm: selectedVehicle?.largeur_mm || null,
@@ -136,6 +178,8 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     setSelectedVehicle(null);
     setCustomPoidsVide("");
     setCustomPtac("");
+    setPhotoFile(null);
+    setPhotoPreview(null);
     onProjectCreated();
   };
 
@@ -151,6 +195,40 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
+            
+            <div className="space-y-2">
+              <Label htmlFor="nom_projet">Nom du projet</Label>
+              <Input
+                id="nom_projet"
+                name="nom_projet"
+                disabled={isLoading}
+                placeholder="Aménagement camping-car"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="photo_projet">Photo du projet</Label>
+              <Input
+                id="photo_projet"
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                disabled={isLoading}
+              />
+              {photoPreview && (
+                <div className="mt-2">
+                  <img
+                    src={photoPreview}
+                    alt="Aperçu"
+                    className="w-full h-32 object-cover rounded-lg"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-4 border-t">
             <h3 className="text-sm font-semibold text-muted-foreground">Informations Propriétaire</h3>
             
             <div className="space-y-2">

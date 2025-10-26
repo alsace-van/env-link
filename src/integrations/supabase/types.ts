@@ -453,8 +453,10 @@ export type Database = {
           longueur_mm: number | null
           marque_custom: string | null
           modele_custom: string | null
+          nom_projet: string | null
           nom_proprietaire: string
           numero_chassis: string | null
+          photo_url: string | null
           poids_vide_kg: number | null
           ptac_kg: number | null
           telephone_proprietaire: string | null
@@ -476,8 +478,10 @@ export type Database = {
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
+          nom_projet?: string | null
           nom_proprietaire: string
           numero_chassis?: string | null
+          photo_url?: string | null
           poids_vide_kg?: number | null
           ptac_kg?: number | null
           telephone_proprietaire?: string | null
@@ -499,8 +503,10 @@ export type Database = {
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
+          nom_projet?: string | null
           nom_proprietaire?: string
           numero_chassis?: string | null
+          photo_url?: string | null
           poids_vide_kg?: number | null
           ptac_kg?: number | null
           telephone_proprietaire?: string | null

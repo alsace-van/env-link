@@ -10,7 +10,11 @@ import { fr } from "date-fns/locale";
 
 interface Project {
   id: string;
+  nom_projet: string | null;
   nom_proprietaire: string;
+  immatriculation: string | null;
+  numero_chassis: string | null;
+  photo_url: string | null;
   vehicle_catalog_id: string | null;
   created_at: string;
   vehicles_catalog?: {
@@ -45,7 +49,11 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
       .from("projects")
       .select(`
         id,
+        nom_projet,
         nom_proprietaire,
+        immatriculation,
+        numero_chassis,
+        photo_url,
         vehicle_catalog_id,
         created_at,
         vehicles_catalog (
@@ -125,19 +133,38 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
           onClick={() => onProjectSelect(project.id)}
         >
           <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
+            <div className="flex items-start gap-4">
+              {project.photo_url && (
+                <img
+                  src={project.photo_url}
+                  alt={project.nom_projet || "Photo du projet"}
+                  className="w-20 h-20 object-cover rounded-lg flex-shrink-0"
+                />
+              )}
+              <div className="flex-1 min-w-0">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Truck className="h-5 w-5 text-primary" />
-                  {project.nom_proprietaire}
+                  <Truck className="h-5 w-5 text-primary flex-shrink-0" />
+                  <span className="truncate">
+                    {project.nom_projet || project.nom_proprietaire}
+                  </span>
                 </CardTitle>
-                <CardDescription className="mt-2">
-                  {project.vehicles_catalog ? (
-                    <Badge variant="secondary">
-                      {project.vehicles_catalog.marque} {project.vehicles_catalog.modele}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline">Véhicule non spécifié</Badge>
+                <CardDescription className="mt-2 space-y-1">
+                  {project.vehicles_catalog && (
+                    <div>
+                      <Badge variant="secondary">
+                        {project.vehicles_catalog.marque} {project.vehicles_catalog.modele}
+                      </Badge>
+                    </div>
+                  )}
+                  {project.immatriculation && (
+                    <div className="text-xs">
+                      <span className="font-medium">Immat:</span> {project.immatriculation}
+                    </div>
+                  )}
+                  {project.numero_chassis && (
+                    <div className="text-xs">
+                      <span className="font-medium">Châssis:</span> {project.numero_chassis}
+                    </div>
                   )}
                 </CardDescription>
               </div>
@@ -145,7 +172,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                 variant="ghost"
                 size="icon"
                 onClick={(e) => handleDelete(project.id, e)}
-                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
