@@ -75,17 +75,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     let timeoutId: NodeJS.Timeout | null = null;
 
     const handleMouseDown = (event: any) => {
-      if (!event.pointer) return;
+      const canvas = fabricCanvasRef.current;
+      if (!canvas) return;
+
+      // Get pointer coordinates using Fabric.js v6 API
+      const pointer = canvas.getPointer(event.e);
+      if (!pointer) return;
 
       if (isDrawingLineRef.current || isDrawingArrowRef.current) {
-        const pointer = event.pointer;
-
         if (!startPointRef.current) {
+          // First click: set start point
           startPointRef.current = { x: pointer.x, y: pointer.y };
+          toast.info("Cliquez pour le point d'arrivée");
         } else {
-          const canvas = fabricCanvasRef.current;
-          if (!canvas) return;
-
+          // Second click: draw line or arrow
           if (isDrawingLineRef.current) {
             const line = new Line([startPointRef.current.x, startPointRef.current.y, pointer.x, pointer.y], {
               stroke: strokeColorRef.current,
@@ -132,6 +135,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           canvas.renderAll();
           saveToHistory();
 
+          // Reset state
           startPointRef.current = null;
           isDrawingLineRef.current = false;
           isDrawingArrowRef.current = false;
