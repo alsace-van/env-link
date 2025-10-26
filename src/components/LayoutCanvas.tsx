@@ -143,7 +143,7 @@ export const LayoutCanvas = ({
     let currentMeasureLine: paper.Path.Line | null = null;
     let currentMeasureText: paper.PointText | null = null;
     let lastClickTime = 0;
-    let lastClickItem: paper.Item | null = null;
+    let lastClickFurnitureId: string | null = null;
     const history: string[] = [];
     let historyIndex = -1;
 
@@ -229,50 +229,43 @@ export const LayoutCanvas = ({
       });
 
       if (activeToolRef.current === "select") {
-        // Détecter le double-clic
+        // Obtenir le furnitureId de l'item cliqué
+        let clickedFurnitureId: string | null = null;
+
+        if (hitResult?.item) {
+          if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
+            clickedFurnitureId = hitResult.item.data.furnitureId;
+          } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
+            clickedFurnitureId = hitResult.item.parent.data.furnitureId;
+          } else if (hitResult.item instanceof paper.Path.Rectangle && hitResult.item.data.furnitureId) {
+            clickedFurnitureId = hitResult.item.data.furnitureId;
+          } else if (hitResult.item.data.furnitureId) {
+            clickedFurnitureId = hitResult.item.data.furnitureId;
+          }
+        }
+
+        // Détecter le double-clic en comparant les furnitureId
         const currentTime = Date.now();
-        const isDoubleClick = hitResult && lastClickItem === hitResult.item && currentTime - lastClickTime < 300;
+        const isDoubleClick =
+          clickedFurnitureId && lastClickFurnitureId === clickedFurnitureId && currentTime - lastClickTime < 300;
 
         lastClickTime = currentTime;
-        lastClickItem = hitResult?.item || null;
+        lastClickFurnitureId = clickedFurnitureId;
 
         // Double-clic sur un meuble = ouvrir le dialog d'édition
-        if (isDoubleClick && hitResult?.item) {
-          let furnitureGroup: paper.Group | null = null;
-          let furnitureRect: paper.Path.Rectangle | null = null;
+        if (isDoubleClick && clickedFurnitureId) {
+          const furnitureData = furnitureItemsRef.current.get(clickedFurnitureId);
 
-          // Trouver le groupe de meuble ou le rectangle
-          if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
-            furnitureGroup = hitResult.item;
-          } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
-            furnitureGroup = hitResult.item.parent;
-          } else if (hitResult.item instanceof paper.Path.Rectangle && hitResult.item.data.isFurniture) {
-            furnitureRect = hitResult.item;
-          } else if (hitResult.item.data.isFurnitureLabel) {
-            // Si on clique sur le label, chercher le groupe parent
-            paper.project.activeLayer.children.forEach((child) => {
-              if (child instanceof paper.Group && child.data.furnitureId === hitResult.item.data.furnitureId) {
-                furnitureGroup = child;
-              }
+          if (furnitureData) {
+            setEditingFurnitureId(clickedFurnitureId);
+            setFurnitureForm({
+              longueur_mm: furnitureData.longueur_mm,
+              largeur_mm: furnitureData.largeur_mm,
+              hauteur_mm: furnitureData.hauteur_mm,
+              poids_kg: furnitureData.poids_kg,
             });
-          }
-
-          const furnitureId = furnitureGroup?.data.furnitureId || furnitureRect?.data.furnitureId;
-          
-          if (furnitureId) {
-            const furnitureData = furnitureItemsRef.current.get(furnitureId);
-
-            if (furnitureData) {
-              setEditingFurnitureId(furnitureId);
-              setFurnitureForm({
-                longueur_mm: furnitureData.longueur_mm,
-                largeur_mm: furnitureData.largeur_mm,
-                hauteur_mm: furnitureData.hauteur_mm,
-                poids_kg: furnitureData.poids_kg,
-              });
-              setShowFurnitureDialog(true);
-              console.log("Opening edit dialog for furniture:", furnitureId);
-            }
+            setShowFurnitureDialog(true);
+            console.log("Opening edit dialog for furniture:", clickedFurnitureId);
           }
           return;
         }
