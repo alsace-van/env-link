@@ -321,7 +321,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   // Gestionnaire pour lignes et flèches
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !isOpen) return;
 
     const handleMouseDown = (event: any) => {
       if (!event.pointer) return;
@@ -391,7 +391,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     return () => {
       canvas.off("mouse:down", handleMouseDown);
     };
-  }, [fabricCanvasRef]);
+  }, [isOpen]);
 
   // Gestionnaire clavier
   useEffect(() => {
