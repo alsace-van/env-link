@@ -717,8 +717,9 @@ export const LayoutCanvas = ({
     console.log("handleContextMenuEdit called", contextMenu);
     if (!contextMenu) return;
 
-    const furnitureData = furnitureItems.get(contextMenu.furnitureId);
+    const furnitureData = furnitureItemsRef.current.get(contextMenu.furnitureId);
     console.log("Furniture data:", furnitureData);
+    console.log("All furniture items:", Array.from(furnitureItemsRef.current.entries()));
 
     if (furnitureData) {
       setEditingFurnitureId(contextMenu.furnitureId);
@@ -731,6 +732,8 @@ export const LayoutCanvas = ({
       setShowFurnitureDialog(true);
       setContextMenu(null);
       console.log("Dialog should open now");
+    } else {
+      console.error("Furniture not found with ID:", contextMenu.furnitureId);
     }
   };
 
