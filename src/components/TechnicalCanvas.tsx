@@ -57,6 +57,19 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     strokeWidthRef.current = strokeWidth;
   }, [strokeWidth]);
 
+  // Gestion de la touche Suppr/Delete
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && !isEditingText) {
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isEditingText]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
 
@@ -482,8 +495,46 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   };
 
   const handleDelete = () => {
-    // Implémenter la suppression
-    console.log("Delete");
+    if (!paper.project) return;
+
+    // Trouver l'élément sélectionné
+    let itemToDelete: paper.Item | null = null;
+
+    paper.project.activeLayer.children.forEach((item) => {
+      if (item.selected && !item.data.isHandle) {
+        itemToDelete = item;
+      }
+    });
+
+    if (itemToDelete) {
+      // Si c'est une flèche, supprimer aussi sa tête
+      if (itemToDelete.data.type === "arrow") {
+        paper.project.activeLayer.children.forEach((item) => {
+          if (item.data.isArrowHead && item.data.parentId === itemToDelete.id) {
+            item.remove();
+          }
+        });
+      }
+
+      // Si c'est un groupe (comme un accessoire), supprimer tout le groupe
+      if (itemToDelete instanceof paper.Group) {
+        itemToDelete.removeChildren();
+      }
+
+      // Supprimer l'élément
+      itemToDelete.remove();
+
+      // Supprimer les poignées
+      paper.project.activeLayer.children.forEach((item) => {
+        if (item.data.isHandle) {
+          item.remove();
+        }
+      });
+
+      toast.success("Élément supprimé");
+    } else {
+      toast.info("Aucun élément sélectionné");
+    }
   };
 
   const handleUndo = () => {
@@ -655,7 +706,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         <Button variant="outline" size="sm" onClick={handleRedo} disabled={true}>
           <Redo className="h-4 w-4" />
         </Button>
-        <Button variant="outline" size="sm" onClick={handleDelete}>
+        <Button variant="outline" size="sm" onClick={handleDelete} title="Supprimer l'élément sélectionné (Suppr)">
           <Trash2 className="h-4 w-4" />
         </Button>
         <Button variant="outline" size="sm" onClick={handleClear}>
