@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Trash2, Edit, Plus, Settings } from "lucide-react";
+import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -59,11 +59,19 @@ const AccessoriesCatalogView = () => {
   const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null);
   const [isCategoryManagementOpen, setIsCategoryManagementOpen] = useState(false);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
+    const saved = localStorage.getItem('accessories-view-mode');
+    return (saved as 'list' | 'grid') || 'list';
+  });
 
   useEffect(() => {
     loadAccessories();
     loadCategories();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('accessories-view-mode', viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     if (searchTerm) {
@@ -157,6 +165,22 @@ const AccessoriesCatalogView = () => {
             className="pl-10"
           />
         </div>
+        <div className="flex gap-1 border rounded-md p-1">
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+          >
+            <LayoutList className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </div>
         <Button onClick={() => setIsCategoryManagementOpen(true)} variant="outline">
           <Settings className="h-4 w-4 mr-2" />
           Catégories
@@ -189,6 +213,80 @@ const AccessoriesCatalogView = () => {
             </Button>
           </CardContent>
         </Card>
+      ) : viewMode === 'list' ? (
+        <div className="space-y-2">
+          {filteredAccessories.map((accessory) => (
+            <Card key={accessory.id} className="hover:bg-muted/50 transition-colors">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
+                    <div className="md:col-span-2">
+                      <div className="font-semibold">{accessory.nom}</div>
+                      {accessory.marque && (
+                        <div className="text-sm text-muted-foreground">{accessory.marque}</div>
+                      )}
+                    </div>
+                    <div className="md:col-span-1">
+                      {accessory.categories ? (
+                        <Badge variant="secondary">{accessory.categories.nom}</Badge>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Sans catégorie</span>
+                      )}
+                    </div>
+                    <div className="md:col-span-1 text-sm">
+                      {accessory.prix_reference && (
+                        <div>
+                          <span className="text-muted-foreground">Réf: </span>
+                          {accessory.prix_reference.toFixed(2)} €
+                        </div>
+                      )}
+                      {accessory.prix_vente_ttc && (
+                        <div>
+                          <span className="text-muted-foreground">TTC: </span>
+                          {accessory.prix_vente_ttc.toFixed(2)} €
+                        </div>
+                      )}
+                    </div>
+                    <div className="md:col-span-1 text-sm">
+                      {accessory.puissance_watts && (
+                        <div>
+                          <span className="text-muted-foreground">P: </span>
+                          {accessory.puissance_watts} W
+                        </div>
+                      )}
+                      {accessory.intensite_amperes && (
+                        <div>
+                          <span className="text-muted-foreground">I: </span>
+                          {accessory.intensite_amperes} A
+                        </div>
+                      )}
+                    </div>
+                    <div className="md:col-span-1 text-sm text-muted-foreground">
+                      {accessory.fournisseur && <div>{accessory.fournisseur}</div>}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEdit(accessory)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteId(accessory.id)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredAccessories.map((accessory) => (
