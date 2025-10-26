@@ -19,6 +19,7 @@ import { NoticesList } from "@/components/NoticesList";
 import { TechnicalCanvas } from "@/components/TechnicalCanvas";
 import { CableSectionCalculator } from "@/components/CableSectionCalculator";
 import { EnergyBalance } from "@/components/EnergyBalance";
+import { LayoutCanvas } from "@/components/LayoutCanvas";
 import { User } from "@supabase/supabase-js";
 
 interface Project {
@@ -370,6 +371,21 @@ const ProjectDetail = () => {
 
           <TabsContent value="technical">
             <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Aménagement et Poids</CardTitle>
+                  <CardDescription>Planifiez votre aménagement et suivez la charge du véhicule</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LayoutCanvas
+                    projectId={project.id}
+                    vehicleLength={project.longueur_mm}
+                    vehicleWidth={project.largeur_mm}
+                    maxLoad={project.charge_utile_kg}
+                  />
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle>Canevas de Schémas Techniques</CardTitle>

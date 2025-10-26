@@ -452,10 +452,12 @@ export type Database = {
           created_at: string
           date_mise_circulation: string | null
           email_proprietaire: string | null
+          furniture_data: Json | null
           hauteur_mm: number | null
           id: string
           immatriculation: string | null
           largeur_mm: number | null
+          layout_canvas_data: Json | null
           longueur_mm: number | null
           marque_custom: string | null
           modele_custom: string | null
@@ -477,10 +479,12 @@ export type Database = {
           created_at?: string
           date_mise_circulation?: string | null
           email_proprietaire?: string | null
+          furniture_data?: Json | null
           hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
           largeur_mm?: number | null
+          layout_canvas_data?: Json | null
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
@@ -502,10 +506,12 @@ export type Database = {
           created_at?: string
           date_mise_circulation?: string | null
           email_proprietaire?: string | null
+          furniture_data?: Json | null
           hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
           largeur_mm?: number | null
+          layout_canvas_data?: Json | null
           longueur_mm?: number | null
           marque_custom?: string | null
           modele_custom?: string | null
