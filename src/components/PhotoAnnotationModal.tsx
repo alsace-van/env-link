@@ -67,7 +67,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   // Initialisation du canvas
   useEffect(() => {
-    if (!canvasRef.current || !isOpen || !photo) return;
+    if (!canvasRef.current || !isOpen || !photo) {
+      console.log("Canvas init skipped:", { canvasRef: !!canvasRef.current, isOpen, photo: !!photo });
+      return;
+    }
 
     let mounted = true;
     setIsLoadingImage(true);
@@ -82,19 +85,29 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           return;
         }
 
+        console.log("Container dimensions:", {
+          width: container.clientWidth,
+          height: container.clientHeight,
+        });
+
         // Nettoyer le canvas existant s'il y en a un
         if (fabricCanvasRef.current) {
           fabricCanvasRef.current.dispose();
           fabricCanvasRef.current = null;
         }
 
-        const containerWidth = container.clientWidth - 32;
-        const containerHeight = container.clientHeight - 32;
+        const containerWidth = container.clientWidth || 800;
+        const containerHeight = container.clientHeight || 600;
+
+        console.log("Creating canvas with dimensions:", {
+          width: containerWidth,
+          height: containerHeight,
+        });
 
         // Créer le nouveau canvas
         const newCanvas = new FabricCanvas(canvasElement, {
-          width: Math.max(containerWidth, 800),
-          height: Math.max(containerHeight, 500),
+          width: containerWidth,
+          height: containerHeight,
           backgroundColor: "#f5f5f5",
         });
 
@@ -123,14 +136,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           }
         }
 
+        console.log("Loading image from URL:", imageUrl);
+
         // Charger l'image
         const fabricImg = await FabricImage.fromURL(imageUrl, {
           crossOrigin: "anonymous",
         });
 
-        if (!mounted || !fabricCanvasRef.current) return;
+        if (!mounted || !fabricCanvasRef.current) {
+          console.log("Canvas unmounted during image load");
+          return;
+        }
 
         if (!fabricImg || !fabricImg.width || !fabricImg.height) {
+          console.error("Invalid image loaded:", fabricImg);
           toast.error("Erreur lors du chargement de l'image");
           setIsLoadingImage(false);
           return;
@@ -148,6 +167,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           1,
         );
 
+        console.log("Image scale:", scale);
+
         fabricImg.scale(scale);
         fabricImg.set({
           left: (newCanvas.width! - fabricImg.width * scale) / 2,
@@ -164,6 +185,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         newCanvas.sendObjectToBack(fabricImg);
         newCanvas.renderAll();
 
+        console.log("Canvas rendered with image");
+
         if (mounted) {
           setIsLoadingImage(false);
         }
@@ -174,6 +197,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             const annotationObjects = photo.annotations.objects.filter((obj: any) => obj.type !== "image");
 
             if (annotationObjects.length > 0) {
+              console.log("Loading annotations:", annotationObjects.length);
               for (const objData of annotationObjects) {
                 if (!mounted || !fabricCanvasRef.current) break;
 
