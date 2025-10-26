@@ -51,9 +51,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [history, setHistory] = useState<any[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
-  const [isDrawingLine, setIsDrawingLine] = useState(false);
-  const [isDrawingArrow, setIsDrawingArrow] = useState(false);
-  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
+  
+  // Using refs to avoid re-renders that break canvas display
+  const isDrawingLineRef = useRef(false);
+  const isDrawingArrowRef = useRef(false);
+  const startPointRef = useRef<{ x: number; y: number } | null>(null);
+  const strokeColorRef = useRef(strokeColor);
+  const strokeWidthRef = useRef(strokeWidth);
 
   useEffect(() => {
     if (photo) {
@@ -244,6 +248,12 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     };
   }, [isOpen, photo]);
 
+  // Update refs when state changes
+  useEffect(() => {
+    strokeColorRef.current = strokeColor;
+    strokeWidthRef.current = strokeWidth;
+  }, [strokeColor, strokeWidth]);
+
   // Gestion des outils
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
@@ -277,28 +287,28 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     const handleMouseDown = (event: any) => {
       if (!event.pointer) return;
 
-      if (isDrawingLine || isDrawingArrow) {
+      if (isDrawingLineRef.current || isDrawingArrowRef.current) {
         const pointer = event.pointer;
 
-        if (!startPoint) {
-          setStartPoint({ x: pointer.x, y: pointer.y });
+        if (!startPointRef.current) {
+          startPointRef.current = { x: pointer.x, y: pointer.y };
         } else {
-          if (isDrawingLine) {
-            const line = new Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
+          if (isDrawingLineRef.current) {
+            const line = new Line([startPointRef.current.x, startPointRef.current.y, pointer.x, pointer.y], {
+              stroke: strokeColorRef.current,
+              strokeWidth: strokeWidthRef.current,
             });
             canvas.add(line);
             canvas.setActiveObject(line);
-          } else if (isDrawingArrow) {
-            const dx = pointer.x - startPoint.x;
-            const dy = pointer.y - startPoint.y;
+          } else if (isDrawingArrowRef.current) {
+            const dx = pointer.x - startPointRef.current.x;
+            const dy = pointer.y - startPointRef.current.y;
             const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             const line = new Line([0, 0, distance, 0], {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
+              stroke: strokeColorRef.current,
+              strokeWidth: strokeWidthRef.current,
               originX: "left",
               originY: "center",
             });
@@ -308,15 +318,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               top: 0,
               width: 15,
               height: 15,
-              fill: strokeColor,
+              fill: strokeColorRef.current,
               angle: 90,
               originX: "center",
               originY: "center",
             });
 
             const arrowGroup = new Group([line, arrowHead], {
-              left: startPoint.x,
-              top: startPoint.y,
+              left: startPointRef.current.x,
+              top: startPointRef.current.y,
               angle: angle,
               originX: "left",
               originY: "center",
@@ -329,9 +339,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           canvas.renderAll();
           saveToHistory();
 
-          setStartPoint(null);
-          setIsDrawingLine(false);
-          setIsDrawingArrow(false);
+          startPointRef.current = null;
+          isDrawingLineRef.current = false;
+          isDrawingArrowRef.current = false;
           setActiveTool("select");
         }
       }
@@ -342,7 +352,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     return () => {
       canvas.off("mouse:down", handleMouseDown);
     };
-  }, [isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth]);
+  }, [fabricCanvasRef]);
 
   // Gestionnaire clavier
   useEffect(() => {
@@ -423,9 +433,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     if (!fabricCanvasRef.current) return;
 
     setActiveTool("arrow");
-    setIsDrawingArrow(true);
-    setIsDrawingLine(false);
-    setStartPoint(null);
+    isDrawingArrowRef.current = true;
+    isDrawingLineRef.current = false;
+    startPointRef.current = null;
     toast.info("Cliquez pour le point de départ, puis pour le point d'arrivée");
   };
 
@@ -456,9 +466,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     if (!fabricCanvasRef.current) return;
 
     setActiveTool("line");
-    setIsDrawingLine(true);
-    setIsDrawingArrow(false);
-    setStartPoint(null);
+    isDrawingLineRef.current = true;
+    isDrawingArrowRef.current = false;
+    startPointRef.current = null;
     toast.info("Cliquez pour le point de départ, puis pour le point d'arrivée");
   };
 
