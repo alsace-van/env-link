@@ -113,7 +113,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             stroke: color,
             strokeWidth: strokeWidth,
             selectable: true,
-            hasControls: false,
+            hasControls: true,
             hasBorders: false,
             lockMovementX: false,
             lockMovementY: false,
@@ -134,7 +134,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
           const arrow = new Group([arrowLine, arrowHead], {
             selectable: true,
-            hasControls: false,
+            hasControls: true,
             hasBorders: false,
             lockScalingX: true,
             lockScalingY: true,
@@ -142,151 +142,143 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             objectCaching: false,
           });
 
-          // Ajouter les contrôles personnalisés aux extrémités
-          const controls: any = {};
-          
-          // Point de début (gauche)
-          controls.p1 = new fabric.Control({
-            positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-              const line = (fabricObject as Group).getObjects()[0] as Line;
-              return new fabric.Point(line.x1 || 0, line.y1 || 0);
-            },
-            actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-              const group = transform.target as Group;
-              const line = group.getObjects()[0] as Line;
-              const head = group.getObjects()[1] as Triangle;
-              
-              line.set({ x1: x, y1: y });
-              
-              // Mettre à jour la flèche
-              const angle = Math.atan2((line.y2 || 0) - y, (line.x2 || 0) - x);
-              const headLength = 15;
-              head.set({
-                left: (line.x2 || 0) - Math.cos(angle) * (headLength / 2),
-                top: (line.y2 || 0) - Math.sin(angle) * (headLength / 2),
-                angle: (angle * 180) / Math.PI + 90,
-              });
-              
-              return true;
-            },
-            cursorStyle: 'pointer',
-            render: (ctx: CanvasRenderingContext2D, left: number, top: number, styleOverride: any, fabricObject: any) => {
-              ctx.save();
-              ctx.fillStyle = '#2196F3';
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(left, top, 6, 0, 2 * Math.PI);
-              ctx.fill();
-              ctx.stroke();
-              ctx.restore();
-            },
-          });
+          // Contrôles personnalisés pour redimensionner la flèche
+          arrow.controls = {
+            tl: new Control({
+              x: -0.5,
+              y: -0.5,
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
+                const group = transform.target as Group;
+                const line = group.getObjects()[0] as Line;
+                const head = group.getObjects()[1] as Triangle;
+                
+                const pointer = canvas.getPointer(eventData.e);
+                line.set({ x1: pointer.x, y1: pointer.y });
+                
+                const angle = Math.atan2((line.y2 || 0) - pointer.y, (line.x2 || 0) - pointer.x);
+                const headLength = 15;
+                head.set({
+                  left: (line.x2 || 0) - Math.cos(angle) * (headLength / 2),
+                  top: (line.y2 || 0) - Math.sin(angle) * (headLength / 2),
+                  angle: (angle * 180) / Math.PI + 90,
+                });
+                
+                return true;
+              },
+              cursorStyle: 'pointer',
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+                const size = 8;
+                ctx.save();
+                ctx.fillStyle = '#2196F3';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+              },
+            }),
+            br: new Control({
+              x: 0.5,
+              y: 0.5,
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
+                const group = transform.target as Group;
+                const line = group.getObjects()[0] as Line;
+                const head = group.getObjects()[1] as Triangle;
+                
+                const pointer = canvas.getPointer(eventData.e);
+                line.set({ x2: pointer.x, y2: pointer.y });
+                
+                const angle = Math.atan2(pointer.y - (line.y1 || 0), pointer.x - (line.x1 || 0));
+                const headLength = 15;
+                head.set({
+                  left: pointer.x - Math.cos(angle) * (headLength / 2),
+                  top: pointer.y - Math.sin(angle) * (headLength / 2),
+                  angle: (angle * 180) / Math.PI + 90,
+                });
+                
+                return true;
+              },
+              cursorStyle: 'pointer',
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+                const size = 8;
+                ctx.save();
+                ctx.fillStyle = '#2196F3';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+              },
+            }),
+          };
 
-          // Point de fin (droite)
-          controls.p2 = new fabric.Control({
-            positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-              const line = (fabricObject as Group).getObjects()[0] as Line;
-              return new fabric.Point(line.x2 || 0, line.y2 || 0);
-            },
-            actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-              const group = transform.target as Group;
-              const line = group.getObjects()[0] as Line;
-              const head = group.getObjects()[1] as Triangle;
-              
-              line.set({ x2: x, y2: y });
-              
-              // Mettre à jour la flèche
-              const angle = Math.atan2(y - (line.y1 || 0), x - (line.x1 || 0));
-              const headLength = 15;
-              head.set({
-                left: x - Math.cos(angle) * (headLength / 2),
-                top: y - Math.sin(angle) * (headLength / 2),
-                angle: (angle * 180) / Math.PI + 90,
-              });
-              
-              return true;
-            },
-            cursorStyle: 'pointer',
-            render: (ctx: CanvasRenderingContext2D, left: number, top: number, styleOverride: any, fabricObject: any) => {
-              ctx.save();
-              ctx.fillStyle = '#2196F3';
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(left, top, 6, 0, 2 * Math.PI);
-              ctx.fill();
-              ctx.stroke();
-              ctx.restore();
-            },
-          });
-
-          arrow.controls = controls;
           canvas.add(arrow);
         } else {
           const finalLine = new Line([x1, y1, x2, y2], {
             stroke: color,
             strokeWidth: strokeWidth,
             selectable: true,
-            hasControls: false,
+            hasControls: true,
             hasBorders: false,
             lockMovementX: false,
             lockMovementY: false,
             objectCaching: false,
           });
 
-          // Ajouter les contrôles personnalisés aux extrémités
-          const controls: any = {};
-          
-          controls.p1 = new fabric.Control({
-            positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-              const line = fabricObject as Line;
-              return new fabric.Point(line.x1 || 0, line.y1 || 0);
-            },
-            actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-              const line = transform.target as Line;
-              line.set({ x1: x, y1: y });
-              return true;
-            },
-            cursorStyle: 'pointer',
-            render: (ctx: CanvasRenderingContext2D, left: number, top: number, styleOverride: any, fabricObject: any) => {
-              ctx.save();
-              ctx.fillStyle = '#2196F3';
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(left, top, 6, 0, 2 * Math.PI);
-              ctx.fill();
-              ctx.stroke();
-              ctx.restore();
-            },
-          });
+          // Contrôles personnalisés pour redimensionner la ligne
+          finalLine.controls = {
+            tl: new Control({
+              x: -0.5,
+              y: -0.5,
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
+                const line = transform.target as Line;
+                const pointer = canvas.getPointer(eventData.e);
+                line.set({ x1: pointer.x, y1: pointer.y });
+                return true;
+              },
+              cursorStyle: 'pointer',
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+                const size = 8;
+                ctx.save();
+                ctx.fillStyle = '#2196F3';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+              },
+            }),
+            br: new Control({
+              x: 0.5,
+              y: 0.5,
+              actionHandler: (eventData: any, transform: any, x: number, y: number) => {
+                const line = transform.target as Line;
+                const pointer = canvas.getPointer(eventData.e);
+                line.set({ x2: pointer.x, y2: pointer.y });
+                return true;
+              },
+              cursorStyle: 'pointer',
+              render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
+                const size = 8;
+                ctx.save();
+                ctx.fillStyle = '#2196F3';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(left, top, size, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+              },
+            }),
+          };
 
-          controls.p2 = new fabric.Control({
-            positionHandler: (dim: any, finalMatrix: any, fabricObject: any) => {
-              const line = fabricObject as Line;
-              return new fabric.Point(line.x2 || 0, line.y2 || 0);
-            },
-            actionHandler: (eventData: any, transform: any, x: number, y: number) => {
-              const line = transform.target as Line;
-              line.set({ x2: x, y2: y });
-              return true;
-            },
-            cursorStyle: 'pointer',
-            render: (ctx: CanvasRenderingContext2D, left: number, top: number, styleOverride: any, fabricObject: any) => {
-              ctx.save();
-              ctx.fillStyle = '#2196F3';
-              ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              ctx.arc(left, top, 6, 0, 2 * Math.PI);
-              ctx.fill();
-              ctx.stroke();
-              ctx.restore();
-            },
-          });
-
-          finalLine.controls = controls;
           canvas.add(finalLine);
         }
 
