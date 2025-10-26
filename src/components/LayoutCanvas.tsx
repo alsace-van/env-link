@@ -488,6 +488,9 @@ export const LayoutCanvas = ({
     (window as any).layoutCanvasLoad = handleLoad;
 
     saveState();
+    
+    // Charger automatiquement les données sauvegardées au montage
+    handleLoad();
 
     return () => {
       paper.project.clear();
