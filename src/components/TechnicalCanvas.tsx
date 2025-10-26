@@ -1,9 +1,31 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Canvas as FabricCanvas, FabricImage, Rect, Line, Triangle, Circle, Textbox, PencilBrush, Group, Control } from "fabric";
+import {
+  Canvas as FabricCanvas,
+  FabricImage,
+  Rect,
+  Line,
+  Triangle,
+  Circle,
+  Textbox,
+  PencilBrush,
+  Group,
+  Control,
+} from "fabric";
 import * as fabric from "fabric";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Pencil, Square, Circle as CircleIcon, Type, Minus, ArrowRight, Trash2, Undo, Redo, Download } from "lucide-react";
+import {
+  Pencil,
+  Square,
+  Circle as CircleIcon,
+  Type,
+  Minus,
+  ArrowRight,
+  Trash2,
+  Undo,
+  Redo,
+  Download,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
 
@@ -15,7 +37,9 @@ interface TechnicalCanvasProps {
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
-  const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "circle" | "text" | "line" | "arrow">("select");
+  const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "circle" | "text" | "line" | "arrow">(
+    "select",
+  );
   const [color, setColor] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [history, setHistory] = useState<any[]>([]);
@@ -72,7 +96,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         if (activeTool === "line" || activeTool === "arrow") {
           // Ne pas dessiner si on clique sur un objet existant
           if (event.target) return;
-          
+
           const pointer = canvas.getPointer(event.e);
           isDrawingLineRef.current = true;
           startPointRef.current = { x: pointer.x, y: pointer.y };
@@ -81,9 +105,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             stroke: color,
             strokeWidth: strokeWidth,
             selectable: false,
-            strokeLineCap: 'round',
-            strokeLineJoin: 'round',
-            fill: '',
+            strokeLineCap: "round",
+            strokeLineJoin: "round",
+            fill: "",
           });
           lineRef.current = line;
           canvas.add(line);
@@ -121,10 +145,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             hasBorders: true,
             lockMovementX: false,
             lockMovementY: false,
-            strokeLineCap: 'round',
-            strokeLineJoin: 'round',
+            strokeLineCap: "round",
+            strokeLineJoin: "round",
             strokeUniform: true,
-            fill: '',
+            fill: "",
           });
 
           const arrowHead = new Triangle({
@@ -158,10 +182,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
-                
+
                 const pointer = canvas.getPointer(eventData.e);
                 line.set({ x1: pointer.x, y1: pointer.y });
-                
+
                 const angle = Math.atan2((line.y2 || 0) - pointer.y, (line.x2 || 0) - pointer.x);
                 const headLength = 15;
                 head.set({
@@ -169,16 +193,16 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   top: (line.y2 || 0) - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
-                
+
                 canvas.renderAll();
                 return true;
               },
-              cursorStyle: 'pointer',
+              cursorStyle: "pointer",
               render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
-                ctx.fillStyle = '#2196F3';
-                ctx.strokeStyle = '#ffffff';
+                ctx.fillStyle = "#2196F3";
+                ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.arc(left, top, size, 0, 2 * Math.PI);
@@ -194,10 +218,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const group = transform.target as Group;
                 const line = group.getObjects()[0] as Line;
                 const head = group.getObjects()[1] as Triangle;
-                
+
                 const pointer = canvas.getPointer(eventData.e);
                 line.set({ x2: pointer.x, y2: pointer.y });
-                
+
                 const angle = Math.atan2(pointer.y - (line.y1 || 0), pointer.x - (line.x1 || 0));
                 const headLength = 15;
                 head.set({
@@ -205,16 +229,16 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   top: pointer.y - Math.sin(angle) * (headLength / 2),
                   angle: (angle * 180) / Math.PI + 90,
                 });
-                
+
                 canvas.renderAll();
                 return true;
               },
-              cursorStyle: 'pointer',
+              cursorStyle: "pointer",
               render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
-                ctx.fillStyle = '#2196F3';
-                ctx.strokeStyle = '#ffffff';
+                ctx.fillStyle = "#2196F3";
+                ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.arc(left, top, size, 0, 2 * Math.PI);
@@ -235,10 +259,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             hasBorders: true,
             lockMovementX: false,
             lockMovementY: false,
-            strokeLineCap: 'round',
-            strokeLineJoin: 'round',
+            strokeLineCap: "round",
+            strokeLineJoin: "round",
             strokeUniform: true,
-            fill: '',
+            fill: "",
           });
 
           // Contrôles personnalisés pour redimensionner la ligne
@@ -253,12 +277,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 canvas.renderAll();
                 return true;
               },
-              cursorStyle: 'pointer',
+              cursorStyle: "pointer",
               render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
-                ctx.fillStyle = '#2196F3';
-                ctx.strokeStyle = '#ffffff';
+                ctx.fillStyle = "#2196F3";
+                ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.arc(left, top, size, 0, 2 * Math.PI);
@@ -277,12 +301,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 canvas.renderAll();
                 return true;
               },
-              cursorStyle: 'pointer',
+              cursorStyle: "pointer",
               render: (ctx: CanvasRenderingContext2D, left: number, top: number) => {
                 const size = 8;
                 ctx.save();
-                ctx.fillStyle = '#2196F3';
-                ctx.strokeStyle = '#ffffff';
+                ctx.fillStyle = "#2196F3";
+                ctx.strokeStyle = "#ffffff";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.arc(left, top, size, 0, 2 * Math.PI);
@@ -357,7 +381,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         fabricCanvasRef.current?.renderAll();
       });
     }
-  };
+  }, [activeTool, color, strokeWidth]);
 
   const handleDelete = () => {
     if (!fabricCanvasRef.current) return;
@@ -435,11 +459,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     if (!fabricCanvasRef.current) return;
 
     const name = accessory.nom_accessoire || accessory.nom || "Accessoire";
-    const details = [
-      accessory.marque,
-      accessory.categorie || accessory.categories?.nom,
-      accessory.type_electrique,
-    ]
+    const details = [accessory.marque, accessory.categorie || accessory.categories?.nom, accessory.type_electrique]
       .filter(Boolean)
       .join(" | ");
 
@@ -458,7 +478,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     fabricCanvasRef.current.add(text);
     fabricCanvasRef.current.setActiveObject(text);
     fabricCanvasRef.current.renderAll();
-    
+
     toast.success(`${name} ajouté au schéma`);
   };
 
@@ -472,11 +492,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         >
           Sélectionner
         </Button>
-        <Button
-          variant={activeTool === "draw" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setActiveTool("draw")}
-        >
+        <Button variant={activeTool === "draw" ? "default" : "outline"} size="sm" onClick={() => setActiveTool("draw")}>
           <Pencil className="h-4 w-4 mr-2" />
           Dessiner
         </Button>
@@ -548,34 +564,16 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
         <Separator orientation="vertical" className="h-8" />
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleUndo}
-          disabled={historyStep <= 0}
-        >
+        <Button variant="outline" size="sm" onClick={handleUndo} disabled={historyStep <= 0}>
           <Undo className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRedo}
-          disabled={historyStep >= history.length - 1}
-        >
+        <Button variant="outline" size="sm" onClick={handleRedo} disabled={historyStep >= history.length - 1}>
           <Redo className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleDelete}
-        >
+        <Button variant="outline" size="sm" onClick={handleDelete}>
           <Trash2 className="h-4 w-4" />
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleClear}
-        >
+        <Button variant="outline" size="sm" onClick={handleClear}>
           Effacer tout
         </Button>
 
@@ -587,11 +585,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           onAddToCatalog={onExpenseAdded}
         />
 
-        <Button
-          variant="default"
-          size="sm"
-          onClick={handleDownload}
-        >
+        <Button variant="default" size="sm" onClick={handleDownload}>
           <Download className="h-4 w-4 mr-2" />
           Télécharger
         </Button>
