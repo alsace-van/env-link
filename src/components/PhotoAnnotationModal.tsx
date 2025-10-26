@@ -39,7 +39,8 @@ interface PhotoAnnotationModalProps {
 const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotationModalProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
+  const fabricCanvasRef = useRef<FabricCanvas | null>(null);
+
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
     "select",
   );
@@ -60,48 +61,60 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     }
   }, [photo]);
 
+  // Initialisation du canvas
   useEffect(() => {
     if (!canvasRef.current || !isOpen || !photo) return;
 
+    let mounted = true;
     setIsLoadingImage(true);
 
-    // Attendre que le DOM soit complètement rendu
     const initCanvas = async () => {
       try {
-        // Obtenir les dimensions du conteneur
         const container = containerRef.current;
-        if (!container) {
-          console.error("Container not found");
+        const canvasElement = canvasRef.current;
+
+        if (!container || !canvasElement) {
+          console.error("Container or canvas ref not found");
           return;
         }
 
-        const containerWidth = container.clientWidth - 32; // Padding
+        // Nettoyer le canvas existant s'il y en a un
+        if (fabricCanvasRef.current) {
+          fabricCanvasRef.current.dispose();
+          fabricCanvasRef.current = null;
+        }
+
+        const containerWidth = container.clientWidth - 32;
         const containerHeight = container.clientHeight - 32;
 
-        // Initialiser le canvas avec les bonnes dimensions
-        const canvas = new FabricCanvas(canvasRef.current, {
+        // Créer le nouveau canvas
+        const newCanvas = new FabricCanvas(canvasElement, {
           width: Math.max(containerWidth, 800),
           height: Math.max(containerHeight, 500),
           backgroundColor: "#f5f5f5",
         });
 
-        setFabricCanvas(canvas);
+        if (!mounted) {
+          newCanvas.dispose();
+          return;
+        }
 
-        console.log("Loading image from:", photo.url);
+        fabricCanvasRef.current = newCanvas;
 
-        // Créer une URL publique signée pour éviter les problèmes CORS
+        console.log("Canvas initialized, loading image from:", photo.url);
+
+        // Obtenir l'URL de l'image (avec signature si nécessaire)
         let imageUrl = photo.url;
 
-        // Si l'URL contient "project-photos", obtenir une URL signée
         if (photo.url.includes("/storage/v1/object/public/project-photos/")) {
           const urlParts = photo.url.split("/project-photos/");
           if (urlParts.length >= 2) {
             const filePath = urlParts[1];
-            const { data } = await supabase.storage.from("project-photos").createSignedUrl(filePath, 3600); // URL valide pour 1 heure
+            const { data } = await supabase.storage.from("project-photos").createSignedUrl(filePath, 3600);
 
             if (data?.signedUrl) {
               imageUrl = data.signedUrl;
-              console.log("Using signed URL:", imageUrl);
+              console.log("Using signed URL");
             }
           }
         }
@@ -110,6 +123,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const fabricImg = await FabricImage.fromURL(imageUrl, {
           crossOrigin: "anonymous",
         });
+
+        if (!mounted || !fabricCanvasRef.current) return;
 
         if (!fabricImg || !fabricImg.width || !fabricImg.height) {
           toast.error("Erreur lors du chargement de l'image");
@@ -122,13 +137,17 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           height: fabricImg.height,
         });
 
-        // Calculer l'échelle pour adapter l'image au canvas
-        const scale = Math.min((canvas.width! - 40) / fabricImg.width, (canvas.height! - 40) / fabricImg.height, 1);
+        // Adapter l'image au canvas
+        const scale = Math.min(
+          (newCanvas.width! - 40) / fabricImg.width,
+          (newCanvas.height! - 40) / fabricImg.height,
+          1,
+        );
 
         fabricImg.scale(scale);
         fabricImg.set({
-          left: (canvas.width! - fabricImg.width * scale) / 2,
-          top: (canvas.height! - fabricImg.height * scale) / 2,
+          left: (newCanvas.width! - fabricImg.width * scale) / 2,
+          top: (newCanvas.height! - fabricImg.height * scale) / 2,
           selectable: false,
           evented: false,
           hasControls: false,
@@ -137,103 +156,123 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           lockMovementY: true,
         });
 
-        canvas.add(fabricImg);
-        canvas.sendObjectToBack(fabricImg);
-        canvas.renderAll();
+        newCanvas.add(fabricImg);
+        newCanvas.sendObjectToBack(fabricImg);
+        newCanvas.renderAll();
 
-        setIsLoadingImage(false);
+        if (mounted) {
+          setIsLoadingImage(false);
+        }
 
         // Charger les annotations sauvegardées
-        if (photo.annotations && photo.annotations.objects) {
+        if (photo.annotations && photo.annotations.objects && mounted) {
           try {
             const annotationObjects = photo.annotations.objects.filter((obj: any) => obj.type !== "image");
 
             if (annotationObjects.length > 0) {
               for (const objData of annotationObjects) {
+                if (!mounted || !fabricCanvasRef.current) break;
+
                 try {
                   if (objData.type === "rect") {
                     const rect = new Rect(objData);
-                    canvas.add(rect);
+                    newCanvas.add(rect);
                   } else if (objData.type === "circle") {
                     const circle = new Circle(objData);
-                    canvas.add(circle);
+                    newCanvas.add(circle);
                   } else if (objData.type === "line") {
                     const line = new Line(objData.points, objData);
-                    canvas.add(line);
+                    newCanvas.add(line);
                   } else if (objData.type === "triangle") {
                     const triangle = new Triangle(objData);
-                    canvas.add(triangle);
+                    newCanvas.add(triangle);
                   } else if (objData.type === "textbox" || objData.type === "text") {
                     const text = new Textbox(objData.text || "", objData);
-                    canvas.add(text);
+                    newCanvas.add(text);
                   } else if (objData.type === "group") {
                     const group = await Group.fromObject(objData);
-                    canvas.add(group);
+                    if (mounted && fabricCanvasRef.current) {
+                      newCanvas.add(group);
+                    }
                   } else if (objData.type === "path") {
-                    // Pour les chemins de dessin libre (crayon)
                     const { Path } = await import("fabric");
                     const path = await Path.fromObject(objData);
-                    canvas.add(path);
+                    if (mounted && fabricCanvasRef.current) {
+                      newCanvas.add(path);
+                    }
                   }
                 } catch (err) {
                   console.error("Error loading individual annotation:", err);
                 }
               }
-              canvas.renderAll();
-              console.log("Annotations loaded successfully");
+
+              if (mounted && fabricCanvasRef.current) {
+                newCanvas.renderAll();
+                console.log("Annotations loaded successfully");
+              }
             }
           } catch (error) {
             console.error("Error loading annotations:", error);
-            toast.error("Erreur lors du chargement des annotations");
           }
         }
       } catch (error) {
-        console.error("Failed to load image:", error);
-        toast.error("Impossible de charger l'image. Vérifiez votre connexion.");
-        setIsLoadingImage(false);
+        console.error("Failed to initialize canvas:", error);
+        toast.error("Impossible de charger l'image");
+        if (mounted) {
+          setIsLoadingImage(false);
+        }
       }
     };
 
-    // Attendre un peu pour que le modal soit complètement rendu
-    const timeoutId = setTimeout(initCanvas, 100);
+    const timeoutId = setTimeout(initCanvas, 150);
 
     setHistory([]);
     setHistoryStep(-1);
 
     return () => {
+      mounted = false;
       clearTimeout(timeoutId);
-      if (fabricCanvas) {
-        fabricCanvas.dispose();
+
+      if (fabricCanvasRef.current) {
+        try {
+          fabricCanvasRef.current.dispose();
+        } catch (e) {
+          console.error("Error disposing canvas:", e);
+        }
+        fabricCanvasRef.current = null;
       }
     };
   }, [isOpen, photo]);
 
+  // Gestion des outils
   useEffect(() => {
-    if (!fabricCanvas) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
-    fabricCanvas.isDrawingMode = activeTool === "draw";
-    fabricCanvas.selection = activeTool === "select";
+    canvas.isDrawingMode = activeTool === "draw";
+    canvas.selection = activeTool === "select";
 
     if (activeTool === "draw") {
-      const brush = new PencilBrush(fabricCanvas);
+      const brush = new PencilBrush(canvas);
       brush.color = strokeColor;
       brush.width = strokeWidth;
-      fabricCanvas.freeDrawingBrush = brush;
+      canvas.freeDrawingBrush = brush;
     }
 
-    fabricCanvas.forEachObject((obj) => {
+    canvas.forEachObject((obj) => {
       if (obj.type !== "image") {
         obj.selectable = activeTool === "select";
         obj.evented = activeTool === "select";
       }
     });
 
-    fabricCanvas.renderAll();
-  }, [activeTool, strokeColor, strokeWidth, fabricCanvas]);
+    canvas.renderAll();
+  }, [activeTool, strokeColor, strokeWidth]);
 
-  // Gestionnaire séparé pour le dessin de lignes et flèches
+  // Gestionnaire pour lignes et flèches
   useEffect(() => {
-    if (!fabricCanvas) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
     const handleMouseDown = (event: any) => {
       if (!event.pointer) return;
@@ -249,8 +288,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               stroke: strokeColor,
               strokeWidth: strokeWidth,
             });
-            fabricCanvas.add(line);
-            fabricCanvas.setActiveObject(line);
+            canvas.add(line);
+            canvas.setActiveObject(line);
           } else if (isDrawingArrow) {
             const dx = pointer.x - startPoint.x;
             const dy = pointer.y - startPoint.y;
@@ -283,11 +322,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               originY: "center",
             });
 
-            fabricCanvas.add(arrowGroup);
-            fabricCanvas.setActiveObject(arrowGroup);
+            canvas.add(arrowGroup);
+            canvas.setActiveObject(arrowGroup);
           }
 
-          fabricCanvas.renderAll();
+          canvas.renderAll();
           saveToHistory();
 
           setStartPoint(null);
@@ -298,28 +337,34 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
     };
 
-    fabricCanvas.on("mouse:down", handleMouseDown);
+    canvas.on("mouse:down", handleMouseDown);
 
     return () => {
-      fabricCanvas.off("mouse:down", handleMouseDown);
+      canvas.off("mouse:down", handleMouseDown);
     };
-  }, [fabricCanvas, isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth]);
+  }, [isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth]);
 
+  // Gestionnaire clavier
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Delete" || event.key === "Backspace") {
-        deleteSelected();
+        const target = event.target as HTMLElement;
+        if (target.tagName !== "INPUT" && target.tagName !== "TEXTAREA") {
+          event.preventDefault();
+          deleteSelected();
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [fabricCanvas]);
+  }, []);
 
   const saveToHistory = () => {
-    if (!fabricCanvas) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
-    const json = fabricCanvas.toJSON();
+    const json = canvas.toJSON();
     const newHistory = history.slice(0, historyStep + 1);
     newHistory.push(json);
     setHistory(newHistory);
@@ -327,29 +372,32 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   };
 
   const handleUndo = () => {
-    if (!fabricCanvas || historyStep <= 0) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || historyStep <= 0) return;
 
     const previousState = history[historyStep - 1];
     setHistoryStep(historyStep - 1);
 
-    fabricCanvas.loadFromJSON(previousState).then(() => {
-      fabricCanvas.renderAll();
+    canvas.loadFromJSON(previousState).then(() => {
+      canvas.renderAll();
     });
   };
 
   const handleRedo = () => {
-    if (!fabricCanvas || historyStep >= history.length - 1) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || historyStep >= history.length - 1) return;
 
     const nextState = history[historyStep + 1];
     setHistoryStep(historyStep + 1);
 
-    fabricCanvas.loadFromJSON(nextState).then(() => {
-      fabricCanvas.renderAll();
+    canvas.loadFromJSON(nextState).then(() => {
+      canvas.renderAll();
     });
   };
 
   const addRectangle = () => {
-    if (!fabricCanvas) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
     setActiveTool("rectangle");
 
@@ -363,26 +411,27 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       strokeWidth: strokeWidth,
     });
 
-    fabricCanvas.add(rect);
-    fabricCanvas.setActiveObject(rect);
-    fabricCanvas.renderAll();
+    canvas.add(rect);
+    canvas.setActiveObject(rect);
+    canvas.renderAll();
     saveToHistory();
 
     setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addArrow = () => {
-    if (!fabricCanvas) return;
+    if (!fabricCanvasRef.current) return;
 
     setActiveTool("arrow");
     setIsDrawingArrow(true);
     setIsDrawingLine(false);
     setStartPoint(null);
-    toast.info("Cliquez pour définir le point de départ, puis cliquez à nouveau pour définir le point d'arrivée");
+    toast.info("Cliquez pour le point de départ, puis pour le point d'arrivée");
   };
 
   const addCircle = () => {
-    if (!fabricCanvas) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
     setActiveTool("circle");
 
@@ -395,26 +444,27 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       strokeWidth: strokeWidth,
     });
 
-    fabricCanvas.add(circle);
-    fabricCanvas.setActiveObject(circle);
-    fabricCanvas.renderAll();
+    canvas.add(circle);
+    canvas.setActiveObject(circle);
+    canvas.renderAll();
     saveToHistory();
 
     setTimeout(() => setActiveTool("select"), 100);
   };
 
   const addLine = () => {
-    if (!fabricCanvas) return;
+    if (!fabricCanvasRef.current) return;
 
     setActiveTool("line");
     setIsDrawingLine(true);
     setIsDrawingArrow(false);
     setStartPoint(null);
-    toast.info("Cliquez pour définir le point de départ, puis cliquez à nouveau pour définir le point d'arrivée");
+    toast.info("Cliquez pour le point de départ, puis pour le point d'arrivée");
   };
 
   const addText = () => {
-    if (!fabricCanvas) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
     setActiveTool("text");
 
@@ -426,37 +476,39 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       width: 200,
     });
 
-    fabricCanvas.add(text);
-    fabricCanvas.setActiveObject(text);
-    fabricCanvas.renderAll();
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    canvas.renderAll();
     saveToHistory();
 
     setTimeout(() => setActiveTool("select"), 100);
   };
 
   const deleteSelected = () => {
-    if (!fabricCanvas) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
-    const activeObjects = fabricCanvas.getActiveObjects();
+    const activeObjects = canvas.getActiveObjects();
     if (activeObjects.length > 0) {
       activeObjects.forEach((obj) => {
         if (obj.type !== "image") {
-          fabricCanvas.remove(obj);
+          canvas.remove(obj);
         }
       });
-      fabricCanvas.discardActiveObject();
+      canvas.discardActiveObject();
       saveToHistory();
-      fabricCanvas.renderAll();
+      canvas.renderAll();
     }
   };
 
   const handleSave = async () => {
-    if (!fabricCanvas || !photo) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || !photo) return;
 
     setIsSaving(true);
 
     try {
-      const annotations = fabricCanvas.toJSON();
+      const annotations = canvas.toJSON();
 
       const { error } = await supabase
         .from("project_photos")
@@ -583,7 +635,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                   </div>
                 </div>
               )}
-              <canvas ref={canvasRef} style={{ display: "block" }} />
+              <canvas ref={canvasRef} />
             </div>
           </div>
 
