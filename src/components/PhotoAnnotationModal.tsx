@@ -74,6 +74,72 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     let mounted = true;
     let timeoutId: NodeJS.Timeout | null = null;
 
+    const handleMouseDown = (event: any) => {
+      if (!event.pointer) return;
+
+      if (isDrawingLineRef.current || isDrawingArrowRef.current) {
+        const pointer = event.pointer;
+
+        if (!startPointRef.current) {
+          startPointRef.current = { x: pointer.x, y: pointer.y };
+        } else {
+          const canvas = fabricCanvasRef.current;
+          if (!canvas) return;
+
+          if (isDrawingLineRef.current) {
+            const line = new Line([startPointRef.current.x, startPointRef.current.y, pointer.x, pointer.y], {
+              stroke: strokeColorRef.current,
+              strokeWidth: strokeWidthRef.current,
+            });
+            canvas.add(line);
+            canvas.setActiveObject(line);
+          } else if (isDrawingArrowRef.current) {
+            const dx = pointer.x - startPointRef.current.x;
+            const dy = pointer.y - startPointRef.current.y;
+            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            const line = new Line([0, 0, distance, 0], {
+              stroke: strokeColorRef.current,
+              strokeWidth: strokeWidthRef.current,
+              originX: "left",
+              originY: "center",
+            });
+
+            const arrowHead = new Triangle({
+              left: distance,
+              top: 0,
+              width: 15,
+              height: 15,
+              fill: strokeColorRef.current,
+              angle: 90,
+              originX: "center",
+              originY: "center",
+            });
+
+            const arrowGroup = new Group([line, arrowHead], {
+              left: startPointRef.current.x,
+              top: startPointRef.current.y,
+              angle: angle,
+              originX: "left",
+              originY: "center",
+            });
+
+            canvas.add(arrowGroup);
+            canvas.setActiveObject(arrowGroup);
+          }
+
+          canvas.renderAll();
+          saveToHistory();
+
+          startPointRef.current = null;
+          isDrawingLineRef.current = false;
+          isDrawingArrowRef.current = false;
+          setActiveTool("select");
+        }
+      }
+    };
+
     const initCanvas = async () => {
       // Check if refs are available
       if (!canvasRef.current || !containerRef.current) {
@@ -125,6 +191,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         }
 
         fabricCanvasRef.current = newCanvas;
+
+        // Attacher le gestionnaire d'événements pour les lignes et flèches
+        newCanvas.on("mouse:down", handleMouseDown);
 
         console.log("Canvas initialized, loading image from:", photo.url);
 
@@ -278,6 +347,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
       if (fabricCanvasRef.current) {
         try {
+          fabricCanvasRef.current.off("mouse:down", handleMouseDown);
           fabricCanvasRef.current.dispose();
         } catch (e) {
           console.error("Error disposing canvas:", e);
@@ -318,80 +388,6 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     canvas.renderAll();
   }, [activeTool, strokeColor, strokeWidth]);
 
-  // Gestionnaire pour lignes et flèches
-  useEffect(() => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas || !isOpen) return;
-
-    const handleMouseDown = (event: any) => {
-      if (!event.pointer) return;
-
-      if (isDrawingLineRef.current || isDrawingArrowRef.current) {
-        const pointer = event.pointer;
-
-        if (!startPointRef.current) {
-          startPointRef.current = { x: pointer.x, y: pointer.y };
-        } else {
-          if (isDrawingLineRef.current) {
-            const line = new Line([startPointRef.current.x, startPointRef.current.y, pointer.x, pointer.y], {
-              stroke: strokeColorRef.current,
-              strokeWidth: strokeWidthRef.current,
-            });
-            canvas.add(line);
-            canvas.setActiveObject(line);
-          } else if (isDrawingArrowRef.current) {
-            const dx = pointer.x - startPointRef.current.x;
-            const dy = pointer.y - startPointRef.current.y;
-            const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            const line = new Line([0, 0, distance, 0], {
-              stroke: strokeColorRef.current,
-              strokeWidth: strokeWidthRef.current,
-              originX: "left",
-              originY: "center",
-            });
-
-            const arrowHead = new Triangle({
-              left: distance,
-              top: 0,
-              width: 15,
-              height: 15,
-              fill: strokeColorRef.current,
-              angle: 90,
-              originX: "center",
-              originY: "center",
-            });
-
-            const arrowGroup = new Group([line, arrowHead], {
-              left: startPointRef.current.x,
-              top: startPointRef.current.y,
-              angle: angle,
-              originX: "left",
-              originY: "center",
-            });
-
-            canvas.add(arrowGroup);
-            canvas.setActiveObject(arrowGroup);
-          }
-
-          canvas.renderAll();
-          saveToHistory();
-
-          startPointRef.current = null;
-          isDrawingLineRef.current = false;
-          isDrawingArrowRef.current = false;
-          setActiveTool("select");
-        }
-      }
-    };
-
-    canvas.on("mouse:down", handleMouseDown);
-
-    return () => {
-      canvas.off("mouse:down", handleMouseDown);
-    };
-  }, [isOpen]);
 
   // Gestionnaire clavier
   useEffect(() => {
