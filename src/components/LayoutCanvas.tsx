@@ -650,6 +650,11 @@ export const LayoutCanvas = ({
         poids_kg: 0,
       });
       toast.success("Meuble modifié");
+
+      // Sauvegarder automatiquement après la modification
+      setTimeout(() => {
+        (window as any).layoutCanvasSave?.();
+      }, 100);
     } else if (pendingRectangle) {
       // Mode création
       const furnitureId = `furniture-${Date.now()}`;
@@ -684,6 +689,11 @@ export const LayoutCanvas = ({
 
         // Transférer les données du rectangle au groupe
         pendingRectangle!.data = {};
+
+        // Sauvegarder automatiquement après la création
+        setTimeout(() => {
+          (window as any).layoutCanvasSave?.();
+        }, 100);
       }, 0);
 
       setPendingRectangle(null);
@@ -714,12 +724,9 @@ export const LayoutCanvas = ({
   };
 
   const handleContextMenuEdit = () => {
-    console.log("handleContextMenuEdit called", contextMenu);
     if (!contextMenu) return;
 
     const furnitureData = furnitureItemsRef.current.get(contextMenu.furnitureId);
-    console.log("Furniture data:", furnitureData);
-    console.log("All furniture items:", Array.from(furnitureItemsRef.current.entries()));
 
     if (furnitureData) {
       setEditingFurnitureId(contextMenu.furnitureId);
@@ -731,9 +738,6 @@ export const LayoutCanvas = ({
       });
       setShowFurnitureDialog(true);
       setContextMenu(null);
-      console.log("Dialog should open now");
-    } else {
-      console.error("Furniture not found with ID:", contextMenu.furnitureId);
     }
   };
 
