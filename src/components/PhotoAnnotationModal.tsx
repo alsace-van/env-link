@@ -37,8 +37,6 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [isDrawingLine, setIsDrawingLine] = useState(false);
   const [isDrawingArrow, setIsDrawingArrow] = useState(false);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [currentLine, setCurrentLine] = useState<Line | Group | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     if (photo) {
@@ -206,7 +204,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     fabricCanvas.renderAll();
   }, [activeTool, strokeColor, strokeWidth, fabricCanvas]);
 
-  // Gestionnaire séparé pour le dessin de lignes et flèches avec drag
+  // Gestionnaire séparé pour le dessin de lignes et flèches
   useEffect(() => {
     if (!fabricCanvas) return;
 
@@ -215,134 +213,77 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
       if (isDrawingLine || isDrawingArrow) {
         const pointer = event.pointer;
-        setStartPoint({ x: pointer.x, y: pointer.y });
-        setIsDragging(true);
 
-        if (isDrawingLine) {
-          // Créer une ligne temporaire
-          const line = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            selectable: false,
-          });
-          fabricCanvas.add(line);
-          setCurrentLine(line);
-        } else if (isDrawingArrow) {
-          // Créer une flèche temporaire
-          const line = new Line([0, 0, 0, 0], {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            originX: "left",
-            originY: "center",
-          });
+        if (!startPoint) {
+          // Premier clic : enregistrer le point de départ
+          setStartPoint({ x: pointer.x, y: pointer.y });
+        } else {
+          // Deuxième clic : créer la ligne ou flèche
+          if (isDrawingLine) {
+            const line = new Line([startPoint.x, startPoint.y, pointer.x, pointer.y], {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+            });
+            fabricCanvas.add(line);
+            fabricCanvas.setActiveObject(line);
+          } else if (isDrawingArrow) {
+            // Calculer l'angle et la distance
+            const dx = pointer.x - startPoint.x;
+            const dy = pointer.y - startPoint.y;
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-          const arrowHead = new Triangle({
-            left: 0,
-            top: 0,
-            width: 15,
-            height: 15,
-            fill: strokeColor,
-            angle: 90,
-            originX: "center",
-            originY: "center",
-          });
+            // Créer la ligne de la flèche
+            const line = new Line([0, 0, distance, 0], {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              originX: "left",
+              originY: "center",
+            });
 
-          const arrowGroup = new Group([line, arrowHead], {
-            left: pointer.x,
-            top: pointer.y,
-            angle: 0,
-            originX: "left",
-            originY: "center",
-            selectable: false,
-          });
+            // Créer la pointe de la flèche
+            const arrowHead = new Triangle({
+              left: distance,
+              top: 0,
+              width: 15,
+              height: 15,
+              fill: strokeColor,
+              angle: 90,
+              originX: "center",
+              originY: "center",
+            });
 
-          fabricCanvas.add(arrowGroup);
-          setCurrentLine(arrowGroup);
+            // Grouper la ligne et la pointe ensemble
+            const arrowGroup = new Group([line, arrowHead], {
+              left: startPoint.x,
+              top: startPoint.y,
+              angle: angle,
+              originX: "left",
+              originY: "center",
+            });
+
+            fabricCanvas.add(arrowGroup);
+            fabricCanvas.setActiveObject(arrowGroup);
+          }
+
+          fabricCanvas.renderAll();
+          saveToHistory();
+
+          // Réinitialiser
+          setStartPoint(null);
+          setIsDrawingLine(false);
+          setIsDrawingArrow(false);
+          setActiveTool("select");
         }
-        fabricCanvas.renderAll();
-      }
-    };
-
-    const handleMouseMove = (event: any) => {
-      if (!isDragging || !startPoint || !currentLine || !event.pointer) return;
-
-      const pointer = event.pointer;
-
-      if (isDrawingLine && currentLine instanceof Line) {
-        // Mettre à jour la ligne pendant le drag
-        currentLine.set({
-          x2: pointer.x,
-          y2: pointer.y,
-        });
-      } else if (isDrawingArrow && currentLine instanceof Group) {
-        // Calculer l'angle et la distance pour la flèche
-        const dx = pointer.x - startPoint.x;
-        const dy = pointer.y - startPoint.y;
-        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        const objects = currentLine.getObjects();
-        const line = objects[0] as Line;
-        const arrowHead = objects[1] as Triangle;
-
-        line.set({ x2: distance, y2: 0 });
-        arrowHead.set({ left: distance, top: 0 });
-
-        currentLine.set({
-          angle: angle,
-          dirty: true,
-        });
-        currentLine.setCoords();
-      }
-
-      fabricCanvas.renderAll();
-    };
-
-    const handleMouseUp = () => {
-      if (isDragging && currentLine) {
-        // Rendre la ligne/flèche sélectionnable et ajouter les contrôles
-        currentLine.set({
-          selectable: true,
-          hasControls: true,
-          hasBorders: true,
-          lockRotation: false,
-        });
-
-        // Pour les lignes, activer les contrôles aux extrémités
-        if (currentLine instanceof Line) {
-          currentLine.setControlsVisibility({
-            mt: false,
-            mb: false,
-            ml: true,
-            mr: true,
-            mtr: false,
-          });
-        }
-
-        fabricCanvas.setActiveObject(currentLine);
-        fabricCanvas.renderAll();
-        saveToHistory();
-
-        // Réinitialiser
-        setIsDragging(false);
-        setStartPoint(null);
-        setCurrentLine(null);
-        setIsDrawingLine(false);
-        setIsDrawingArrow(false);
-        setActiveTool("select");
       }
     };
 
     fabricCanvas.on("mouse:down", handleMouseDown);
-    fabricCanvas.on("mouse:move", handleMouseMove);
-    fabricCanvas.on("mouse:up", handleMouseUp);
 
     return () => {
       fabricCanvas.off("mouse:down", handleMouseDown);
-      fabricCanvas.off("mouse:move", handleMouseMove);
-      fabricCanvas.off("mouse:up", handleMouseUp);
     };
-  }, [fabricCanvas, isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth, isDragging, currentLine]);
+  }, [fabricCanvas, isDrawingLine, isDrawingArrow, startPoint, strokeColor, strokeWidth]);
 
   // Gestionnaire pour la touche Suppr
   useEffect(() => {
@@ -420,9 +361,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     setIsDrawingArrow(true);
     setIsDrawingLine(false);
     setStartPoint(null);
-    setIsDragging(false);
-    setCurrentLine(null);
-    toast.info("Cliquez et faites glisser pour dessiner la flèche");
+    toast.info("Cliquez pour définir le point de départ, puis cliquez à nouveau pour définir le point d'arrivée");
   };
 
   const addCircle = () => {
@@ -454,9 +393,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     setIsDrawingLine(true);
     setIsDrawingArrow(false);
     setStartPoint(null);
-    setIsDragging(false);
-    setCurrentLine(null);
-    toast.info("Cliquez et faites glisser pour dessiner la ligne");
+    toast.info("Cliquez pour définir le point de départ, puis cliquez à nouveau pour définir le point d'arrivée");
   };
 
   const addText = () => {
