@@ -81,9 +81,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             stroke: color,
             strokeWidth: strokeWidth,
             selectable: false,
+            strokeLineCap: 'round',
+            strokeLineJoin: 'round',
+            fill: '',
           });
           lineRef.current = line;
           canvas.add(line);
+          canvas.renderAll();
         }
       });
 
@@ -114,10 +118,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             strokeWidth: strokeWidth,
             selectable: true,
             hasControls: true,
-            hasBorders: false,
+            hasBorders: true,
             lockMovementX: false,
             lockMovementY: false,
-            objectCaching: false,
+            strokeLineCap: 'round',
+            strokeLineJoin: 'round',
+            strokeUniform: true,
+            fill: '',
           });
 
           const arrowHead = new Triangle({
@@ -127,6 +134,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             width: headLength,
             height: headLength,
             fill: color,
+            stroke: color,
             originX: "center",
             originY: "center",
             selectable: false,
@@ -135,11 +143,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           const arrow = new Group([arrowLine, arrowHead], {
             selectable: true,
             hasControls: true,
-            hasBorders: false,
+            hasBorders: true,
             lockScalingX: true,
             lockScalingY: true,
             lockRotation: true,
-            objectCaching: false,
           });
 
           // Contrôles personnalisés pour redimensionner la flèche
@@ -163,6 +170,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   angle: (angle * 180) / Math.PI + 90,
                 });
                 
+                canvas.renderAll();
                 return true;
               },
               cursorStyle: 'pointer',
@@ -198,6 +206,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                   angle: (angle * 180) / Math.PI + 90,
                 });
                 
+                canvas.renderAll();
                 return true;
               },
               cursorStyle: 'pointer',
@@ -223,10 +232,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
             strokeWidth: strokeWidth,
             selectable: true,
             hasControls: true,
-            hasBorders: false,
+            hasBorders: true,
             lockMovementX: false,
             lockMovementY: false,
-            objectCaching: false,
+            strokeLineCap: 'round',
+            strokeLineJoin: 'round',
+            strokeUniform: true,
+            fill: '',
           });
 
           // Contrôles personnalisés pour redimensionner la ligne
@@ -238,6 +250,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
                 line.set({ x1: pointer.x, y1: pointer.y });
+                canvas.renderAll();
                 return true;
               },
               cursorStyle: 'pointer',
@@ -261,6 +274,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
                 const line = transform.target as Line;
                 const pointer = canvas.getPointer(eventData.e);
                 line.set({ x2: pointer.x, y2: pointer.y });
+                canvas.renderAll();
                 return true;
               },
               cursorStyle: 'pointer',
@@ -289,29 +303,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       });
     };
 
-    const timeoutId = setTimeout(initCanvas, 50);
+    initCanvas();
 
     return () => {
       mounted = false;
-      clearTimeout(timeoutId);
-      if (fabricCanvasRef.current) {
-        fabricCanvasRef.current.dispose();
-        fabricCanvasRef.current = null;
-      }
+      fabricCanvasRef.current?.dispose();
+      fabricCanvasRef.current = null;
     };
-  }, [isCanvasReady]);
-
-  useEffect(() => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
-
-    canvas.isDrawingMode = activeTool === "draw";
-
-    if (activeTool === "draw" && canvas.freeDrawingBrush) {
-      canvas.freeDrawingBrush.color = color;
-      canvas.freeDrawingBrush.width = strokeWidth;
-    }
-  }, [activeTool, color, strokeWidth]);
+  }, [isCanvasReady, activeTool, color, strokeWidth]);
 
   const saveToHistory = () => {
     if (!fabricCanvasRef.current) return;
@@ -323,20 +322,38 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   };
 
   const handleUndo = () => {
-    if (historyStep > 0 && fabricCanvasRef.current) {
-      const newStep = historyStep - 1;
-      setHistoryStep(newStep);
-      fabricCanvasRef.current.loadFromJSON(history[newStep], () => {
-        fabricCanvasRef.current?.renderAll();
-      });
-    }
+    if (historyStep <= 0 || !fabricCanvasRef.current) return;
+    const step = historyStep - 1;
+    setHistoryStep(step);
+    fabricCanvasRef.current.loadFromJSON(history[step], () => {
+      fabricCanvasRef.current?.renderAll();
+    });
   };
 
   const handleRedo = () => {
-    if (historyStep < history.length - 1 && fabricCanvasRef.current) {
-      const newStep = historyStep + 1;
-      setHistoryStep(newStep);
-      fabricCanvasRef.current.loadFromJSON(history[newStep], () => {
+    if (historyStep >= history.length - 1 || !fabricCanvasRef.current) return;
+    const step = historyStep + 1;
+    setHistoryStep(step);
+    fabricCanvasRef.current.loadFromJSON(history[step], () => {
+      fabricCanvasRef.current?.renderAll();
+    });
+  };
+
+  useEffect(() => {
+    if (!fabricCanvasRef.current) return;
+
+    if (activeTool === "draw") {
+      fabricCanvasRef.current.isDrawingMode = true;
+      fabricCanvasRef.current.freeDrawingBrush.color = color;
+      fabricCanvasRef.current.freeDrawingBrush.width = strokeWidth;
+    } else {
+      fabricCanvasRef.current.isDrawingMode = false;
+    }
+
+    if (activeTool === "select") {
+      fabricCanvasRef.current.selection = true;
+      fabricCanvasRef.current.forEachObject((obj) => {
+        obj.selectable = true;
         fabricCanvasRef.current?.renderAll();
       });
     }
