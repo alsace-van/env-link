@@ -222,6 +222,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     fabricCanvas.add(rect);
     fabricCanvas.setActiveObject(rect);
+    fabricCanvas.renderAll();
     saveToHistory();
     setActiveTool("select");
   };
@@ -247,6 +248,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     fabricCanvas.add(line);
     fabricCanvas.add(triangle);
+    fabricCanvas.renderAll();
     saveToHistory();
     setActiveTool("select");
   };
@@ -265,6 +267,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     fabricCanvas.add(circle);
     fabricCanvas.setActiveObject(circle);
+    fabricCanvas.renderAll();
     saveToHistory();
     setActiveTool("select");
   };
@@ -279,6 +282,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     fabricCanvas.add(line);
     fabricCanvas.setActiveObject(line);
+    fabricCanvas.renderAll();
     saveToHistory();
     setActiveTool("select");
   };
@@ -296,6 +300,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     fabricCanvas.add(text);
     fabricCanvas.setActiveObject(text);
+    fabricCanvas.renderAll();
     saveToHistory();
     setActiveTool("select");
   };
