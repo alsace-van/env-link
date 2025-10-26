@@ -28,11 +28,16 @@ const SNAP_DISTANCE = 10;
 
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "circle" | "text" | "line" | "arrow">(
     "select",
   );
   const [color, setColor] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(2);
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
+  const [editingTextItem, setEditingTextItem] = useState<paper.PointText | null>(null);
 
   // Refs pour éviter la réinitialisation du canvas
   const activeToolRef = useRef(activeTool);
@@ -237,6 +242,19 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         } else {
           selectedItem = null;
         }
+      } else if (activeToolRef.current === "text") {
+        // Mode texte : créer un input temporaire
+        const canvasRect = canvasRef.current?.getBoundingClientRect();
+        if (canvasRect) {
+          setTextInputPosition({ x: event.point.x, y: event.point.y });
+          setEditingTextItem(null);
+          setIsEditingText(true);
+
+          // Focus sur l'input au prochain render
+          setTimeout(() => {
+            textInputRef.current?.focus();
+          }, 0);
+        }
       } else if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
         currentPath = new paper.Path({
           segments: [event.point, event.point],
@@ -267,9 +285,20 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
       if (hitResult && hitResult.item instanceof paper.PointText) {
         const textItem = hitResult.item;
-        const newText = prompt("Modifier le texte :", textItem.content);
-        if (newText !== null) {
-          textItem.content = newText;
+        const canvasRect = canvasRef.current?.getBoundingClientRect();
+        if (canvasRect) {
+          setTextInputPosition({ x: textItem.point.x, y: textItem.point.y });
+          setEditingTextItem(textItem);
+          setIsEditingText(true);
+
+          // Focus sur l'input au prochain render
+          setTimeout(() => {
+            if (textInputRef.current) {
+              textInputRef.current.value = textItem.content;
+              textInputRef.current.focus();
+              textInputRef.current.select();
+            }
+          }, 0);
         }
       }
     };
@@ -414,6 +443,42 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     };
   }, []); // ✅ Tableau vide = ne s'exécute qu'une seule fois au montage
 
+  const handleTextSubmit = () => {
+    if (!textInputRef.current || !paper.project) return;
+
+    const text = textInputRef.current.value.trim();
+
+    if (text) {
+      if (editingTextItem) {
+        // Modifier le texte existant
+        editingTextItem.content = text;
+      } else {
+        // Créer un nouveau texte
+        new paper.PointText({
+          point: [textInputPosition.x, textInputPosition.y],
+          content: text,
+          fillColor: colorRef.current,
+          fontSize: 20,
+        });
+      }
+    } else if (editingTextItem && !text) {
+      // Si le texte est vide lors de l'édition, supprimer l'élément
+      editingTextItem.remove();
+    }
+
+    setIsEditingText(false);
+    setEditingTextItem(null);
+  };
+
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleTextSubmit();
+    } else if (e.key === "Escape") {
+      setIsEditingText(false);
+      setEditingTextItem(null);
+    }
+  };
+
   const handleDelete = () => {
     // Implémenter la suppression
     console.log("Delete");
@@ -460,14 +525,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         strokeColor: colorRef.current,
         strokeWidth: strokeWidthRef.current,
       });
-    } else if (tool === "text" && paper.project) {
-      new paper.PointText({
-        point: [100, 100],
-        content: "Texte",
-        fillColor: colorRef.current,
-        fontSize: 20,
-      });
     }
+    // Note: le texte est maintenant créé via un clic sur le canvas
   };
 
   const handleSelectAccessory = (accessory: any, source: "expense" | "catalog") => {
@@ -622,7 +681,30 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         </div>
       )}
 
-      <div className="border border-border rounded-lg overflow-hidden shadow-lg bg-white">
+      {activeTool === "text" && (
+        <div className="px-4 py-2 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-800">
+          <strong>💡 Aide :</strong> Cliquez sur le canvas pour ajouter du texte. Double-cliquez sur un texte existant
+          pour le modifier.
+        </div>
+      )}
+
+      <div ref={containerRef} className="border border-border rounded-lg overflow-hidden shadow-lg bg-white relative">
+        {isEditingText && (
+          <input
+            ref={textInputRef}
+            type="text"
+            className="absolute z-10 px-2 py-1 border-2 border-blue-500 rounded bg-white text-black"
+            style={{
+              left: `${textInputPosition.x}px`,
+              top: `${textInputPosition.y}px`,
+              fontSize: "20px",
+              minWidth: "200px",
+            }}
+            onKeyDown={handleTextKeyDown}
+            onBlur={handleTextSubmit}
+            autoFocus
+          />
+        )}
         <canvas ref={canvasRef} width={1200} height={800} style={{ display: "block" }} />
       </div>
     </div>
