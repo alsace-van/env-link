@@ -259,6 +259,8 @@ export type Database = {
           quantite: number
           statut_livraison: string | null
           statut_paiement: string | null
+          temps_production_heures: number | null
+          temps_utilisation_heures: number | null
           type_electrique: string | null
         }
         Insert: {
@@ -282,6 +284,8 @@ export type Database = {
           quantite?: number
           statut_livraison?: string | null
           statut_paiement?: string | null
+          temps_production_heures?: number | null
+          temps_utilisation_heures?: number | null
           type_electrique?: string | null
         }
         Update: {
@@ -305,6 +309,8 @@ export type Database = {
           quantite?: number
           statut_livraison?: string | null
           statut_paiement?: string | null
+          temps_production_heures?: number | null
+          temps_utilisation_heures?: number | null
           type_electrique?: string | null
         }
         Relationships: [

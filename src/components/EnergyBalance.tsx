@@ -5,13 +5,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Battery, Zap, TrendingUp, AlertCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 interface ElectricalItem {
   id: string;
   nom_accessoire: string;
   type_electrique: string;
   quantite: number;
-  // Ajouter d'autres propriétés si nécessaire (puissance, tension, etc.)
+  temps_utilisation_heures?: number | null;
+  temps_production_heures?: number | null;
 }
 
 interface EnergyBalanceProps {
@@ -87,7 +90,29 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     );
   }
 
-  const renderItemsTable = (itemsList: ElectricalItem[], title: string, icon: React.ReactNode) => {
+  const handleTimeUpdate = async (itemId: string, field: 'temps_utilisation_heures' | 'temps_production_heures', value: string) => {
+    const numValue = value === '' ? null : parseFloat(value);
+    
+    if (numValue !== null && (numValue < 0 || numValue > 24)) {
+      toast.error("Le temps doit être entre 0 et 24 heures");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("project_expenses")
+      .update({ [field]: numValue })
+      .eq("id", itemId);
+
+    if (error) {
+      console.error("Erreur lors de la mise à jour:", error);
+      toast.error("Erreur lors de la mise à jour");
+    } else {
+      toast.success("Temps mis à jour");
+      loadElectricalItems();
+    }
+  };
+
+  const renderItemsTable = (itemsList: ElectricalItem[], title: string, icon: React.ReactNode, showTimeField: 'production' | 'utilisation' | null) => {
     if (itemsList.length === 0) return null;
 
     return (
@@ -103,6 +128,11 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
               <TableRow>
                 <TableHead>Nom</TableHead>
                 <TableHead className="text-right">Quantité</TableHead>
+                {showTimeField && (
+                  <TableHead className="text-right">
+                    Temps {showTimeField === 'production' ? 'de production' : "d'utilisation"} (h/24h)
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -110,6 +140,26 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.nom_accessoire}</TableCell>
                   <TableCell className="text-right">{item.quantite}</TableCell>
+                  {showTimeField && (
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="24"
+                        step="0.5"
+                        placeholder="0-24h"
+                        value={showTimeField === 'production' 
+                          ? (item.temps_production_heures ?? '') 
+                          : (item.temps_utilisation_heures ?? '')}
+                        onChange={(e) => handleTimeUpdate(
+                          item.id,
+                          showTimeField === 'production' ? 'temps_production_heures' : 'temps_utilisation_heures',
+                          e.target.value
+                        )}
+                        className="w-24 ml-auto"
+                      />
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
@@ -200,22 +250,26 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
           {renderItemsTable(
             producers,
             "Producteurs d'énergie",
-            <TrendingUp className="h-5 w-5 text-green-600" />
+            <TrendingUp className="h-5 w-5 text-green-600" />,
+            'production'
           )}
           {renderItemsTable(
             consumers,
             "Consommateurs d'énergie",
-            <Zap className="h-5 w-5 text-red-600" />
+            <Zap className="h-5 w-5 text-red-600" />,
+            'utilisation'
           )}
           {renderItemsTable(
             storage,
             "Systèmes de stockage",
-            <Battery className="h-5 w-5 text-blue-600" />
+            <Battery className="h-5 w-5 text-blue-600" />,
+            null
           )}
           {renderItemsTable(
             converters,
             "Convertisseurs",
-            <Zap className="h-5 w-5 text-purple-600" />
+            <Zap className="h-5 w-5 text-purple-600" />,
+            null
           )}
         </div>
 
