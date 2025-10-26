@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen } from "lucide-react";
+import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import PhotoUpload from "@/components/PhotoUpload";
 import PhotoGallery from "@/components/PhotoGallery";
@@ -16,6 +16,9 @@ import ExpensesSummary from "@/components/ExpensesSummary";
 import AccessoriesCatalogView from "@/components/AccessoriesCatalogView";
 import { NoticeUploadDialog } from "@/components/NoticeUploadDialog";
 import { NoticesList } from "@/components/NoticesList";
+import { TechnicalCanvas } from "@/components/TechnicalCanvas";
+import { CableSectionCalculator } from "@/components/CableSectionCalculator";
+import { EnergyBalance } from "@/components/EnergyBalance";
 import { User } from "@supabase/supabase-js";
 
 interface Project {
@@ -217,7 +220,7 @@ const ProjectDetail = () => {
         </div>
 
         <Tabs defaultValue="photos" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
             <TabsTrigger value="photos" className="gap-2">
               <Image className="h-4 w-4" />
               <span className="hidden sm:inline">Photos</span>
@@ -241,6 +244,10 @@ const ProjectDetail = () => {
             <TabsTrigger value="notices" className="gap-2">
               <BookOpen className="h-4 w-4" />
               <span className="hidden sm:inline">Notices</span>
+            </TabsTrigger>
+            <TabsTrigger value="technical" className="gap-2">
+              <Wrench className="h-4 w-4" />
+              <span className="hidden sm:inline">Technique</span>
             </TabsTrigger>
           </TabsList>
 
@@ -359,6 +366,24 @@ const ProjectDetail = () => {
                 <NoticesList refreshTrigger={photoRefresh} />
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="technical">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Canevas de Schémas Techniques</CardTitle>
+                  <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TechnicalCanvas projectId={project.id} />
+                </CardContent>
+              </Card>
+
+              <CableSectionCalculator />
+
+              <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
+            </div>
           </TabsContent>
         </Tabs>
 
