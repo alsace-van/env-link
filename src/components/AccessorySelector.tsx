@@ -27,6 +27,7 @@ interface Accessory {
   longueur_mm?: number;
   largeur_mm?: number;
   hauteur_mm?: number;
+  puissance_watts?: number;
 }
 
 interface AccessorySelectorProps {
@@ -106,6 +107,7 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
         longueur_mm: accessoryToAdd.longueur_mm,
         largeur_mm: accessoryToAdd.largeur_mm,
         hauteur_mm: accessoryToAdd.hauteur_mm,
+        puissance_watts: accessoryToAdd.puissance_watts,
       });
 
     if (error) {

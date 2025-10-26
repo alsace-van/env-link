@@ -13,6 +13,7 @@ interface ElectricalItem {
   nom_accessoire: string;
   type_electrique: string;
   quantite: number;
+  puissance_watts?: number | null;
   temps_utilisation_heures?: number | null;
   temps_production_heures?: number | null;
 }
@@ -56,6 +57,45 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const { producers, consumers, storage, converters } = categorizeItems();
+
+  // Calculate total consumption in Wh/day
+  const calculateTotalConsumption = () => {
+    return consumers.reduce((total, item) => {
+      const power = item.puissance_watts || 0;
+      const usageTime = item.temps_utilisation_heures || 0;
+      const quantity = item.quantite || 1;
+      return total + (power * usageTime * quantity);
+    }, 0);
+  };
+
+  // Calculate total battery capacity in Wh
+  const calculateBatteryCapacity = () => {
+    return storage.reduce((total, item) => {
+      const power = item.puissance_watts || 0;
+      const autonomy = item.temps_production_heures || 0; // temps_production_heures stores autonomy for batteries
+      const quantity = item.quantite || 1;
+      return total + (power * autonomy * quantity);
+    }, 0);
+  };
+
+  // Calculate remaining autonomy in hours
+  const calculateRemainingAutonomy = () => {
+    const totalConsumption = calculateTotalConsumption();
+    const batteryCapacity = calculateBatteryCapacity();
+    
+    if (totalConsumption === 0) return null;
+    
+    // Daily consumption divided by 24 to get hourly consumption rate
+    const hourlyConsumption = totalConsumption / 24;
+    
+    if (hourlyConsumption === 0) return null;
+    
+    return batteryCapacity / hourlyConsumption;
+  };
+
+  const totalConsumption = calculateTotalConsumption();
+  const batteryCapacity = calculateBatteryCapacity();
+  const remainingAutonomy = calculateRemainingAutonomy();
 
   if (loading) {
     return (
@@ -266,6 +306,52 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
 
         <Separator />
 
+        {storage.length > 0 && totalConsumption > 0 && (
+          <>
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Battery className="h-5 w-5 text-blue-600" />
+                  Autonomie Restante
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Consommation totale</div>
+                    <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                      {totalConsumption.toFixed(1)} Wh/jour
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {(totalConsumption / 24).toFixed(1)} W en continu
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Capacité batterie</div>
+                    <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                      {batteryCapacity.toFixed(1)} Wh
+                    </div>
+                  </div>
+                </div>
+                
+                {remainingAutonomy !== null && (
+                  <div className="pt-3 border-t">
+                    <div className="text-sm text-muted-foreground mb-1">Autonomie estimée</div>
+                    <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
+                      {remainingAutonomy.toFixed(1)} heures
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      ≈ {(remainingAutonomy / 24).toFixed(1)} jours
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            
+            <Separator />
+          </>
+        )}
+
         <div className="space-y-6">
           {renderItemsTable(
             producers,
@@ -296,8 +382,8 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="text-sm">
-            <strong>Note :</strong> Ce bilan liste les équipements électriques présents dans vos dépenses.
-            Pour un calcul de consommation détaillé, ajoutez les puissances de chaque équipement dans les propriétés des accessoires.
+            <strong>Note :</strong> Pour calculer l'autonomie restante, ajoutez la puissance (W) de chaque équipement.
+            L'autonomie est calculée en fonction de la consommation totale et de la capacité des batteries.
           </AlertDescription>
         </Alert>
       </CardContent>

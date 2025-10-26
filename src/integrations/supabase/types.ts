@@ -32,6 +32,7 @@ export type Database = {
           poids_kg: number | null
           prix_reference: number | null
           prix_vente_ttc: number | null
+          puissance_watts: number | null
           type_electrique: string | null
           url_produit: string | null
           user_id: string
@@ -53,6 +54,7 @@ export type Database = {
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          puissance_watts?: number | null
           type_electrique?: string | null
           url_produit?: string | null
           user_id: string
@@ -74,6 +76,7 @@ export type Database = {
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          puissance_watts?: number | null
           type_electrique?: string | null
           url_produit?: string | null
           user_id?: string
@@ -256,6 +259,7 @@ export type Database = {
           prix: number
           prix_vente_ttc: number | null
           project_id: string
+          puissance_watts: number | null
           quantite: number
           statut_livraison: string | null
           statut_paiement: string | null
@@ -281,6 +285,7 @@ export type Database = {
           prix: number
           prix_vente_ttc?: number | null
           project_id: string
+          puissance_watts?: number | null
           quantite?: number
           statut_livraison?: string | null
           statut_paiement?: string | null
@@ -306,6 +311,7 @@ export type Database = {
           prix?: number
           prix_vente_ttc?: number | null
           project_id?: string
+          puissance_watts?: number | null
           quantite?: number
           statut_livraison?: string | null
           statut_paiement?: string | null

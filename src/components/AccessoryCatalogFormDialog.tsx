@@ -35,6 +35,7 @@ interface AccessoryCatalogFormDialogProps {
     longueur_mm?: number | null;
     largeur_mm?: number | null;
     hauteur_mm?: number | null;
+    puissance_watts?: number | null;
   } | null;
 }
 
@@ -54,6 +55,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     longueur_mm: "",
     largeur_mm: "",
     hauteur_mm: "",
+    puissance_watts: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -82,6 +84,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           longueur_mm: accessory.longueur_mm?.toString() || "",
           largeur_mm: accessory.largeur_mm?.toString() || "",
           hauteur_mm: accessory.hauteur_mm?.toString() || "",
+          puissance_watts: accessory.puissance_watts?.toString() || "",
         });
       } else {
         // Mode création
@@ -100,6 +103,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           longueur_mm: "",
           largeur_mm: "",
           hauteur_mm: "",
+          puissance_watts: "",
         });
       }
     }
@@ -211,6 +215,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
         })
         .eq("id", accessory.id);
 
@@ -239,6 +244,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
         largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
         hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+        puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
         user_id: user.id,
       });
 
@@ -453,7 +459,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
           <Separator />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type_electrique">Type électrique</Label>
               <Select
@@ -467,9 +473,23 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   <SelectItem value="none">Non applicable</SelectItem>
                   <SelectItem value="consommateur">Consommateur</SelectItem>
                   <SelectItem value="producteur">Producteur</SelectItem>
-                  <SelectItem value="autre">Autre</SelectItem>
+                  <SelectItem value="stockage">Stockage</SelectItem>
+                  <SelectItem value="convertisseur">Convertisseur</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="puissance">Puissance (W)</Label>
+              <Input
+                id="puissance"
+                type="number"
+                step="0.1"
+                value={formData.puissance_watts}
+                onChange={(e) => setFormData({ ...formData, puissance_watts: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 400"
+              />
             </div>
 
             <div className="space-y-2">

@@ -34,6 +34,7 @@ interface ExpenseFormDialogProps {
     longueur_mm?: number;
     largeur_mm?: number;
     hauteur_mm?: number;
+    puissance_watts?: number;
   } | null;
 }
 
@@ -54,6 +55,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     longueur_mm: "",
     largeur_mm: "",
     hauteur_mm: "",
+    puissance_watts: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNewCategory, setIsNewCategory] = useState(false);
@@ -97,6 +99,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           longueur_mm: expense.longueur_mm?.toString() || "",
           largeur_mm: expense.largeur_mm?.toString() || "",
           hauteur_mm: expense.hauteur_mm?.toString() || "",
+          puissance_watts: expense.puissance_watts?.toString() || "",
         });
         setSelectedAccessoryId(expense.accessory_id || null);
       } else {
@@ -117,6 +120,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           longueur_mm: "",
           largeur_mm: "",
           hauteur_mm: "",
+          puissance_watts: "",
         });
         setSelectedAccessoryId(null);
       }
@@ -211,6 +215,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       longueur_mm: accessory.longueur_mm?.toString() || "",
       largeur_mm: accessory.largeur_mm?.toString() || "",
       hauteur_mm: accessory.hauteur_mm?.toString() || "",
+      puissance_watts: accessory.puissance_watts?.toString() || "",
     });
     setSelectedAccessoryId(accessory.id);
     setShowAccessoriesList(false);
@@ -294,6 +299,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
         longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
         largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
         hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+        puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
         user_id: user.id,
       });
 
@@ -334,6 +340,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
         })
         .eq("id", expense.id);
 
@@ -419,6 +426,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
         });
 
       if (error) {
@@ -446,6 +454,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           longueur_mm: "",
           largeur_mm: "",
           hauteur_mm: "",
+          puissance_watts: "",
         });
         setIsNewCategory(false);
         setShowAddToCatalog(false);
@@ -553,7 +562,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
 
           <Separator />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="type_electrique">Type électrique</Label>
               <Select
@@ -567,9 +576,22 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                   <SelectItem value="none">Non applicable</SelectItem>
                   <SelectItem value="consommateur">Consommateur</SelectItem>
                   <SelectItem value="producteur">Producteur</SelectItem>
-                  <SelectItem value="autre">Autre</SelectItem>
+                  <SelectItem value="stockage">Stockage</SelectItem>
+                  <SelectItem value="convertisseur">Convertisseur</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="puissance">Puissance (W)</Label>
+              <Input
+                id="puissance"
+                type="number"
+                step="0.1"
+                value={formData.puissance_watts}
+                onChange={(e) => setFormData({ ...formData, puissance_watts: e.target.value })}
+                placeholder="Ex: 400"
+              />
             </div>
 
             <div className="space-y-2">
