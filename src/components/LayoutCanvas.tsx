@@ -56,6 +56,7 @@ export const LayoutCanvas = ({
   const [showFurnitureDialog, setShowFurnitureDialog] = useState(false);
   const [pendingRectangle, setPendingRectangle] = useState<paper.Path.Rectangle | null>(null);
   const [editingFurnitureId, setEditingFurnitureId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; furnitureId: string } | null>(null);
   const [loadAreaLength, setLoadAreaLength] = useState(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
   const [loadAreaWidth, setLoadAreaWidth] = useState(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
   const [isEditingDimensions, setIsEditingDimensions] = useState(false);
@@ -142,8 +143,6 @@ export const LayoutCanvas = ({
     let draggedHandle: paper.Path.Circle | null = null;
     let currentMeasureLine: paper.Path.Line | null = null;
     let currentMeasureText: paper.PointText | null = null;
-    let lastClickTime = 0;
-    let lastClickFurnitureId: string | null = null;
     const history: string[] = [];
     let historyIndex = -1;
 
@@ -222,6 +221,9 @@ export const LayoutCanvas = ({
     const tool = new paper.Tool();
 
     tool.onMouseDown = (event: paper.ToolEvent) => {
+      // Fermer le menu contextuel
+      setContextMenu(null);
+
       const hitResult = paper.project.hitTest(event.point, {
         fill: true,
         stroke: true,
@@ -229,47 +231,6 @@ export const LayoutCanvas = ({
       });
 
       if (activeToolRef.current === "select") {
-        // Obtenir le furnitureId de l'item cliqué
-        let clickedFurnitureId: string | null = null;
-
-        if (hitResult?.item) {
-          if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
-            clickedFurnitureId = hitResult.item.data.furnitureId;
-          } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
-            clickedFurnitureId = hitResult.item.parent.data.furnitureId;
-          } else if (hitResult.item instanceof paper.Path.Rectangle && hitResult.item.data.furnitureId) {
-            clickedFurnitureId = hitResult.item.data.furnitureId;
-          } else if (hitResult.item.data.furnitureId) {
-            clickedFurnitureId = hitResult.item.data.furnitureId;
-          }
-        }
-
-        // Détecter le double-clic en comparant les furnitureId
-        const currentTime = Date.now();
-        const isDoubleClick =
-          clickedFurnitureId && lastClickFurnitureId === clickedFurnitureId && currentTime - lastClickTime < 300;
-
-        lastClickTime = currentTime;
-        lastClickFurnitureId = clickedFurnitureId;
-
-        // Double-clic sur un meuble = ouvrir le dialog d'édition
-        if (isDoubleClick && clickedFurnitureId) {
-          const furnitureData = furnitureItemsRef.current.get(clickedFurnitureId);
-
-          if (furnitureData) {
-            setEditingFurnitureId(clickedFurnitureId);
-            setFurnitureForm({
-              longueur_mm: furnitureData.longueur_mm,
-              largeur_mm: furnitureData.largeur_mm,
-              hauteur_mm: furnitureData.hauteur_mm,
-              poids_kg: furnitureData.poids_kg,
-            });
-            setShowFurnitureDialog(true);
-            console.log("Opening edit dialog for furniture:", clickedFurnitureId);
-          }
-          return;
-        }
-
         if (hitResult?.item.data.isHandle) {
           draggedHandle = hitResult.item as paper.Path.Circle;
         } else if (hitResult?.item && !hitResult.item.locked) {
@@ -462,11 +423,46 @@ export const LayoutCanvas = ({
       currentPath = null;
     };
 
-    // Gestionnaire clic droit pour effacer les mesures
+    // Gestionnaire clic droit
     canvasRef.current.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+
       if (activeToolRef.current === "measure") {
         clearAllMeasures();
+        return;
+      }
+
+      // Fermer le menu existant
+      setContextMenu(null);
+
+      // Vérifier si on clique sur un meuble
+      const point = new paper.Point(e.offsetX || e.layerX, e.offsetY || e.layerY);
+
+      const hitResult = paper.project.hitTest(point, {
+        fill: true,
+        stroke: true,
+        tolerance: 5,
+      });
+
+      if (hitResult?.item) {
+        let furnitureId: string | null = null;
+
+        // Trouver le furnitureId
+        if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
+          furnitureId = hitResult.item.data.furnitureId;
+        } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
+          furnitureId = hitResult.item.parent.data.furnitureId;
+        } else if (hitResult.item.data.furnitureId) {
+          furnitureId = hitResult.item.data.furnitureId;
+        }
+
+        if (furnitureId) {
+          setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            furnitureId: furnitureId,
+          });
+        }
       }
     });
 
@@ -715,6 +711,23 @@ export const LayoutCanvas = ({
       hauteur_mm: 0,
       poids_kg: 0,
     });
+  };
+
+  const handleContextMenuEdit = () => {
+    if (!contextMenu) return;
+
+    const furnitureData = furnitureItems.get(contextMenu.furnitureId);
+    if (furnitureData) {
+      setEditingFurnitureId(contextMenu.furnitureId);
+      setFurnitureForm({
+        longueur_mm: furnitureData.longueur_mm,
+        largeur_mm: furnitureData.largeur_mm,
+        hauteur_mm: furnitureData.hauteur_mm,
+        poids_kg: furnitureData.poids_kg,
+      });
+      setShowFurnitureDialog(true);
+      setContextMenu(null);
+    }
   };
 
   const weightPercentage = (totalWeight / maxLoad) * 100;
@@ -1021,6 +1034,41 @@ export const LayoutCanvas = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Menu contextuel */}
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+          <div
+            className="fixed z-50 bg-white border rounded-lg shadow-lg py-1 min-w-[150px]"
+            style={{
+              left: `${contextMenu.x}px`,
+              top: `${contextMenu.y}px`,
+            }}
+          >
+            <button
+              className="w-full px-4 py-2 text-left hover:bg-muted transition-colors flex items-center gap-2"
+              onClick={handleContextMenuEdit}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                <path d="m15 5 4 4" />
+              </svg>
+              Modifier
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 };
