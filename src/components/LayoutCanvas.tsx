@@ -636,11 +636,19 @@ export const LayoutCanvas = ({
     (window as any).layoutCanvasRedo = handleRedo;
     (window as any).layoutCanvasDelete = handleDelete;
     (window as any).layoutCanvasSave = handleSave;
-    (window as any).layoutCanvasLoad = handleLoad;
     (window as any).layoutCanvasExport = handleExport;
 
+    // Fonction de chargement modifiée pour réactiver l'outil après
+    const loadAndReactivateTool = async () => {
+      await handleLoad();
+      // Réactiver l'outil après le chargement
+      tool.activate();
+    };
+
+    (window as any).layoutCanvasLoad = loadAndReactivateTool;
+
     // Charger automatiquement les données sauvegardées au montage du canvas
-    handleLoad();
+    loadAndReactivateTool();
 
     return () => {
       paper.project.clear();
