@@ -581,7 +581,7 @@ export const LayoutCanvas = ({
 
         if (error) throw error;
 
-        if (data?.layout_canvas_data) {
+        if (data?.layout_canvas_data && typeof data.layout_canvas_data === 'string') {
           paper.project.clear();
           paper.project.importJSON(data.layout_canvas_data);
           saveState();
