@@ -185,11 +185,27 @@ const AccessoriesCatalogView = () => {
     handleFormClose();
   };
 
+  const handleAccessoryDrop = async (accessoryId: string, categoryId: string | null) => {
+    const { error } = await supabase
+      .from("accessories_catalog")
+      .update({ category_id: categoryId })
+      .eq("id", accessoryId);
+
+    if (error) {
+      toast.error("Erreur lors du changement de catégorie");
+      console.error(error);
+    } else {
+      toast.success("Catégorie mise à jour");
+      loadAccessories();
+    }
+  };
+
   return (
     <div className="relative">
       <AccessoryCategorySidebar
         selectedCategories={selectedCategories}
         onCategoryChange={setSelectedCategories}
+        onAccessoryDrop={handleAccessoryDrop}
       />
       
       <Card className="ml-96">
@@ -224,10 +240,6 @@ const AccessoriesCatalogView = () => {
             <LayoutGrid className="h-4 w-4" />
           </Button>
         </div>
-        <Button onClick={() => setIsCategoryManagementOpen(true)} variant="outline">
-          <Settings className="h-4 w-4 mr-2" />
-          Catégories
-        </Button>
         <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
           Import/Export
         </Button>
@@ -265,7 +277,12 @@ const AccessoriesCatalogView = () => {
               </h3>
               <div className="space-y-2">
                 {categoryAccessories.map((accessory) => (
-                  <Card key={accessory.id} className="hover:bg-muted/50 transition-colors">
+                  <Card 
+                    key={accessory.id} 
+                    className="hover:bg-muted/50 transition-colors cursor-move"
+                    draggable
+                    onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-center gap-4">
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
@@ -348,7 +365,12 @@ const AccessoriesCatalogView = () => {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {categoryAccessories.map((accessory) => (
-                  <Card key={accessory.id}>
+                  <Card 
+                    key={accessory.id}
+                    draggable
+                    onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
+                    className="cursor-move"
+                  >
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">

@@ -27,11 +27,13 @@ interface Category {
 interface AccessoryCategorySidebarProps {
   selectedCategories: string[];
   onCategoryChange: (categories: string[]) => void;
+  onAccessoryDrop?: (accessoryId: string, categoryId: string | null) => void;
 }
 
 const AccessoryCategorySidebar = ({
   selectedCategories,
   onCategoryChange,
+  onAccessoryDrop,
 }: AccessoryCategorySidebarProps) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
@@ -42,6 +44,8 @@ const AccessoryCategorySidebar = ({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showAddRoot, setShowAddRoot] = useState(false);
   const [showAddSub, setShowAddSub] = useState<string | null>(null);
+  const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
+  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
 
   useEffect(() => {
     loadCategories();
@@ -151,17 +155,88 @@ const AccessoryCategorySidebar = ({
     return categories.filter(cat => cat.parent_id === parentId);
   };
 
+  const handleCategoryDragStart = (categoryId: string) => {
+    setDraggedCategory(categoryId);
+  };
+
+  const handleCategoryDragOver = (e: React.DragEvent, categoryId: string | null) => {
+    e.preventDefault();
+    setDragOverCategory(categoryId);
+  };
+
+  const handleCategoryDragLeave = () => {
+    setDragOverCategory(null);
+  };
+
+  const handleCategoryDrop = async (e: React.DragEvent, newParentId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!draggedCategory || draggedCategory === newParentId) {
+      setDraggedCategory(null);
+      setDragOverCategory(null);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("categories")
+      .update({ parent_id: newParentId })
+      .eq("id", draggedCategory);
+
+    if (error) {
+      toast.error("Erreur lors du déplacement de la catégorie");
+      console.error(error);
+    } else {
+      toast.success("Catégorie déplacée");
+      loadCategories();
+    }
+
+    setDraggedCategory(null);
+    setDragOverCategory(null);
+  };
+
+  const handleAccessoryDragOver = (e: React.DragEvent, categoryId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverCategory(categoryId);
+  };
+
+  const handleAccessoryDrop = async (e: React.DragEvent, categoryId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const accessoryId = e.dataTransfer.getData("accessoryId");
+    if (!accessoryId) {
+      setDragOverCategory(null);
+      return;
+    }
+
+    if (onAccessoryDrop) {
+      onAccessoryDrop(accessoryId, categoryId);
+    }
+
+    setDragOverCategory(null);
+  };
+
   const renderCategory = (category: Category, level: number = 0) => {
     const subcategories = getSubcategories(category.id);
     const hasSubcategories = subcategories.length > 0;
     const isExpanded = expandedCategories.has(category.id);
     const isSelected = selectedCategories.includes(category.id);
     const isAddingSubHere = showAddSub === category.id;
+    const isDragOver = dragOverCategory === category.id;
 
     return (
       <div key={category.id} className="select-none">
         <div
-          className="flex items-center gap-1 py-1 hover:bg-accent/50 rounded group"
+          draggable
+          onDragStart={() => handleCategoryDragStart(category.id)}
+          onDragOver={(e) => handleCategoryDragOver(e, category.id)}
+          onDragLeave={handleCategoryDragLeave}
+          onDrop={(e) => handleCategoryDrop(e, category.id)}
+          className={`flex items-center gap-1 py-1 hover:bg-accent/50 rounded group ${
+            isDragOver ? 'bg-accent border-2 border-primary' : ''
+          }`}
           style={{ paddingLeft: `${level * 16 + 8}px` }}
         >
           <Button
@@ -195,7 +270,10 @@ const AccessoryCategorySidebar = ({
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={() => setShowAddSub(category.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAddSub(category.id);
+              }}
               title="Ajouter une sous-catégorie"
             >
               <Plus className="h-3 w-3" />
@@ -204,7 +282,10 @@ const AccessoryCategorySidebar = ({
               variant="ghost"
               size="icon"
               className="h-6 w-6 text-destructive hover:text-destructive"
-              onClick={() => setDeleteId(category.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteId(category.id);
+              }}
               title="Supprimer"
             >
               <Trash2 className="h-3 w-3" />
@@ -265,7 +346,7 @@ const AccessoryCategorySidebar = ({
         variant="outline"
         size="icon"
         onClick={() => setIsCollapsed(false)}
-        className="fixed left-4 top-64 z-50"
+        className="fixed left-4 top-80 z-50"
         title="Afficher les catégories"
       >
         <PanelLeft className="h-4 w-4" />
@@ -274,7 +355,7 @@ const AccessoryCategorySidebar = ({
   }
 
   return (
-    <Card className="w-80 h-[calc(100vh-20rem)] fixed left-4 top-64 z-40 shadow-lg">
+    <Card className="w-80 h-[calc(100vh-24rem)] fixed left-4 top-80 z-40 shadow-lg">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Catégories</CardTitle>
@@ -335,7 +416,11 @@ const AccessoryCategorySidebar = ({
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-2">
+          <div 
+            className="p-2"
+            onDragOver={(e) => handleAccessoryDragOver(e, null)}
+            onDrop={(e) => handleAccessoryDrop(e, null)}
+          >
             {categories.filter(cat => !cat.parent_id).length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 Aucune catégorie
