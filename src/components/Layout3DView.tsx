@@ -29,14 +29,17 @@ interface FurnitureBoxProps {
 }
 
 const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
+  // Dimensions en unités 3D
   const width = (furniture.longueur_mm || 100) / scale;
   const depth = (furniture.largeur_mm || 100) / scale;
   const height = (furniture.hauteur_mm || 100) / scale;
 
   // Position relative au centre de la zone de chargement
+  // En 3D: X = largeur (left/right), Y = hauteur (up/down), Z = profondeur (forward/back)
+  // En 2D canvas: x = largeur, y = profondeur
   const posX = furniture.position?.x ? furniture.position.x / scale : 0;
   const posZ = furniture.position?.y ? furniture.position.y / scale : 0;
-  const posY = height / 2;
+  const posY = height / 2; // Placer le meuble sur le sol
 
   return (
     <group position={[posX, posY, posZ]}>
@@ -56,33 +59,31 @@ const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
 const LoadArea = ({
   length,
   width,
-  height,
   scale,
 }: {
   length: number;
   width: number;
-  height: number;
   scale: number;
 }) => {
   const scaledLength = length / scale;
   const scaledWidth = width / scale;
-  const scaledHeight = height / scale;
 
   return (
-    <group position={[0, scaledHeight / 2, 0]}>
-      {/* Plancher */}
-      <mesh position={[0, -scaledHeight / 2, 0]} receiveShadow>
-        <boxGeometry args={[scaledLength, 0.05, scaledWidth]} />
-        <meshStandardMaterial color="#94a3b8" />
+    <group>
+      {/* Rectangle plat au sol représentant la surface utile */}
+      <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[scaledLength, scaledWidth]} />
+        <meshStandardMaterial color="#e2e8f0" opacity={0.5} transparent side={THREE.DoubleSide} />
       </mesh>
-
-      {/* Contours de la zone de chargement - maintenant correctement positionnés */}
-      <group position={[0, 0, 0]}>
-        <lineSegments>
-          <edgesGeometry attach="geometry" args={[new THREE.BoxGeometry(scaledLength, scaledHeight, scaledWidth)]} />
-          <lineBasicMaterial attach="material" color="#60a5fa" linewidth={2} />
-        </lineSegments>
-      </group>
+      
+      {/* Contour du rectangle */}
+      <lineSegments position={[0, 0.01, 0]}>
+        <edgesGeometry 
+          attach="geometry" 
+          args={[new THREE.PlaneGeometry(scaledLength, scaledWidth)]} 
+        />
+        <lineBasicMaterial attach="material" color="#3b82f6" linewidth={2} />
+      </lineSegments>
     </group>
   );
 };
@@ -105,12 +106,10 @@ const Scene = ({
   furniture,
   loadAreaLength,
   loadAreaWidth,
-  loadAreaHeight,
 }: {
   furniture: FurnitureItem[];
   loadAreaLength: number;
   loadAreaWidth: number;
-  loadAreaHeight: number;
 }) => {
   const scale = 100; // 100mm = 1 unité
 
@@ -121,10 +120,7 @@ const Scene = ({
       <directionalLight position={[-10, 10, -5]} intensity={0.5} />
       <pointLight position={[0, 10, 0]} intensity={0.5} />
 
-      {/* Helper pour déboguer (peut être commenté en production) */}
-      {/* <AxisHelper /> */}
-
-      <LoadArea length={loadAreaLength} width={loadAreaWidth} height={loadAreaHeight} scale={scale} />
+      <LoadArea length={loadAreaLength} width={loadAreaWidth} scale={scale} />
 
       {furniture.map((item) => (
         <FurnitureBox key={item.id} furniture={item} scale={scale} />
@@ -140,7 +136,7 @@ const Scene = ({
         sectionColor="#94a3b8"
         fadeDistance={50}
         fadeStrength={1}
-        position={[0, -0.01, 0]}
+        position={[0, -0.02, 0]}
       />
 
       <OrbitControls makeDefault minPolarAngle={0} maxPolarAngle={Math.PI / 2} enableDamping dampingFactor={0.05} />
@@ -316,7 +312,6 @@ export const Layout3DView = ({
               furniture={furniture}
               loadAreaLength={loadAreaLength}
               loadAreaWidth={loadAreaWidth}
-              loadAreaHeight={loadAreaHeight}
             />
           </Canvas>
         </div>
