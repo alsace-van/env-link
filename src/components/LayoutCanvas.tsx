@@ -574,6 +574,7 @@ export const LayoutCanvas = ({
         toast.error("Erreur lors de la sauvegarde");
       }
     };
+
     const handleLoad = async () => {
       try {
         const { data, error } = await supabase
