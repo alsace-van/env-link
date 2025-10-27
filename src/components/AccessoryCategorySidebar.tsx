@@ -282,30 +282,34 @@ const AccessoryCategorySidebar = ({
           onDragOver={(e) => handleCategoryDragOver(e, category.id)}
           onDragLeave={handleCategoryDragLeave}
           onDrop={(e) => handleCategoryDrop(e, category.id)}
-          className={`flex items-center gap-1 py-1 rounded group transition-all ${
+          className={`flex items-center gap-1 py-1.5 rounded group transition-all ${
             isDragging ? "opacity-40" : "hover:bg-accent/50"
-          } ${isDragOver && draggedCategory ? "bg-primary/20 ring-2 ring-primary" : ""}`}
-          style={{ paddingLeft: `${level * 16 + 8}px` }}
+          } ${isDragOver && draggedCategory ? "bg-primary/20 ring-2 ring-primary" : ""} ${
+            level > 0 ? "border-l-2 border-muted ml-2" : ""
+          }`}
+          style={{ paddingLeft: `${level * 24 + 8}px` }}
         >
           <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
 
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 flex-shrink-0"
+            className="h-6 w-6 flex-shrink-0 hover:bg-accent"
             onClick={(e) => {
               e.stopPropagation();
-              hasSubcategories && toggleExpanded(category.id);
+              if (hasSubcategories) {
+                toggleExpanded(category.id);
+              }
             }}
           >
             {hasSubcategories ? (
               isExpanded ? (
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown className="h-4 w-4" />
               ) : (
-                <ChevronRight className="h-3 w-3" />
+                <ChevronRight className="h-4 w-4" />
               )
             ) : (
-              <div className="h-3 w-3" />
+              <div className="h-4 w-4" />
             )}
           </Button>
 
@@ -314,9 +318,9 @@ const AccessoryCategorySidebar = ({
               e.stopPropagation();
               toggleCategory(category.id);
             }}
-            className={`flex-1 text-left text-sm px-2 py-1 rounded transition-colors ${
-              isSelected ? "bg-primary text-primary-foreground" : ""
-            }`}
+            className={`flex-1 text-left text-sm px-3 py-1.5 rounded transition-colors ${
+              isSelected ? "bg-primary text-primary-foreground font-medium" : ""
+            } ${level > 0 ? "text-muted-foreground" : "font-medium"}`}
           >
             {category.nom}
           </button>
@@ -329,6 +333,10 @@ const AccessoryCategorySidebar = ({
               onClick={(e) => {
                 e.stopPropagation();
                 setShowAddSub(category.id);
+                // Auto-expand quand on ajoute une sous-catégorie
+                if (!isExpanded) {
+                  setExpandedCategories((prev) => new Set(prev).add(category.id));
+                }
               }}
               title="Ajouter une sous-catégorie"
             >
@@ -350,7 +358,10 @@ const AccessoryCategorySidebar = ({
         </div>
 
         {isAddingSubHere && (
-          <div className="flex items-center gap-2 py-2" style={{ paddingLeft: `${(level + 1) * 16 + 8}px` }}>
+          <div
+            className="flex items-center gap-2 py-2 border-l-2 border-muted ml-2"
+            style={{ paddingLeft: `${(level + 1) * 24 + 8}px` }}
+          >
             <Input
               placeholder="Nom de la sous-catégorie"
               type="text"
