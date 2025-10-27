@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Text, Box, Grid } from "@react-three/drei";
+import { OrbitControls, Text, Box, Grid, Line } from "@react-three/drei";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,11 +34,11 @@ const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
   const depth = (furniture.largeur_mm || 100) / scale;
   const height = (furniture.hauteur_mm || 100) / scale;
 
-  // Position relative au centre de la zone de chargement
+  // Position en unités 3D (les positions sont déjà en millimètres réels depuis extractPositions)
   // En 3D: X = largeur (left/right), Y = hauteur (up/down), Z = profondeur (forward/back)
-  // En 2D canvas: x = largeur, y = profondeur
+  // En 2D canvas: x = largeur, y = profondeur (inversé car Y canvas va vers le bas)
   const posX = furniture.position?.x ? furniture.position.x / scale : 0;
-  const posZ = furniture.position?.y ? furniture.position.y / scale : 0;
+  const posZ = furniture.position?.y ? -(furniture.position.y / scale) : 0; // Inverser Y car canvas Y va vers le bas
   const posY = height / 2; // Placer le meuble sur le sol
 
   return (
@@ -68,13 +68,13 @@ const LoadArea = ({
   const scaledLength = length / scale;
   const scaledWidth = width / scale;
 
-  // Créer une ligne en pointillés pour le contour
-  const points = [
-    new THREE.Vector3(-scaledLength / 2, 0.02, -scaledWidth / 2),
-    new THREE.Vector3(scaledLength / 2, 0.02, -scaledWidth / 2),
-    new THREE.Vector3(scaledLength / 2, 0.02, scaledWidth / 2),
-    new THREE.Vector3(-scaledLength / 2, 0.02, scaledWidth / 2),
-    new THREE.Vector3(-scaledLength / 2, 0.02, -scaledWidth / 2),
+  // Points du rectangle pour le contour en pointillés
+  const points: [number, number, number][] = [
+    [-scaledLength / 2, 0.02, -scaledWidth / 2],
+    [scaledLength / 2, 0.02, -scaledWidth / 2],
+    [scaledLength / 2, 0.02, scaledWidth / 2],
+    [-scaledLength / 2, 0.02, scaledWidth / 2],
+    [-scaledLength / 2, 0.02, -scaledWidth / 2],
   ];
 
   return (
@@ -86,17 +86,15 @@ const LoadArea = ({
       </mesh>
       
       {/* Contour en pointillés */}
-      <line>
-        <bufferGeometry>
-          <bufferAttribute
-            attach="attributes-position"
-            count={points.length}
-            array={new Float32Array(points.flatMap(p => [p.x, p.y, p.z]))}
-            itemSize={3}
-          />
-        </bufferGeometry>
-        <lineDashedMaterial color="#3b82f6" dashSize={0.5} gapSize={0.3} linewidth={2} />
-      </line>
+      <Line
+        points={points}
+        color="#3b82f6"
+        lineWidth={3}
+        dashed={true}
+        dashScale={50}
+        dashSize={1}
+        gapSize={0.5}
+      />
     </group>
   );
 };
