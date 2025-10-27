@@ -165,6 +165,41 @@ const MeasurementTool = ({
       return;
     }
 
+    const getIntersectionPoint = (x: number, y: number): THREE.Vector3 | null => {
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+
+      // Raycast sur tous les objets de la scène (meubles, plans, etc.)
+      const intersects = raycaster.intersectObjects(scene.children, true);
+
+      // Filtrer les objets invisibles ou les helpers
+      const validIntersects = intersects.filter((intersect) => {
+        const obj = intersect.object;
+        // Ignorer les grilles, les textes et les lignes de mesure
+        return (
+          obj.visible &&
+          !(obj as any).isLine &&
+          obj.type !== "GridHelper" &&
+          obj.type !== "Sprite" &&
+          !obj.userData?.isMeasure
+        );
+      });
+
+      if (validIntersects.length > 0) {
+        return validIntersects[0].point.clone();
+      }
+
+      // Si pas d'intersection avec des objets, utiliser le plan au sol comme fallback
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const intersectPoint = new THREE.Vector3();
+      const hasGroundIntersection = raycaster.ray.intersectPlane(groundPlane, intersectPoint);
+      
+      if (hasGroundIntersection) {
+        return intersectPoint.clone();
+      }
+
+      return null;
+    };
+
     const handlePointerDown = (event: MouseEvent) => {
       if (event.button !== 0) return; // Only left click
 
@@ -173,20 +208,15 @@ const MeasurementTool = ({
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
-
-      // Raycast on the ground plane (y = 0)
-      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-      const intersectPoint = new THREE.Vector3();
-      raycaster.ray.intersectPlane(groundPlane, intersectPoint);
+      const intersectPoint = getIntersectionPoint(x, y);
 
       if (intersectPoint) {
         if (!startPoint) {
-          setStartPoint(intersectPoint.clone());
+          setStartPoint(intersectPoint);
         } else {
           // Calculate distance in mm
           const distance = startPoint.distanceTo(intersectPoint) / scale3D;
-          onAddMeasure(startPoint.clone(), intersectPoint.clone(), distance);
+          onAddMeasure(startPoint, intersectPoint, distance);
           setStartPoint(null);
           setCurrentPoint(null);
         }
@@ -201,14 +231,10 @@ const MeasurementTool = ({
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
-
-      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-      const intersectPoint = new THREE.Vector3();
-      raycaster.ray.intersectPlane(groundPlane, intersectPoint);
+      const intersectPoint = getIntersectionPoint(x, y);
 
       if (intersectPoint) {
-        setCurrentPoint(intersectPoint.clone());
+        setCurrentPoint(intersectPoint);
       }
     };
 
