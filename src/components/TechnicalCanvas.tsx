@@ -473,6 +473,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         currentPath = null;
 
         console.log("Active layer children:", paper.project.activeLayer.children.length);
+        
+        // Forcer le rendu du canvas
+        paper.view.update();
       }
     };
 
@@ -500,9 +503,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           fontSize: 20,
         });
       }
+      paper.view.update();
     } else if (editingTextItem && !text) {
       // Si le texte est vide lors de l'édition, supprimer l'élément
       editingTextItem.remove();
+      paper.view.update();
     }
 
     setIsEditingText(false);
@@ -555,6 +560,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         }
       });
 
+      paper.view.update();
       toast.success("Élément supprimé");
     } else {
       toast.info("Aucun élément sélectionné");
@@ -572,6 +578,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const handleClear = () => {
     if (!paper.project) return;
     paper.project.activeLayer.removeChildren();
+    paper.view.update();
     toast.success("Canevas effacé");
   };
 
@@ -615,6 +622,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         strokeColor: colorRef.current,
         strokeWidth: strokeWidthRef.current,
       });
+      paper.view.update();
     } else if (tool === "circle" && paper.project) {
       new paper.Shape.Circle({
         center: [150, 150],
@@ -622,6 +630,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         strokeColor: colorRef.current,
         strokeWidth: strokeWidthRef.current,
       });
+      paper.view.update();
     }
     // Note: le texte est maintenant créé via un clic sur le canvas
   };
@@ -657,6 +666,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     group.data.isAccessory = true;
     group.data.accessoryName = name;
 
+    paper.view.update();
     toast.success(`${name} ajouté au schéma`);
   };
 
