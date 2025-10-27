@@ -4,7 +4,7 @@ import { OrbitControls, Text, Box, Grid, Line } from "@react-three/drei";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Maximize2, RotateCcw, RefreshCw, Ruler } from "lucide-react";
+import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2 } from "lucide-react";
 import * as THREE from "three";
 import { toast } from "sonner";
 
@@ -651,9 +651,17 @@ export const Layout3DView = ({
         </div>
         <div className="flex gap-2">
           <Button
+            variant={!measureMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMeasureMode(false)}
+          >
+            <MousePointer2 className="w-4 h-4 mr-2" />
+            Navigation
+          </Button>
+          <Button
             variant={measureMode ? "default" : "outline"}
             size="sm"
-            onClick={() => setMeasureMode(!measureMode)}
+            onClick={() => setMeasureMode(true)}
           >
             <Ruler className="w-4 h-4 mr-2" />
             Mesure
