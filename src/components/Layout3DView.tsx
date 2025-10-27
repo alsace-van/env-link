@@ -34,12 +34,17 @@ interface FurnitureBoxProps {
 const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps) => {
   let widthMm, depthMm;
   
-  if (furniture.canvasDimensions) {
-    widthMm = furniture.canvasDimensions.widthPx / canvasScale;
-    depthMm = furniture.canvasDimensions.heightPx / canvasScale;
+  // Vérifier si les dimensions du canvas sont valides (non nulles et > 10px)
+  const hasValidCanvasDimensions = furniture.canvasDimensions 
+    && furniture.canvasDimensions.widthPx > 10 
+    && furniture.canvasDimensions.heightPx > 10;
+  
+  if (hasValidCanvasDimensions) {
+    widthMm = furniture.canvasDimensions!.widthPx / canvasScale;
+    depthMm = furniture.canvasDimensions!.heightPx / canvasScale;
     
     console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS DU CANVAS) ===`);
-    console.log(`Canvas: ${furniture.canvasDimensions.widthPx.toFixed(1)}px × ${furniture.canvasDimensions.heightPx.toFixed(1)}px`);
+    console.log(`Canvas: ${furniture.canvasDimensions!.widthPx.toFixed(1)}px × ${furniture.canvasDimensions!.heightPx.toFixed(1)}px`);
     console.log(`Converties: ${widthMm.toFixed(1)}mm × ${depthMm.toFixed(1)}mm`);
   } else {
     widthMm = furniture.longueur_mm || 100;
@@ -47,6 +52,9 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
     
     console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS STOCKÉES) ===`);
     console.log(`Dimensions: ${widthMm}mm × ${depthMm}mm`);
+    if (furniture.canvasDimensions) {
+      console.log(`⚠️ Dimensions canvas invalides: ${furniture.canvasDimensions.widthPx}px × ${furniture.canvasDimensions.heightPx}px`);
+    }
   }
   
   const heightMm = furniture.hauteur_mm || 100;
