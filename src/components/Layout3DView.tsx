@@ -29,7 +29,7 @@ interface FurnitureBoxProps {
 }
 
 const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
-  // Dimensions en unités 3D
+  // Dimensions en unités 3D (convertir de mm à unités 3D)
   const width = (furniture.longueur_mm || 100) / scale;
   const depth = (furniture.largeur_mm || 100) / scale;
   const height = (furniture.hauteur_mm || 100) / scale;
@@ -37,10 +37,10 @@ const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
   // Position en unités 3D
   // Les positions viennent de extractPositions et sont DÉJÀ en millimètres réels
   // Il faut juste les diviser par scale pour les convertir en unités 3D
-  // En 3D: X = largeur (left/right), Y = hauteur (up/down), Z = profondeur (forward/back)
-  // En 2D canvas: x = largeur, y = profondeur (inversé car Y canvas va vers le bas)
+  // En 3D: X = longueur (left/right), Y = hauteur (up/down), Z = largeur (forward/back)
+  // En 2D canvas: x = longueur (horizontal), y = largeur (vertical, mais Y canvas va vers le bas)
   const posX = (furniture.position?.x || 0) / scale;
-  const posZ = -(furniture.position?.y || 0) / scale; // Inverser Y car canvas Y va vers le bas
+  const posZ = (furniture.position?.y || 0) / scale; // Pas d'inversion - on garde la même orientation
   const posY = height / 2; // Placer le meuble sur le sol
 
   return (
@@ -295,7 +295,12 @@ export const Layout3DView = ({
           const canvasHeight = 600;
 
           // Calculer l'échelle utilisée dans le canvas (même calcul que dans LayoutCanvas.tsx)
+          // IMPORTANT: Dans LayoutCanvas, loadAreaLength est mappé sur la largeur du canvas (X)
+          // et loadAreaWidth est mappé sur la hauteur du canvas (Y)
           const scale = Math.min((canvasWidth - 100) / loadAreaLength, (canvasHeight - 100) / loadAreaWidth);
+          
+          console.log(`Dimensions zone chargement: ${loadAreaLength}mm x ${loadAreaWidth}mm`);
+          console.log(`Scale calculée: ${scale}`);
           const scaledLoadAreaLength = loadAreaLength * scale;
           const scaledLoadAreaWidth = loadAreaWidth * scale;
 
