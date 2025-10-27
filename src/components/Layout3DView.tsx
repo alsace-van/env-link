@@ -47,22 +47,24 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
   console.log(`Dimensions (3D): ${width3D.toFixed(2)} × ${depth3D.toFixed(2)} × ${height3D.toFixed(2)} unités`);
 
   // ==========================================
-  // POSITION: pixels canvas → mm → unités 3D
+  // POSITION: pixels canvas relatifs → mm → unités 3D
   // ==========================================
-  const posXpixels = furniture.position?.x || 0;
-  const posYpixels = furniture.position?.y || 0;
+  // Les positions extraites sont déjà RELATIVES AU CENTRE en pixels canvas
+  const posXpixelsRel = furniture.position?.x || 0;
+  const posYpixelsRel = furniture.position?.y || 0;
 
-  // 1. Pixels canvas → mm
-  const posXmm = posXpixels / canvasScale;
-  const posZmm = posYpixels / canvasScale;
+  // 1. Pixels canvas relatifs → mm relatifs
+  // On divise par canvasScale pour obtenir la distance en mm
+  const posXmm = posXpixelsRel / canvasScale;
+  const posZmm = posYpixelsRel / canvasScale;
 
   // 2. mm → unités 3D
   const posX3D = posXmm * mmToUnits3D;
   const posZ3D = posZmm * mmToUnits3D;
   const posY3D = height3D / 2; // Placer sur le sol
 
-  console.log(`Position (pixels canvas): (${posXpixels.toFixed(1)}, ${posYpixels.toFixed(1)})`);
-  console.log(`Position (mm): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
+  console.log(`Position (pixels canvas relatifs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
+  console.log(`Position (mm relatifs): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
   console.log(`Position (3D): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)}) unités`);
 
   // Taille de texte adaptative
@@ -569,12 +571,15 @@ export const Layout3DView = ({
               const childType = child[0];
               const childData = child[1];
 
-              // Chercher les groupes de meubles
+                // Chercher les groupes de meubles
               if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
                 const furnitureId = childData.data.furnitureId;
 
                 console.log(`Meuble trouvé: ${furnitureId}`, childData);
 
+                // Récupérer la matrice de transformation du groupe s'il y en a une
+                const matrix = childData.matrix;
+                
                 // Le groupe contient un Path comme premier enfant avec les segments du rectangle
                 if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
                   const pathChild = childData.children[0];
@@ -587,12 +592,32 @@ export const Layout3DView = ({
                     // Calculer le centre du rectangle à partir des segments
                     // segments: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
                     if (segments.length >= 4) {
-                      const x1 = segments[0][0];
-                      const y1 = segments[0][1];
-                      const x3 = segments[2][0];
-                      const y3 = segments[2][1];
+                      let x1 = segments[0][0];
+                      let y1 = segments[0][1];
+                      let x3 = segments[2][0];
+                      let y3 = segments[2][1];
 
-                      // Centre du rectangle dans le canvas
+                      // Appliquer la matrice de transformation si elle existe
+                      if (matrix && Array.isArray(matrix) && matrix.length === 6) {
+                        // Matrice format: [a, b, c, d, tx, ty]
+                        // Transformation: x' = a*x + c*y + tx, y' = b*x + d*y + ty
+                        const [a, b, c, d, tx, ty] = matrix;
+                        
+                        // Transformer les coins
+                        const x1Global = a * x1 + c * y1 + tx;
+                        const y1Global = b * x1 + d * y1 + ty;
+                        const x3Global = a * x3 + c * y3 + tx;
+                        const y3Global = b * x3 + d * y3 + ty;
+                        
+                        x1 = x1Global;
+                        y1 = y1Global;
+                        x3 = x3Global;
+                        y3 = y3Global;
+                        
+                        console.log(`Transformation appliquée avec matrice:`, matrix);
+                      }
+
+                      // Centre du rectangle dans le canvas (coordonnées globales)
                       const rectCenterX = (x1 + x3) / 2;
                       const rectCenterY = (y1 + y3) / 2;
 
