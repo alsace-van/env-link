@@ -30,22 +30,17 @@ interface FurnitureBoxProps {
 }
 
 const FurnitureBox = ({ furniture, scale, canvasScale }: FurnitureBoxProps) => {
-  // Dimensions : mm -> pixels canvas -> unités 3D
-  const widthCanvas = (furniture.longueur_mm || 100) * canvasScale;
-  const depthCanvas = (furniture.largeur_mm || 100) * canvasScale;
-  const heightCanvas = (furniture.hauteur_mm || 100) * canvasScale;
-  
-  const width = widthCanvas / scale;
-  const depth = depthCanvas / scale;
-  const height = heightCanvas / scale;
+  // Conversion directe: mm -> unités 3D
+  const width = (furniture.longueur_mm || 100) * scale;
+  const depth = (furniture.largeur_mm || 100) * scale;
+  const height = (furniture.hauteur_mm || 100) * scale;
 
-  // Position en unités 3D
+  // Position: pixels canvas -> mm -> unités 3D
   // Les positions viennent de extractPositions et sont en pixels canvas relatifs au centre
-  // On les divise par scale3D pour les convertir en unités 3D
-  // En 3D: X = longueur (left/right), Y = hauteur (up/down), Z = largeur (forward/back)
-  // En 2D canvas: x = longueur (horizontal), y = largeur (vertical, Y canvas va vers le bas)
-  const posX = (furniture.position?.x || 0) / scale;
-  const posZ = (furniture.position?.y || 0) / scale;
+  // 1. Diviser par canvasScale pour obtenir des mm
+  // 2. Multiplier par scale (scale3D) pour obtenir des unités 3D
+  const posX = ((furniture.position?.x || 0) / canvasScale) * scale;
+  const posZ = ((furniture.position?.y || 0) / canvasScale) * scale;
   const posY = height / 2; // Placer le meuble sur le sol
 
   // Taille de texte adaptative
@@ -74,8 +69,9 @@ const FurnitureBox = ({ furniture, scale, canvasScale }: FurnitureBoxProps) => {
 };
 
 const LoadArea = ({ length, width, scale }: { length: number; width: number; scale: number }) => {
-  const scaledLength = length / scale;
-  const scaledWidth = width / scale;
+  // Conversion directe: mm -> unités 3D
+  const scaledLength = length * scale;
+  const scaledWidth = width * scale;
 
   // Points du rectangle pour le contour en pointillés
   const points: [number, number, number][] = [
@@ -123,26 +119,20 @@ const Scene = ({
   loadAreaLength: number;
   loadAreaWidth: number;
 }) => {
-  // IMPORTANT : Utiliser la MÊME échelle que LayoutCanvas.tsx pour cohérence
-  // Dans LayoutCanvas : scale = Math.min((800 - 100) / loadAreaLength, (600 - 100) / loadAreaWidth)
-  // Cela donne le facteur de conversion : pixels canvas -> millimètres
-  // Pour la 3D, on inverse : on veut millimètres -> unités 3D
-  // On garde la même échelle visuelle en utilisant un facteur similaire
+  // NOUVELLE APPROCHE SIMPLIFIÉE
+  // Une seule échelle pour tout : mm -> unités 3D
+  // On veut que la plus grande dimension fasse environ 20 unités 3D
+  const targetSize = 20;
+  const maxDimension = Math.max(loadAreaLength, loadAreaWidth);
+  const scale3D = targetSize / maxDimension; // mm -> unités 3D
   
-  const canvasScale = Math.min(700 / loadAreaLength, 500 / loadAreaWidth);
-  // Pour la 3D, on veut que la zone de chargement fasse environ 20 unités 3D
-  // Donc : scale3D = taille_mm / 20
-  const targetSize = 20; // unités 3D pour la plus grande dimension visible
-  const scaledLength = loadAreaLength * canvasScale;
-  const scaledWidth = loadAreaWidth * canvasScale;
-  const maxScaledDimension = Math.max(scaledLength, scaledWidth);
-  const scale3D = maxScaledDimension / targetSize;
+  // Échelle du canvas 2D (pour convertir les positions du canvas)
+  const canvasScale = Math.min(700 / loadAreaLength, 500 / loadAreaWidth); // pixels/mm
 
-  console.log("📐 Échelle canvas 2D:", canvasScale, "pixels/mm");
-  console.log("📐 Échelle 3D:", scale3D, "pixels canvas par unité 3D");
+  console.log("📐 Échelle 3D:", scale3D, "unités 3D par mm");
+  console.log("📐 Échelle canvas 2D:", canvasScale, "pixels par mm");
   console.log("📏 Zone de chargement:", loadAreaLength, "x", loadAreaWidth, "mm");
-  console.log("📏 Zone scalée (pixels canvas):", scaledLength.toFixed(1), "x", scaledWidth.toFixed(1), "px");
-  console.log("📦 Dimensions 3D:", (scaledLength / scale3D).toFixed(1), "x", (scaledWidth / scale3D).toFixed(1), "unités");
+  console.log("📦 Dimensions 3D:", (loadAreaLength * scale3D).toFixed(1), "x", (loadAreaWidth * scale3D).toFixed(1), "unités");
 
   return (
     <>
@@ -151,14 +141,14 @@ const Scene = ({
       <directionalLight position={[-10, 10, -5]} intensity={0.5} />
       <pointLight position={[0, 10, 0]} intensity={0.5} />
 
-      <LoadArea length={scaledLength} width={scaledWidth} scale={scale3D} />
+      <LoadArea length={loadAreaLength} width={loadAreaWidth} scale={scale3D} />
 
       {furniture.map((item) => (
         <FurnitureBox key={item.id} furniture={item} scale={scale3D} canvasScale={canvasScale} />
       ))}
 
       <Grid
-        args={[scaledLength / scale3D, scaledWidth / scale3D]}
+        args={[loadAreaLength * scale3D, loadAreaWidth * scale3D]}
         cellSize={1}
         cellThickness={0.5}
         cellColor="#cbd5e1"
