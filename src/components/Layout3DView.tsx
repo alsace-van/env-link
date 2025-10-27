@@ -488,27 +488,50 @@ export const Layout3DView = ({
                 const furnitureId = childData.data.furnitureId;
 
                 console.log(`\nMeuble trouvé: ${furnitureId}`);
-
-                // Récupérer la matrice de transformation du groupe s'il y en a une
-                const matrix = childData.matrix;
+                console.log(`  childData:`, JSON.stringify(childData, null, 2));
 
                 // Le groupe contient un Path comme premier enfant avec les segments du rectangle
                 if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
                   const pathChild = childData.children[0];
+                  console.log(`  pathChild[0]:`, pathChild[0]);
+                  console.log(`  pathChild[1]:`, pathChild[1]);
 
                   if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
                     const segments = pathChild[1].segments;
+                    console.log(`  Segments:`, segments);
 
                     // Calculer le centre du rectangle à partir des segments
                     if (segments.length >= 4) {
-                      let x1 = segments[0][0];
-                      let y1 = segments[0][1];
-                      let x3 = segments[2][0];
-                      let y3 = segments[2][1];
+                      // Lire les coordonnées des segments
+                      // Chaque segment peut être [x, y] ou [[x, y], handleIn, handleOut]
+                      const getPoint = (seg: any) => {
+                        if (Array.isArray(seg)) {
+                          if (Array.isArray(seg[0])) {
+                            return { x: seg[0][0], y: seg[0][1] };
+                          }
+                          return { x: seg[0], y: seg[1] };
+                        }
+                        return { x: 0, y: 0 };
+                      };
+
+                      const p1 = getPoint(segments[0]);
+                      const p2 = getPoint(segments[1]);
+                      const p3 = getPoint(segments[2]);
+                      const p4 = getPoint(segments[3]);
+
+                      console.log(`  Points bruts: p1(${p1.x}, ${p1.y}), p3(${p3.x}, ${p3.y})`);
+
+                      // Récupérer la matrice de transformation depuis le Path (pas le Group)
+                      const pathMatrix = pathChild[1]?.matrix;
+                      
+                      let x1 = p1.x;
+                      let y1 = p1.y;
+                      let x3 = p3.x;
+                      let y3 = p3.y;
 
                       // Appliquer la matrice de transformation si elle existe
-                      if (matrix && Array.isArray(matrix) && matrix.length === 6) {
-                        const [a, b, c, d, tx, ty] = matrix;
+                      if (pathMatrix && Array.isArray(pathMatrix) && pathMatrix.length === 6) {
+                        const [a, b, c, d, tx, ty] = pathMatrix;
 
                         // Transformer les coins
                         const x1Global = a * x1 + c * y1 + tx;
@@ -521,7 +544,27 @@ export const Layout3DView = ({
                         x3 = x3Global;
                         y3 = y3Global;
 
-                        console.log(`  Matrice appliquée:`, matrix);
+                        console.log(`  Matrice Path appliquée:`, pathMatrix);
+                        console.log(`  Points transformés: p1(${x1}, ${y1}), p3(${x3}, ${y3})`);
+                      }
+                      
+                      // Appliquer aussi la matrice du groupe si elle existe
+                      const groupMatrix = childData.matrix;
+                      if (groupMatrix && Array.isArray(groupMatrix) && groupMatrix.length === 6) {
+                        const [a, b, c, d, tx, ty] = groupMatrix;
+
+                        const x1Global = a * x1 + c * y1 + tx;
+                        const y1Global = b * x1 + d * y1 + ty;
+                        const x3Global = a * x3 + c * y3 + tx;
+                        const y3Global = b * x3 + d * y3 + ty;
+
+                        x1 = x1Global;
+                        y1 = y1Global;
+                        x3 = x3Global;
+                        y3 = y3Global;
+
+                        console.log(`  Matrice Group appliquée:`, groupMatrix);
+                        console.log(`  Points finaux: p1(${x1}, ${y1}), p3(${x3}, ${y3})`);
                       }
 
                       // Centre du rectangle dans le canvas (coordonnées globales)
@@ -529,12 +572,13 @@ export const Layout3DView = ({
                       const rectCenterY = (y1 + y3) / 2;
 
                       console.log(`  Centre canvas: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
+                      console.log(`  Centre du canvas de référence: (${centerX}, ${centerY})`);
 
                       // Position relative au centre de la zone de chargement en pixels canvas
                       const relativeX = rectCenterX - centerX;
                       const relativeY = rectCenterY - centerY;
 
-                      console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
+                      console.log(`  Position relative finale: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
 
                       positions[furnitureId] = {
                         x: relativeX,
