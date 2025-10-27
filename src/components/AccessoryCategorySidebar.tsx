@@ -169,11 +169,25 @@ const AccessoryCategorySidebar = ({
     setDragOverCategory(null);
   };
 
+  const isDescendant = (parentId: string, childId: string): boolean => {
+    const children = categories.filter(cat => cat.parent_id === parentId);
+    if (children.some(cat => cat.id === childId)) return true;
+    return children.some(cat => isDescendant(cat.id, childId));
+  };
+
   const handleCategoryDrop = async (e: React.DragEvent, newParentId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
 
     if (!draggedCategory || draggedCategory === newParentId) {
+      setDraggedCategory(null);
+      setDragOverCategory(null);
+      return;
+    }
+
+    // Vérifier qu'on ne crée pas de boucle circulaire
+    if (newParentId && isDescendant(draggedCategory, newParentId)) {
+      toast.error("Impossible de déplacer une catégorie vers l'une de ses sous-catégories");
       setDraggedCategory(null);
       setDragOverCategory(null);
       return;
@@ -185,8 +199,11 @@ const AccessoryCategorySidebar = ({
       toast.error("Erreur lors du déplacement de la catégorie");
       console.error(error);
     } else {
-      toast.success("Catégorie déplacée");
+      toast.success(newParentId ? "Catégorie transformée en sous-catégorie" : "Catégorie déplacée à la racine");
       loadCategories();
+      if (newParentId) {
+        setExpandedCategories(prev => new Set(prev).add(newParentId));
+      }
     }
 
     setDraggedCategory(null);
