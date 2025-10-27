@@ -222,116 +222,133 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
     return (
       <div key={category.id} className="select-none">
         <div
-          className={`flex items-center gap-1 p-2 rounded transition-colors hover:bg-accent/50 ${
-            isSelected ? "bg-primary/10" : ""
-          }`}
+          className={`p-2 rounded transition-colors hover:bg-accent/50 ${isSelected ? "bg-primary/10" : ""}`}
           style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}
         >
-          {/* Bouton pour plier/déplier */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 hover:bg-transparent"
-            onClick={() => toggleExpanded(category.id)}
-          >
-            {hasSubcategories ? (
-              isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
+          <div className="flex items-start gap-1">
+            {/* Bouton pour plier/déplier */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 hover:bg-transparent flex-shrink-0"
+              onClick={() => toggleExpanded(category.id)}
+            >
+              {hasSubcategories ? (
+                isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )
               ) : (
-                <ChevronRight className="h-4 w-4" />
-              )
+                <div className="w-4" />
+              )}
+            </Button>
+
+            {isEditing ? (
+              <div className="flex-1 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      // Laisser passer TOUTES les touches sauf Enter et Escape
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        saveEdit();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                      // Ne PAS appeler preventDefault pour les autres touches (Backspace, Delete, etc.)
+                    }}
+                    onKeyUp={(e) => {
+                      // Gestionnaire supplémentaire pour s'assurer que la touche fonctionne
+                      e.stopPropagation();
+                    }}
+                    className="h-8 text-sm flex-1"
+                    placeholder="Nom de la catégorie"
+                    autoFocus
+                    autoComplete="off"
+                  />
+                  <Button size="sm" variant="default" onClick={saveEdit} className="h-8 px-3 flex-shrink-0">
+                    <Check className="h-4 w-4 mr-1" />
+                    OK
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={cancelEdit} className="h-8 px-3 flex-shrink-0">
+                    <X className="h-4 w-4 mr-1" />
+                    Annuler
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Parent:</span>
+                  <Select
+                    value={editParentId || "root"}
+                    onValueChange={(value) => setEditParentId(value === "root" ? null : value)}
+                  >
+                    <SelectTrigger className="h-8 text-sm flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="root">Racine</SelectItem>
+                      {getAvailableParents(category.id).map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.nom}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             ) : (
-              <div className="w-4" />
+              <>
+                {/* Nom de la catégorie cliquable */}
+                <button
+                  onClick={() => toggleCategory(category.id)}
+                  className={`flex-1 text-left text-sm px-2 py-1 rounded hover:bg-accent transition-colors ${
+                    isSelected ? "font-medium text-primary" : ""
+                  }`}
+                >
+                  {category.nom}
+                </button>
+
+                {/* Bouton modifier */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => startEditCategory(category)}
+                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-accent flex-shrink-0"
+                  title="Modifier"
+                >
+                  <Edit2 className="h-3 w-3" />
+                </Button>
+
+                {/* Bouton ajouter sous-catégorie */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowAddSub(category.id);
+                    setExpandedCategories((prev) => new Set(prev).add(category.id));
+                  }}
+                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-accent flex-shrink-0"
+                  title="Ajouter une sous-catégorie"
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+
+                {/* Bouton supprimer */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDeleteId(category.id)}
+                  className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 flex-shrink-0"
+                  title="Supprimer"
+                >
+                  <Trash2 className="h-3 w-3 text-destructive" />
+                </Button>
+              </>
             )}
-          </Button>
-
-          {isEditing ? (
-            <div className="flex-1 flex items-center gap-2">
-              <Input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    saveEdit();
-                  } else if (e.key === "Escape") {
-                    cancelEdit();
-                  }
-                }}
-                className="h-7 text-sm flex-1"
-                autoFocus
-              />
-              <Select
-                value={editParentId || "root"}
-                onValueChange={(value) => setEditParentId(value === "root" ? null : value)}
-              >
-                <SelectTrigger className="h-7 text-sm w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="root">Racine</SelectItem>
-                  {getAvailableParents(category.id).map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.nom}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button size="sm" variant="ghost" onClick={saveEdit} className="h-7 w-7 p-0">
-                <Check className="h-4 w-4 text-green-600" />
-              </Button>
-              <Button size="sm" variant="ghost" onClick={cancelEdit} className="h-7 w-7 p-0">
-                <X className="h-4 w-4 text-red-600" />
-              </Button>
-            </div>
-          ) : (
-            <>
-              {/* Nom de la catégorie cliquable */}
-              <button
-                onClick={() => toggleCategory(category.id)}
-                className={`flex-1 text-left text-sm px-2 py-1 rounded hover:bg-accent transition-colors ${
-                  isSelected ? "font-medium text-primary" : ""
-                }`}
-              >
-                {category.nom}
-              </button>
-
-              {/* Bouton modifier */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => startEditCategory(category)}
-                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-accent"
-                title="Modifier"
-              >
-                <Edit2 className="h-3 w-3" />
-              </Button>
-
-              {/* Bouton ajouter sous-catégorie */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowAddSub(category.id);
-                  setExpandedCategories((prev) => new Set(prev).add(category.id));
-                }}
-                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-accent"
-                title="Ajouter une sous-catégorie"
-              >
-                <Plus className="h-3 w-3" />
-              </Button>
-
-              {/* Bouton supprimer */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDeleteId(category.id)}
-                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10"
-                title="Supprimer"
-              >
-                <Trash2 className="h-3 w-3 text-destructive" />
-              </Button>
-            </>
-          )}
+          </div>
         </div>
 
         {/* Formulaire d'ajout de sous-catégorie */}
@@ -342,15 +359,23 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
               value={newSubCategoryName}
               onChange={(e) => setNewSubCategoryName(e.target.value)}
               onKeyDown={(e) => {
+                // Laisser passer TOUTES les touches sauf Enter et Escape
                 if (e.key === "Enter") {
+                  e.preventDefault();
                   handleAddSubCategory(category.id);
                 } else if (e.key === "Escape") {
+                  e.preventDefault();
                   setShowAddSub(null);
                   setNewSubCategoryName("");
                 }
+                // Ne PAS bloquer Backspace, Delete, etc.
+              }}
+              onKeyUp={(e) => {
+                e.stopPropagation();
               }}
               className="h-7 text-sm"
               autoFocus
+              autoComplete="off"
             />
             <Button size="sm" onClick={() => handleAddSubCategory(category.id)} className="h-7">
               OK
@@ -410,15 +435,23 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => {
+                  // Laisser passer TOUTES les touches sauf Enter et Escape
                   if (e.key === "Enter") {
+                    e.preventDefault();
                     handleAddRootCategory();
                   } else if (e.key === "Escape") {
+                    e.preventDefault();
                     setShowAddRoot(false);
                     setNewCategoryName("");
                   }
+                  // Ne PAS bloquer Backspace, Delete, etc.
+                }}
+                onKeyUp={(e) => {
+                  e.stopPropagation();
                 }}
                 className="h-8 text-sm"
                 autoFocus
+                autoComplete="off"
               />
               <Button size="sm" onClick={handleAddRootCategory} className="h-8">
                 OK
