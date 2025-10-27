@@ -469,19 +469,34 @@ export const Layout3DView = ({
     try {
       console.log("Structure canvasJSON:", Array.isArray(canvasJSON) ? `Array [${canvasJSON.length}]` : typeof canvasJSON);
       
-      if (canvasJSON && Array.isArray(canvasJSON) && canvasJSON.length > 1) {
-        const children = canvasJSON[1]?.children;
-        console.log("Nombre d'enfants trouvés:", children ? children.length : 0);
+      // Chercher les enfants dans la structure - peut être à différents niveaux
+      let children: any[] = [];
+      
+      if (Array.isArray(canvasJSON)) {
+        // Essayer canvasJSON[0] et canvasJSON[1]
+        if (canvasJSON[0]?.children) {
+          children = canvasJSON[0].children;
+          console.log("Enfants trouvés dans canvasJSON[0]:", children.length);
+        } else if (canvasJSON[1]?.children) {
+          children = canvasJSON[1].children;
+          console.log("Enfants trouvés dans canvasJSON[1]:", children.length);
+        } else if (canvasJSON[0] && Array.isArray(canvasJSON[0]) && canvasJSON[0][1]?.children) {
+          children = canvasJSON[0][1].children;
+          console.log("Enfants trouvés dans canvasJSON[0][1]:", children.length);
+        }
+      }
+      
+      console.log("Nombre total d'enfants à analyser:", children.length);
 
-        if (children && Array.isArray(children)) {
-          const scaledLoadAreaLength = loadAreaLength * scale;
-          const scaledLoadAreaWidth = loadAreaWidth * scale;
+      if (children && Array.isArray(children) && children.length > 0) {
+        const scaledLoadAreaLength = loadAreaLength * scale;
+        const scaledLoadAreaWidth = loadAreaWidth * scale;
 
-          // Centre du canvas
-          const centerX = CANVAS_WIDTH / 2;
-          const centerY = CANVAS_HEIGHT / 2;
+        // Centre du canvas
+        const centerX = CANVAS_WIDTH / 2;
+        const centerY = CANVAS_HEIGHT / 2;
 
-          children.forEach((child: any, index: number) => {
+        children.forEach((child: any, index: number) => {
             if (Array.isArray(child) && child.length > 1) {
               const childType = child[0];
               const childData = child[1];
@@ -595,7 +610,9 @@ export const Layout3DView = ({
               }
             }
           });
-        }
+      } else {
+        console.log("ATTENTION: Aucun enfant trouvé dans la structure canvasJSON");
+        console.log("Structure complète de canvasJSON[0]:", JSON.stringify(canvasJSON[0], null, 2).substring(0, 500));
       }
     } catch (error) {
       console.error("Error extracting positions:", error);
