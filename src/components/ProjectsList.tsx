@@ -353,7 +353,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                     {project.nom_projet || project.nom_proprietaire}
                   </span>
                 </CardTitle>
-                <CardDescription className="mt-2 space-y-1">
+                <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                   {project.vehicles_catalog && (
                     <div>
                       <Badge variant="secondary">
@@ -371,7 +371,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                       <span className="font-medium">Châssis:</span> {project.numero_chassis}
                     </div>
                   )}
-                </CardDescription>
+                </div>
               </div>
               <div className="flex gap-1 flex-shrink-0">
                 <Button
