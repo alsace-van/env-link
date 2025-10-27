@@ -12,10 +12,12 @@ import {
   Undo,
   Redo,
   Download,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
 import paper from "paper";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TechnicalCanvasProps {
   projectId: string;
@@ -77,6 +79,28 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     paper.setup(canvasRef.current);
 
     console.log("Paper.js initialized", paper.project);
+
+    // Charger les dessins depuis la base de données
+    const loadDrawings = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("projects")
+          .select("technical_canvas_data")
+          .eq("id", projectId)
+          .single();
+
+        if (error) throw error;
+
+        if (data?.technical_canvas_data) {
+          paper.project.activeLayer.importJSON(data.technical_canvas_data);
+          console.log("Dessins chargés");
+        }
+      } catch (error) {
+        console.error("Erreur lors du chargement des dessins:", error);
+      }
+    };
+
+    loadDrawings();
 
     // Variables pour le dessin
     let currentPath: paper.Path | null = null;
@@ -551,6 +575,26 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     toast.success("Canevas effacé");
   };
 
+  const handleSave = async () => {
+    if (!paper.project) return;
+
+    try {
+      const json = paper.project.activeLayer.exportJSON();
+
+      const { error } = await supabase
+        .from("projects")
+        .update({ technical_canvas_data: json })
+        .eq("id", projectId);
+
+      if (error) throw error;
+
+      toast.success("Schéma sauvegardé");
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde:", error);
+      toast.error("Erreur lors de la sauvegarde");
+    }
+  };
+
   const handleDownload = () => {
     if (!canvasRef.current) return;
     const dataURL = canvasRef.current.toDataURL("image/png");
@@ -721,7 +765,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           onAddToCatalog={onExpenseAdded}
         />
 
-        <Button variant="default" size="sm" onClick={handleDownload}>
+        <Button variant="default" size="sm" onClick={handleSave}>
+          <Save className="h-4 w-4 mr-2" />
+          Sauvegarder
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleDownload}>
           <Download className="h-4 w-4 mr-2" />
           Télécharger
         </Button>
