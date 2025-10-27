@@ -325,20 +325,26 @@ export const Layout3DView = ({
 
                       console.log(`Centre canvas pour ${furnitureId}: (${rectCenterX}, ${rectCenterY})`);
 
-                      // Position relative au centre de la zone de chargement en pixels canvas
-                      const relativeX = rectCenterX - centerX;
-                      const relativeY = rectCenterY - centerY;
+                    // Position relative au centre de la zone de chargement en pixels canvas
+                    const relativeX = rectCenterX - centerX;
+                    const relativeY = rectCenterY - centerY;
 
-                      // Conversion en millimètres réels
-                      const realX = relativeX / scale;
-                      const realY = relativeY / scale;
+                    console.log(`Scale utilisée: ${scale}`);
+                    console.log(`Relative X: ${relativeX}, Relative Y: ${relativeY}`);
 
-                      positions[furnitureId] = {
-                        x: realX,
-                        y: realY,
-                      };
+                    // Conversion en millimètres réels
+                    const realX = relativeX / scale;
+                    const realY = relativeY / scale;
 
-                      console.log(`Position 3D pour ${furnitureId}: (${realX}, ${realY}) mm`);
+                    console.log(`Real X: ${realX}, Real Y: ${realY}`);
+
+                    positions[furnitureId] = {
+                      x: realX,
+                      y: realY,
+                    };
+
+                    console.log(`Position 3D pour ${furnitureId}: (${realX}, ${realY}) mm`);
+                    console.log(`Positions stockées:`, positions);
                     }
                   }
                 }
