@@ -503,13 +503,38 @@ export const LayoutCanvas = ({
 
     const handleSave = async () => {
       const json = paper.project.exportJSON();
-      const furnitureData = Array.from(furnitureItemsRef.current.entries()).map(([id, data]) => ({
-        id,
-        ...data,
-      }));
+      
+      // Extraire les IDs des meubles présents sur le canvas
+      const canvasFurnitureIds = new Set<string>();
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child instanceof paper.Group && child.data.isFurniture && child.data.furnitureId) {
+          canvasFurnitureIds.add(child.data.furnitureId);
+        }
+      });
+      
+      // Ne sauvegarder que les meubles qui sont sur le canvas
+      const furnitureData = Array.from(furnitureItemsRef.current.entries())
+        .filter(([id]) => canvasFurnitureIds.has(id))
+        .map(([id, data]) => ({
+          id,
+          ...data,
+        }));
 
-      console.log("🔍 Sauvegarde - Nombre de meubles:", furnitureData.length);
+      console.log("🔍 Sauvegarde - Nombre de meubles sur le canvas:", canvasFurnitureIds.size);
+      console.log("🔍 Sauvegarde - Nombre de meubles dans les données:", furnitureData.length);
       console.log("Détails meubles:", furnitureData);
+      
+      // Synchroniser furnitureItems avec le canvas
+      setFurnitureItems((prev) => {
+        const newMap = new Map<string, FurnitureData>();
+        canvasFurnitureIds.forEach((id) => {
+          const data = prev.get(id);
+          if (data) {
+            newMap.set(id, data);
+          }
+        });
+        return newMap;
+      });
 
       try {
         const { error } = await supabase
