@@ -153,10 +153,18 @@ export const LayoutCanvas = ({
   const scaledLoadAreaLength = loadAreaLength * scale;
   const scaledLoadAreaWidth = loadAreaWidth * scale;
 
+  const hasInitializedRef = useRef(false);
+
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    paper.setup(canvasRef.current);
+    // Ne pas réinitialiser paper.js s'il est déjà initialisé
+    if (!hasInitializedRef.current) {
+      paper.setup(canvasRef.current);
+      hasInitializedRef.current = true;
+    } else {
+      return; // Ne pas exécuter le reste si déjà initialisé
+    }
 
     // Dessiner le contour de la zone de chargement
     const loadAreaOutline = new paper.Path.Rectangle({
@@ -607,6 +615,7 @@ export const LayoutCanvas = ({
     handleLoad();
 
     return () => {
+      hasInitializedRef.current = false;
       paper.project.clear();
       delete (window as any).layoutCanvasUndo;
       delete (window as any).layoutCanvasRedo;
@@ -615,7 +624,7 @@ export const LayoutCanvas = ({
       delete (window as any).layoutCanvasSave;
       delete (window as any).layoutCanvasLoad;
     };
-  }, [projectId, scaledLoadAreaLength, scaledLoadAreaWidth]);
+  }, [projectId]);
 
   const handleSaveDimensions = async () => {
     try {
