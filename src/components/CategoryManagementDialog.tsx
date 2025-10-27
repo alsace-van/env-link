@@ -187,6 +187,17 @@ const CategoryManagementDialog = ({
                     id="edit-category-name"
                     value={editCategoryName}
                     onChange={(e) => setEditCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleEditCategory();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setEditingCategory(null);
+                        setEditCategoryName("");
+                        setEditParentCategoryId(null);
+                      }
+                    }}
                     placeholder="Ex: Électronique"
                     autoFocus
                   />
@@ -246,6 +257,16 @@ const CategoryManagementDialog = ({
                     id="category-name"
                     value={newCategoryName}
                     onChange={(e) => setNewCategoryName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddCategory();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setNewCategoryName("");
+                        setParentCategoryId(null);
+                      }
+                    }}
                     placeholder="Ex: Électronique, Plomberie..."
                   />
                 </div>
