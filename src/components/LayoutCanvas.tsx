@@ -512,34 +512,6 @@ export const LayoutCanvas = ({
       }
     };
 
-    const handleDelete = () => {
-      if (selectedItem && !selectedItem.locked && !selectedItem.data.isHandle) {
-        const itemId = selectedItem.data.furnitureId;
-        if (itemId) {
-          setFurnitureItems((prev) => {
-            const newMap = new Map(prev);
-            newMap.delete(itemId);
-            return newMap;
-          });
-        }
-        selectedItem.remove();
-        removeHandles();
-        selectedItem = null;
-        saveState();
-        toast.success("Élément supprimé");
-      }
-    };
-
-    const handleExport = () => {
-      if (!canvasRef.current) return;
-      const dataUrl = canvasRef.current.toDataURL("image/png");
-      const link = document.createElement("a");
-      link.download = `amenagement-${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
-      toast.success("Plan d'aménagement exporté");
-    };
-
     const handleSave = async () => {
       const json = paper.project.exportJSON();
       const furnitureData = Array.from(furnitureItemsRef.current.entries()).map(([id, data]) => ({
@@ -566,6 +538,37 @@ export const LayoutCanvas = ({
         console.error("❌ Erreur lors de la sauvegarde:", error);
         toast.error("Erreur lors de la sauvegarde");
       }
+    };
+
+    const handleDelete = async () => {
+      if (selectedItem && !selectedItem.locked && !selectedItem.data.isHandle) {
+        const itemId = selectedItem.data.furnitureId;
+        if (itemId) {
+          setFurnitureItems((prev) => {
+            const newMap = new Map(prev);
+            newMap.delete(itemId);
+            return newMap;
+          });
+        }
+        selectedItem.remove();
+        removeHandles();
+        selectedItem = null;
+        saveState();
+        toast.success("Élément supprimé");
+        
+        // Sauvegarder automatiquement après suppression
+        await handleSave();
+      }
+    };
+
+    const handleExport = () => {
+      if (!canvasRef.current) return;
+      const dataUrl = canvasRef.current.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.download = `amenagement-${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+      toast.success("Plan d'aménagement exporté");
     };
 
     const handleLoad = async () => {
