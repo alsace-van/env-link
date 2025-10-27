@@ -3,20 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Trash2, Plus, Edit } from "lucide-react";
 
@@ -34,12 +22,7 @@ interface CategoryManagementDialogProps {
   categories: Category[];
 }
 
-const CategoryManagementDialog = ({
-  isOpen,
-  onClose,
-  onSuccess,
-  categories,
-}: CategoryManagementDialogProps) => {
+const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: CategoryManagementDialogProps) => {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [parentCategoryId, setParentCategoryId] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -47,7 +30,8 @@ const CategoryManagementDialog = ({
   const [editParentCategoryId, setEditParentCategoryId] = useState<string | null>(null);
 
   const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) {
+    const trimmedName = newCategoryName.trim();
+    if (!trimmedName) {
       toast.error("Veuillez entrer un nom de catégorie");
       return;
     }
@@ -59,7 +43,7 @@ const CategoryManagementDialog = ({
     }
 
     const { error } = await supabase.from("categories").insert({
-      nom: newCategoryName.trim(),
+      nom: trimmedName,
       parent_id: parentCategoryId,
       user_id: userData.user.id,
     });
@@ -76,10 +60,7 @@ const CategoryManagementDialog = ({
   };
 
   const handleDeleteCategory = async (categoryId: string) => {
-    const { error } = await supabase
-      .from("categories")
-      .delete()
-      .eq("id", categoryId);
+    const { error } = await supabase.from("categories").delete().eq("id", categoryId);
 
     if (error) {
       toast.error("Erreur lors de la suppression");
@@ -123,12 +104,12 @@ const CategoryManagementDialog = ({
   };
 
   const getSubcategories = (parentId: string | null) => {
-    return categories.filter(cat => cat.parent_id === parentId);
+    return categories.filter((cat) => cat.parent_id === parentId);
   };
 
   const renderCategoryTree = (category: Category, level: number = 0) => {
     const subcategories = getSubcategories(category.id);
-    
+
     return (
       <div key={category.id}>
         <div
@@ -159,7 +140,7 @@ const CategoryManagementDialog = ({
             </Button>
           </div>
         </div>
-        {subcategories.map(sub => renderCategoryTree(sub, level + 1))}
+        {subcategories.map((sub) => renderCategoryTree(sub, level + 1))}
       </div>
     );
   };
@@ -171,9 +152,7 @@ const CategoryManagementDialog = ({
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Gérer les catégories</DialogTitle>
-          <DialogDescription>
-            Créez et organisez vos catégories et sous-catégories
-          </DialogDescription>
+          <DialogDescription>Créez et organisez vos catégories et sous-catégories</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -185,21 +164,31 @@ const CategoryManagementDialog = ({
                   <Label htmlFor="edit-category-name">Nom de la catégorie</Label>
                   <Input
                     id="edit-category-name"
+                    type="text"
                     value={editCategoryName}
-                    onChange={(e) => setEditCategoryName(e.target.value)}
+                    onChange={(e) => {
+                      // Force la mise à jour du state
+                      setEditCategoryName(e.target.value);
+                    }}
                     onKeyDown={(e) => {
+                      // Uniquement intercepter Enter et Escape, laisser tout le reste passer
                       if (e.key === "Enter") {
                         e.preventDefault();
+                        e.stopPropagation();
                         handleEditCategory();
                       } else if (e.key === "Escape") {
                         e.preventDefault();
+                        e.stopPropagation();
                         setEditingCategory(null);
                         setEditCategoryName("");
                         setEditParentCategoryId(null);
                       }
+                      // Backspace, Delete, et toutes les autres touches fonctionnent normalement
                     }}
                     placeholder="Ex: Électronique"
                     autoFocus
+                    autoComplete="off"
+                    spellCheck="false"
                   />
                 </div>
 
@@ -215,7 +204,7 @@ const CategoryManagementDialog = ({
                     <SelectContent>
                       <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
                       {categories
-                        .filter(cat => cat.parent_id === null && cat.id !== editingCategory.id)
+                        .filter((cat) => cat.parent_id === null && cat.id !== editingCategory.id)
                         .map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>
                             {cat.nom}
@@ -226,11 +215,7 @@ const CategoryManagementDialog = ({
                 </div>
 
                 <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    onClick={handleEditCategory}
-                    className="flex-1"
-                  >
+                  <Button type="button" onClick={handleEditCategory} className="flex-1">
                     Enregistrer
                   </Button>
                   <Button
@@ -255,19 +240,29 @@ const CategoryManagementDialog = ({
                   <Label htmlFor="category-name">Nom de la catégorie</Label>
                   <Input
                     id="category-name"
+                    type="text"
                     value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    onChange={(e) => {
+                      // Force la mise à jour du state
+                      setNewCategoryName(e.target.value);
+                    }}
                     onKeyDown={(e) => {
+                      // Uniquement intercepter Enter et Escape, laisser tout le reste passer
                       if (e.key === "Enter") {
                         e.preventDefault();
+                        e.stopPropagation();
                         handleAddCategory();
                       } else if (e.key === "Escape") {
                         e.preventDefault();
+                        e.stopPropagation();
                         setNewCategoryName("");
                         setParentCategoryId(null);
                       }
+                      // Backspace, Delete, et toutes les autres touches fonctionnent normalement
                     }}
                     placeholder="Ex: Électronique, Plomberie..."
+                    autoComplete="off"
+                    spellCheck="false"
                   />
                 </div>
 
@@ -283,7 +278,7 @@ const CategoryManagementDialog = ({
                     <SelectContent>
                       <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
                       {categories
-                        .filter(cat => cat.parent_id === null)
+                        .filter((cat) => cat.parent_id === null)
                         .map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>
                             {cat.nom}
@@ -304,13 +299,9 @@ const CategoryManagementDialog = ({
           <div className="space-y-3">
             <h4 className="font-semibold">Catégories existantes</h4>
             {rootCategories.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                Aucune catégorie pour le moment
-              </p>
+              <p className="text-sm text-muted-foreground py-4 text-center">Aucune catégorie pour le moment</p>
             ) : (
-              <div className="border rounded-lg p-2">
-                {rootCategories.map(cat => renderCategoryTree(cat))}
-              </div>
+              <div className="border rounded-lg p-2">{rootCategories.map((cat) => renderCategoryTree(cat))}</div>
             )}
           </div>
         </div>
