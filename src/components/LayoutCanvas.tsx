@@ -543,6 +543,12 @@ export const LayoutCanvas = ({
     const handleDelete = async () => {
       if (selectedItem && !selectedItem.locked && !selectedItem.data.isHandle) {
         const itemId = selectedItem.data.furnitureId;
+        
+        selectedItem.remove();
+        removeHandles();
+        selectedItem = null;
+        
+        // Supprimer du state local
         if (itemId) {
           setFurnitureItems((prev) => {
             const newMap = new Map(prev);
@@ -550,14 +556,13 @@ export const LayoutCanvas = ({
             return newMap;
           });
         }
-        selectedItem.remove();
-        removeHandles();
-        selectedItem = null;
+        
         saveState();
-        toast.success("Élément supprimé");
         
         // Sauvegarder automatiquement après suppression
         await handleSave();
+        
+        toast.success("Élément supprimé");
       }
     };
 
