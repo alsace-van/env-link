@@ -112,11 +112,7 @@ export const LayoutCanvas = ({
   useEffect(() => {
     const loadFurnitureData = async () => {
       try {
-        const { data, error } = await supabase
-          .from("projects")
-          .select("furniture_data")
-          .eq("id", projectId)
-          .single();
+        const { data, error } = await supabase.from("projects").select("furniture_data").eq("id", projectId).single();
 
         if (error) throw error;
 
@@ -579,7 +575,7 @@ export const LayoutCanvas = ({
       try {
         const { data, error } = await supabase
           .from("projects")
-          .select("layout_canvas_data")
+          .select("layout_canvas_data, furniture_data")
           .eq("id", projectId)
           .single();
 
@@ -592,6 +588,21 @@ export const LayoutCanvas = ({
               ? data.layout_canvas_data
               : JSON.stringify(data.layout_canvas_data);
           paper.project.importJSON(canvasData);
+
+          // Re-synchroniser les données des meubles après l'import du canvas
+          if (data?.furniture_data && Array.isArray(data.furniture_data)) {
+            const newMap = new Map<string, FurnitureData>();
+            data.furniture_data.forEach((item: any) => {
+              newMap.set(item.id, {
+                id: item.id,
+                longueur_mm: item.longueur_mm,
+                largeur_mm: item.largeur_mm,
+                hauteur_mm: item.hauteur_mm,
+                poids_kg: item.poids_kg,
+              });
+            });
+            setFurnitureItems(newMap);
+          }
 
           toast.success("Plan d'aménagement chargé");
         }
