@@ -34,11 +34,13 @@ const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
   const depth = (furniture.largeur_mm || 100) / scale;
   const height = (furniture.hauteur_mm || 100) / scale;
 
-  // Position en unités 3D (les positions sont déjà en millimètres réels depuis extractPositions)
+  // Position en unités 3D
+  // Les positions viennent de extractPositions et sont DÉJÀ en millimètres réels
+  // Il faut juste les diviser par scale pour les convertir en unités 3D
   // En 3D: X = largeur (left/right), Y = hauteur (up/down), Z = profondeur (forward/back)
   // En 2D canvas: x = largeur, y = profondeur (inversé car Y canvas va vers le bas)
-  const posX = furniture.position?.x ? furniture.position.x / scale : 0;
-  const posZ = furniture.position?.y ? -(furniture.position.y / scale) : 0; // Inverser Y car canvas Y va vers le bas
+  const posX = (furniture.position?.x || 0) / scale;
+  const posZ = -(furniture.position?.y || 0) / scale; // Inverser Y car canvas Y va vers le bas
   const posY = height / 2; // Placer le meuble sur le sol
 
   return (
