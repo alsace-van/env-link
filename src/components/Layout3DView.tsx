@@ -161,7 +161,7 @@ export const Layout3DView = ({
 
     // 🔥 Subscription en temps réel pour écouter les changements
     const channel = supabase
-      .channel('project-changes')
+      .channel(`project-3d-${projectId}`)
       .on(
         'postgres_changes',
         {
@@ -172,13 +172,18 @@ export const Layout3DView = ({
         },
         (payload) => {
           console.log('🔄 Changement détecté dans le projet, rechargement 3D...');
+          console.log('Payload:', payload);
+          // Recharger immédiatement les données
           loadProjectData();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Statut de la subscription 3D:', status);
+      });
 
     // Nettoyer la subscription au démontage
     return () => {
+      console.log('🔌 Déconnexion de la subscription 3D');
       supabase.removeChannel(channel);
     };
   }, [projectId]);
