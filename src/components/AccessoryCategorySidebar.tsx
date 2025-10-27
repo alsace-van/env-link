@@ -249,8 +249,12 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                 {/* Ligne 1 : Champ de saisie du nom sur toute la largeur */}
                 <Input
                   value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setEditName(e.target.value);
+                  }}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === "Enter") {
                       e.preventDefault();
                       saveEdit();
@@ -259,6 +263,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                       cancelEdit();
                     }
                   }}
+                  onClick={(e) => e.stopPropagation()}
                   className="h-9 text-sm w-full"
                   placeholder="Nom de la catégorie"
                   autoFocus
@@ -352,8 +357,12 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
             <Input
               placeholder="Nom de la sous-catégorie"
               value={newSubCategoryName}
-              onChange={(e) => setNewSubCategoryName(e.target.value)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setNewSubCategoryName(e.target.value);
+              }}
               onKeyDown={(e) => {
+                e.stopPropagation();
                 if (e.key === "Enter") {
                   e.preventDefault();
                   handleAddSubCategory(category.id);
@@ -363,6 +372,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                   setNewSubCategoryName("");
                 }
               }}
+              onClick={(e) => e.stopPropagation()}
               className="h-7 text-sm"
               autoFocus
               autoComplete="off"
@@ -424,8 +434,12 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
               <Input
                 placeholder="Nouvelle catégorie"
                 value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  setNewCategoryName(e.target.value);
+                }}
                 onKeyDown={(e) => {
+                  e.stopPropagation();
                   if (e.key === "Enter") {
                     e.preventDefault();
                     handleAddRootCategory();
@@ -435,6 +449,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                     setNewCategoryName("");
                   }
                 }}
+                onClick={(e) => e.stopPropagation()}
                 className="h-8 text-sm"
                 autoFocus
                 autoComplete="off"
