@@ -303,8 +303,11 @@ const AccessoryCategorySidebar = ({
               value={newSubCategoryName}
               onChange={(e) => setNewSubCategoryName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleAddSubCategory(category.id);
-                if (e.key === "Escape") {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddSubCategory(category.id);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
                   setShowAddSub(null);
                   setNewSubCategoryName("");
                 }
@@ -373,20 +376,23 @@ const AccessoryCategorySidebar = ({
         <div className="px-4 pb-3 border-b">
           {showAddRoot ? (
             <div className="flex items-center gap-2">
-              <Input
-                placeholder="Nouvelle catégorie"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddRootCategory();
-                  if (e.key === "Escape") {
-                    setShowAddRoot(false);
-                    setNewCategoryName("");
-                  }
-                }}
-                className="h-8 text-sm"
-                autoFocus
-              />
+            <Input
+              placeholder="Nouvelle catégorie"
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddRootCategory();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setShowAddRoot(false);
+                  setNewCategoryName("");
+                }
+              }}
+              className="h-8 text-sm"
+              autoFocus
+            />
               <Button size="sm" onClick={handleAddRootCategory} className="h-8">
                 OK
               </Button>
