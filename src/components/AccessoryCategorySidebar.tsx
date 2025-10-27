@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Plus, Trash2, ChevronRight, ChevronDown, PanelLeftClose, PanelLeft } from "lucide-react";
+import { Plus, Trash2, ChevronRight, ChevronDown, PanelLeftClose, PanelLeft, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -156,7 +156,9 @@ const AccessoryCategorySidebar = ({
     return categories.filter((cat) => cat.parent_id === parentId);
   };
 
-  const handleCategoryDragStart = (categoryId: string) => {
+  const handleCategoryDragStart = (e: React.DragEvent, categoryId: string) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("categoryId", categoryId);
     setDraggedCategory(categoryId);
   };
 
@@ -170,16 +172,24 @@ const AccessoryCategorySidebar = ({
   };
 
   const isDescendant = (parentId: string, childId: string): boolean => {
-    const children = categories.filter(cat => cat.parent_id === parentId);
-    if (children.some(cat => cat.id === childId)) return true;
-    return children.some(cat => isDescendant(cat.id, childId));
+    const children = categories.filter((cat) => cat.parent_id === parentId);
+    if (children.some((cat) => cat.id === childId)) return true;
+    return children.some((cat) => isDescendant(cat.id, childId));
   };
 
   const handleCategoryDrop = async (e: React.DragEvent, newParentId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!draggedCategory || draggedCategory === newParentId) {
+    // Vérifier si c'est un drag de catégorie (pas un accessoire)
+    const categoryId = e.dataTransfer.getData("categoryId");
+    if (!categoryId || !draggedCategory) {
+      setDraggedCategory(null);
+      setDragOverCategory(null);
+      return;
+    }
+
+    if (draggedCategory === newParentId) {
       setDraggedCategory(null);
       setDragOverCategory(null);
       return;
@@ -199,10 +209,18 @@ const AccessoryCategorySidebar = ({
       toast.error("Erreur lors du déplacement de la catégorie");
       console.error(error);
     } else {
-      toast.success(newParentId ? "Catégorie transformée en sous-catégorie" : "Catégorie déplacée à la racine");
+      const draggedCat = categories.find((c) => c.id === draggedCategory);
+      const targetCat = newParentId ? categories.find((c) => c.id === newParentId) : null;
+
+      if (newParentId && targetCat) {
+        toast.success(`"${draggedCat?.nom}" déplacée dans "${targetCat.nom}"`);
+      } else {
+        toast.success(`"${draggedCat?.nom}" déplacée à la racine`);
+      }
+
       loadCategories();
       if (newParentId) {
-        setExpandedCategories(prev => new Set(prev).add(newParentId));
+        setExpandedCategories((prev) => new Set(prev).add(newParentId));
       }
     }
 
@@ -240,25 +258,31 @@ const AccessoryCategorySidebar = ({
     const isSelected = selectedCategories.includes(category.id);
     const isAddingSubHere = showAddSub === category.id;
     const isDragOver = dragOverCategory === category.id;
+    const isDragging = draggedCategory === category.id;
 
     return (
       <div key={category.id} className="select-none">
         <div
           draggable
-          onDragStart={() => handleCategoryDragStart(category.id)}
+          onDragStart={(e) => handleCategoryDragStart(e, category.id)}
           onDragOver={(e) => handleCategoryDragOver(e, category.id)}
           onDragLeave={handleCategoryDragLeave}
           onDrop={(e) => handleCategoryDrop(e, category.id)}
-          className={`flex items-center gap-1 py-1 hover:bg-accent/50 rounded group ${
-            isDragOver ? "bg-accent border-2 border-primary" : ""
-          }`}
+          className={`flex items-center gap-1 py-1 rounded group transition-colors ${
+            isDragging ? "opacity-40 cursor-grabbing" : "cursor-grab hover:bg-accent/50"
+          } ${isDragOver && draggedCategory ? "bg-primary/20 border-2 border-primary border-dashed" : ""}`}
           style={{ paddingLeft: `${level * 16 + 8}px` }}
         >
+          <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5"
-            onClick={() => hasSubcategories && toggleExpanded(category.id)}
+            className="h-5 w-5 flex-shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              hasSubcategories && toggleExpanded(category.id);
+            }}
           >
             {hasSubcategories ? (
               isExpanded ? (
@@ -272,15 +296,18 @@ const AccessoryCategorySidebar = ({
           </Button>
 
           <button
-            onClick={() => toggleCategory(category.id)}
-            className={`flex-1 text-left text-sm px-2 py-1 rounded ${
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleCategory(category.id);
+            }}
+            className={`flex-1 text-left text-sm px-2 py-1 rounded transition-colors ${
               isSelected ? "bg-primary text-primary-foreground" : ""
             }`}
           >
             {category.nom}
           </button>
 
-          <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+          <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
             <Button
               variant="ghost"
               size="icon"
@@ -319,14 +346,18 @@ const AccessoryCategorySidebar = ({
                 setNewSubCategoryName(e.target.value);
               }}
               onKeyDown={(e) => {
+                // Uniquement intercepter Enter et Escape, laisser tout le reste passer
                 if (e.key === "Enter") {
                   e.preventDefault();
+                  e.stopPropagation();
                   handleAddSubCategory(category.id);
                 } else if (e.key === "Escape") {
                   e.preventDefault();
+                  e.stopPropagation();
                   setShowAddSub(null);
                   setNewSubCategoryName("");
                 }
+                // Backspace, Delete, et toutes les autres touches fonctionnent normalement
               }}
               className="h-7 text-sm"
               autoFocus
@@ -392,14 +423,18 @@ const AccessoryCategorySidebar = ({
                   setNewCategoryName(e.target.value);
                 }}
                 onKeyDown={(e) => {
+                  // Uniquement intercepter Enter et Escape, laisser tout le reste passer
                   if (e.key === "Enter") {
                     e.preventDefault();
+                    e.stopPropagation();
                     handleAddRootCategory();
                   } else if (e.key === "Escape") {
                     e.preventDefault();
+                    e.stopPropagation();
                     setShowAddRoot(false);
                     setNewCategoryName("");
                   }
+                  // Backspace, Delete, et toutes les autres touches fonctionnent normalement
                 }}
                 className="h-8 text-sm"
                 autoFocus
@@ -431,14 +466,50 @@ const AccessoryCategorySidebar = ({
 
         <ScrollArea className="flex-1">
           <div
-            className="p-2"
-            onDragOver={(e) => handleAccessoryDragOver(e, null)}
-            onDrop={(e) => handleAccessoryDrop(e, null)}
+            className={`p-2 min-h-[200px] rounded transition-colors ${
+              draggedCategory && dragOverCategory === null ? "bg-primary/10 border-2 border-primary border-dashed" : ""
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              // Si on drag une catégorie, autoriser le drop à la racine
+              const categoryId = e.dataTransfer.types.includes("categoryid");
+              if (categoryId || draggedCategory) {
+                e.dataTransfer.dropEffect = "move";
+                setDragOverCategory(null); // null = racine
+              }
+            }}
+            onDragLeave={(e) => {
+              // Vérifier qu'on quitte vraiment la zone (pas juste un enfant)
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = e.clientX;
+              const y = e.clientY;
+              if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+                setDragOverCategory(null);
+              }
+            }}
+            onDrop={(e) => {
+              // Vérifier si c'est un drag de catégorie
+              const categoryId = e.dataTransfer.getData("categoryId");
+              if (categoryId) {
+                handleCategoryDrop(e, null); // null = déplacer à la racine
+              } else {
+                // Sinon c'est un accessoire
+                handleAccessoryDrop(e, null);
+              }
+            }}
           >
             {categories.filter((cat) => !cat.parent_id).length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Aucune catégorie</p>
             ) : (
               categories.filter((cat) => !cat.parent_id).map((cat) => renderCategory(cat))
+            )}
+
+            {draggedCategory && (
+              <div className="mt-4 p-3 text-xs text-muted-foreground text-center border-2 border-dashed border-muted-foreground/30 rounded bg-muted/30">
+                💡 Déposez ici pour déplacer à la racine
+                <br />
+                ou sur une catégorie pour créer une sous-catégorie
+              </div>
             )}
           </div>
         </ScrollArea>
