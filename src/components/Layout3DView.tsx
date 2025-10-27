@@ -43,15 +43,32 @@ const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
   const posZ = (furniture.position?.y || 0) / scale; // Pas d'inversion - on garde la même orientation
   const posY = height / 2; // Placer le meuble sur le sol
 
+  // Taille de texte adaptative basée sur l'échelle
+  // Plus l'échelle est grande (objets plus petits en 3D), plus le texte doit être petit
+  const textSize = Math.max(0.15, Math.min(0.4, scale / 500));
+  const textOffsetY = height / 2 + textSize * 1.2;
+
   return (
     <group position={[posX, posY, posZ]}>
       <Box args={[width, height, depth]} castShadow receiveShadow>
         <meshStandardMaterial color="#3b82f6" opacity={0.8} transparent />
       </Box>
-      <Text position={[0, height / 2 + 0.2, 0]} fontSize={0.3} color="black" anchorX="center" anchorY="middle">
+      <Text 
+        position={[0, textOffsetY, 0]} 
+        fontSize={textSize} 
+        color="black" 
+        anchorX="center" 
+        anchorY="middle"
+      >
         {`${furniture.longueur_mm}×${furniture.largeur_mm}×${furniture.hauteur_mm}mm`}
       </Text>
-      <Text position={[0, height / 2 + 0.5, 0]} fontSize={0.25} color="black" anchorX="center" anchorY="middle">
+      <Text 
+        position={[0, textOffsetY + textSize * 1.3, 0]} 
+        fontSize={textSize * 0.85} 
+        color="black" 
+        anchorX="center" 
+        anchorY="middle"
+      >
         {`${furniture.poids_kg}kg`}
       </Text>
     </group>
@@ -124,7 +141,15 @@ const Scene = ({
   loadAreaLength: number;
   loadAreaWidth: number;
 }) => {
-  const scale = 100; // 100mm = 1 unité
+  // Utiliser une échelle dynamique cohérente avec le canvas 2D
+  // Pour une meilleure visualisation, on fait en sorte que la plus grande dimension
+  // de la zone de chargement corresponde à environ 20 unités 3D
+  const maxDimension = Math.max(loadAreaLength, loadAreaWidth);
+  const scale = maxDimension / 20; // Par exemple: 3000mm / 20 = 150mm par unité 3D
+  
+  console.log("📐 Échelle 3D:", scale, "mm par unité 3D");
+  console.log("📏 Zone de chargement:", loadAreaLength, "x", loadAreaWidth, "mm");
+  console.log("📦 Dimensions 3D:", (loadAreaLength / scale).toFixed(1), "x", (loadAreaWidth / scale).toFixed(1), "unités");
 
   return (
     <>
