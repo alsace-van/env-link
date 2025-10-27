@@ -4,7 +4,7 @@ import { OrbitControls, Text, Box, Grid } from "@react-three/drei";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Maximize2, RotateCcw } from "lucide-react";
+import { Maximize2, RotateCcw, RefreshCw } from "lucide-react";
 import * as THREE from "three";
 
 interface Layout3DViewProps {
@@ -154,13 +154,38 @@ export const Layout3DView = ({
   const [canvasData, setCanvasData] = useState<any>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     loadProjectData();
+
+    // 🔥 Subscription en temps réel pour écouter les changements
+    const channel = supabase
+      .channel('project-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'projects',
+          filter: `id=eq.${projectId}`,
+        },
+        (payload) => {
+          console.log('🔄 Changement détecté dans le projet, rechargement 3D...');
+          loadProjectData();
+        }
+      )
+      .subscribe();
+
+    // Nettoyer la subscription au démontage
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [projectId]);
 
   const loadProjectData = async () => {
     try {
+      setIsRefreshing(true);
       const { data, error } = await supabase
         .from("projects")
         .select("furniture_data, layout_canvas_data")
@@ -186,6 +211,9 @@ export const Layout3DView = ({
 
         console.log("Meubles avec positions:", furnitureWithPositions);
         setFurniture(furnitureWithPositions);
+      } else {
+        // Si pas de meubles, vider l'affichage
+        setFurniture([]);
       }
 
       if (data?.layout_canvas_data) {
@@ -193,6 +221,8 @@ export const Layout3DView = ({
       }
     } catch (error) {
       console.error("Error loading 3D data:", error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -289,6 +319,15 @@ export const Layout3DView = ({
           <p className="text-sm text-muted-foreground">Clic + glisser pour tourner, molette pour zoomer</p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={loadProjectData}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Chargement...' : 'Rafraîchir'}
+          </Button>
           <Button variant="outline" size="sm" onClick={resetCamera}>
             <RotateCcw className="w-4 h-4 mr-2" />
             Réinitialiser
