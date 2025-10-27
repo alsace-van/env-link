@@ -25,27 +25,31 @@ interface FurnitureItem {
 
 interface FurnitureBoxProps {
   furniture: FurnitureItem;
-  scale: number;
+  scale: number; // scale3D : pixels canvas -> unités 3D
+  canvasScale: number; // canvasScale : millimètres -> pixels canvas
 }
 
-const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
-  // Dimensions en unités 3D (convertir de mm à unités 3D)
-  const width = (furniture.longueur_mm || 100) / scale;
-  const depth = (furniture.largeur_mm || 100) / scale;
-  const height = (furniture.hauteur_mm || 100) / scale;
+const FurnitureBox = ({ furniture, scale, canvasScale }: FurnitureBoxProps) => {
+  // Dimensions : mm -> pixels canvas -> unités 3D
+  const widthCanvas = (furniture.longueur_mm || 100) * canvasScale;
+  const depthCanvas = (furniture.largeur_mm || 100) * canvasScale;
+  const heightCanvas = (furniture.hauteur_mm || 100) * canvasScale;
+  
+  const width = widthCanvas / scale;
+  const depth = depthCanvas / scale;
+  const height = heightCanvas / scale;
 
   // Position en unités 3D
-  // Les positions viennent de extractPositions et sont DÉJÀ en millimètres réels
-  // Il faut juste les diviser par scale pour les convertir en unités 3D
+  // Les positions viennent de extractPositions et sont en pixels canvas relatifs au centre
+  // On les divise par scale3D pour les convertir en unités 3D
   // En 3D: X = longueur (left/right), Y = hauteur (up/down), Z = largeur (forward/back)
-  // En 2D canvas: x = longueur (horizontal), y = largeur (vertical, mais Y canvas va vers le bas)
+  // En 2D canvas: x = longueur (horizontal), y = largeur (vertical, Y canvas va vers le bas)
   const posX = (furniture.position?.x || 0) / scale;
-  const posZ = (furniture.position?.y || 0) / scale; // Pas d'inversion - on garde la même orientation
+  const posZ = (furniture.position?.y || 0) / scale;
   const posY = height / 2; // Placer le meuble sur le sol
 
-  // Taille de texte adaptative basée sur l'échelle
-  // Plus l'échelle est grande (objets plus petits en 3D), plus le texte doit être petit
-  const textSize = Math.max(0.15, Math.min(0.4, scale / 500));
+  // Taille de texte adaptative
+  const textSize = Math.max(0.15, Math.min(0.4, 1.0));
   const textOffsetY = height / 2 + textSize * 1.2;
 
   return (
@@ -119,21 +123,26 @@ const Scene = ({
   loadAreaLength: number;
   loadAreaWidth: number;
 }) => {
-  // Utiliser une échelle dynamique cohérente avec le canvas 2D
-  // Pour une meilleure visualisation, on fait en sorte que la plus grande dimension
-  // de la zone de chargement corresponde à environ 20 unités 3D
-  const maxDimension = Math.max(loadAreaLength, loadAreaWidth);
-  const scale = maxDimension / 20; // Par exemple: 3000mm / 20 = 150mm par unité 3D
+  // IMPORTANT : Utiliser la MÊME échelle que LayoutCanvas.tsx pour cohérence
+  // Dans LayoutCanvas : scale = Math.min((800 - 100) / loadAreaLength, (600 - 100) / loadAreaWidth)
+  // Cela donne le facteur de conversion : pixels canvas -> millimètres
+  // Pour la 3D, on inverse : on veut millimètres -> unités 3D
+  // On garde la même échelle visuelle en utilisant un facteur similaire
+  
+  const canvasScale = Math.min(700 / loadAreaLength, 500 / loadAreaWidth);
+  // Pour la 3D, on veut que la zone de chargement fasse environ 20 unités 3D
+  // Donc : scale3D = taille_mm / 20
+  const targetSize = 20; // unités 3D pour la plus grande dimension visible
+  const scaledLength = loadAreaLength * canvasScale;
+  const scaledWidth = loadAreaWidth * canvasScale;
+  const maxScaledDimension = Math.max(scaledLength, scaledWidth);
+  const scale3D = maxScaledDimension / targetSize;
 
-  console.log("📐 Échelle 3D:", scale, "mm par unité 3D");
+  console.log("📐 Échelle canvas 2D:", canvasScale, "pixels/mm");
+  console.log("📐 Échelle 3D:", scale3D, "pixels canvas par unité 3D");
   console.log("📏 Zone de chargement:", loadAreaLength, "x", loadAreaWidth, "mm");
-  console.log(
-    "📦 Dimensions 3D:",
-    (loadAreaLength / scale).toFixed(1),
-    "x",
-    (loadAreaWidth / scale).toFixed(1),
-    "unités",
-  );
+  console.log("📏 Zone scalée (pixels canvas):", scaledLength.toFixed(1), "x", scaledWidth.toFixed(1), "px");
+  console.log("📦 Dimensions 3D:", (scaledLength / scale3D).toFixed(1), "x", (scaledWidth / scale3D).toFixed(1), "unités");
 
   return (
     <>
@@ -142,14 +151,14 @@ const Scene = ({
       <directionalLight position={[-10, 10, -5]} intensity={0.5} />
       <pointLight position={[0, 10, 0]} intensity={0.5} />
 
-      <LoadArea length={loadAreaLength} width={loadAreaWidth} scale={scale} />
+      <LoadArea length={scaledLength} width={scaledWidth} scale={scale3D} />
 
       {furniture.map((item) => (
-        <FurnitureBox key={item.id} furniture={item} scale={scale} />
+        <FurnitureBox key={item.id} furniture={item} scale={scale3D} canvasScale={canvasScale} />
       ))}
 
       <Grid
-        args={[loadAreaLength / scale, loadAreaWidth / scale]}
+        args={[scaledLength / scale3D, scaledWidth / scale3D]}
         cellSize={1}
         cellThickness={0.5}
         cellColor="#cbd5e1"
@@ -358,18 +367,16 @@ export const Layout3DView = ({
                       console.log(`Scale utilisée: ${scale}`);
                       console.log(`Relative X: ${relativeX}, Relative Y: ${relativeY}`);
 
-                      // Conversion en millimètres réels
-                      const realX = relativeX / scale;
-                      const realY = relativeY / scale;
-
-                      console.log(`Real X: ${realX}, Real Y: ${realY}`);
+                      // Les positions sont déjà en pixels canvas relatifs au centre
+                      // On les garde comme ça pour la 3D (pas de conversion en mm)
+                      console.log(`Position canvas pour ${furnitureId}: (${relativeX}, ${relativeY}) pixels`);
 
                       positions[furnitureId] = {
-                        x: realX,
-                        y: realY,
+                        x: relativeX,
+                        y: relativeY,
                       };
 
-                      console.log(`Position 3D pour ${furnitureId}: (${realX}, ${realY}) mm`);
+                      console.log(`Position 3D pour ${furnitureId}: (${relativeX}, ${relativeY}) pixels canvas`);
                       console.log(`Positions stockées:`, positions);
                     }
                   }
