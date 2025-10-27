@@ -347,8 +347,8 @@ const Scene = ({
 
 export const Layout3DView = ({
   projectId,
-  loadAreaLength = 3000,
-  loadAreaWidth = 1800,
+  loadAreaLength: propLoadAreaLength,
+  loadAreaWidth: propLoadAreaWidth,
   loadAreaHeight = 1800,
 }: Layout3DViewProps) => {
   const [furniture, setFurniture] = useState<FurnitureItem[]>([]);
@@ -357,6 +357,8 @@ export const Layout3DView = ({
   const [cameraKey, setCameraKey] = useState(0);
   const [measureMode, setMeasureMode] = useState(false);
   const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
+  const [loadAreaLength, setLoadAreaLength] = useState<number>(propLoadAreaLength || 3000);
+  const [loadAreaWidth, setLoadAreaWidth] = useState<number>(propLoadAreaWidth || 1800);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /**
@@ -382,36 +384,7 @@ export const Layout3DView = ({
       console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
       console.log(`Zone de chargement: ${loadAreaLength}mm × ${loadAreaWidth}mm`);
       console.log(`Scale calculé: ${scale.toFixed(4)} pixels/mm`);
-      
-      // Debug: Afficher la structure du canvasJSON
-      console.log("\n=== DEBUG STRUCTURE canvasJSON ===");
-      console.log("Type de canvasJSON:", typeof canvasJSON);
-      console.log("Est un array?", Array.isArray(canvasJSON));
-      if (Array.isArray(canvasJSON)) {
-        console.log("Longueur du tableau:", canvasJSON.length);
-        canvasJSON.forEach((item, index) => {
-          if (index < 5) { // Limiter à 5 pour éviter trop de logs
-            console.log(`\nÉlément [${index}]:`);
-            console.log("  Type:", typeof item);
-            console.log("  Est un array?", Array.isArray(item));
-            if (item) {
-              if (Array.isArray(item)) {
-                console.log("  Longueur:", item.length);
-                if (item.length > 0) console.log("  Premier élément:", item[0]);
-                if (item.length > 1) {
-                  console.log("  Deuxième élément type:", typeof item[1]);
-                  if (item[1] && typeof item[1] === 'object') {
-                    console.log("  Deuxième élément keys:", Object.keys(item[1]).slice(0, 10));
-                  }
-                }
-              } else if (typeof item === 'object') {
-                console.log("  Keys:", Object.keys(item).slice(0, 10));
-              }
-            }
-          }
-        });
-      }
-      console.log("=== FIN DEBUG ===\n");
+      console.log("=== FIN EXTRACTION ===\n");
 
       try {
         // Trouver les children dans le canvasJSON
@@ -589,7 +562,7 @@ export const Layout3DView = ({
 
       const { data: projectData, error: projectError } = await supabase
         .from("projects")
-        .select("furniture_data, layout_canvas_data")
+        .select("furniture_data, layout_canvas_data, longueur_chargement_mm, largeur_chargement_mm")
         .eq("id", projectId)
         .single();
 
@@ -601,6 +574,16 @@ export const Layout3DView = ({
       if (!projectData) {
         console.error("❌ Aucune donnée de projet trouvée");
         throw new Error("Aucune donnée de projet trouvée");
+      }
+
+      // Mettre à jour les dimensions de la zone de chargement depuis la DB
+      if (projectData.longueur_chargement_mm) {
+        setLoadAreaLength(projectData.longueur_chargement_mm);
+        console.log(`✓ Longueur zone de chargement mise à jour: ${projectData.longueur_chargement_mm}mm`);
+      }
+      if (projectData.largeur_chargement_mm) {
+        setLoadAreaWidth(projectData.largeur_chargement_mm);
+        console.log(`✓ Largeur zone de chargement mise à jour: ${projectData.largeur_chargement_mm}mm`);
       }
 
       console.log("\n==========================================");

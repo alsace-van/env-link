@@ -522,6 +522,7 @@ export const LayoutCanvas = ({
 
       console.log("🔍 Sauvegarde - Nombre de meubles sur le canvas:", canvasFurnitureIds.size);
       console.log("🔍 Sauvegarde - Nombre de meubles dans les données:", furnitureData.length);
+      console.log("🔍 Dimensions zone de chargement:", loadAreaLength, "×", loadAreaWidth, "mm");
       console.log("Détails meubles:", furnitureData);
       
       // Synchroniser furnitureItems avec le canvas
@@ -542,6 +543,8 @@ export const LayoutCanvas = ({
           .update({
             layout_canvas_data: json,
             furniture_data: furnitureData,
+            longueur_chargement_mm: loadAreaLength,
+            largeur_chargement_mm: loadAreaWidth,
           })
           .eq("id", projectId);
 
