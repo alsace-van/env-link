@@ -378,7 +378,7 @@ export const Layout3DView = ({
     try {
       const { data: projectData, error: projectError } = await supabase
         .from("projects")
-        .select("canvas_data, furniture_data")
+        .select("layout_canvas_data, furniture_data")
         .eq("id", projectId)
         .single();
 
@@ -405,9 +405,9 @@ export const Layout3DView = ({
         });
       }
 
-      // Extraire les positions depuis canvas_data
-      if (projectData.canvas_data) {
-        const canvasJSON = JSON.parse(projectData.canvas_data);
+      // Extraire les positions depuis layout_canvas_data
+      if (projectData.layout_canvas_data && typeof projectData.layout_canvas_data === 'string') {
+        const canvasJSON = JSON.parse(projectData.layout_canvas_data);
         const extractedData = extractFurniturePositions(canvasJSON, loadAreaLength, loadAreaWidth);
 
         console.log("\nPositions extraites:", extractedData);
