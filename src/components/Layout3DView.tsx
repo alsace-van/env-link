@@ -374,16 +374,64 @@ export const Layout3DView = ({
       console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
       console.log(`Zone de chargement: ${loadAreaLength}mm × ${loadAreaWidth}mm`);
       console.log(`Scale calculé: ${scale.toFixed(4)} pixels/mm`);
+      
+      // Debug: Afficher la structure du canvasJSON
+      console.log("\n=== DEBUG STRUCTURE canvasJSON ===");
+      console.log("Type de canvasJSON:", typeof canvasJSON);
+      console.log("Est un array?", Array.isArray(canvasJSON));
+      if (Array.isArray(canvasJSON)) {
+        console.log("Longueur du tableau:", canvasJSON.length);
+        canvasJSON.forEach((item, index) => {
+          if (index < 5) { // Limiter à 5 pour éviter trop de logs
+            console.log(`\nÉlément [${index}]:`);
+            console.log("  Type:", typeof item);
+            console.log("  Est un array?", Array.isArray(item));
+            if (item) {
+              if (Array.isArray(item)) {
+                console.log("  Longueur:", item.length);
+                if (item.length > 0) console.log("  Premier élément:", item[0]);
+                if (item.length > 1) {
+                  console.log("  Deuxième élément type:", typeof item[1]);
+                  if (item[1] && typeof item[1] === 'object') {
+                    console.log("  Deuxième élément keys:", Object.keys(item[1]).slice(0, 10));
+                  }
+                }
+              } else if (typeof item === 'object') {
+                console.log("  Keys:", Object.keys(item).slice(0, 10));
+              }
+            }
+          }
+        });
+      }
+      console.log("=== FIN DEBUG ===\n");
 
       try {
-        if (canvasJSON && Array.isArray(canvasJSON) && canvasJSON.length > 1) {
-          const children = canvasJSON[1]?.children;
+        // Trouver les children dans le canvasJSON
+        let children = null;
+        
+        if (canvasJSON && Array.isArray(canvasJSON)) {
+          console.log(`\nStructure canvasJSON: Array avec ${canvasJSON.length} élément(s)`);
+          
+          // Essayer différents emplacements
+          if (canvasJSON.length > 1 && canvasJSON[1]?.children) {
+            children = canvasJSON[1].children;
+            console.log(`✓ Trouvé children dans canvasJSON[1]`);
+          } else if (canvasJSON.length > 0 && canvasJSON[0]?.children) {
+            children = canvasJSON[0].children;
+            console.log(`✓ Trouvé children dans canvasJSON[0]`);
+          } else if (canvasJSON.length > 0 && Array.isArray(canvasJSON[0]) && canvasJSON[0].length > 1 && canvasJSON[0][1]?.children) {
+            children = canvasJSON[0][1].children;
+            console.log(`✓ Trouvé children dans canvasJSON[0][1]`);
+          }
+        }
 
-          if (children && Array.isArray(children)) {
-            const centerX = CANVAS_WIDTH / 2;
-            const centerY = CANVAS_HEIGHT / 2;
+        if (children && Array.isArray(children)) {
+          console.log(`✓ Analyse de ${children.length} enfant(s) du canvas`);
+          
+          const centerX = CANVAS_WIDTH / 2;
+          const centerY = CANVAS_HEIGHT / 2;
 
-            children.forEach((child: any) => {
+          children.forEach((child: any) => {
               if (Array.isArray(child) && child.length > 1) {
                 const childType = child[0];
                 const childData = child[1];
@@ -503,7 +551,8 @@ export const Layout3DView = ({
                 }
               }
             });
-          }
+        } else {
+          console.log("⚠️ Aucun enfant trouvé dans le canvas");
         }
       } catch (error) {
         console.error("Error extracting positions and dimensions:", error);
