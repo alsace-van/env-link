@@ -430,10 +430,13 @@ export const LayoutCanvas = ({
     };
 
     tool.onMouseUp = (event: paper.ToolEvent) => {
+      console.log("🖱️ onMouseUp - activeTool:", activeToolRef.current, "currentPath:", !!currentPath);
+      
       if (draggedHandle) {
         draggedHandle = null;
         saveState();
       } else if (activeToolRef.current === "rectangle" && currentPath) {
+        console.log("✅ Ouverture du dialogue meuble");
         setPendingRectangle(currentPath);
         setShowFurnitureDialog(true);
       } else if (activeToolRef.current === "measure" && currentMeasureLine) {
