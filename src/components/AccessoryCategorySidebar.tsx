@@ -168,7 +168,7 @@ const AccessoryCategorySidebar = ({
   const handleCategoryDragOver = (e: React.DragEvent, categoryId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
-
+    
     // Vérifier si c'est un drag de catégorie
     if (draggedCategory) {
       e.dataTransfer.dropEffect = "move";
@@ -181,15 +181,15 @@ const AccessoryCategorySidebar = ({
   };
 
   const isDescendant = (parentId: string, childId: string): boolean => {
-    const children = categories.filter((cat) => cat.parent_id === parentId);
-    if (children.some((cat) => cat.id === childId)) return true;
-    return children.some((cat) => isDescendant(cat.id, childId));
+    const children = categories.filter(cat => cat.parent_id === parentId);
+    if (children.some(cat => cat.id === childId)) return true;
+    return children.some(cat => isDescendant(cat.id, childId));
   };
 
   const handleCategoryDrop = async (e: React.DragEvent, newParentId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
-
+    
     console.log("Drop event triggered", { draggedCategory, newParentId });
 
     if (!draggedCategory) {
@@ -216,7 +216,10 @@ const AccessoryCategorySidebar = ({
     console.log("Updating category", draggedCategory, "with parent", newParentId);
 
     // Effectuer la mise à jour
-    const { error } = await supabase.from("categories").update({ parent_id: newParentId }).eq("id", draggedCategory);
+    const { error } = await supabase
+      .from("categories")
+      .update({ parent_id: newParentId })
+      .eq("id", draggedCategory);
 
     if (error) {
       toast.error("Erreur lors du déplacement de la catégorie");
@@ -282,17 +285,19 @@ const AccessoryCategorySidebar = ({
           onDragOver={(e) => handleCategoryDragOver(e, category.id)}
           onDragLeave={handleCategoryDragLeave}
           onDrop={(e) => handleCategoryDrop(e, category.id)}
-          className={`flex items-center gap-1 py-1 rounded-md group transition-all ${
-            isDragging ? "opacity-40" : "hover:bg-accent/80"
-          } ${isDragOver && draggedCategory ? "bg-primary/20 ring-2 ring-primary" : ""}`}
-          style={{ paddingLeft: `${level * 20}px` }}
+          className={`flex items-center gap-1 py-1.5 rounded group transition-all ${
+            isDragging ? "opacity-40" : "hover:bg-accent/50"
+          } ${isDragOver && draggedCategory ? "bg-primary/20 ring-2 ring-primary" : ""} ${
+            level > 0 ? "border-l-2 border-muted ml-2" : ""
+          }`}
+          style={{ paddingLeft: `${level * 24 + 8}px` }}
         >
-          <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
+          <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
 
           <Button
             variant="ghost"
             size="icon"
-            className="h-5 w-5 flex-shrink-0 hover:bg-transparent p-0"
+            className="h-6 w-6 flex-shrink-0 hover:bg-accent"
             onClick={(e) => {
               e.stopPropagation();
               if (hasSubcategories) {
@@ -302,9 +307,9 @@ const AccessoryCategorySidebar = ({
           >
             {hasSubcategories ? (
               isExpanded ? (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                <ChevronDown className="h-4 w-4" />
               ) : (
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <ChevronRight className="h-4 w-4" />
               )
             ) : (
               <div className="h-4 w-4" />
@@ -316,21 +321,22 @@ const AccessoryCategorySidebar = ({
               e.stopPropagation();
               toggleCategory(category.id);
             }}
-            className={`flex-1 text-left text-sm px-2 py-1.5 rounded transition-colors ${
-              isSelected ? "bg-primary text-primary-foreground font-medium" : "hover:bg-accent/50"
-            }`}
+            className={`flex-1 text-left text-sm px-3 py-1.5 rounded transition-colors ${
+              isSelected ? "bg-primary text-primary-foreground font-medium" : ""
+            } ${level > 0 ? "text-muted-foreground" : "font-medium"}`}
           >
             {category.nom}
           </button>
 
-          <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity pr-1">
+          <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 hover:bg-accent"
+              className="h-6 w-6"
               onClick={(e) => {
                 e.stopPropagation();
                 setShowAddSub(category.id);
+                // Auto-expand quand on ajoute une sous-catégorie
                 if (!isExpanded) {
                   setExpandedCategories((prev) => new Set(prev).add(category.id));
                 }
@@ -342,7 +348,7 @@ const AccessoryCategorySidebar = ({
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 text-destructive hover:bg-destructive/10"
+              className="h-6 w-6 text-destructive hover:text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
                 setDeleteId(category.id);
@@ -355,11 +361,10 @@ const AccessoryCategorySidebar = ({
         </div>
 
         {isAddingSubHere && (
-          <div
-            className="flex items-center gap-2 py-2"
-            style={{ paddingLeft: `${(level + 1) * 20}px` }}
+          <div 
+            className="flex items-center gap-2 py-2 border-l-2 border-muted ml-2" 
+            style={{ paddingLeft: `${(level + 1) * 24 + 8}px` }}
           >
-            <div className="h-4 w-4 flex-shrink-0" />
             <Input
               placeholder="Nom de la sous-catégorie"
               type="text"
@@ -368,6 +373,7 @@ const AccessoryCategorySidebar = ({
                 setNewSubCategoryName(e.target.value);
               }}
               onKeyDown={(e) => {
+                // Ne bloquer QUE Enter et Escape, laisser TOUT le reste passer
                 if (e.key === "Enter") {
                   e.preventDefault();
                   e.stopPropagation();
@@ -378,11 +384,15 @@ const AccessoryCategorySidebar = ({
                   setShowAddSub(null);
                   setNewSubCategoryName("");
                 }
+                // IMPORTANT : Ne pas appeler preventDefault() ou stopPropagation() pour les autres touches
+                // Backspace, Delete, lettres, etc. doivent passer normalement
               }}
               onMouseDown={(e) => {
+                // Empêcher le parent draggable d'intercepter
                 e.stopPropagation();
               }}
               onClick={(e) => {
+                // Empêcher le parent draggable d'intercepter
                 e.stopPropagation();
               }}
               className="h-7 text-sm"
@@ -412,11 +422,7 @@ const AccessoryCategorySidebar = ({
           </div>
         )}
 
-        {isExpanded && hasSubcategories && (
-          <div className="ml-0">
-            {subcategories.map((sub) => renderCategory(sub, level + 1))}
-          </div>
-        )}
+        {isExpanded && hasSubcategories && subcategories.map((sub) => renderCategory(sub, level + 1))}
       </div>
     );
   };
@@ -538,7 +544,7 @@ const AccessoryCategorySidebar = ({
               e.preventDefault();
               e.stopPropagation();
               console.log("Drop on root zone");
-
+              
               // Si c'est un drag de catégorie, déplacer à la racine
               if (draggedCategory) {
                 handleCategoryDrop(e, null);
