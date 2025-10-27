@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Search, Trash2, Edit, Plus } from "lucide-react";
 import { toast } from "sonner";
+import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +27,7 @@ interface Accessory {
   fournisseur: string | null;
   url_produit: string | null;
   created_at: string;
+  category_id: string | null;
 }
 
 const AccessoriesCatalog = () => {
@@ -35,24 +37,33 @@ const AccessoriesCatalog = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   useEffect(() => {
     loadAccessories();
   }, []);
 
   useEffect(() => {
+    let filtered = accessories;
+
+    // Filtrer par recherche
     if (searchTerm) {
-      setFilteredAccessories(
-        accessories.filter(
-          (acc) =>
-            acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+      filtered = filtered.filter(
+        (acc) =>
+          acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-    } else {
-      setFilteredAccessories(accessories);
     }
-  }, [searchTerm, accessories]);
+
+    // Filtrer par catégories
+    if (selectedCategories.length > 0) {
+      filtered = filtered.filter((acc) =>
+        acc.category_id && selectedCategories.includes(acc.category_id)
+      );
+    }
+
+    setFilteredAccessories(filtered);
+  }, [searchTerm, accessories, selectedCategories]);
 
   const loadAccessories = async () => {
     setLoading(true);
@@ -94,7 +105,12 @@ const AccessoriesCatalog = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-4 max-w-7xl">
+      <AccessoryCategorySidebar
+        selectedCategories={selectedCategories}
+        onCategoryChange={setSelectedCategories}
+      />
+      
+      <div className="container mx-auto p-4 max-w-7xl ml-96">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
