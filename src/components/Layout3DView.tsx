@@ -68,22 +68,35 @@ const LoadArea = ({
   const scaledLength = length / scale;
   const scaledWidth = width / scale;
 
+  // Créer une ligne en pointillés pour le contour
+  const points = [
+    new THREE.Vector3(-scaledLength / 2, 0.02, -scaledWidth / 2),
+    new THREE.Vector3(scaledLength / 2, 0.02, -scaledWidth / 2),
+    new THREE.Vector3(scaledLength / 2, 0.02, scaledWidth / 2),
+    new THREE.Vector3(-scaledLength / 2, 0.02, scaledWidth / 2),
+    new THREE.Vector3(-scaledLength / 2, 0.02, -scaledWidth / 2),
+  ];
+
   return (
     <group>
       {/* Rectangle plat au sol représentant la surface utile */}
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[scaledLength, scaledWidth]} />
-        <meshStandardMaterial color="#e2e8f0" opacity={0.5} transparent side={THREE.DoubleSide} />
+        <meshStandardMaterial color="#e2e8f0" opacity={0.3} transparent side={THREE.DoubleSide} />
       </mesh>
       
-      {/* Contour du rectangle */}
-      <lineSegments position={[0, 0.01, 0]}>
-        <edgesGeometry 
-          attach="geometry" 
-          args={[new THREE.PlaneGeometry(scaledLength, scaledWidth)]} 
-        />
-        <lineBasicMaterial attach="material" color="#3b82f6" linewidth={2} />
-      </lineSegments>
+      {/* Contour en pointillés */}
+      <line>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            count={points.length}
+            array={new Float32Array(points.flatMap(p => [p.x, p.y, p.z]))}
+            itemSize={3}
+          />
+        </bufferGeometry>
+        <lineDashedMaterial color="#3b82f6" dashSize={0.5} gapSize={0.3} linewidth={2} />
+      </line>
     </group>
   );
 };
@@ -258,61 +271,78 @@ export const Layout3DView = ({
 
       console.log("Données canvas parsées:", data);
 
-      if (data && Array.isArray(data) && data.length > 1) {
-        const items = data[1];
+      // La structure est: [["Layer", { children: [...] }]]
+      if (data && Array.isArray(data) && data.length > 0) {
+        const layer = data[0];
+        
+        if (Array.isArray(layer) && layer[0] === "Layer" && layer[1]?.children) {
+          const children = layer[1].children;
 
-        if (Array.isArray(items)) {
-          items.forEach((item: any, index: number) => {
-            // Chercher les rectangles avec des données de meuble
-            if (item && Array.isArray(item) && item.length > 1) {
-              const itemType = item[0];
-              const itemData = item[1];
+          console.log("Enfants du Layer:", children);
 
-              console.log(`Item ${index}:`, itemType, itemData);
+          // Le canvas fait 800x600
+          const canvasWidth = 800;
+          const canvasHeight = 600;
 
-              // Vérifier si c'est un groupe avec un furnitureId
-              if (itemType === "Group" && itemData?.data?.furnitureId) {
-                const furnitureId = itemData.data.furnitureId;
-                const matrix = itemData.matrix;
+          // Calculer l'échelle utilisée dans le canvas (même calcul que dans LayoutCanvas.tsx)
+          const scale = Math.min((canvasWidth - 100) / loadAreaLength, (canvasHeight - 100) / loadAreaWidth);
+          const scaledLoadAreaLength = loadAreaLength * scale;
+          const scaledLoadAreaWidth = loadAreaWidth * scale;
 
-                if (matrix && Array.isArray(matrix) && matrix.length >= 6) {
-                  // Les positions dans Paper.js sont stockées dans la matrice de transformation
-                  // matrix[4] = translation X, matrix[5] = translation Y
-                  // Le canvas fait 800x600, et la zone de chargement est centrée
-                  const canvasWidth = 800;
-                  const canvasHeight = 600;
+          // Centre du canvas
+          const centerX = canvasWidth / 2;
+          const centerY = canvasHeight / 2;
 
-                  // Calculer l'échelle utilisée dans le canvas
-                  const scale = Math.min((canvasWidth - 100) / loadAreaLength, (canvasHeight - 100) / loadAreaWidth);
-                  const scaledLoadAreaLength = loadAreaLength * scale;
-                  const scaledLoadAreaWidth = loadAreaWidth * scale;
+          children.forEach((child: any, index: number) => {
+            if (Array.isArray(child) && child.length > 1) {
+              const childType = child[0];
+              const childData = child[1];
 
-                  // Centre du canvas
-                  const centerX = canvasWidth / 2;
-                  const centerY = canvasHeight / 2;
+              // Chercher les groupes de meubles
+              if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
+                const furnitureId = childData.data.furnitureId;
 
-                  // Centre de la zone de chargement dans le canvas
-                  const loadAreaCenterX = centerX;
-                  const loadAreaCenterY = centerY;
+                console.log(`Meuble trouvé: ${furnitureId}`, childData);
 
-                  // Position du meuble dans le canvas
-                  const canvasPosX = matrix[4];
-                  const canvasPosY = matrix[5];
+                // Le groupe contient un Path comme premier enfant avec les segments du rectangle
+                if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
+                  const pathChild = childData.children[0];
+                  
+                  if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
+                    const segments = pathChild[1].segments;
 
-                  // Position relative au centre de la zone de chargement en pixels canvas
-                  const relativeX = canvasPosX - loadAreaCenterX;
-                  const relativeY = canvasPosY - loadAreaCenterY;
+                    console.log(`Segments du meuble ${furnitureId}:`, segments);
 
-                  // Conversion en millimètres réels
-                  const realX = relativeX / scale;
-                  const realY = relativeY / scale;
+                    // Calculer le centre du rectangle à partir des segments
+                    // segments: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+                    if (segments.length >= 4) {
+                      const x1 = segments[0][0];
+                      const y1 = segments[0][1];
+                      const x3 = segments[2][0];
+                      const y3 = segments[2][1];
 
-                  positions[furnitureId] = {
-                    x: realX,
-                    y: realY,
-                  };
+                      // Centre du rectangle dans le canvas
+                      const rectCenterX = (x1 + x3) / 2;
+                      const rectCenterY = (y1 + y3) / 2;
 
-                  console.log(`Position pour ${furnitureId}:`, positions[furnitureId]);
+                      console.log(`Centre canvas pour ${furnitureId}: (${rectCenterX}, ${rectCenterY})`);
+
+                      // Position relative au centre de la zone de chargement en pixels canvas
+                      const relativeX = rectCenterX - centerX;
+                      const relativeY = rectCenterY - centerY;
+
+                      // Conversion en millimètres réels
+                      const realX = relativeX / scale;
+                      const realY = relativeY / scale;
+
+                      positions[furnitureId] = {
+                        x: realX,
+                        y: realY,
+                      };
+
+                      console.log(`Position 3D pour ${furnitureId}: (${realX}, ${realY}) mm`);
+                    }
+                  }
                 }
               }
             }
