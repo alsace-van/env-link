@@ -22,6 +22,8 @@ interface FurnitureItem {
   hauteur_mm: number;
   poids_kg: number;
   position?: { x: number; y: number };
+  // NOUVEAU : dimensions extraites du canvas en pixels
+  canvasDimensions?: { widthPx: number; heightPx: number };
 }
 
 interface FurnitureBoxProps {
@@ -32,29 +34,45 @@ interface FurnitureBoxProps {
 
 const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps) => {
   // ==========================================
-  // DIMENSIONS: Conversion directe mm → unités 3D
+  // DIMENSIONS: Utiliser les dimensions RÉELLES du canvas si disponibles
   // ==========================================
-  const widthMm = furniture.longueur_mm || 100;
-  const depthMm = furniture.largeur_mm || 100;
+
+  let widthMm, depthMm;
+
+  if (furniture.canvasDimensions) {
+    // Utiliser les dimensions réelles extraites du canvas
+    widthMm = furniture.canvasDimensions.widthPx / canvasScale;
+    depthMm = furniture.canvasDimensions.heightPx / canvasScale;
+
+    console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS DU CANVAS) ===`);
+    console.log(
+      `Canvas: ${furniture.canvasDimensions.widthPx.toFixed(1)}px × ${furniture.canvasDimensions.heightPx.toFixed(1)}px`,
+    );
+    console.log(`Converties: ${widthMm.toFixed(1)}mm × ${depthMm.toFixed(1)}mm`);
+  } else {
+    // Fallback: utiliser les dimensions stockées
+    widthMm = furniture.longueur_mm || 100;
+    depthMm = furniture.largeur_mm || 100;
+
+    console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS STOCKÉES) ===`);
+    console.log(`Dimensions: ${widthMm}mm × ${depthMm}mm`);
+  }
+
   const heightMm = furniture.hauteur_mm || 100;
 
   const width3D = widthMm * mmToUnits3D; // longueur → X
   const depth3D = depthMm * mmToUnits3D; // largeur → Z
   const height3D = heightMm * mmToUnits3D; // hauteur → Y
 
-  console.log(`\n=== MEUBLE ${furniture.id} ===`);
-  console.log(`Dimensions (mm): ${widthMm} × ${depthMm} × ${heightMm}`);
-  console.log(`Dimensions (3D): ${width3D.toFixed(2)} × ${depth3D.toFixed(2)} × ${height3D.toFixed(2)} unités`);
+  console.log(`Dimensions 3D finales: ${width3D.toFixed(2)} × ${depth3D.toFixed(2)} × ${height3D.toFixed(2)} unités`);
 
   // ==========================================
   // POSITION: pixels canvas relatifs → mm → unités 3D
   // ==========================================
-  // Les positions extraites sont déjà RELATIVES AU CENTRE en pixels canvas
   const posXpixelsRel = furniture.position?.x || 0;
   const posYpixelsRel = furniture.position?.y || 0;
 
   // 1. Pixels canvas relatifs → mm relatifs
-  // On divise par canvasScale pour obtenir la distance en mm
   const posXmm = posXpixelsRel / canvasScale;
   const posZmm = posYpixelsRel / canvasScale;
 
@@ -63,9 +81,9 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
   const posZ3D = posZmm * mmToUnits3D;
   const posY3D = height3D / 2; // Placer sur le sol
 
-  console.log(`Position (pixels canvas relatifs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
-  console.log(`Position (mm relatifs): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
-  console.log(`Position (3D): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)}) unités`);
+  console.log(`Position (pixels relatifs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
+  console.log(`Position (mm): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
+  console.log(`Position (3D): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)})`);
 
   // Taille de texte adaptative
   const textSize = Math.max(0.2, Math.min(0.5, 0.3));
@@ -77,7 +95,7 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
         <meshStandardMaterial color="#3b82f6" opacity={0.8} transparent />
       </Box>
       <Text position={[0, textOffsetY, 0]} fontSize={textSize} color="black" anchorX="center" anchorY="middle">
-        {`${widthMm}×${depthMm}×${heightMm}mm`}
+        {`${Math.round(widthMm)}×${Math.round(depthMm)}×${heightMm}mm`}
       </Text>
       <Text
         position={[0, textOffsetY + textSize * 1.3, 0]}
@@ -93,7 +111,6 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
 };
 
 const LoadArea = ({ length, width, mmToUnits3D }: { length: number; width: number; mmToUnits3D: number }) => {
-  // Conversion directe: mm → unités 3D
   const length3D = length * mmToUnits3D;
   const width3D = width * mmToUnits3D;
 
@@ -101,7 +118,6 @@ const LoadArea = ({ length, width, mmToUnits3D }: { length: number; width: numbe
   console.log(`Dimensions (mm): ${length} × ${width}`);
   console.log(`Dimensions (3D): ${length3D.toFixed(2)} × ${width3D.toFixed(2)} unités`);
 
-  // Points du rectangle pour le contour en pointillés
   const points: [number, number, number][] = [
     [-length3D / 2, 0.02, -width3D / 2],
     [length3D / 2, 0.02, -width3D / 2],
@@ -112,27 +128,20 @@ const LoadArea = ({ length, width, mmToUnits3D }: { length: number; width: numbe
 
   return (
     <group>
-      {/* Rectangle plat au sol représentant la surface utile */}
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[length3D, width3D]} />
         <meshStandardMaterial color="#e2e8f0" opacity={0.3} transparent side={THREE.DoubleSide} />
       </mesh>
-
-      {/* Contour en pointillés */}
       <Line points={points} color="#3b82f6" lineWidth={3} dashed={true} dashScale={50} dashSize={1} gapSize={0.5} />
     </group>
   );
 };
 
-// Helper pour visualiser les axes
 const AxisHelper = () => {
   return (
     <group>
-      {/* Axe X - Rouge */}
       <arrowHelper args={[new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), 5, 0xff0000]} />
-      {/* Axe Y - Vert */}
       <arrowHelper args={[new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), 5, 0x00ff00]} />
-      {/* Axe Z - Bleu */}
       <arrowHelper args={[new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 5, 0x0000ff]} />
     </group>
   );
@@ -169,14 +178,9 @@ const MeasurementTool = ({
 
     const getIntersectionPoint = (x: number, y: number): THREE.Vector3 | null => {
       raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
-
-      // Raycast sur tous les objets de la scène (meubles, plans, etc.)
       const intersects = raycaster.intersectObjects(scene.children, true);
-
-      // Filtrer les objets invisibles ou les helpers
       const validIntersects = intersects.filter((intersect) => {
         const obj = intersect.object;
-        // Ignorer les grilles, les textes et les lignes de mesure
         return (
           obj.visible &&
           !(obj as any).isLine &&
@@ -190,7 +194,6 @@ const MeasurementTool = ({
         return validIntersects[0].point.clone();
       }
 
-      // Si pas d'intersection avec des objets, utiliser le plan au sol comme fallback
       const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       const intersectPoint = new THREE.Vector3();
       const hasGroundIntersection = raycaster.ray.intersectPlane(groundPlane, intersectPoint);
@@ -203,7 +206,7 @@ const MeasurementTool = ({
     };
 
     const handlePointerDown = (event: MouseEvent) => {
-      if (event.button !== 0) return; // Only left click
+      if (event.button !== 0) return;
 
       const canvas = event.target as HTMLCanvasElement;
       const rect = canvas.getBoundingClientRect();
@@ -250,7 +253,6 @@ const MeasurementTool = ({
 
   return (
     <>
-      {/* Preview line */}
       {startPoint && currentPoint && (
         <Line
           points={[startPoint, currentPoint]}
@@ -262,8 +264,6 @@ const MeasurementTool = ({
           gapSize={0.3}
         />
       )}
-
-      {/* Saved measurement lines */}
       {measureLines.map((line) => (
         <group key={line.id}>
           <Line points={[line.start, line.end]} color="red" lineWidth={3} />
@@ -301,16 +301,9 @@ const Scene = ({
   measureLines: MeasureLine[];
   onAddMeasure: (start: THREE.Vector3, end: THREE.Vector3, distance: number) => void;
 }) => {
-  // ==========================================
-  // PARAMÈTRES DE CONVERSION
-  // ==========================================
-
-  // 1. Échelle 3D: 1 unité 3D = 100mm (pour garder des chiffres raisonnables)
   const mmToUnits3D = 1 / 100;
   const scale3D = mmToUnits3D;
 
-  // 2. Échelle canvas: pixels par mm (doit correspondre exactement au canvas 2D)
-  // IMPORTANT: Cette valeur DOIT être la même que celle calculée dans LayoutCanvas
   const CANVAS_WIDTH = 800;
   const CANVAS_HEIGHT = 600;
   const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
@@ -378,7 +371,7 @@ export const Layout3DView = ({
     try {
       const { data: projectData, error: projectError } = await supabase
         .from("projects")
-        .select("layout_canvas_data, furniture_data")
+        .select("canvas_data, furniture_data, layout_canvas_data")
         .eq("id", projectId)
         .single();
 
@@ -388,7 +381,6 @@ export const Layout3DView = ({
       console.log("CHARGEMENT DES DONNÉES PROJET");
       console.log("==========================================");
 
-      // Charger les données des meubles
       let furnitureData: FurnitureItem[] = [];
       if (projectData.furniture_data && Array.isArray(projectData.furniture_data)) {
         furnitureData = projectData.furniture_data.map((item: any) => ({
@@ -400,27 +392,33 @@ export const Layout3DView = ({
         }));
 
         console.log(`Meubles chargés: ${furnitureData.length}`);
-        furnitureData.forEach((f) => {
-          console.log(`  - ${f.id}: ${f.longueur_mm}×${f.largeur_mm}×${f.hauteur_mm}mm, ${f.poids_kg}kg`);
-        });
       }
 
-      // Extraire les positions depuis layout_canvas_data
-      if (projectData.layout_canvas_data && typeof projectData.layout_canvas_data === 'string') {
-        const canvasJSON = JSON.parse(projectData.layout_canvas_data);
-        const extractedData = extractFurniturePositions(canvasJSON, loadAreaLength, loadAreaWidth);
+      // Utiliser layout_canvas_data en priorité, sinon canvas_data
+      const canvasDataToUse = projectData.layout_canvas_data || projectData.canvas_data;
 
-        console.log("\nPositions extraites:", extractedData);
+      if (canvasDataToUse) {
+        const canvasJSON = typeof canvasDataToUse === "string" ? JSON.parse(canvasDataToUse) : canvasDataToUse;
 
-        // Associer les positions aux meubles
+        const extractedData = extractFurniturePositionsAndDimensions(canvasJSON, loadAreaLength, loadAreaWidth);
+
+        console.log("\nPositions et dimensions extraites:", extractedData);
+
         furnitureData = furnitureData.map((item) => ({
           ...item,
           position: extractedData.positions[item.id] || { x: 0, y: 0 },
+          canvasDimensions: extractedData.dimensions[item.id],
         }));
 
-        console.log("\nMeubles avec positions:");
+        console.log("\nMeubles avec positions et dimensions:");
         furnitureData.forEach((f) => {
-          console.log(`  - ${f.id}: position (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
+          console.log(`  - ${f.id}:`);
+          console.log(`    Position: (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
+          if (f.canvasDimensions) {
+            console.log(
+              `    Dimensions canvas: ${f.canvasDimensions.widthPx.toFixed(1)}px × ${f.canvasDimensions.heightPx.toFixed(1)}px`,
+            );
+          }
         });
       }
 
@@ -440,90 +438,57 @@ export const Layout3DView = ({
   }, [projectId, loadAreaLength, loadAreaWidth]);
 
   /**
-   * FONCTION CORRIGÉE : Extraction des positions avec les informations de scale
+   * FONCTION CORRIGÉE : Extraction des positions ET dimensions réelles du canvas
    */
-  const extractFurniturePositions = (
+  const extractFurniturePositionsAndDimensions = (
     canvasJSON: any,
     loadAreaLength: number,
     loadAreaWidth: number,
   ): {
     positions: { [furnitureId: string]: { x: number; y: number } };
+    dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } };
     scale: number;
     canvasWidth: number;
     canvasHeight: number;
   } => {
     const positions: { [furnitureId: string]: { x: number; y: number } } = {};
+    const dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } } = {};
 
-    // Dimensions du canvas (doivent correspondre à LayoutCanvas)
     const CANVAS_WIDTH = 800;
     const CANVAS_HEIGHT = 600;
 
-    // Calcul du scale (doit être identique à LayoutCanvas ligne 148)
     const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
 
-    console.log("\n=== EXTRACTION DES POSITIONS ===");
+    console.log("\n=== EXTRACTION DES POSITIONS ET DIMENSIONS ===");
     console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
     console.log(`Zone de chargement: ${loadAreaLength}mm × ${loadAreaWidth}mm`);
     console.log(`Scale calculé: ${scale.toFixed(4)} pixels/mm`);
 
     try {
-      console.log("Structure canvasJSON:", Array.isArray(canvasJSON) ? `Array [${canvasJSON.length}]` : typeof canvasJSON);
-      
-      // Chercher les enfants dans la structure - peut être à différents niveaux
-      let children: any[] = [];
-      
-      if (Array.isArray(canvasJSON)) {
-        // Essayer canvasJSON[0] et canvasJSON[1]
-        if (canvasJSON[0]?.children) {
-          children = canvasJSON[0].children;
-          console.log("Enfants trouvés dans canvasJSON[0]:", children.length);
-        } else if (canvasJSON[1]?.children) {
-          children = canvasJSON[1].children;
-          console.log("Enfants trouvés dans canvasJSON[1]:", children.length);
-        } else if (canvasJSON[0] && Array.isArray(canvasJSON[0]) && canvasJSON[0][1]?.children) {
-          children = canvasJSON[0][1].children;
-          console.log("Enfants trouvés dans canvasJSON[0][1]:", children.length);
-        }
-      }
-      
-      console.log("Nombre total d'enfants à analyser:", children.length);
+      if (canvasJSON && Array.isArray(canvasJSON) && canvasJSON.length > 1) {
+        const children = canvasJSON[1]?.children;
 
-      if (children && Array.isArray(children) && children.length > 0) {
-        const scaledLoadAreaLength = loadAreaLength * scale;
-        const scaledLoadAreaWidth = loadAreaWidth * scale;
+        if (children && Array.isArray(children)) {
+          const centerX = CANVAS_WIDTH / 2;
+          const centerY = CANVAS_HEIGHT / 2;
 
-        // Centre du canvas
-        const centerX = CANVAS_WIDTH / 2;
-        const centerY = CANVAS_HEIGHT / 2;
-
-        children.forEach((child: any, index: number) => {
+          children.forEach((child: any) => {
             if (Array.isArray(child) && child.length > 1) {
               const childType = child[0];
               const childData = child[1];
 
-              console.log(`\nEnfant ${index}: Type=${childType}, isFurniture=${childData?.data?.isFurniture}, furnitureId=${childData?.data?.furnitureId}`);
-
-              // Chercher les groupes de meubles
               if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
                 const furnitureId = childData.data.furnitureId;
 
-                console.log(`\n*** MEUBLE DÉTECTÉ: ${furnitureId} ***`);
-                console.log(`  Matrice du groupe:`, childData.matrix);
+                console.log(`\n*** MEUBLE: ${furnitureId} ***`);
 
-                // Le groupe contient un Path comme premier enfant avec les segments du rectangle
                 if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
                   const pathChild = childData.children[0];
-                  console.log(`  pathChild[0]:`, pathChild[0]);
-                  console.log(`  pathChild[1]:`, pathChild[1]);
 
                   if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
                     const segments = pathChild[1].segments;
-                    console.log(`  Segments:`, segments);
 
-                    // Calculer le centre du rectangle à partir des segments
                     if (segments.length >= 4) {
-                      // Lire les coordonnées des segments
-                      // Chaque segment peut être [x, y] ou [[x, y], handleIn, handleOut]
                       const getPoint = (seg: any) => {
                         if (Array.isArray(seg)) {
                           if (Array.isArray(seg[0])) {
@@ -534,75 +499,110 @@ export const Layout3DView = ({
                         return { x: 0, y: 0 };
                       };
 
-                      const p1 = getPoint(segments[0]);
-                      const p2 = getPoint(segments[1]);
-                      const p3 = getPoint(segments[2]);
-                      const p4 = getPoint(segments[3]);
+                      const p1 = getPoint(segments[0]); // top-left
+                      const p2 = getPoint(segments[1]); // top-right
+                      const p3 = getPoint(segments[2]); // bottom-right
+                      const p4 = getPoint(segments[3]); // bottom-left
 
-                      console.log(`  Points bruts: p1(${p1.x}, ${p1.y}), p3(${p3.x}, ${p3.y})`);
+                      console.log(`  Segments bruts:`);
+                      console.log(`    p1: (${p1.x}, ${p1.y})`);
+                      console.log(`    p2: (${p2.x}, ${p2.y})`);
+                      console.log(`    p3: (${p3.x}, ${p3.y})`);
+                      console.log(`    p4: (${p4.x}, ${p4.y})`);
 
-                      // Récupérer la matrice de transformation depuis le Path (pas le Group)
+                      let x1 = p1.x,
+                        y1 = p1.y;
+                      let x2 = p2.x,
+                        y2 = p2.y;
+                      let x3 = p3.x,
+                        y3 = p3.y;
+                      let x4 = p4.x,
+                        y4 = p4.y;
+
+                      // Appliquer la matrice du Path
                       const pathMatrix = pathChild[1]?.matrix;
-                      
-                      let x1 = p1.x;
-                      let y1 = p1.y;
-                      let x3 = p3.x;
-                      let y3 = p3.y;
-
-                      // Appliquer la matrice de transformation si elle existe
                       if (pathMatrix && Array.isArray(pathMatrix) && pathMatrix.length === 6) {
                         const [a, b, c, d, tx, ty] = pathMatrix;
 
-                        // Transformer les coins
-                        const x1Global = a * x1 + c * y1 + tx;
-                        const y1Global = b * x1 + d * y1 + ty;
-                        const x3Global = a * x3 + c * y3 + tx;
-                        const y3Global = b * x3 + d * y3 + ty;
+                        const transform = (x: number, y: number) => ({
+                          x: a * x + c * y + tx,
+                          y: b * x + d * y + ty,
+                        });
 
-                        x1 = x1Global;
-                        y1 = y1Global;
-                        x3 = x3Global;
-                        y3 = y3Global;
+                        const t1 = transform(x1, y1);
+                        const t2 = transform(x2, y2);
+                        const t3 = transform(x3, y3);
+                        const t4 = transform(x4, y4);
 
-                        console.log(`  Matrice Path appliquée:`, pathMatrix);
-                        console.log(`  Points transformés: p1(${x1}, ${y1}), p3(${x3}, ${y3})`);
+                        x1 = t1.x;
+                        y1 = t1.y;
+                        x2 = t2.x;
+                        y2 = t2.y;
+                        x3 = t3.x;
+                        y3 = t3.y;
+                        x4 = t4.x;
+                        y4 = t4.y;
+
+                        console.log(`  Après matrice Path: [${pathMatrix}]`);
                       }
-                      
-                      // Appliquer aussi la matrice du groupe si elle existe
+
+                      // Appliquer la matrice du Group
                       const groupMatrix = childData.matrix;
                       if (groupMatrix && Array.isArray(groupMatrix) && groupMatrix.length === 6) {
                         const [a, b, c, d, tx, ty] = groupMatrix;
 
-                        const x1Global = a * x1 + c * y1 + tx;
-                        const y1Global = b * x1 + d * y1 + ty;
-                        const x3Global = a * x3 + c * y3 + tx;
-                        const y3Global = b * x3 + d * y3 + ty;
+                        const transform = (x: number, y: number) => ({
+                          x: a * x + c * y + tx,
+                          y: b * x + d * y + ty,
+                        });
 
-                        x1 = x1Global;
-                        y1 = y1Global;
-                        x3 = x3Global;
-                        y3 = y3Global;
+                        const t1 = transform(x1, y1);
+                        const t2 = transform(x2, y2);
+                        const t3 = transform(x3, y3);
+                        const t4 = transform(x4, y4);
 
-                        console.log(`  Matrice Group appliquée:`, groupMatrix);
-                        console.log(`  Points finaux: p1(${x1}, ${y1}), p3(${x3}, ${y3})`);
+                        x1 = t1.x;
+                        y1 = t1.y;
+                        x2 = t2.x;
+                        y2 = t2.y;
+                        x3 = t3.x;
+                        y3 = t3.y;
+                        x4 = t4.x;
+                        y4 = t4.y;
+
+                        console.log(`  Après matrice Group: [${groupMatrix}]`);
                       }
 
-                      // Centre du rectangle dans le canvas (coordonnées globales)
+                      // Calculer le centre
                       const rectCenterX = (x1 + x3) / 2;
                       const rectCenterY = (y1 + y3) / 2;
 
-                      console.log(`  Centre canvas: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
-                      console.log(`  Centre du canvas de référence: (${centerX}, ${centerY})`);
+                      // Calculer les dimensions RÉELLES du rectangle en pixels
+                      const widthPx = Math.abs(x2 - x1);
+                      const heightPx = Math.abs(y3 - y1);
 
-                      // Position relative au centre de la zone de chargement en pixels canvas
+                      console.log(`  Centre: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
+                      console.log(`  Dimensions: ${widthPx.toFixed(1)}px × ${heightPx.toFixed(1)}px`);
+
+                      // Position relative au centre
                       const relativeX = rectCenterX - centerX;
                       const relativeY = rectCenterY - centerY;
 
-                      console.log(`  Position relative finale: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
+                      console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
+
+                      // Convertir en mm pour vérification
+                      const widthMm = widthPx / scale;
+                      const heightMm = heightPx / scale;
+                      console.log(`  Dimensions en mm: ${widthMm.toFixed(1)}mm × ${heightMm.toFixed(1)}mm`);
 
                       positions[furnitureId] = {
                         x: relativeX,
                         y: relativeY,
+                      };
+
+                      dimensions[furnitureId] = {
+                        widthPx: widthPx,
+                        heightPx: heightPx,
                       };
                     }
                   }
@@ -610,21 +610,20 @@ export const Layout3DView = ({
               }
             }
           });
-      } else {
-        console.log("ATTENTION: Aucun enfant trouvé dans la structure canvasJSON");
-        console.log("Structure complète de canvasJSON[0]:", JSON.stringify(canvasJSON[0], null, 2).substring(0, 500));
+        }
       }
     } catch (error) {
-      console.error("Error extracting positions:", error);
+      console.error("Error extracting positions and dimensions:", error);
     }
 
     console.log("\n=== RÉSUMÉ EXTRACTION ===");
     console.log(`Meubles trouvés: ${Object.keys(positions).length}`);
-    console.log(`Scale retourné: ${scale.toFixed(4)} pixels/mm`);
+    console.log(`Scale: ${scale.toFixed(4)} pixels/mm`);
     console.log("========================\n");
 
     return {
       positions,
+      dimensions,
       scale,
       canvasWidth: CANVAS_WIDTH,
       canvasHeight: CANVAS_HEIGHT,
@@ -632,7 +631,7 @@ export const Layout3DView = ({
   };
 
   const resetCamera = () => {
-    setCameraKey((prev) => prev + 1); // Force la réinitialisation du Canvas
+    setCameraKey((prev) => prev + 1);
   };
 
   const handleAddMeasure = (start: THREE.Vector3, end: THREE.Vector3, distance: number) => {
@@ -652,7 +651,6 @@ export const Layout3DView = ({
     toast.success("Mesures effacées");
   };
 
-  // Handle right click to clear measures
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
       if (measureMode) {
