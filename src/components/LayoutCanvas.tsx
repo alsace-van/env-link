@@ -281,6 +281,8 @@ export const LayoutCanvas = ({
     const tool = new paper.Tool();
 
     tool.onMouseDown = (event: paper.ToolEvent) => {
+      console.log("⬇️ onMouseDown - activeTool:", activeToolRef.current);
+      
       if (activeToolRef.current === "measure") {
         if (currentMeasureLine) {
           currentMeasureLine.remove();
@@ -302,6 +304,7 @@ export const LayoutCanvas = ({
       }
 
       if (activeToolRef.current === "rectangle") {
+        console.log("🟦 Création currentPath rectangle");
         currentPath = new paper.Path.Rectangle({
           from: event.point,
           to: event.point,
@@ -310,6 +313,7 @@ export const LayoutCanvas = ({
           fillColor: new paper.Color(colorRef.current).clone(),
         });
         currentPath.fillColor.alpha = 0.3;
+        console.log("🟦 currentPath créé:", !!currentPath);
         return;
       }
 
@@ -372,6 +376,7 @@ export const LayoutCanvas = ({
       }
 
       if (activeToolRef.current === "rectangle" && currentPath) {
+        console.log("🔄 onMouseDrag - redessine rectangle");
         const rect = new paper.Rectangle(event.downPoint, event.point);
         currentPath.remove();
         currentPath = new paper.Path.Rectangle({
@@ -381,6 +386,7 @@ export const LayoutCanvas = ({
           fillColor: new paper.Color(colorRef.current).clone(),
         });
         currentPath.fillColor.alpha = 0.3;
+        console.log("🔄 currentPath après drag:", !!currentPath);
         return;
       }
 
