@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Pencil,
   Square,
@@ -24,14 +25,21 @@ interface TechnicalCanvasProps {
   onExpenseAdded?: () => void;
 }
 
+interface CanvasInstanceProps {
+  projectId: string;
+  canvasNumber: 1 | 2;
+  onExpenseAdded?: () => void;
+}
+
 // Constantes pour le snapping
 const SNAP_ANGLE_THRESHOLD = 15;
 const SNAP_DISTANCE = 10;
 
-export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
+const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInstanceProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const paperScopeRef = useRef<paper.PaperScope | null>(null);
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "circle" | "text" | "line" | "arrow">(
     "select",
   );
@@ -39,7 +47,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [isEditingText, setIsEditingText] = useState(false);
   const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
-  const [editingTextItem, setEditingTextItem] = useState<paper.PointText | null>(null);
+  const [editingTextItem, setEditingTextItem] = useState<any | null>(null);
+  
+  const dbColumn = canvasNumber === 1 ? "technical_canvas_data" : "technical_canvas_data_2";
 
   // Refs pour éviter la réinitialisation du canvas
   const activeToolRef = useRef(activeTool);
@@ -75,25 +85,31 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Setup Paper.js - IMPORTANT: ne pas utiliser new PaperScope()
-    paper.setup(canvasRef.current);
+    // Créer un PaperScope unique pour ce canvas
+    const scope = new paper.PaperScope();
+    scope.setup(canvasRef.current);
+    paperScopeRef.current = scope;
 
-    console.log("Paper.js initialized", paper.project);
+    // Redimensionner le view pour correspondre au canvas
+    scope.view.viewSize = new scope.Size(canvasRef.current.width, canvasRef.current.height);
+
+    console.log("Paper.js initialized", scope.project, "Canvas:", canvasNumber);
 
     // Charger les dessins depuis la base de données
     const loadDrawings = async () => {
       try {
         const { data, error } = await supabase
           .from("projects")
-          .select("technical_canvas_data")
+          .select(dbColumn)
           .eq("id", projectId)
           .single();
 
         if (error) throw error;
 
-        if (data?.technical_canvas_data) {
-          paper.project.activeLayer.importJSON(data.technical_canvas_data);
-          console.log("Dessins chargés");
+        if (data && data[dbColumn]) {
+          scope.project.activeLayer.importJSON(data[dbColumn]);
+          scope.view.update();
+          console.log("Dessins chargés pour canvas", canvasNumber);
         }
       } catch (error) {
         console.error("Erreur lors du chargement des dessins:", error);
@@ -103,26 +119,26 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     loadDrawings();
 
     // Variables pour le dessin
-    let currentPath: paper.Path | null = null;
-    let selectedItem: paper.Item | null = null;
-    let handles: paper.Path.Circle[] = [];
-    let draggedHandle: paper.Path.Circle | null = null;
+    let currentPath: any = null;
+    let selectedItem: any = null;
+    let handles: any[] = [];
+    let draggedHandle: any = null;
     let lastClickTime = 0;
-    let lastClickItem: paper.Item | null = null;
+    let lastClickItem: any = null;
 
     // Fonction pour créer des poignées
-    const createHandles = (item: paper.Item) => {
+    const createHandles = (item: any) => {
       // Supprimer les anciennes poignées
       handles.forEach((h) => h.remove());
       handles = [];
 
-      if (item instanceof paper.Path && item.segments.length === 2) {
+      if (item instanceof scope.Path && item.segments.length === 2) {
         // Poignées pour les lignes/flèches
-        item.segments.forEach((segment, index) => {
-          const handle = new paper.Path.Circle({
+        item.segments.forEach((segment: any, index: number) => {
+          const handle = new scope.Path.Circle({
             center: segment.point,
             radius: 5,
-            fillColor: item.strokeColor, // Utiliser la couleur de la ligne
+            fillColor: item.strokeColor,
             strokeColor: "white",
             strokeWidth: 2,
           });
@@ -132,13 +148,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           handle.data.handleType = "line";
           handles.push(handle);
         });
-      } else if (item instanceof paper.Path || item instanceof paper.Shape) {
+      } else if (item instanceof scope.Path || item instanceof scope.Shape) {
         // Poignées pour les rectangles et cercles (4 coins + 4 bords)
         const bounds = item.bounds;
         const corners = [bounds.topLeft, bounds.topRight, bounds.bottomRight, bounds.bottomLeft];
 
-        corners.forEach((corner, index) => {
-          const handle = new paper.Path.Circle({
+        corners.forEach((corner: any, index: number) => {
+          const handle = new scope.Path.Circle({
             center: corner,
             radius: 6,
             fillColor: "#2196F3",
@@ -155,12 +171,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     };
 
     // Fonction pour mettre à jour les poignées
-    const updateHandles = (item: paper.Item) => {
-      if (item instanceof paper.Path && item.segments.length === 2 && handles.length === 2) {
+    const updateHandles = (item: any) => {
+      if (item instanceof scope.Path && item.segments.length === 2 && handles.length === 2) {
         // Poignées de ligne
         handles[0].position = item.segments[0].point;
         handles[1].position = item.segments[1].point;
-      } else if (handles.length === 4 && (item instanceof paper.Path || item instanceof paper.Shape)) {
+      } else if (handles.length === 4 && (item instanceof scope.Path || item instanceof scope.Shape)) {
         // Poignées de rectangle/cercle
         const bounds = item.bounds;
         handles[0].position = bounds.topLeft;
@@ -177,22 +193,22 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     };
 
     // Fonction pour snapper horizontal/vertical
-    const snapToHV = (from: paper.Point, to: paper.Point): paper.Point => {
+    const snapToHV = (from: any, to: any): any => {
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       const angle = Math.abs((Math.atan2(dy, dx) * 180) / Math.PI);
 
       if (angle < SNAP_ANGLE_THRESHOLD || angle > 180 - SNAP_ANGLE_THRESHOLD) {
-        return new paper.Point(to.x, from.y);
+        return new scope.Point(to.x, from.y);
       }
       if (Math.abs(angle - 90) < SNAP_ANGLE_THRESHOLD) {
-        return new paper.Point(from.x, to.y);
+        return new scope.Point(from.x, to.y);
       }
       return to;
     };
 
     // Fonction pour créer une tête de flèche
-    const createArrowHead = (path: paper.Path): paper.Path => {
+    const createArrowHead = (path: any): any => {
       if (path.segments.length < 2) return path;
 
       const lastPoint = path.segments[1].point;
@@ -201,10 +217,10 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       const angle = vector.angle;
       const headLength = 15;
 
-      const arrowHead = new paper.Path([
-        lastPoint.add(new paper.Point({ angle: angle + 150, length: headLength })),
+      const arrowHead = new scope.Path([
+        lastPoint.add(new scope.Point({ angle: angle + 150, length: headLength })),
         lastPoint,
-        lastPoint.add(new paper.Point({ angle: angle - 150, length: headLength })),
+        lastPoint.add(new scope.Point({ angle: angle - 150, length: headLength })),
       ]);
 
       arrowHead.strokeColor = path.strokeColor;
@@ -218,11 +234,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     };
 
     // Fonction pour mettre à jour la tête de flèche
-    const updateArrowHead = (path: paper.Path) => {
+    const updateArrowHead = (path: any) => {
       if (path.segments.length < 2) return;
 
       // Trouver et supprimer l'ancienne tête
-      paper.project.activeLayer.children.forEach((item) => {
+      scope.project.activeLayer.children.forEach((item: any) => {
         if (item.data.isArrowHead && item.data.parentId === path.id) {
           item.remove();
         }
@@ -233,9 +249,9 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     };
 
     // Créer le tool
-    const tool = new paper.Tool();
+    const tool = new scope.Tool();
 
-    tool.onMouseDown = (event: paper.ToolEvent) => {
+    tool.onMouseDown = (event: any) => {
       console.log("Mouse down", activeToolRef.current, event.point);
 
       // Vérifier si on clique sur une poignée
@@ -246,7 +262,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
 
       // Vérifier si on clique sur un objet
-      const hitResult = paper.project.activeLayer.hitTest(event.point, {
+      const hitResult = scope.project.activeLayer.hitTest(event.point, {
         fill: true,
         stroke: true,
         tolerance: 5,
@@ -254,13 +270,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
       // Détecter le double-clic manuellement
       const currentTime = Date.now();
-      const isDoubleClick = hitResult && lastClickItem === hitResult.item && currentTime - lastClickTime < 300; // 300ms pour le double-clic
+      const isDoubleClick = hitResult && lastClickItem === hitResult.item && currentTime - lastClickTime < 300;
 
       lastClickTime = currentTime;
       lastClickItem = hitResult?.item || null;
 
       // Double-clic sur un texte = édition
-      if (isDoubleClick && hitResult && hitResult.item instanceof paper.PointText) {
+      if (isDoubleClick && hitResult && hitResult.item instanceof scope.PointText) {
         const textItem = hitResult.item;
         const canvasRect = canvasRef.current?.getBoundingClientRect();
         if (canvasRect) {
@@ -290,7 +306,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         // Sélectionner le nouveau (sauf les poignées et têtes de flèches)
         if (hitResult && !hitResult.item.data.isHandle && !hitResult.item.data.isArrowHead) {
           // Si l'élément fait partie d'un groupe, sélectionner le groupe entier
-          if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isAccessory) {
+          if (hitResult.item.parent instanceof scope.Group && hitResult.item.parent.data.isAccessory) {
             selectedItem = hitResult.item.parent;
           } else {
             selectedItem = hitResult.item;
@@ -299,11 +315,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           selectedItem.selected = true;
 
           // Créer des poignées pour les lignes/flèches
-          if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
+          if (selectedItem instanceof scope.Path && selectedItem.segments.length === 2) {
             createHandles(selectedItem);
           }
           // Créer des poignées pour les rectangles et cercles
-          else if (selectedItem instanceof paper.Path || selectedItem instanceof paper.Shape) {
+          else if (selectedItem instanceof scope.Path || selectedItem instanceof scope.Shape) {
             createHandles(selectedItem);
           }
         } else {
@@ -323,7 +339,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           }, 0);
         }
       } else if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
-        currentPath = new paper.Path({
+        currentPath = new scope.Path({
           segments: [event.point, event.point],
           strokeColor: colorRef.current,
           strokeWidth: strokeWidthRef.current,
@@ -332,7 +348,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         currentPath.data.type = activeToolRef.current;
         console.log("Created path", currentPath);
       } else if (activeToolRef.current === "draw") {
-        currentPath = new paper.Path({
+        currentPath = new scope.Path({
           strokeColor: colorRef.current,
           strokeWidth: strokeWidthRef.current,
           strokeCap: "round",
@@ -342,12 +358,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
     };
 
-    tool.onMouseDrag = (event: paper.ToolEvent) => {
+    tool.onMouseDrag = (event: any) => {
       // Déplacer une poignée
       if (draggedHandle) {
         if (draggedHandle.data.handleType === "line" && draggedHandle.data.parentPath) {
           // Poignée de ligne/flèche
-          const path = draggedHandle.data.parentPath as paper.Path;
+          const path = draggedHandle.data.parentPath;
           const index = draggedHandle.data.segmentIndex;
 
           let newPoint = event.point;
@@ -376,33 +392,33 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           let newBounds;
           if (cornerIndex === 0) {
             // Top Left
-            newBounds = new paper.Rectangle(event.point, bounds.bottomRight);
+            newBounds = new scope.Rectangle(event.point, bounds.bottomRight);
           } else if (cornerIndex === 1) {
             // Top Right
-            newBounds = new paper.Rectangle(
-              new paper.Point(bounds.left, event.point.y),
-              new paper.Point(event.point.x, bounds.bottom),
+            newBounds = new scope.Rectangle(
+              new scope.Point(bounds.left, event.point.y),
+              new scope.Point(event.point.x, bounds.bottom),
             );
           } else if (cornerIndex === 2) {
             // Bottom Right
-            newBounds = new paper.Rectangle(bounds.topLeft, event.point);
+            newBounds = new scope.Rectangle(bounds.topLeft, event.point);
           } else {
             // Bottom Left
-            newBounds = new paper.Rectangle(
-              new paper.Point(event.point.x, bounds.top),
-              new paper.Point(bounds.right, event.point.y),
+            newBounds = new scope.Rectangle(
+              new scope.Point(event.point.x, bounds.top),
+              new scope.Point(bounds.right, event.point.y),
             );
           }
 
           // Appliquer les nouvelles dimensions
-          if (item instanceof paper.Shape.Circle) {
+          if (item instanceof scope.Shape.Circle) {
             // Pour un cercle, garder le ratio et utiliser le plus grand côté
             const width = Math.abs(newBounds.width);
             const height = Math.abs(newBounds.height);
             const size = Math.max(width, height);
-            const squareBounds = new paper.Rectangle(
-              newBounds.center.subtract(new paper.Point(size / 2, size / 2)),
-              new paper.Size(size, size),
+            const squareBounds = new scope.Rectangle(
+              newBounds.center.subtract(new scope.Point(size / 2, size / 2)),
+              new scope.Size(size, size),
             );
             item.bounds = squareBounds;
           } else {
@@ -436,7 +452,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         selectedItem.position = selectedItem.position.add(event.delta);
 
         // Mettre à jour la tête de flèche si c'est une flèche (uniquement pour les Path)
-        if (selectedItem instanceof paper.Path && selectedItem.data.type === "arrow") {
+        if (selectedItem instanceof scope.Path && selectedItem.data.type === "arrow") {
           updateArrowHead(selectedItem);
         }
 
@@ -445,7 +461,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
     };
 
-    tool.onMouseUp = (event: paper.ToolEvent) => {
+    tool.onMouseUp = (event: any) => {
       console.log("Mouse up", currentPath);
 
       draggedHandle = null;
@@ -466,16 +482,16 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         selectedItem = currentPath;
         selectedItem.selected = true;
 
-        if (selectedItem instanceof paper.Path && selectedItem.segments.length === 2) {
+        if (selectedItem instanceof scope.Path && selectedItem.segments.length === 2) {
           createHandles(selectedItem);
         }
 
         currentPath = null;
 
-        console.log("Active layer children:", paper.project.activeLayer.children.length);
+        console.log("Active layer children:", scope.project.activeLayer.children.length);
         
         // Forcer le rendu du canvas
-        paper.view.update();
+        scope.view.update();
       }
     };
 
@@ -483,10 +499,12 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     return () => {
       tool.remove();
     };
-  }, []); // ✅ Tableau vide = ne s'exécute qu'une seule fois au montage
+  }, [projectId, canvasNumber]); 
 
   const handleTextSubmit = () => {
-    if (!textInputRef.current || !paper.project) return;
+    if (!textInputRef.current || !paperScopeRef.current) return;
+    
+    const scope = paperScopeRef.current;
 
     const text = textInputRef.current.value.trim();
 
@@ -496,18 +514,18 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         editingTextItem.content = text;
       } else {
         // Créer un nouveau texte
-        new paper.PointText({
+        new scope.PointText({
           point: [textInputPosition.x, textInputPosition.y],
           content: text,
           fillColor: colorRef.current,
           fontSize: 20,
         });
       }
-      paper.view.update();
+      scope.view.update();
     } else if (editingTextItem && !text) {
       // Si le texte est vide lors de l'édition, supprimer l'élément
       editingTextItem.remove();
-      paper.view.update();
+      scope.view.update();
     }
 
     setIsEditingText(false);
@@ -524,12 +542,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   };
 
   const handleDelete = () => {
-    if (!paper.project) return;
+    if (!paperScopeRef.current) return;
+    
+    const scope = paperScopeRef.current;
 
     // Trouver l'élément sélectionné
-    let itemToDelete: paper.Item | null = null;
+    let itemToDelete: any = null;
 
-    paper.project.activeLayer.children.forEach((item) => {
+    scope.project.activeLayer.children.forEach((item: any) => {
       if (item.selected && !item.data.isHandle) {
         itemToDelete = item;
       }
@@ -538,7 +558,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     if (itemToDelete) {
       // Si c'est une flèche, supprimer aussi sa tête
       if (itemToDelete.data.type === "arrow") {
-        paper.project.activeLayer.children.forEach((item) => {
+        scope.project.activeLayer.children.forEach((item: any) => {
           if (item.data.isArrowHead && item.data.parentId === itemToDelete.id) {
             item.remove();
           }
@@ -546,7 +566,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       }
 
       // Si c'est un groupe (comme un accessoire), supprimer tout le groupe
-      if (itemToDelete instanceof paper.Group) {
+      if (itemToDelete instanceof scope.Group) {
         itemToDelete.removeChildren();
       }
 
@@ -554,13 +574,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       itemToDelete.remove();
 
       // Supprimer les poignées
-      paper.project.activeLayer.children.forEach((item) => {
+      scope.project.activeLayer.children.forEach((item: any) => {
         if (item.data.isHandle) {
           item.remove();
         }
       });
 
-      paper.view.update();
+      scope.view.update();
       toast.success("Élément supprimé");
     } else {
       toast.info("Aucun élément sélectionné");
@@ -576,21 +596,27 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   };
 
   const handleClear = () => {
-    if (!paper.project) return;
-    paper.project.activeLayer.removeChildren();
-    paper.view.update();
+    if (!paperScopeRef.current) return;
+    const scope = paperScopeRef.current;
+    scope.project.activeLayer.removeChildren();
+    scope.view.update();
     toast.success("Canevas effacé");
   };
 
   const handleSave = async () => {
-    if (!paper.project) return;
+    if (!paperScopeRef.current) return;
+    
+    const scope = paperScopeRef.current;
 
     try {
-      const json = paper.project.activeLayer.exportJSON();
+      const json = scope.project.activeLayer.exportJSON();
+
+      const updateData: any = {};
+      updateData[dbColumn] = json;
 
       const { error } = await supabase
         .from("projects")
-        .update({ technical_canvas_data: json })
+        .update(updateData)
         .eq("id", projectId);
 
       if (error) throw error;
@@ -607,7 +633,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     const dataURL = canvasRef.current.toDataURL("image/png");
     const link = document.createElement("a");
     link.href = dataURL;
-    link.download = `schema-technique-${Date.now()}.png`;
+    link.download = `schema-technique-${canvasNumber}-${Date.now()}.png`;
     link.click();
     toast.success("Schéma téléchargé");
   };
@@ -615,28 +641,33 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const handleToolClick = (tool: typeof activeTool) => {
     setActiveTool(tool);
 
-    if (tool === "rectangle" && paper.project) {
-      new paper.Shape.Rectangle({
+    if (!paperScopeRef.current) return;
+    const scope = paperScopeRef.current;
+
+    if (tool === "rectangle") {
+      new scope.Shape.Rectangle({
         point: [100, 100],
         size: [150, 100],
         strokeColor: colorRef.current,
         strokeWidth: strokeWidthRef.current,
       });
-      paper.view.update();
-    } else if (tool === "circle" && paper.project) {
-      new paper.Shape.Circle({
+      scope.view.update();
+    } else if (tool === "circle") {
+      new scope.Shape.Circle({
         center: [150, 150],
         radius: 50,
         strokeColor: colorRef.current,
         strokeWidth: strokeWidthRef.current,
       });
-      paper.view.update();
+      scope.view.update();
     }
     // Note: le texte est maintenant créé via un clic sur le canvas
   };
 
   const handleSelectAccessory = (accessory: any, source: "expense" | "catalog") => {
-    if (!paper.project) return;
+    if (!paperScopeRef.current) return;
+    
+    const scope = paperScopeRef.current;
 
     const name = accessory.nom_accessoire || accessory.nom || "Accessoire";
     const details = [accessory.marque, accessory.categorie || accessory.categories?.nom, accessory.type_electrique]
@@ -644,7 +675,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
       .join(" | ");
 
     // Créer le texte
-    const text = new paper.PointText({
+    const text = new scope.PointText({
       point: [100, 100],
       content: `📦 ${name}\n${details}`,
       fillColor: colorRef.current,
@@ -652,7 +683,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     });
 
     // Créer le cadre qui entoure le texte
-    const background = new paper.Path.Rectangle({
+    const background = new scope.Path.Rectangle({
       rectangle: text.bounds.expand(8),
       fillColor: "white",
       strokeColor: colorRef.current,
@@ -660,18 +691,18 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     });
 
     // Créer un groupe avec le cadre d'abord, puis le texte (ordre important pour le z-index)
-    const group = new paper.Group([background, text]);
+    const group = new scope.Group([background, text]);
 
     // Marquer le groupe comme un accessoire pour le déplacement unifié
     group.data.isAccessory = true;
     group.data.accessoryName = name;
 
-    paper.view.update();
+    scope.view.update();
     toast.success(`${name} ajouté au schéma`);
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" key={`canvas-${canvasNumber}`}>
       <div className="flex flex-wrap items-center gap-2 p-4 bg-muted/50 rounded-lg">
         <Button
           variant={activeTool === "select" ? "default" : "outline"}
@@ -819,5 +850,22 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         <canvas ref={canvasRef} width={1200} height={800} style={{ display: "block" }} />
       </div>
     </div>
+  );
+};
+
+export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
+  return (
+    <Tabs defaultValue="canvas1" className="w-full">
+      <TabsList className="grid w-full grid-cols-2 mb-4">
+        <TabsTrigger value="canvas1">Schéma 1</TabsTrigger>
+        <TabsTrigger value="canvas2">Schéma 2</TabsTrigger>
+      </TabsList>
+      <TabsContent value="canvas1">
+        <CanvasInstance projectId={projectId} canvasNumber={1} onExpenseAdded={onExpenseAdded} />
+      </TabsContent>
+      <TabsContent value="canvas2">
+        <CanvasInstance projectId={projectId} canvasNumber={2} onExpenseAdded={onExpenseAdded} />
+      </TabsContent>
+    </Tabs>
   );
 };

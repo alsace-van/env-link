@@ -482,6 +482,7 @@ export type Database = {
           poids_vide_kg: number | null
           ptac_kg: number | null
           technical_canvas_data: string | null
+          technical_canvas_data_2: string | null
           telephone_proprietaire: string | null
           type_mine: string | null
           updated_at: string
@@ -512,6 +513,7 @@ export type Database = {
           poids_vide_kg?: number | null
           ptac_kg?: number | null
           technical_canvas_data?: string | null
+          technical_canvas_data_2?: string | null
           telephone_proprietaire?: string | null
           type_mine?: string | null
           updated_at?: string
@@ -542,6 +544,7 @@ export type Database = {
           poids_vide_kg?: number | null
           ptac_kg?: number | null
           technical_canvas_data?: string | null
+          technical_canvas_data_2?: string | null
           telephone_proprietaire?: string | null
           type_mine?: string | null
           updated_at?: string
