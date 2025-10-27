@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Plus, Trash2, ChevronRight, ChevronDown, PanelLeftClose, PanelLeft, GripVertical } from "lucide-react";
+import { Plus, Trash2, ChevronRight, ChevronDown, PanelLeftClose, PanelLeft, Edit2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Category {
   id: string;
@@ -30,22 +31,18 @@ interface AccessoryCategorySidebarProps {
   onAccessoryDrop?: (accessoryId: string, categoryId: string | null) => void;
 }
 
-const AccessoryCategorySidebar = ({
-  selectedCategories,
-  onCategoryChange,
-  onAccessoryDrop,
-}: AccessoryCategorySidebarProps) => {
+const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: AccessoryCategorySidebarProps) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newSubCategoryName, setNewSubCategoryName] = useState("");
-  const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showAddRoot, setShowAddRoot] = useState(false);
   const [showAddSub, setShowAddSub] = useState<string | null>(null);
-  const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
-  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editParentId, setEditParentId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCategories();
@@ -133,6 +130,56 @@ const AccessoryCategorySidebar = ({
     setDeleteId(null);
   };
 
+  const startEditCategory = (category: Category) => {
+    setEditingCategory(category.id);
+    setEditName(category.nom);
+    setEditParentId(category.parent_id);
+  };
+
+  const cancelEdit = () => {
+    setEditingCategory(null);
+    setEditName("");
+    setEditParentId(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editingCategory) return;
+
+    if (!editName.trim()) {
+      toast.error("Le nom de la catégorie ne peut pas être vide");
+      return;
+    }
+
+    // Vérifier qu'on ne crée pas de boucle circulaire
+    if (editParentId && isDescendant(editingCategory, editParentId)) {
+      toast.error("Impossible de déplacer une catégorie vers l'une de ses sous-catégories");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("categories")
+      .update({
+        nom: editName.trim(),
+        parent_id: editParentId,
+      })
+      .eq("id", editingCategory);
+
+    if (error) {
+      toast.error("Erreur lors de la modification");
+      console.error(error);
+    } else {
+      toast.success("Catégorie modifiée");
+      cancelEdit();
+      loadCategories();
+    }
+  };
+
+  const isDescendant = (parentId: string, childId: string): boolean => {
+    const children = categories.filter((cat) => cat.parent_id === parentId);
+    if (children.some((cat) => cat.id === childId)) return true;
+    return children.some((cat) => isDescendant(cat.id, childId));
+  };
+
   const toggleCategory = (categoryId: string) => {
     const newSelected = selectedCategories.includes(categoryId)
       ? selectedCategories.filter((id) => id !== categoryId)
@@ -156,154 +203,36 @@ const AccessoryCategorySidebar = ({
     return categories.filter((cat) => cat.parent_id === parentId);
   };
 
-  const handleCategoryDragStart = (e: React.DragEvent, categoryId: string) => {
-    e.stopPropagation();
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", categoryId); // Pour compatibilité
-    e.dataTransfer.setData("application/x-category-id", categoryId); // Type custom
-    setDraggedCategory(categoryId);
-    console.log("Drag started:", categoryId);
+  const getAvailableParents = (currentCategoryId: string) => {
+    // Retourner toutes les catégories sauf elle-même et ses descendants
+    return categories.filter((cat) => {
+      if (cat.id === currentCategoryId) return false;
+      if (isDescendant(currentCategoryId, cat.id)) return false;
+      return true;
+    });
   };
 
-  const handleCategoryDragOver = (e: React.DragEvent, categoryId: string | null) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Vérifier si c'est un drag de catégorie
-    if (draggedCategory) {
-      e.dataTransfer.dropEffect = "move";
-      setDragOverCategory(categoryId);
-    }
-  };
-
-  const handleCategoryDragLeave = () => {
-    setDragOverCategory(null);
-  };
-
-  const isDescendant = (parentId: string, childId: string): boolean => {
-    const children = categories.filter(cat => cat.parent_id === parentId);
-    if (children.some(cat => cat.id === childId)) return true;
-    return children.some(cat => isDescendant(cat.id, childId));
-  };
-
-  const handleCategoryDrop = async (e: React.DragEvent, newParentId: string | null) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    console.log("Drop event triggered", { draggedCategory, newParentId });
-
-    if (!draggedCategory) {
-      console.log("No dragged category");
-      setDragOverCategory(null);
-      return;
-    }
-
-    if (draggedCategory === newParentId) {
-      console.log("Cannot drop on itself");
-      setDraggedCategory(null);
-      setDragOverCategory(null);
-      return;
-    }
-
-    // Vérifier qu'on ne crée pas de boucle circulaire
-    if (newParentId && isDescendant(draggedCategory, newParentId)) {
-      toast.error("Impossible de déplacer une catégorie vers l'une de ses sous-catégories");
-      setDraggedCategory(null);
-      setDragOverCategory(null);
-      return;
-    }
-
-    console.log("Updating category", draggedCategory, "with parent", newParentId);
-
-    // Effectuer la mise à jour
-    const { error } = await supabase
-      .from("categories")
-      .update({ parent_id: newParentId })
-      .eq("id", draggedCategory);
-
-    if (error) {
-      toast.error("Erreur lors du déplacement de la catégorie");
-      console.error("Drop error:", error);
-    } else {
-      const draggedCat = categories.find((c) => c.id === draggedCategory);
-      const targetCat = newParentId ? categories.find((c) => c.id === newParentId) : null;
-
-      if (newParentId && targetCat) {
-        toast.success(`"${draggedCat?.nom}" déplacée dans "${targetCat.nom}"`);
-      } else {
-        toast.success(`"${draggedCat?.nom}" déplacée à la racine`);
-      }
-
-      // Recharger et expand si nécessaire
-      await loadCategories();
-      if (newParentId) {
-        setExpandedCategories((prev) => new Set(prev).add(newParentId));
-      }
-    }
-
-    setDraggedCategory(null);
-    setDragOverCategory(null);
-  };
-
-  const handleAccessoryDragOver = (e: React.DragEvent, categoryId: string | null) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverCategory(categoryId);
-  };
-
-  const handleAccessoryDrop = async (e: React.DragEvent, categoryId: string | null) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const accessoryId = e.dataTransfer.getData("accessoryId");
-    if (!accessoryId) {
-      setDragOverCategory(null);
-      return;
-    }
-
-    if (onAccessoryDrop) {
-      onAccessoryDrop(accessoryId, categoryId);
-    }
-
-    setDragOverCategory(null);
-  };
-
-  const renderCategory = (category: Category, level: number = 0) => {
+  const renderCategory = (category: Category, level = 0) => {
     const subcategories = getSubcategories(category.id);
     const hasSubcategories = subcategories.length > 0;
     const isExpanded = expandedCategories.has(category.id);
     const isSelected = selectedCategories.includes(category.id);
-    const isAddingSubHere = showAddSub === category.id;
-    const isDragOver = dragOverCategory === category.id;
-    const isDragging = draggedCategory === category.id;
+    const isEditing = editingCategory === category.id;
 
     return (
       <div key={category.id} className="select-none">
         <div
-          draggable={!isAddingSubHere}
-          onDragStart={(e) => handleCategoryDragStart(e, category.id)}
-          onDragOver={(e) => handleCategoryDragOver(e, category.id)}
-          onDragLeave={handleCategoryDragLeave}
-          onDrop={(e) => handleCategoryDrop(e, category.id)}
-          className={`flex items-center gap-1 py-1.5 rounded group transition-all ${
-            isDragging ? "opacity-40" : "hover:bg-accent/50"
-          } ${isDragOver && draggedCategory ? "bg-primary/20 ring-2 ring-primary" : ""} ${
-            level > 0 ? "border-l-2 border-muted ml-2" : ""
+          className={`flex items-center gap-1 p-2 rounded transition-colors hover:bg-accent/50 ${
+            isSelected ? "bg-primary/10" : ""
           }`}
-          style={{ paddingLeft: `${level * 24 + 8}px` }}
+          style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}
         >
-          <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
-
+          {/* Bouton pour plier/déplier */}
           <Button
             variant="ghost"
-            size="icon"
-            className="h-6 w-6 flex-shrink-0 hover:bg-accent"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (hasSubcategories) {
-                toggleExpanded(category.id);
-              }
-            }}
+            size="sm"
+            className="h-6 w-6 p-0 hover:bg-transparent"
+            onClick={() => toggleExpanded(category.id)}
           >
             {hasSubcategories ? (
               isExpanded ? (
@@ -312,98 +241,116 @@ const AccessoryCategorySidebar = ({
                 <ChevronRight className="h-4 w-4" />
               )
             ) : (
-              <div className="h-4 w-4" />
+              <div className="w-4" />
             )}
           </Button>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleCategory(category.id);
-            }}
-            className={`flex-1 text-left text-sm px-3 py-1.5 rounded transition-colors ${
-              isSelected ? "bg-primary text-primary-foreground font-medium" : ""
-            } ${level > 0 ? "text-muted-foreground" : "font-medium"}`}
-          >
-            {category.nom}
-          </button>
+          {isEditing ? (
+            <div className="flex-1 flex items-center gap-2">
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    saveEdit();
+                  } else if (e.key === "Escape") {
+                    cancelEdit();
+                  }
+                }}
+                className="h-7 text-sm flex-1"
+                autoFocus
+              />
+              <Select
+                value={editParentId || "root"}
+                onValueChange={(value) => setEditParentId(value === "root" ? null : value)}
+              >
+                <SelectTrigger className="h-7 text-sm w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="root">Racine</SelectItem>
+                  {getAvailableParents(category.id).map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="ghost" onClick={saveEdit} className="h-7 w-7 p-0">
+                <Check className="h-4 w-4 text-green-600" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={cancelEdit} className="h-7 w-7 p-0">
+                <X className="h-4 w-4 text-red-600" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Nom de la catégorie cliquable */}
+              <button
+                onClick={() => toggleCategory(category.id)}
+                className={`flex-1 text-left text-sm px-2 py-1 rounded hover:bg-accent transition-colors ${
+                  isSelected ? "font-medium text-primary" : ""
+                }`}
+              >
+                {category.nom}
+              </button>
 
-          <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowAddSub(category.id);
-                // Auto-expand quand on ajoute une sous-catégorie
-                if (!isExpanded) {
+              {/* Bouton modifier */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => startEditCategory(category)}
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-accent"
+                title="Modifier"
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
+
+              {/* Bouton ajouter sous-catégorie */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowAddSub(category.id);
                   setExpandedCategories((prev) => new Set(prev).add(category.id));
-                }
-              }}
-              title="Ajouter une sous-catégorie"
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 text-destructive hover:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDeleteId(category.id);
-              }}
-              title="Supprimer"
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
+                }}
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-accent"
+                title="Ajouter une sous-catégorie"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+
+              {/* Bouton supprimer */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeleteId(category.id)}
+                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10"
+                title="Supprimer"
+              >
+                <Trash2 className="h-3 w-3 text-destructive" />
+              </Button>
+            </>
+          )}
         </div>
 
-        {isAddingSubHere && (
-          <div 
-            className="flex items-center gap-2 py-2 border-l-2 border-muted ml-2" 
-            style={{ paddingLeft: `${(level + 1) * 24 + 8}px` }}
-          >
+        {/* Formulaire d'ajout de sous-catégorie */}
+        {showAddSub === category.id && (
+          <div className="flex items-center gap-2 p-2" style={{ paddingLeft: `${(level + 1) * 1.5 + 0.5}rem` }}>
             <Input
               placeholder="Nom de la sous-catégorie"
-              type="text"
               value={newSubCategoryName}
-              onChange={(e) => {
-                setNewSubCategoryName(e.target.value);
-              }}
+              onChange={(e) => setNewSubCategoryName(e.target.value)}
               onKeyDown={(e) => {
-                // Ne bloquer QUE Enter et Escape, laisser TOUT le reste passer
                 if (e.key === "Enter") {
-                  e.preventDefault();
-                  e.stopPropagation();
                   handleAddSubCategory(category.id);
                 } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  e.stopPropagation();
                   setShowAddSub(null);
                   setNewSubCategoryName("");
                 }
-                // IMPORTANT : Ne pas appeler preventDefault() ou stopPropagation() pour les autres touches
-                // Backspace, Delete, lettres, etc. doivent passer normalement
-              }}
-              onMouseDown={(e) => {
-                // Empêcher le parent draggable d'intercepter
-                e.stopPropagation();
-              }}
-              onClick={(e) => {
-                // Empêcher le parent draggable d'intercepter
-                e.stopPropagation();
               }}
               className="h-7 text-sm"
               autoFocus
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck="false"
-              data-gramm="false"
-              data-gramm_editor="false"
-              data-enable-grammarly="false"
             />
             <Button size="sm" onClick={() => handleAddSubCategory(category.id)} className="h-7">
               OK
@@ -422,7 +369,10 @@ const AccessoryCategorySidebar = ({
           </div>
         )}
 
-        {isExpanded && hasSubcategories && subcategories.map((sub) => renderCategory(sub, level + 1))}
+        {/* Sous-catégories */}
+        {isExpanded && hasSubcategories && (
+          <div className="group">{subcategories.map((sub) => renderCategory(sub, level + 1))}</div>
+        )}
       </div>
     );
   };
@@ -457,43 +407,18 @@ const AccessoryCategorySidebar = ({
             <div className="flex items-center gap-2">
               <Input
                 placeholder="Nouvelle catégorie"
-                type="text"
                 value={newCategoryName}
-                onChange={(e) => {
-                  setNewCategoryName(e.target.value);
-                }}
+                onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => {
-                  // Ne bloquer QUE Enter et Escape, laisser TOUT le reste passer
                   if (e.key === "Enter") {
-                    e.preventDefault();
-                    e.stopPropagation();
                     handleAddRootCategory();
                   } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    e.stopPropagation();
                     setShowAddRoot(false);
                     setNewCategoryName("");
                   }
-                  // IMPORTANT : Ne pas appeler preventDefault() ou stopPropagation() pour les autres touches
-                  // Backspace, Delete, lettres, etc. doivent passer normalement
-                }}
-                onMouseDown={(e) => {
-                  // Empêcher l'interception par des gestionnaires parents
-                  e.stopPropagation();
-                }}
-                onClick={(e) => {
-                  // Empêcher l'interception par des gestionnaires parents
-                  e.stopPropagation();
                 }}
                 className="h-8 text-sm"
                 autoFocus
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck="false"
-                data-gramm="false"
-                data-gramm_editor="false"
-                data-enable-grammarly="false"
               />
               <Button size="sm" onClick={handleAddRootCategory} className="h-8">
                 OK
@@ -519,56 +444,11 @@ const AccessoryCategorySidebar = ({
         </div>
 
         <ScrollArea className="flex-1">
-          <div
-            className={`p-2 min-h-[300px] rounded transition-colors ${
-              draggedCategory && dragOverCategory === null ? "bg-primary/10 ring-2 ring-primary ring-dashed" : ""
-            }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (draggedCategory) {
-                e.dataTransfer.dropEffect = "move";
-                // Vérifier qu'on est bien dans la zone racine (pas sur une catégorie)
-                if (e.target === e.currentTarget) {
-                  setDragOverCategory(null);
-                }
-              }
-            }}
-            onDragEnter={(e) => {
-              e.preventDefault();
-              if (draggedCategory && e.target === e.currentTarget) {
-                setDragOverCategory(null);
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              console.log("Drop on root zone");
-              
-              // Si c'est un drag de catégorie, déplacer à la racine
-              if (draggedCategory) {
-                handleCategoryDrop(e, null);
-              } else {
-                // Sinon c'est peut-être un accessoire
-                const accessoryId = e.dataTransfer.getData("accessoryId");
-                if (accessoryId && onAccessoryDrop) {
-                  onAccessoryDrop(accessoryId, null);
-                }
-              }
-            }}
-          >
+          <div className="p-2 group">
             {categories.filter((cat) => !cat.parent_id).length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Aucune catégorie</p>
             ) : (
               categories.filter((cat) => !cat.parent_id).map((cat) => renderCategory(cat))
-            )}
-
-            {draggedCategory && (
-              <div className="mt-4 p-4 text-xs text-center border-2 border-dashed rounded bg-muted/50 text-muted-foreground">
-                💡 <strong>Astuce :</strong> Déposez ici (zone vide) pour déplacer à la racine
-                <br />
-                ou sur une catégorie pour créer une sous-catégorie
-              </div>
             )}
           </div>
         </ScrollArea>
