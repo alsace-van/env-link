@@ -532,7 +532,7 @@ export const Layout3DView = ({
 
       const { data: projectData, error: projectError } = await supabase
         .from("projects")
-        .select("canvas_data, furniture_data, layout_canvas_data")
+        .select("furniture_data, layout_canvas_data")
         .eq("id", projectId)
         .single();
 
@@ -551,7 +551,6 @@ export const Layout3DView = ({
       console.log("==========================================");
       console.log("Données brutes:", { 
         hasFurnitureData: !!projectData.furniture_data,
-        hasCanvasData: !!projectData.canvas_data,
         hasLayoutCanvasData: !!projectData.layout_canvas_data
       });
 
@@ -571,7 +570,7 @@ export const Layout3DView = ({
         console.log("⚠️ Aucune donnée de meuble trouvée");
       }
 
-      const canvasDataToUse = projectData.layout_canvas_data || projectData.canvas_data;
+      const canvasDataToUse = projectData.layout_canvas_data;
       
       if (canvasDataToUse) {
         try {
