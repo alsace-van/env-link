@@ -25,35 +25,56 @@ interface FurnitureItem {
 
 interface FurnitureBoxProps {
   furniture: FurnitureItem;
-  scale: number; // scale3D : pixels canvas -> unités 3D
-  canvasScale: number; // canvasScale : millimètres -> pixels canvas
+  mmToUnits3D: number;
+  canvasScale: number;
 }
 
-const FurnitureBox = ({ furniture, scale, canvasScale }: FurnitureBoxProps) => {
-  // Conversion directe: mm -> unités 3D
-  const width = (furniture.longueur_mm || 100) * scale;
-  const depth = (furniture.largeur_mm || 100) * scale;
-  const height = (furniture.hauteur_mm || 100) * scale;
+const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps) => {
+  // ==========================================
+  // DIMENSIONS: Conversion directe mm → unités 3D
+  // ==========================================
+  const widthMm = furniture.longueur_mm || 100;
+  const depthMm = furniture.largeur_mm || 100;
+  const heightMm = furniture.hauteur_mm || 100;
 
-  // Position: pixels canvas -> mm -> unités 3D
-  // Les positions viennent de extractPositions et sont en pixels canvas relatifs au centre
-  // 1. Diviser par canvasScale pour obtenir des mm
-  // 2. Multiplier par scale (scale3D) pour obtenir des unités 3D
-  const posX = ((furniture.position?.x || 0) / canvasScale) * scale;
-  const posZ = ((furniture.position?.y || 0) / canvasScale) * scale;
-  const posY = height / 2; // Placer le meuble sur le sol
+  const width3D = widthMm * mmToUnits3D; // longueur → X
+  const depth3D = depthMm * mmToUnits3D; // largeur → Z
+  const height3D = heightMm * mmToUnits3D; // hauteur → Y
+
+  console.log(`\n=== MEUBLE ${furniture.id} ===`);
+  console.log(`Dimensions (mm): ${widthMm} × ${depthMm} × ${heightMm}`);
+  console.log(`Dimensions (3D): ${width3D.toFixed(2)} × ${depth3D.toFixed(2)} × ${height3D.toFixed(2)} unités`);
+
+  // ==========================================
+  // POSITION: pixels canvas → mm → unités 3D
+  // ==========================================
+  const posXpixels = furniture.position?.x || 0;
+  const posYpixels = furniture.position?.y || 0;
+
+  // 1. Pixels canvas → mm
+  const posXmm = posXpixels / canvasScale;
+  const posZmm = posYpixels / canvasScale;
+
+  // 2. mm → unités 3D
+  const posX3D = posXmm * mmToUnits3D;
+  const posZ3D = posZmm * mmToUnits3D;
+  const posY3D = height3D / 2; // Placer sur le sol
+
+  console.log(`Position (pixels canvas): (${posXpixels.toFixed(1)}, ${posYpixels.toFixed(1)})`);
+  console.log(`Position (mm): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
+  console.log(`Position (3D): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)}) unités`);
 
   // Taille de texte adaptative
-  const textSize = Math.max(0.15, Math.min(0.4, 1.0));
-  const textOffsetY = height / 2 + textSize * 1.2;
+  const textSize = Math.max(0.2, Math.min(0.5, 0.3));
+  const textOffsetY = height3D / 2 + textSize * 1.2;
 
   return (
-    <group position={[posX, posY, posZ]}>
-      <Box args={[width, height, depth]} castShadow receiveShadow>
+    <group position={[posX3D, posY3D, posZ3D]}>
+      <Box args={[width3D, height3D, depth3D]} castShadow receiveShadow>
         <meshStandardMaterial color="#3b82f6" opacity={0.8} transparent />
       </Box>
       <Text position={[0, textOffsetY, 0]} fontSize={textSize} color="black" anchorX="center" anchorY="middle">
-        {`${furniture.longueur_mm}×${furniture.largeur_mm}×${furniture.hauteur_mm}mm`}
+        {`${widthMm}×${depthMm}×${heightMm}mm`}
       </Text>
       <Text
         position={[0, textOffsetY + textSize * 1.3, 0]}
@@ -68,25 +89,29 @@ const FurnitureBox = ({ furniture, scale, canvasScale }: FurnitureBoxProps) => {
   );
 };
 
-const LoadArea = ({ length, width, scale }: { length: number; width: number; scale: number }) => {
-  // Conversion directe: mm -> unités 3D
-  const scaledLength = length * scale;
-  const scaledWidth = width * scale;
+const LoadArea = ({ length, width, mmToUnits3D }: { length: number; width: number; mmToUnits3D: number }) => {
+  // Conversion directe: mm → unités 3D
+  const length3D = length * mmToUnits3D;
+  const width3D = width * mmToUnits3D;
+
+  console.log("\n=== ZONE DE CHARGEMENT ===");
+  console.log(`Dimensions (mm): ${length} × ${width}`);
+  console.log(`Dimensions (3D): ${length3D.toFixed(2)} × ${width3D.toFixed(2)} unités`);
 
   // Points du rectangle pour le contour en pointillés
   const points: [number, number, number][] = [
-    [-scaledLength / 2, 0.02, -scaledWidth / 2],
-    [scaledLength / 2, 0.02, -scaledWidth / 2],
-    [scaledLength / 2, 0.02, scaledWidth / 2],
-    [-scaledLength / 2, 0.02, scaledWidth / 2],
-    [-scaledLength / 2, 0.02, -scaledWidth / 2],
+    [-length3D / 2, 0.02, -width3D / 2],
+    [length3D / 2, 0.02, -width3D / 2],
+    [length3D / 2, 0.02, width3D / 2],
+    [-length3D / 2, 0.02, width3D / 2],
+    [-length3D / 2, 0.02, -width3D / 2],
   ];
 
   return (
     <group>
       {/* Rectangle plat au sol représentant la surface utile */}
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[scaledLength, scaledWidth]} />
+        <planeGeometry args={[length3D, width3D]} />
         <meshStandardMaterial color="#e2e8f0" opacity={0.3} transparent side={THREE.DoubleSide} />
       </mesh>
 
@@ -119,20 +144,36 @@ const Scene = ({
   loadAreaLength: number;
   loadAreaWidth: number;
 }) => {
-  // NOUVELLE APPROCHE SIMPLIFIÉE
-  // Une seule échelle pour tout : mm -> unités 3D
-  // On veut que la plus grande dimension fasse environ 20 unités 3D
-  const targetSize = 20;
-  const maxDimension = Math.max(loadAreaLength, loadAreaWidth);
-  const scale3D = targetSize / maxDimension; // mm -> unités 3D
-  
-  // Échelle du canvas 2D (pour convertir les positions du canvas)
-  const canvasScale = Math.min(700 / loadAreaLength, 500 / loadAreaWidth); // pixels/mm
+  // ==========================================
+  // APPROCHE SIMPLIFIÉE ET CORRIGÉE
+  // ==========================================
 
-  console.log("📐 Échelle 3D:", scale3D, "unités 3D par mm");
-  console.log("📐 Échelle canvas 2D:", canvasScale, "pixels par mm");
-  console.log("📏 Zone de chargement:", loadAreaLength, "x", loadAreaWidth, "mm");
-  console.log("📦 Dimensions 3D:", (loadAreaLength * scale3D).toFixed(1), "x", (loadAreaWidth * scale3D).toFixed(1), "unités");
+  // 1. Échelle pour convertir mm → unités 3D
+  // On veut que la zone de chargement fasse environ 20 unités 3D sur sa plus grande dimension
+  const maxDimension = Math.max(loadAreaLength, loadAreaWidth);
+  const mmToUnits3D = 20 / maxDimension;
+
+  console.log("=== ÉCHELLES 3D ===");
+  console.log("Zone de chargement (mm):", loadAreaLength, "×", loadAreaWidth);
+  console.log("Conversion mm → 3D:", mmToUnits3D, "unités 3D par mm");
+  console.log(
+    "Zone de chargement (3D):",
+    (loadAreaLength * mmToUnits3D).toFixed(2),
+    "×",
+    (loadAreaWidth * mmToUnits3D).toFixed(2),
+    "unités",
+  );
+
+  // 2. Pour les positions: les positions extraites sont EN PIXELS CANVAS
+  // On a besoin de les convertir en unités 3D
+  // Échelle du canvas 2D: identique à celle calculée dans LayoutCanvas.tsx
+  const canvasWidth = 800;
+  const canvasHeight = 600;
+  const canvasScale = Math.min((canvasWidth - 100) / loadAreaLength, (canvasHeight - 100) / loadAreaWidth);
+
+  console.log("=== CONVERSION POSITIONS ===");
+  console.log("Échelle canvas (pixels/mm):", canvasScale.toFixed(6));
+  console.log("Pour convertir pixels → 3D: diviser par", canvasScale, "puis multiplier par", mmToUnits3D);
 
   return (
     <>
@@ -141,14 +182,14 @@ const Scene = ({
       <directionalLight position={[-10, 10, -5]} intensity={0.5} />
       <pointLight position={[0, 10, 0]} intensity={0.5} />
 
-      <LoadArea length={loadAreaLength} width={loadAreaWidth} scale={scale3D} />
+      <LoadArea length={loadAreaLength} width={loadAreaWidth} mmToUnits3D={mmToUnits3D} />
 
       {furniture.map((item) => (
-        <FurnitureBox key={item.id} furniture={item} scale={scale3D} canvasScale={canvasScale} />
+        <FurnitureBox key={item.id} furniture={item} mmToUnits3D={mmToUnits3D} canvasScale={canvasScale} />
       ))}
 
       <Grid
-        args={[loadAreaLength * scale3D, loadAreaWidth * scale3D]}
+        args={[loadAreaLength * mmToUnits3D, loadAreaWidth * mmToUnits3D]}
         cellSize={1}
         cellThickness={0.5}
         cellColor="#cbd5e1"
