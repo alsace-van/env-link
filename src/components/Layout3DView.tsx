@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, Box, Grid, Line } from "@react-three/drei";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,7 +22,6 @@ interface FurnitureItem {
   hauteur_mm: number;
   poids_kg: number;
   position?: { x: number; y: number };
-  // NOUVEAU : dimensions extraites du canvas en pixels
   canvasDimensions?: { widthPx: number; heightPx: number };
 }
 
@@ -33,14 +32,9 @@ interface FurnitureBoxProps {
 }
 
 const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps) => {
-  // ==========================================
-  // DIMENSIONS: Utiliser les dimensions RÉELLES du canvas si disponibles
-  // ==========================================
-  
   let widthMm, depthMm;
   
   if (furniture.canvasDimensions) {
-    // Utiliser les dimensions réelles extraites du canvas
     widthMm = furniture.canvasDimensions.widthPx / canvasScale;
     depthMm = furniture.canvasDimensions.heightPx / canvasScale;
     
@@ -48,7 +42,6 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
     console.log(`Canvas: ${furniture.canvasDimensions.widthPx.toFixed(1)}px × ${furniture.canvasDimensions.heightPx.toFixed(1)}px`);
     console.log(`Converties: ${widthMm.toFixed(1)}mm × ${depthMm.toFixed(1)}mm`);
   } else {
-    // Fallback: utiliser les dimensions stockées
     widthMm = furniture.longueur_mm || 100;
     depthMm = furniture.largeur_mm || 100;
     
@@ -58,32 +51,26 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
   
   const heightMm = furniture.hauteur_mm || 100;
 
-  const width3D = widthMm * mmToUnits3D; // longueur → X
-  const depth3D = depthMm * mmToUnits3D; // largeur → Z
-  const height3D = heightMm * mmToUnits3D; // hauteur → Y
+  const width3D = widthMm * mmToUnits3D;
+  const depth3D = depthMm * mmToUnits3D;
+  const height3D = heightMm * mmToUnits3D;
 
   console.log(`Dimensions 3D finales: ${width3D.toFixed(2)} × ${depth3D.toFixed(2)} × ${height3D.toFixed(2)} unités`);
 
-  // ==========================================
-  // POSITION: pixels canvas relatifs → mm → unités 3D
-  // ==========================================
   const posXpixelsRel = furniture.position?.x || 0;
   const posYpixelsRel = furniture.position?.y || 0;
 
-  // 1. Pixels canvas relatifs → mm relatifs
   const posXmm = posXpixelsRel / canvasScale;
   const posZmm = posYpixelsRel / canvasScale;
 
-  // 2. mm → unités 3D
   const posX3D = posXmm * mmToUnits3D;
   const posZ3D = posZmm * mmToUnits3D;
-  const posY3D = height3D / 2; // Placer sur le sol
+  const posY3D = height3D / 2;
 
   console.log(`Position (pixels relatifs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
   console.log(`Position (mm): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
   console.log(`Position (3D): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)})`);
 
-  // Taille de texte adaptative
   const textSize = Math.max(0.2, Math.min(0.5, 0.3));
   const textOffsetY = height3D / 2 + textSize * 1.2;
 
@@ -365,257 +352,279 @@ export const Layout3DView = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /**
-   * FONCTION D'EXTRACTION : Extraction des positions ET dimensions réelles du canvas
-   * DOIT être définie AVANT loadProjectData
+   * Fonction d'extraction stable - définie en dehors du composant pour éviter les re-créations
    */
-  const extractFurniturePositionsAndDimensions = (
-    canvasJSON: any,
-    loadAreaLength: number,
-    loadAreaWidth: number
-  ): {
-    positions: { [furnitureId: string]: { x: number; y: number } };
-    dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } };
-    scale: number;
-    canvasWidth: number;
-    canvasHeight: number;
-  } => {
-    const positions: { [furnitureId: string]: { x: number; y: number } } = {};
-    const dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } } = {};
+  const extractFurniturePositionsAndDimensions = useCallback(
+    (canvasJSON: any): {
+      positions: { [furnitureId: string]: { x: number; y: number } };
+      dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } };
+      scale: number;
+      canvasWidth: number;
+      canvasHeight: number;
+    } => {
+      const positions: { [furnitureId: string]: { x: number; y: number } } = {};
+      const dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } } = {};
 
-    const CANVAS_WIDTH = 800;
-    const CANVAS_HEIGHT = 600;
+      const CANVAS_WIDTH = 800;
+      const CANVAS_HEIGHT = 600;
 
-    const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
+      const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
 
-    console.log("\n=== EXTRACTION DES POSITIONS ET DIMENSIONS ===");
-    console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
-    console.log(`Zone de chargement: ${loadAreaLength}mm × ${loadAreaWidth}mm`);
-    console.log(`Scale calculé: ${scale.toFixed(4)} pixels/mm`);
+      console.log("\n=== EXTRACTION DES POSITIONS ET DIMENSIONS ===");
+      console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
+      console.log(`Zone de chargement: ${loadAreaLength}mm × ${loadAreaWidth}mm`);
+      console.log(`Scale calculé: ${scale.toFixed(4)} pixels/mm`);
 
-    try {
-      if (canvasJSON && Array.isArray(canvasJSON) && canvasJSON.length > 1) {
-        const children = canvasJSON[1]?.children;
+      try {
+        if (canvasJSON && Array.isArray(canvasJSON) && canvasJSON.length > 1) {
+          const children = canvasJSON[1]?.children;
 
-        if (children && Array.isArray(children)) {
-          const centerX = CANVAS_WIDTH / 2;
-          const centerY = CANVAS_HEIGHT / 2;
+          if (children && Array.isArray(children)) {
+            const centerX = CANVAS_WIDTH / 2;
+            const centerY = CANVAS_HEIGHT / 2;
 
-          children.forEach((child: any) => {
-            if (Array.isArray(child) && child.length > 1) {
-              const childType = child[0];
-              const childData = child[1];
+            children.forEach((child: any) => {
+              if (Array.isArray(child) && child.length > 1) {
+                const childType = child[0];
+                const childData = child[1];
 
-              if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
-                const furnitureId = childData.data.furnitureId;
+                if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
+                  const furnitureId = childData.data.furnitureId;
 
-                console.log(`\n*** MEUBLE: ${furnitureId} ***`);
+                  console.log(`\n*** MEUBLE: ${furnitureId} ***`);
 
-                if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
-                  const pathChild = childData.children[0];
+                  if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
+                    const pathChild = childData.children[0];
 
-                  if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
-                    const segments = pathChild[1].segments;
+                    if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
+                      const segments = pathChild[1].segments;
 
-                    if (segments.length >= 4) {
-                      const getPoint = (seg: any) => {
-                        if (Array.isArray(seg)) {
-                          if (Array.isArray(seg[0])) {
-                            return { x: seg[0][0], y: seg[0][1] };
+                      if (segments.length >= 4) {
+                        const getPoint = (seg: any) => {
+                          if (Array.isArray(seg)) {
+                            if (Array.isArray(seg[0])) {
+                              return { x: seg[0][0], y: seg[0][1] };
+                            }
+                            return { x: seg[0], y: seg[1] };
                           }
-                          return { x: seg[0], y: seg[1] };
+                          return { x: 0, y: 0 };
+                        };
+
+                        const p1 = getPoint(segments[0]);
+                        const p2 = getPoint(segments[1]);
+                        const p3 = getPoint(segments[2]);
+                        const p4 = getPoint(segments[3]);
+
+                        console.log(`  Segments bruts:`);
+                        console.log(`    p1: (${p1.x}, ${p1.y})`);
+                        console.log(`    p2: (${p2.x}, ${p2.y})`);
+                        console.log(`    p3: (${p3.x}, ${p3.y})`);
+                        console.log(`    p4: (${p4.x}, ${p4.y})`);
+
+                        let x1 = p1.x, y1 = p1.y;
+                        let x2 = p2.x, y2 = p2.y;
+                        let x3 = p3.x, y3 = p3.y;
+                        let x4 = p4.x, y4 = p4.y;
+
+                        const pathMatrix = pathChild[1]?.matrix;
+                        if (pathMatrix && Array.isArray(pathMatrix) && pathMatrix.length === 6) {
+                          const [a, b, c, d, tx, ty] = pathMatrix;
+
+                          const transform = (x: number, y: number) => ({
+                            x: a * x + c * y + tx,
+                            y: b * x + d * y + ty,
+                          });
+
+                          const t1 = transform(x1, y1);
+                          const t2 = transform(x2, y2);
+                          const t3 = transform(x3, y3);
+                          const t4 = transform(x4, y4);
+
+                          x1 = t1.x; y1 = t1.y;
+                          x2 = t2.x; y2 = t2.y;
+                          x3 = t3.x; y3 = t3.y;
+                          x4 = t4.x; y4 = t4.y;
+
+                          console.log(`  Après matrice Path: [${pathMatrix}]`);
                         }
-                        return { x: 0, y: 0 };
-                      };
 
-                      const p1 = getPoint(segments[0]); // top-left
-                      const p2 = getPoint(segments[1]); // top-right
-                      const p3 = getPoint(segments[2]); // bottom-right
-                      const p4 = getPoint(segments[3]); // bottom-left
+                        const groupMatrix = childData.matrix;
+                        if (groupMatrix && Array.isArray(groupMatrix) && groupMatrix.length === 6) {
+                          const [a, b, c, d, tx, ty] = groupMatrix;
 
-                      console.log(`  Segments bruts:`);
-                      console.log(`    p1: (${p1.x}, ${p1.y})`);
-                      console.log(`    p2: (${p2.x}, ${p2.y})`);
-                      console.log(`    p3: (${p3.x}, ${p3.y})`);
-                      console.log(`    p4: (${p4.x}, ${p4.y})`);
+                          const transform = (x: number, y: number) => ({
+                            x: a * x + c * y + tx,
+                            y: b * x + d * y + ty,
+                          });
 
-                      let x1 = p1.x, y1 = p1.y;
-                      let x2 = p2.x, y2 = p2.y;
-                      let x3 = p3.x, y3 = p3.y;
-                      let x4 = p4.x, y4 = p4.y;
+                          const t1 = transform(x1, y1);
+                          const t2 = transform(x2, y2);
+                          const t3 = transform(x3, y3);
+                          const t4 = transform(x4, y4);
 
-                      // Appliquer la matrice du Path
-                      const pathMatrix = pathChild[1]?.matrix;
-                      if (pathMatrix && Array.isArray(pathMatrix) && pathMatrix.length === 6) {
-                        const [a, b, c, d, tx, ty] = pathMatrix;
+                          x1 = t1.x; y1 = t1.y;
+                          x2 = t2.x; y2 = t2.y;
+                          x3 = t3.x; y3 = t3.y;
+                          x4 = t4.x; y4 = t4.y;
 
-                        const transform = (x: number, y: number) => ({
-                          x: a * x + c * y + tx,
-                          y: b * x + d * y + ty,
-                        });
+                          console.log(`  Après matrice Group: [${groupMatrix}]`);
+                        }
 
-                        const t1 = transform(x1, y1);
-                        const t2 = transform(x2, y2);
-                        const t3 = transform(x3, y3);
-                        const t4 = transform(x4, y4);
+                        const rectCenterX = (x1 + x3) / 2;
+                        const rectCenterY = (y1 + y3) / 2;
 
-                        x1 = t1.x; y1 = t1.y;
-                        x2 = t2.x; y2 = t2.y;
-                        x3 = t3.x; y3 = t3.y;
-                        x4 = t4.x; y4 = t4.y;
+                        const widthPx = Math.abs(x2 - x1);
+                        const heightPx = Math.abs(y3 - y1);
 
-                        console.log(`  Après matrice Path: [${pathMatrix}]`);
+                        console.log(`  Centre: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
+                        console.log(`  Dimensions: ${widthPx.toFixed(1)}px × ${heightPx.toFixed(1)}px`);
+
+                        const relativeX = rectCenterX - centerX;
+                        const relativeY = rectCenterY - centerY;
+
+                        console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
+
+                        const widthMm = widthPx / scale;
+                        const heightMm = heightPx / scale;
+                        console.log(`  Dimensions en mm: ${widthMm.toFixed(1)}mm × ${heightMm.toFixed(1)}mm`);
+
+                        positions[furnitureId] = {
+                          x: relativeX,
+                          y: relativeY,
+                        };
+
+                        dimensions[furnitureId] = {
+                          widthPx: widthPx,
+                          heightPx: heightPx,
+                        };
                       }
-
-                      // Appliquer la matrice du Group
-                      const groupMatrix = childData.matrix;
-                      if (groupMatrix && Array.isArray(groupMatrix) && groupMatrix.length === 6) {
-                        const [a, b, c, d, tx, ty] = groupMatrix;
-
-                        const transform = (x: number, y: number) => ({
-                          x: a * x + c * y + tx,
-                          y: b * x + d * y + ty,
-                        });
-
-                        const t1 = transform(x1, y1);
-                        const t2 = transform(x2, y2);
-                        const t3 = transform(x3, y3);
-                        const t4 = transform(x4, y4);
-
-                        x1 = t1.x; y1 = t1.y;
-                        x2 = t2.x; y2 = t2.y;
-                        x3 = t3.x; y3 = t3.y;
-                        x4 = t4.x; y4 = t4.y;
-
-                        console.log(`  Après matrice Group: [${groupMatrix}]`);
-                      }
-
-                      // Calculer le centre
-                      const rectCenterX = (x1 + x3) / 2;
-                      const rectCenterY = (y1 + y3) / 2;
-
-                      // Calculer les dimensions RÉELLES du rectangle en pixels
-                      const widthPx = Math.abs(x2 - x1);
-                      const heightPx = Math.abs(y3 - y1);
-
-                      console.log(`  Centre: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
-                      console.log(`  Dimensions: ${widthPx.toFixed(1)}px × ${heightPx.toFixed(1)}px`);
-
-                      // Position relative au centre
-                      const relativeX = rectCenterX - centerX;
-                      const relativeY = rectCenterY - centerY;
-
-                      console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
-
-                      // Convertir en mm pour vérification
-                      const widthMm = widthPx / scale;
-                      const heightMm = heightPx / scale;
-                      console.log(`  Dimensions en mm: ${widthMm.toFixed(1)}mm × ${heightMm.toFixed(1)}mm`);
-
-                      positions[furnitureId] = {
-                        x: relativeX,
-                        y: relativeY,
-                      };
-
-                      dimensions[furnitureId] = {
-                        widthPx: widthPx,
-                        heightPx: heightPx,
-                      };
                     }
                   }
                 }
               }
-            }
-          });
+            });
+          }
         }
+      } catch (error) {
+        console.error("Error extracting positions and dimensions:", error);
       }
-    } catch (error) {
-      console.error("Error extracting positions and dimensions:", error);
-    }
 
-    console.log("\n=== RÉSUMÉ EXTRACTION ===");
-    console.log(`Meubles trouvés: ${Object.keys(positions).length}`);
-    console.log(`Scale: ${scale.toFixed(4)} pixels/mm`);
-    console.log("========================\n");
+      console.log("\n=== RÉSUMÉ EXTRACTION ===");
+      console.log(`Meubles trouvés: ${Object.keys(positions).length}`);
+      console.log(`Scale: ${scale.toFixed(4)} pixels/mm`);
+      console.log("========================\n");
 
-    return {
-      positions,
-      dimensions,
-      scale,
-      canvasWidth: CANVAS_WIDTH,
-      canvasHeight: CANVAS_HEIGHT,
-    };
-  };
+      return {
+        positions,
+        dimensions,
+        scale,
+        canvasWidth: CANVAS_WIDTH,
+        canvasHeight: CANVAS_HEIGHT,
+      };
+    },
+    [loadAreaLength, loadAreaWidth]
+  );
 
-  const loadProjectData = async () => {
+  const loadProjectData = useCallback(async () => {
     setIsRefreshing(true);
     try {
+      console.log("🔄 Chargement des données du projet:", projectId);
+
       const { data: projectData, error: projectError } = await supabase
         .from("projects")
         .select("canvas_data, furniture_data, layout_canvas_data")
         .eq("id", projectId)
         .single();
 
-      if (projectError) throw projectError;
+      if (projectError) {
+        console.error("❌ Erreur Supabase:", projectError);
+        throw projectError;
+      }
+
+      if (!projectData) {
+        console.error("❌ Aucune donnée de projet trouvée");
+        throw new Error("Aucune donnée de projet trouvée");
+      }
 
       console.log("\n==========================================");
       console.log("CHARGEMENT DES DONNÉES PROJET");
       console.log("==========================================");
+      console.log("Données brutes:", { 
+        hasFurnitureData: !!projectData.furniture_data,
+        hasCanvasData: !!projectData.canvas_data,
+        hasLayoutCanvasData: !!projectData.layout_canvas_data
+      });
 
       let furnitureData: FurnitureItem[] = [];
+      
       if (projectData.furniture_data && Array.isArray(projectData.furniture_data)) {
         furnitureData = projectData.furniture_data.map((item: any) => ({
           id: item.id,
-          longueur_mm: item.longueur_mm,
-          largeur_mm: item.largeur_mm,
-          hauteur_mm: item.hauteur_mm,
-          poids_kg: item.poids_kg,
+          longueur_mm: item.longueur_mm || 0,
+          largeur_mm: item.largeur_mm || 0,
+          hauteur_mm: item.hauteur_mm || 0,
+          poids_kg: item.poids_kg || 0,
         }));
 
-        console.log(`Meubles chargés: ${furnitureData.length}`);
+        console.log(`✅ Meubles chargés: ${furnitureData.length}`);
+      } else {
+        console.log("⚠️ Aucune donnée de meuble trouvée");
       }
 
-      // Utiliser layout_canvas_data en priorité, sinon canvas_data
       const canvasDataToUse = projectData.layout_canvas_data || projectData.canvas_data;
       
       if (canvasDataToUse) {
-        const canvasJSON = typeof canvasDataToUse === 'string' 
-          ? JSON.parse(canvasDataToUse) 
-          : canvasDataToUse;
-        
-        const extractedData = extractFurniturePositionsAndDimensions(canvasJSON, loadAreaLength, loadAreaWidth);
+        try {
+          const canvasJSON = typeof canvasDataToUse === 'string' 
+            ? JSON.parse(canvasDataToUse) 
+            : canvasDataToUse;
+          
+          console.log("✅ Canvas data parsée avec succès");
+          
+          const extractedData = extractFurniturePositionsAndDimensions(canvasJSON);
 
-        console.log("\nPositions et dimensions extraites:", extractedData);
+          console.log("\n✅ Positions et dimensions extraites:", {
+            positionsCount: Object.keys(extractedData.positions).length,
+            dimensionsCount: Object.keys(extractedData.dimensions).length,
+          });
 
-        furnitureData = furnitureData.map((item) => ({
-          ...item,
-          position: extractedData.positions[item.id] || { x: 0, y: 0 },
-          canvasDimensions: extractedData.dimensions[item.id],
-        }));
+          furnitureData = furnitureData.map((item) => ({
+            ...item,
+            position: extractedData.positions[item.id] || { x: 0, y: 0 },
+            canvasDimensions: extractedData.dimensions[item.id],
+          }));
 
-        console.log("\nMeubles avec positions et dimensions:");
-        furnitureData.forEach((f) => {
-          console.log(`  - ${f.id}:`);
-          console.log(`    Position: (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
-          if (f.canvasDimensions) {
-            console.log(`    Dimensions canvas: ${f.canvasDimensions.widthPx.toFixed(1)}px × ${f.canvasDimensions.heightPx.toFixed(1)}px`);
-          }
-        });
+          console.log("\n✅ Meubles avec positions et dimensions:");
+          furnitureData.forEach((f) => {
+            console.log(`  - ${f.id}:`);
+            console.log(`    Position: (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
+            if (f.canvasDimensions) {
+              console.log(`    Dimensions canvas: ${f.canvasDimensions.widthPx.toFixed(1)}px × ${f.canvasDimensions.heightPx.toFixed(1)}px`);
+            }
+          });
+        } catch (parseError) {
+          console.error("❌ Erreur de parsing du canvas JSON:", parseError);
+          console.log("⚠️ Utilisation des meubles sans positions");
+        }
+      } else {
+        console.log("⚠️ Aucune donnée canvas trouvée");
       }
 
       setFurniture(furnitureData);
-      toast.success("Données chargées avec succès");
+      toast.success(`${furnitureData.length} meuble(s) chargé(s)`);
       console.log("==========================================\n");
-    } catch (error) {
-      console.error("Error loading project data:", error);
-      toast.error("Erreur lors du chargement des données");
+    } catch (error: any) {
+      console.error("❌ Error loading project data:", error);
+      toast.error(`Erreur: ${error.message || "Erreur de chargement"}`);
+      setFurniture([]);
     } finally {
       setIsRefreshing(false);
     }
-  };
+  }, [projectId, extractFurniturePositionsAndDimensions]);
 
   useEffect(() => {
     loadProjectData();
-  }, [projectId, loadAreaLength, loadAreaWidth]);
+  }, [loadProjectData]);
 
   const resetCamera = () => {
     setCameraKey((prev) => prev + 1);
