@@ -467,8 +467,11 @@ export const Layout3DView = ({
     console.log(`Scale calculé: ${scale.toFixed(4)} pixels/mm`);
 
     try {
+      console.log("Structure canvasJSON:", Array.isArray(canvasJSON) ? `Array [${canvasJSON.length}]` : typeof canvasJSON);
+      
       if (canvasJSON && Array.isArray(canvasJSON) && canvasJSON.length > 1) {
         const children = canvasJSON[1]?.children;
+        console.log("Nombre d'enfants trouvés:", children ? children.length : 0);
 
         if (children && Array.isArray(children)) {
           const scaledLoadAreaLength = loadAreaLength * scale;
@@ -478,17 +481,19 @@ export const Layout3DView = ({
           const centerX = CANVAS_WIDTH / 2;
           const centerY = CANVAS_HEIGHT / 2;
 
-          children.forEach((child: any) => {
+          children.forEach((child: any, index: number) => {
             if (Array.isArray(child) && child.length > 1) {
               const childType = child[0];
               const childData = child[1];
+
+              console.log(`\nEnfant ${index}: Type=${childType}, isFurniture=${childData?.data?.isFurniture}, furnitureId=${childData?.data?.furnitureId}`);
 
               // Chercher les groupes de meubles
               if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
                 const furnitureId = childData.data.furnitureId;
 
-                console.log(`\nMeuble trouvé: ${furnitureId}`);
-                console.log(`  childData:`, JSON.stringify(childData, null, 2));
+                console.log(`\n*** MEUBLE DÉTECTÉ: ${furnitureId} ***`);
+                console.log(`  Matrice du groupe:`, childData.matrix);
 
                 // Le groupe contient un Path comme premier enfant avec les segments du rectangle
                 if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
