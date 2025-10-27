@@ -403,8 +403,8 @@ const ProjectDetail = () => {
               <TabsContent value="3d">
                 <Layout3DView
                   projectId={project.id}
-                  loadAreaLength={project.longueur_chargement_mm}
-                  loadAreaWidth={project.largeur_chargement_mm}
+                  loadAreaLength={project.longueur_chargement_mm || 3000}
+                  loadAreaWidth={project.largeur_chargement_mm || 1800}
                   loadAreaHeight={project.hauteur_mm || 1800}
                 />
               </TabsContent>

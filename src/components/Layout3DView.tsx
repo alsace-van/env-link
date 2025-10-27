@@ -266,6 +266,16 @@ export const Layout3DView = ({
       return positions;
     }
 
+    // S'assurer que les dimensions sont valides (éviter division par zéro)
+    if (!loadAreaLength || loadAreaLength <= 0) {
+      console.error("loadAreaLength invalide:", loadAreaLength);
+      return positions;
+    }
+    if (!loadAreaWidth || loadAreaWidth <= 0) {
+      console.error("loadAreaWidth invalide:", loadAreaWidth);
+      return positions;
+    }
+
     try {
       const data = typeof canvasData === "string" ? JSON.parse(canvasData) : canvasData;
 
