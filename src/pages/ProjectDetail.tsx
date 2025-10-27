@@ -20,7 +20,6 @@ import { TechnicalCanvas } from "@/components/TechnicalCanvas";
 import { CableSectionCalculator } from "@/components/CableSectionCalculator";
 import { EnergyBalance } from "@/components/EnergyBalance";
 import { LayoutCanvas } from "@/components/LayoutCanvas";
-import { Layout3DView } from "@/components/Layout3DView";
 import { User } from "@supabase/supabase-js";
 
 interface Project {
@@ -374,9 +373,8 @@ const ProjectDetail = () => {
 
           <TabsContent value="technical">
             <Tabs defaultValue="layout" className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="layout">Aménagement</TabsTrigger>
-                <TabsTrigger value="3d">Vue 3D</TabsTrigger>
                 <TabsTrigger value="schema">Schémas</TabsTrigger>
                 <TabsTrigger value="electrical">Câbles & Énergie</TabsTrigger>
               </TabsList>
@@ -398,15 +396,6 @@ const ProjectDetail = () => {
                     />
                   </CardContent>
                 </Card>
-              </TabsContent>
-
-              <TabsContent value="3d">
-                <Layout3DView
-                  projectId={project.id}
-                  loadAreaLength={project.longueur_chargement_mm}
-                  loadAreaWidth={project.largeur_chargement_mm}
-                  loadAreaHeight={project.hauteur_mm || 1800}
-                />
               </TabsContent>
 
               <TabsContent value="schema">

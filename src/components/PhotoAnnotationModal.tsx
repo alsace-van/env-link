@@ -607,8 +607,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         clearTimeout(timeoutId);
       }
 
+      // Nettoyer paper.js complètement
       if (paper.project) {
+        const allLayers = paper.project.layers.slice();
+        allLayers.forEach(layer => layer.remove());
         paper.project.clear();
+      }
+      
+      if (paper.view) {
+        paper.view.remove();
       }
     };
   }, [isOpen, photo]);
@@ -827,15 +834,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           </div>
 
           {/* Canvas Container */}
-          <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden">
+          <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]">
             {isLoadingImage && (
-              <div className="absolute inset-0 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center justify-center z-10 bg-muted/50">
                 <div className="text-muted-foreground">Chargement...</div>
               </div>
             )}
             <canvas
               ref={canvasRef}
-              className="absolute inset-0"
+              className="w-full h-full"
               style={{ cursor: activeTool === "select" ? "default" : "crosshair" }}
             />
             {isEditingText && (
