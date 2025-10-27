@@ -243,7 +243,7 @@ const ProjectDetail = () => {
             </TabsTrigger>
             <TabsTrigger value="accessories" className="gap-2">
               <Package className="h-4 w-4" />
-              <span className="hidden sm:inline">Accessoires</span>
+              <span className="hidden sm:inline">Catalogue</span>
             </TabsTrigger>
             <TabsTrigger value="notices" className="gap-2">
               <BookOpen className="h-4 w-4" />
@@ -346,15 +346,7 @@ const ProjectDetail = () => {
           </TabsContent>
 
           <TabsContent value="accessories">
-            <Card>
-              <CardHeader>
-                <CardTitle>Catalogue d'Accessoires</CardTitle>
-                <CardDescription>Votre catalogue personnel partagé entre tous vos projets</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <AccessoriesCatalogView />
-              </CardContent>
-            </Card>
+            <AccessoriesCatalogView />
           </TabsContent>
 
           <TabsContent value="notices">

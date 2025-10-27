@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList } from "lucide-react";
 import { toast } from "sonner";
+import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +60,7 @@ const AccessoriesCatalogView = () => {
   const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null);
   const [isCategoryManagementOpen, setIsCategoryManagementOpen] = useState(false);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
     const saved = localStorage.getItem('accessories-view-mode');
     return (saved as 'list' | 'grid') || 'list';
@@ -74,20 +76,28 @@ const AccessoriesCatalogView = () => {
   }, [viewMode]);
 
   useEffect(() => {
+    let filtered = accessories;
+
+    // Filtrer par recherche
     if (searchTerm) {
-      setFilteredAccessories(
-        accessories.filter(
-          (acc) =>
-            acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+      filtered = filtered.filter(
+        (acc) =>
+          acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase())
       );
-    } else {
-      setFilteredAccessories(accessories);
     }
-  }, [searchTerm, accessories]);
+
+    // Filtrer par catégories
+    if (selectedCategories.length > 0) {
+      filtered = filtered.filter((acc) =>
+        acc.category_id && selectedCategories.includes(acc.category_id)
+      );
+    }
+
+    setFilteredAccessories(filtered);
+  }, [searchTerm, accessories, selectedCategories]);
 
   // Grouper les accessoires par catégorie
   const groupedAccessories = () => {
@@ -176,8 +186,19 @@ const AccessoriesCatalogView = () => {
   };
 
   return (
-    <div>
-      <div className="mb-6 flex gap-4 flex-wrap">
+    <div className="relative">
+      <AccessoryCategorySidebar
+        selectedCategories={selectedCategories}
+        onCategoryChange={setSelectedCategories}
+      />
+      
+      <Card className="ml-96">
+        <CardHeader>
+          <CardTitle>Catalogue d'Accessoires</CardTitle>
+          <CardDescription>Votre catalogue personnel partagé entre tous vos projets</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-6 flex gap-4 flex-wrap">
         <div className="flex-1 relative min-w-[200px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -479,6 +500,8 @@ const AccessoriesCatalogView = () => {
         onSuccess={loadAccessories}
         categories={categories}
       />
+        </CardContent>
+      </Card>
     </div>
   );
 };
