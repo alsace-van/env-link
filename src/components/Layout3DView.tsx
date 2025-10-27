@@ -194,7 +194,7 @@ const MeasurementTool = ({
       const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       const intersectPoint = new THREE.Vector3();
       const hasGroundIntersection = raycaster.ray.intersectPlane(groundPlane, intersectPoint);
-      
+
       if (hasGroundIntersection) {
         return intersectPoint.clone();
       }
@@ -216,9 +216,9 @@ const MeasurementTool = ({
         if (!startPoint) {
           setStartPoint(intersectPoint);
         } else {
-          // Calculate distance in mm
-          const distance = startPoint.distanceTo(intersectPoint) / scale3D;
-          onAddMeasure(startPoint, intersectPoint, distance);
+          const distance = startPoint.distanceTo(intersectPoint);
+          const distanceMM = distance / scale3D;
+          onAddMeasure(startPoint, intersectPoint, distanceMM);
           setStartPoint(null);
           setCurrentPoint(null);
         }
@@ -234,89 +234,54 @@ const MeasurementTool = ({
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
       const intersectPoint = getIntersectionPoint(x, y);
-
       if (intersectPoint) {
         setCurrentPoint(intersectPoint);
       }
     };
 
-    const canvas = scene.children[0]?.parent as any;
-    const domElement = canvas?.domElement || document.querySelector("canvas");
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointermove", handlePointerMove);
 
-    if (domElement) {
-      domElement.addEventListener("pointerdown", handlePointerDown);
-      domElement.addEventListener("pointermove", handlePointerMove);
-
-      return () => {
-        domElement.removeEventListener("pointerdown", handlePointerDown);
-        domElement.removeEventListener("pointermove", handlePointerMove);
-      };
-    }
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointermove", handlePointerMove);
+    };
   }, [isActive, startPoint, camera, raycaster, scene, onAddMeasure, scale3D]);
 
   return (
     <>
-      {/* Existing measure lines */}
-      {measureLines.map((measure) => {
-        const midPoint = new THREE.Vector3()
-          .addVectors(measure.start, measure.end)
-          .multiplyScalar(0.5);
-
-        return (
-          <group key={measure.id}>
-            <Line
-              points={[measure.start, measure.end]}
-              color="#ef4444"
-              lineWidth={3}
-              dashed
-              dashScale={20}
-              dashSize={0.5}
-              gapSize={0.3}
-            />
-            <Text
-              position={[midPoint.x, midPoint.y + 0.5, midPoint.z]}
-              fontSize={0.4}
-              color="#ef4444"
-              anchorX="center"
-              anchorY="middle"
-              outlineWidth={0.05}
-              outlineColor="#ffffff"
-            >
-              {`${Math.round(measure.distance)}mm`}
-            </Text>
-          </group>
-        );
-      })}
-
-      {/* Current measuring line (preview) */}
+      {/* Preview line */}
       {startPoint && currentPoint && (
-        <>
-          <Line
-            points={[startPoint, currentPoint]}
-            color="#ef4444"
-            lineWidth={2}
-            dashed
-            dashScale={20}
-            dashSize={0.5}
-            gapSize={0.3}
-          />
+        <Line
+          points={[startPoint, currentPoint]}
+          color="yellow"
+          lineWidth={2}
+          dashed={true}
+          dashScale={10}
+          dashSize={0.5}
+          gapSize={0.3}
+        />
+      )}
+
+      {/* Saved measurement lines */}
+      {measureLines.map((line) => (
+        <group key={line.id}>
+          <Line points={[line.start, line.end]} color="red" lineWidth={3} />
           <Text
             position={[
-              (startPoint.x + currentPoint.x) / 2,
-              (startPoint.y + currentPoint.y) / 2 + 0.5,
-              (startPoint.z + currentPoint.z) / 2,
+              (line.start.x + line.end.x) / 2,
+              (line.start.y + line.end.y) / 2 + 0.5,
+              (line.start.z + line.end.z) / 2,
             ]}
-            fontSize={0.4}
-            color="#ef4444"
+            fontSize={0.3}
+            color="red"
             anchorX="center"
             anchorY="middle"
-            outlineWidth={0.05}
-            outlineColor="#ffffff"
           >
-            {`${Math.round(startPoint.distanceTo(currentPoint) / scale3D)}mm`}
+            {`${line.distance.toFixed(0)}mm`}
           </Text>
-        </>
-      )}
+        </group>
+      ))}
     </>
   );
 };
@@ -337,42 +302,33 @@ const Scene = ({
   onAddMeasure: (start: THREE.Vector3, end: THREE.Vector3, distance: number) => void;
 }) => {
   // ==========================================
-  // APPROCHE SIMPLIFIÉE ET CORRIGÉE
+  // PARAMÈTRES DE CONVERSION
   // ==========================================
 
-  // 1. Échelle pour convertir mm → unités 3D
-  // On veut que la zone de chargement fasse environ 20 unités 3D sur sa plus grande dimension
-  const maxDimension = Math.max(loadAreaLength, loadAreaWidth);
-  const mmToUnits3D = 20 / maxDimension;
+  // 1. Échelle 3D: 1 unité 3D = 100mm (pour garder des chiffres raisonnables)
+  const mmToUnits3D = 1 / 100;
+  const scale3D = mmToUnits3D;
 
-  console.log("=== ÉCHELLES 3D ===");
-  console.log("Zone de chargement (mm):", loadAreaLength, "×", loadAreaWidth);
-  console.log("Conversion mm → 3D:", mmToUnits3D, "unités 3D par mm");
-  console.log(
-    "Zone de chargement (3D):",
-    (loadAreaLength * mmToUnits3D).toFixed(2),
-    "×",
-    (loadAreaWidth * mmToUnits3D).toFixed(2),
-    "unités",
-  );
+  // 2. Échelle canvas: pixels par mm (doit correspondre exactement au canvas 2D)
+  // IMPORTANT: Cette valeur DOIT être la même que celle calculée dans LayoutCanvas
+  const CANVAS_WIDTH = 800;
+  const CANVAS_HEIGHT = 600;
+  const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
 
-  // 2. Pour les positions: les positions extraites sont EN PIXELS CANVAS
-  // On a besoin de les convertir en unités 3D
-  // Échelle du canvas 2D: identique à celle calculée dans LayoutCanvas.tsx
-  const canvasWidth = 800;
-  const canvasHeight = 600;
-  const canvasScale = Math.min((canvasWidth - 100) / loadAreaLength, (canvasHeight - 100) / loadAreaWidth);
-
-  console.log("=== CONVERSION POSITIONS ===");
-  console.log("Échelle canvas (pixels/mm):", canvasScale.toFixed(6));
-  console.log("Pour convertir pixels → 3D: diviser par", canvasScale, "puis multiplier par", mmToUnits3D);
+  console.log("\n==========================================");
+  console.log("PARAMÈTRES DE CONVERSION 3D");
+  console.log("==========================================");
+  console.log(`mmToUnits3D: ${mmToUnits3D} (1 unité 3D = ${1 / mmToUnits3D}mm)`);
+  console.log(`canvasScale: ${canvasScale.toFixed(4)} pixels/mm`);
+  console.log(`Zone de chargement: ${loadAreaLength}mm × ${loadAreaWidth}mm`);
+  console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
+  console.log("==========================================\n");
 
   return (
     <>
       <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={1} castShadow />
-      <directionalLight position={[-10, 10, -5]} intensity={0.5} />
-      <pointLight position={[0, 10, 0]} intensity={0.5} />
+      <directionalLight position={[10, 10, 5]} intensity={0.8} castShadow />
+      <directionalLight position={[-10, 10, -5]} intensity={0.3} />
 
       <LoadArea length={loadAreaLength} width={loadAreaWidth} mmToUnits3D={mmToUnits3D} />
 
@@ -384,30 +340,21 @@ const Scene = ({
         isActive={measureMode}
         measureLines={measureLines}
         onAddMeasure={onAddMeasure}
-        scale3D={mmToUnits3D}
+        scale3D={scale3D}
       />
 
       <Grid
-        args={[loadAreaLength * mmToUnits3D, loadAreaWidth * mmToUnits3D]}
+        args={[50, 50]}
         cellSize={1}
         cellThickness={0.5}
-        cellColor="#cbd5e1"
+        cellColor="#94a3b8"
         sectionSize={5}
-        sectionThickness={1}
-        sectionColor="#94a3b8"
-        fadeDistance={50}
-        fadeStrength={1}
-        position={[0, -0.02, 0]}
+        sectionColor="#475569"
+        fadeDistance={30}
+        infiniteGrid
       />
 
-      <OrbitControls
-        makeDefault
-        minPolarAngle={0}
-        maxPolarAngle={Math.PI / 2}
-        enableDamping
-        dampingFactor={0.05}
-        enabled={!measureMode}
-      />
+      <OrbitControls enableDamping dampingFactor={0.05} minDistance={5} maxDistance={100} enabled={!measureMode} />
     </>
   );
 };
@@ -419,167 +366,132 @@ export const Layout3DView = ({
   loadAreaHeight = 1800,
 }: Layout3DViewProps) => {
   const [furniture, setFurniture] = useState<FurnitureItem[]>([]);
-  const [canvasData, setCanvasData] = useState<any>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [measureMode, setMeasureMode] = useState(false);
   const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    loadProjectData();
-
-    // 🔥 Subscription en temps réel pour écouter les changements
-    const channel = supabase
-      .channel(`project-3d-${projectId}`, {
-        config: {
-          broadcast: { self: true },
-        },
-      })
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "projects",
-          filter: `id=eq.${projectId}`,
-        },
-        (payload) => {
-          console.log("🔄 Changement détecté dans le projet, rechargement 3D...");
-          console.log("Payload:", payload);
-          // Recharger après un court délai pour s'assurer que les données sont bien écrites
-          setTimeout(() => {
-            loadProjectData();
-          }, 500);
-        },
-      )
-      .subscribe((status) => {
-        console.log("📡 Statut de la subscription 3D:", status);
-
-        // Si la subscription se ferme, réessayer après un délai
-        if (status === "CLOSED") {
-          console.log("⚠️ Subscription fermée, tentative de reconnexion dans 2s...");
-          setTimeout(() => {
-            loadProjectData();
-          }, 2000);
-        }
-      });
-
-    // Nettoyer la subscription au démontage
-    return () => {
-      console.log("🔌 Déconnexion de la subscription 3D");
-      supabase.removeChannel(channel);
-    };
-  }, [projectId]);
-
   const loadProjectData = async () => {
+    setIsRefreshing(true);
     try {
-      setIsRefreshing(true);
-      const { data, error } = await supabase
+      const { data: projectData, error: projectError } = await supabase
         .from("projects")
-        .select("furniture_data, layout_canvas_data")
+        .select("canvas_data, furniture_data")
         .eq("id", projectId)
         .single();
 
-      if (error) throw error;
+      if (projectError) throw projectError;
 
-      console.log("Données chargées:", data);
+      console.log("\n==========================================");
+      console.log("CHARGEMENT DES DONNÉES PROJET");
+      console.log("==========================================");
 
-      if (data?.furniture_data && Array.isArray(data.furniture_data)) {
-        // Extraire les positions depuis layout_canvas_data si disponible
-        const positions = extractPositions(data.layout_canvas_data, loadAreaLength, loadAreaWidth);
+      // Charger les données des meubles
+      let furnitureData: FurnitureItem[] = [];
+      if (projectData.furniture_data && Array.isArray(projectData.furniture_data)) {
+        furnitureData = projectData.furniture_data.map((item: any) => ({
+          id: item.id,
+          longueur_mm: item.longueur_mm,
+          largeur_mm: item.largeur_mm,
+          hauteur_mm: item.hauteur_mm,
+          poids_kg: item.poids_kg,
+        }));
 
-        console.log("Positions extraites:", positions);
-
-        const furnitureWithPositions = (data.furniture_data as unknown as FurnitureItem[]).map(
-          (item: FurnitureItem) => ({
-            ...item,
-            position: positions[item.id] || { x: 0, y: 0 },
-          }),
-        );
-
-        console.log("Meubles avec positions:", furnitureWithPositions);
-        setFurniture(furnitureWithPositions);
-      } else {
-        // Si pas de meubles, vider l'affichage
-        setFurniture([]);
+        console.log(`Meubles chargés: ${furnitureData.length}`);
+        furnitureData.forEach((f) => {
+          console.log(`  - ${f.id}: ${f.longueur_mm}×${f.largeur_mm}×${f.hauteur_mm}mm, ${f.poids_kg}kg`);
+        });
       }
 
-      if (data?.layout_canvas_data) {
-        setCanvasData(data.layout_canvas_data);
+      // Extraire les positions depuis canvas_data
+      if (projectData.canvas_data) {
+        const canvasJSON = JSON.parse(projectData.canvas_data);
+        const extractedData = extractFurniturePositions(canvasJSON, loadAreaLength, loadAreaWidth);
+
+        console.log("\nPositions extraites:", extractedData);
+
+        // Associer les positions aux meubles
+        furnitureData = furnitureData.map((item) => ({
+          ...item,
+          position: extractedData.positions[item.id] || { x: 0, y: 0 },
+        }));
+
+        console.log("\nMeubles avec positions:");
+        furnitureData.forEach((f) => {
+          console.log(`  - ${f.id}: position (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
+        });
       }
+
+      setFurniture(furnitureData);
+      toast.success("Données chargées avec succès");
+      console.log("==========================================\n");
     } catch (error) {
-      console.error("Error loading 3D data:", error);
+      console.error("Error loading project data:", error);
+      toast.error("Erreur lors du chargement des données");
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const extractPositions = (canvasData: any, loadAreaLength: number, loadAreaWidth: number) => {
-    const positions: Record<string, { x: number; y: number }> = {};
+  useEffect(() => {
+    loadProjectData();
+  }, [projectId, loadAreaLength, loadAreaWidth]);
 
-    if (!canvasData) {
-      console.log("Pas de données canvas");
-      return positions;
-    }
+  /**
+   * FONCTION CORRIGÉE : Extraction des positions avec les informations de scale
+   */
+  const extractFurniturePositions = (
+    canvasJSON: any,
+    loadAreaLength: number,
+    loadAreaWidth: number,
+  ): {
+    positions: { [furnitureId: string]: { x: number; y: number } };
+    scale: number;
+    canvasWidth: number;
+    canvasHeight: number;
+  } => {
+    const positions: { [furnitureId: string]: { x: number; y: number } } = {};
 
-    // S'assurer que les dimensions sont valides (éviter division par zéro)
-    if (!loadAreaLength || loadAreaLength <= 0) {
-      console.error("loadAreaLength invalide:", loadAreaLength);
-      return positions;
-    }
-    if (!loadAreaWidth || loadAreaWidth <= 0) {
-      console.error("loadAreaWidth invalide:", loadAreaWidth);
-      return positions;
-    }
+    // Dimensions du canvas (doivent correspondre à LayoutCanvas)
+    const CANVAS_WIDTH = 800;
+    const CANVAS_HEIGHT = 600;
+
+    // Calcul du scale (doit être identique à LayoutCanvas ligne 148)
+    const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
+
+    console.log("\n=== EXTRACTION DES POSITIONS ===");
+    console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
+    console.log(`Zone de chargement: ${loadAreaLength}mm × ${loadAreaWidth}mm`);
+    console.log(`Scale calculé: ${scale.toFixed(4)} pixels/mm`);
 
     try {
-      const data = typeof canvasData === "string" ? JSON.parse(canvasData) : canvasData;
+      if (canvasJSON && Array.isArray(canvasJSON) && canvasJSON.length > 1) {
+        const children = canvasJSON[1]?.children;
 
-      console.log("Données canvas parsées:", data);
-
-      // La structure est: [["Layer", { children: [...] }]]
-      if (data && Array.isArray(data) && data.length > 0) {
-        const layer = data[0];
-
-        if (Array.isArray(layer) && layer[0] === "Layer" && layer[1]?.children) {
-          const children = layer[1].children;
-
-          console.log("Enfants du Layer:", children);
-
-          // Le canvas fait 800x600
-          const canvasWidth = 800;
-          const canvasHeight = 600;
-
-          // Calculer l'échelle utilisée dans le canvas (même calcul que dans LayoutCanvas.tsx)
-          // IMPORTANT: Dans LayoutCanvas, loadAreaLength est mappé sur la largeur du canvas (X)
-          // et loadAreaWidth est mappé sur la hauteur du canvas (Y)
-          const scale = Math.min((canvasWidth - 100) / loadAreaLength, (canvasHeight - 100) / loadAreaWidth);
-
-          console.log(`Dimensions zone chargement: ${loadAreaLength}mm x ${loadAreaWidth}mm`);
-          console.log(`Scale calculée: ${scale}`);
+        if (children && Array.isArray(children)) {
           const scaledLoadAreaLength = loadAreaLength * scale;
           const scaledLoadAreaWidth = loadAreaWidth * scale;
 
           // Centre du canvas
-          const centerX = canvasWidth / 2;
-          const centerY = canvasHeight / 2;
+          const centerX = CANVAS_WIDTH / 2;
+          const centerY = CANVAS_HEIGHT / 2;
 
-          children.forEach((child: any, index: number) => {
+          children.forEach((child: any) => {
             if (Array.isArray(child) && child.length > 1) {
               const childType = child[0];
               const childData = child[1];
 
-                // Chercher les groupes de meubles
+              // Chercher les groupes de meubles
               if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
                 const furnitureId = childData.data.furnitureId;
 
-                console.log(`Meuble trouvé: ${furnitureId}`, childData);
+                console.log(`\nMeuble trouvé: ${furnitureId}`);
 
                 // Récupérer la matrice de transformation du groupe s'il y en a une
                 const matrix = childData.matrix;
-                
+
                 // Le groupe contient un Path comme premier enfant avec les segments du rectangle
                 if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
                   const pathChild = childData.children[0];
@@ -587,10 +499,7 @@ export const Layout3DView = ({
                   if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
                     const segments = pathChild[1].segments;
 
-                    console.log(`Segments du meuble ${furnitureId}:`, segments);
-
                     // Calculer le centre du rectangle à partir des segments
-                    // segments: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
                     if (segments.length >= 4) {
                       let x1 = segments[0][0];
                       let y1 = segments[0][1];
@@ -599,48 +508,38 @@ export const Layout3DView = ({
 
                       // Appliquer la matrice de transformation si elle existe
                       if (matrix && Array.isArray(matrix) && matrix.length === 6) {
-                        // Matrice format: [a, b, c, d, tx, ty]
-                        // Transformation: x' = a*x + c*y + tx, y' = b*x + d*y + ty
                         const [a, b, c, d, tx, ty] = matrix;
-                        
+
                         // Transformer les coins
                         const x1Global = a * x1 + c * y1 + tx;
                         const y1Global = b * x1 + d * y1 + ty;
                         const x3Global = a * x3 + c * y3 + tx;
                         const y3Global = b * x3 + d * y3 + ty;
-                        
+
                         x1 = x1Global;
                         y1 = y1Global;
                         x3 = x3Global;
                         y3 = y3Global;
-                        
-                        console.log(`Transformation appliquée avec matrice:`, matrix);
+
+                        console.log(`  Matrice appliquée:`, matrix);
                       }
 
                       // Centre du rectangle dans le canvas (coordonnées globales)
                       const rectCenterX = (x1 + x3) / 2;
                       const rectCenterY = (y1 + y3) / 2;
 
-                      console.log(`Centre canvas pour ${furnitureId}: (${rectCenterX}, ${rectCenterY})`);
+                      console.log(`  Centre canvas: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
 
                       // Position relative au centre de la zone de chargement en pixels canvas
                       const relativeX = rectCenterX - centerX;
                       const relativeY = rectCenterY - centerY;
 
-                      console.log(`Scale utilisée: ${scale}`);
-                      console.log(`Relative X: ${relativeX}, Relative Y: ${relativeY}`);
-
-                      // Les positions sont déjà en pixels canvas relatifs au centre
-                      // On les garde comme ça pour la 3D (pas de conversion en mm)
-                      console.log(`Position canvas pour ${furnitureId}: (${relativeX}, ${relativeY}) pixels`);
+                      console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
 
                       positions[furnitureId] = {
                         x: relativeX,
                         y: relativeY,
                       };
-
-                      console.log(`Position 3D pour ${furnitureId}: (${relativeX}, ${relativeY}) pixels canvas`);
-                      console.log(`Positions stockées:`, positions);
                     }
                   }
                 }
@@ -653,7 +552,17 @@ export const Layout3DView = ({
       console.error("Error extracting positions:", error);
     }
 
-    return positions;
+    console.log("\n=== RÉSUMÉ EXTRACTION ===");
+    console.log(`Meubles trouvés: ${Object.keys(positions).length}`);
+    console.log(`Scale retourné: ${scale.toFixed(4)} pixels/mm`);
+    console.log("========================\n");
+
+    return {
+      positions,
+      scale,
+      canvasWidth: CANVAS_WIDTH,
+      canvasHeight: CANVAS_HEIGHT,
+    };
   };
 
   const resetCamera = () => {
@@ -701,19 +610,11 @@ export const Layout3DView = ({
           <p className="text-sm text-muted-foreground">Clic + glisser pour tourner, molette pour zoomer</p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant={!measureMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setMeasureMode(false)}
-          >
+          <Button variant={!measureMode ? "default" : "outline"} size="sm" onClick={() => setMeasureMode(false)}>
             <MousePointer2 className="w-4 h-4 mr-2" />
             Navigation
           </Button>
-          <Button
-            variant={measureMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setMeasureMode(true)}
-          >
+          <Button variant={measureMode ? "default" : "outline"} size="sm" onClick={() => setMeasureMode(true)}>
             <Ruler className="w-4 h-4 mr-2" />
             Mesure
           </Button>
