@@ -302,18 +302,14 @@ const AccessoryCategorySidebar = ({
                 setNewSubCategoryName(e.target.value);
               }}
               onKeyDown={(e) => {
-                // Uniquement intercepter Enter et Escape, laisser tout le reste passer
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  e.stopPropagation();
                   handleAddSubCategory(category.id);
                 } else if (e.key === "Escape") {
                   e.preventDefault();
-                  e.stopPropagation();
                   setShowAddSub(null);
                   setNewSubCategoryName("");
                 }
-                // Backspace, Delete, et toutes les autres touches fonctionnent normalement
               }}
               className="h-7 text-sm"
               autoFocus
@@ -379,18 +375,14 @@ const AccessoryCategorySidebar = ({
                   setNewCategoryName(e.target.value);
                 }}
                 onKeyDown={(e) => {
-                  // Uniquement intercepter Enter et Escape, laisser tout le reste passer
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    e.stopPropagation();
                     handleAddRootCategory();
                   } else if (e.key === "Escape") {
                     e.preventDefault();
-                    e.stopPropagation();
                     setShowAddRoot(false);
                     setNewCategoryName("");
                   }
-                  // Backspace, Delete, et toutes les autres touches fonctionnent normalement
                 }}
                 className="h-8 text-sm"
                 autoFocus
