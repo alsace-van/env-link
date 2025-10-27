@@ -514,11 +514,24 @@ export const LayoutCanvas = ({
 
     const handleSave = async () => {
       const json = paper.project.exportJSON();
-      const furnitureData = Array.from(furnitureItemsRef.current.entries()).map(([id, data]) => ({
-        id,
-        ...data,
-      }));
+      
+      // Extraire les IDs de meubles qui existent réellement dans le canvas
+      const canvasFurnitureIds = new Set<string>();
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child instanceof paper.Group && child.data.isFurniture && child.data.furnitureId) {
+          canvasFurnitureIds.add(child.data.furnitureId);
+        }
+      });
 
+      // Ne sauvegarder que les meubles qui existent dans le canvas
+      const furnitureData = Array.from(furnitureItemsRef.current.entries())
+        .filter(([id]) => canvasFurnitureIds.has(id))
+        .map(([id, data]) => ({
+          id,
+          ...data,
+        }));
+
+      console.log("🔍 Sauvegarde - IDs dans canvas:", Array.from(canvasFurnitureIds));
       console.log("🔍 Sauvegarde - Nombre de meubles:", furnitureData.length);
       console.log("Détails meubles:", furnitureData);
 
@@ -555,14 +568,16 @@ export const LayoutCanvas = ({
             newMap.delete(itemId);
             return newMap;
           });
+          furnitureItemsRef.current.delete(itemId);
         }
         
         saveState();
-        
-        // Sauvegarder automatiquement après suppression
-        await handleSave();
-        
         toast.success("Élément supprimé");
+        
+        // Sauvegarder automatiquement après suppression avec un délai
+        setTimeout(async () => {
+          await handleSave();
+        }, 100);
       }
     };
 
