@@ -549,10 +549,13 @@ export const LayoutCanvas = ({
 
     const handleSave = async () => {
       const json = paper.project.exportJSON();
-      const furnitureData = Array.from(furnitureItems.entries()).map(([id, data]) => ({
+      const furnitureData = Array.from(furnitureItemsRef.current.entries()).map(([id, data]) => ({
         id,
         ...data,
       }));
+
+      console.log("🔍 Sauvegarde - Nombre de meubles:", furnitureData.length);
+      console.log("Détails meubles:", furnitureData);
 
       try {
         const { error } = await supabase
@@ -564,13 +567,13 @@ export const LayoutCanvas = ({
           .eq("id", projectId);
 
         if (error) throw error;
+        console.log("✅ Sauvegarde réussie");
         toast.success("Plan d'aménagement sauvegardé");
       } catch (error) {
-        console.error("Error saving layout:", error);
+        console.error("❌ Erreur lors de la sauvegarde:", error);
         toast.error("Erreur lors de la sauvegarde");
       }
     };
-
     const handleLoad = async () => {
       try {
         const { data, error } = await supabase
@@ -602,6 +605,10 @@ export const LayoutCanvas = ({
               });
             });
             setFurnitureItems(newMap);
+            furnitureItemsRef.current = newMap;
+
+            console.log("✅ Chargement - Nombre de meubles:", newMap.size);
+            console.log("Détails:", Array.from(newMap.values()));
           }
 
           toast.success("Plan d'aménagement chargé");
