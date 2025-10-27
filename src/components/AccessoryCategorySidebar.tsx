@@ -265,7 +265,7 @@ const AccessoryCategorySidebar = ({
         variant="outline"
         size="icon"
         onClick={() => setIsCollapsed(false)}
-        className="fixed left-4 top-24 z-50"
+        className="fixed left-4 top-64 z-50"
         title="Afficher les catégories"
       >
         <PanelLeft className="h-4 w-4" />
@@ -274,7 +274,7 @@ const AccessoryCategorySidebar = ({
   }
 
   return (
-    <Card className="w-80 h-[calc(100vh-8rem)] fixed left-4 top-24 z-40 shadow-lg">
+    <Card className="w-80 h-[calc(100vh-20rem)] fixed left-4 top-64 z-40 shadow-lg">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Catégories</CardTitle>

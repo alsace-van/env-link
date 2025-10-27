@@ -157,13 +157,13 @@ const ProjectDetail = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
           <Card className="lg:col-span-4">
-            <CardHeader>
-              <CardTitle>Informations du Projet</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Informations du Projet</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <CardContent className="pb-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
                 {project.adresse_proprietaire && (
                   <div>
                     <span className="text-muted-foreground">Adresse :</span>
