@@ -36,28 +36,26 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
   // ==========================================
   // DIMENSIONS: Utiliser les dimensions RÉELLES du canvas si disponibles
   // ==========================================
-
+  
   let widthMm, depthMm;
-
+  
   if (furniture.canvasDimensions) {
     // Utiliser les dimensions réelles extraites du canvas
     widthMm = furniture.canvasDimensions.widthPx / canvasScale;
     depthMm = furniture.canvasDimensions.heightPx / canvasScale;
-
+    
     console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS DU CANVAS) ===`);
-    console.log(
-      `Canvas: ${furniture.canvasDimensions.widthPx.toFixed(1)}px × ${furniture.canvasDimensions.heightPx.toFixed(1)}px`,
-    );
+    console.log(`Canvas: ${furniture.canvasDimensions.widthPx.toFixed(1)}px × ${furniture.canvasDimensions.heightPx.toFixed(1)}px`);
     console.log(`Converties: ${widthMm.toFixed(1)}mm × ${depthMm.toFixed(1)}mm`);
   } else {
     // Fallback: utiliser les dimensions stockées
     widthMm = furniture.longueur_mm || 100;
     depthMm = furniture.largeur_mm || 100;
-
+    
     console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS STOCKÉES) ===`);
     console.log(`Dimensions: ${widthMm}mm × ${depthMm}mm`);
   }
-
+  
   const heightMm = furniture.hauteur_mm || 100;
 
   const width3D = widthMm * mmToUnits3D; // longueur → X
@@ -366,84 +364,14 @@ export const Layout3DView = ({
   const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const loadProjectData = async () => {
-    setIsRefreshing(true);
-    try {
-      const { data: projectData, error: projectError } = await supabase
-        .from("projects")
-        .select("canvas_data, furniture_data, layout_canvas_data")
-        .eq("id", projectId)
-        .single();
-
-      if (projectError) throw projectError;
-
-      console.log("\n==========================================");
-      console.log("CHARGEMENT DES DONNÉES PROJET");
-      console.log("==========================================");
-
-      let furnitureData: FurnitureItem[] = [];
-      if (projectData.furniture_data && Array.isArray(projectData.furniture_data)) {
-        furnitureData = projectData.furniture_data.map((item: any) => ({
-          id: item.id,
-          longueur_mm: item.longueur_mm,
-          largeur_mm: item.largeur_mm,
-          hauteur_mm: item.hauteur_mm,
-          poids_kg: item.poids_kg,
-        }));
-
-        console.log(`Meubles chargés: ${furnitureData.length}`);
-      }
-
-      // Utiliser layout_canvas_data en priorité, sinon canvas_data
-      const canvasDataToUse = projectData.layout_canvas_data || projectData.canvas_data;
-
-      if (canvasDataToUse) {
-        const canvasJSON = typeof canvasDataToUse === "string" ? JSON.parse(canvasDataToUse) : canvasDataToUse;
-
-        const extractedData = extractFurniturePositionsAndDimensions(canvasJSON, loadAreaLength, loadAreaWidth);
-
-        console.log("\nPositions et dimensions extraites:", extractedData);
-
-        furnitureData = furnitureData.map((item) => ({
-          ...item,
-          position: extractedData.positions[item.id] || { x: 0, y: 0 },
-          canvasDimensions: extractedData.dimensions[item.id],
-        }));
-
-        console.log("\nMeubles avec positions et dimensions:");
-        furnitureData.forEach((f) => {
-          console.log(`  - ${f.id}:`);
-          console.log(`    Position: (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
-          if (f.canvasDimensions) {
-            console.log(
-              `    Dimensions canvas: ${f.canvasDimensions.widthPx.toFixed(1)}px × ${f.canvasDimensions.heightPx.toFixed(1)}px`,
-            );
-          }
-        });
-      }
-
-      setFurniture(furnitureData);
-      toast.success("Données chargées avec succès");
-      console.log("==========================================\n");
-    } catch (error) {
-      console.error("Error loading project data:", error);
-      toast.error("Erreur lors du chargement des données");
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    loadProjectData();
-  }, [projectId, loadAreaLength, loadAreaWidth]);
-
   /**
-   * FONCTION CORRIGÉE : Extraction des positions ET dimensions réelles du canvas
+   * FONCTION D'EXTRACTION : Extraction des positions ET dimensions réelles du canvas
+   * DOIT être définie AVANT loadProjectData
    */
   const extractFurniturePositionsAndDimensions = (
     canvasJSON: any,
     loadAreaLength: number,
-    loadAreaWidth: number,
+    loadAreaWidth: number
   ): {
     positions: { [furnitureId: string]: { x: number; y: number } };
     dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } };
@@ -510,14 +438,10 @@ export const Layout3DView = ({
                       console.log(`    p3: (${p3.x}, ${p3.y})`);
                       console.log(`    p4: (${p4.x}, ${p4.y})`);
 
-                      let x1 = p1.x,
-                        y1 = p1.y;
-                      let x2 = p2.x,
-                        y2 = p2.y;
-                      let x3 = p3.x,
-                        y3 = p3.y;
-                      let x4 = p4.x,
-                        y4 = p4.y;
+                      let x1 = p1.x, y1 = p1.y;
+                      let x2 = p2.x, y2 = p2.y;
+                      let x3 = p3.x, y3 = p3.y;
+                      let x4 = p4.x, y4 = p4.y;
 
                       // Appliquer la matrice du Path
                       const pathMatrix = pathChild[1]?.matrix;
@@ -534,14 +458,10 @@ export const Layout3DView = ({
                         const t3 = transform(x3, y3);
                         const t4 = transform(x4, y4);
 
-                        x1 = t1.x;
-                        y1 = t1.y;
-                        x2 = t2.x;
-                        y2 = t2.y;
-                        x3 = t3.x;
-                        y3 = t3.y;
-                        x4 = t4.x;
-                        y4 = t4.y;
+                        x1 = t1.x; y1 = t1.y;
+                        x2 = t2.x; y2 = t2.y;
+                        x3 = t3.x; y3 = t3.y;
+                        x4 = t4.x; y4 = t4.y;
 
                         console.log(`  Après matrice Path: [${pathMatrix}]`);
                       }
@@ -561,14 +481,10 @@ export const Layout3DView = ({
                         const t3 = transform(x3, y3);
                         const t4 = transform(x4, y4);
 
-                        x1 = t1.x;
-                        y1 = t1.y;
-                        x2 = t2.x;
-                        y2 = t2.y;
-                        x3 = t3.x;
-                        y3 = t3.y;
-                        x4 = t4.x;
-                        y4 = t4.y;
+                        x1 = t1.x; y1 = t1.y;
+                        x2 = t2.x; y2 = t2.y;
+                        x3 = t3.x; y3 = t3.y;
+                        x4 = t4.x; y4 = t4.y;
 
                         console.log(`  Après matrice Group: [${groupMatrix}]`);
                       }
@@ -629,6 +545,77 @@ export const Layout3DView = ({
       canvasHeight: CANVAS_HEIGHT,
     };
   };
+
+  const loadProjectData = async () => {
+    setIsRefreshing(true);
+    try {
+      const { data: projectData, error: projectError } = await supabase
+        .from("projects")
+        .select("canvas_data, furniture_data, layout_canvas_data")
+        .eq("id", projectId)
+        .single();
+
+      if (projectError) throw projectError;
+
+      console.log("\n==========================================");
+      console.log("CHARGEMENT DES DONNÉES PROJET");
+      console.log("==========================================");
+
+      let furnitureData: FurnitureItem[] = [];
+      if (projectData.furniture_data && Array.isArray(projectData.furniture_data)) {
+        furnitureData = projectData.furniture_data.map((item: any) => ({
+          id: item.id,
+          longueur_mm: item.longueur_mm,
+          largeur_mm: item.largeur_mm,
+          hauteur_mm: item.hauteur_mm,
+          poids_kg: item.poids_kg,
+        }));
+
+        console.log(`Meubles chargés: ${furnitureData.length}`);
+      }
+
+      // Utiliser layout_canvas_data en priorité, sinon canvas_data
+      const canvasDataToUse = projectData.layout_canvas_data || projectData.canvas_data;
+      
+      if (canvasDataToUse) {
+        const canvasJSON = typeof canvasDataToUse === 'string' 
+          ? JSON.parse(canvasDataToUse) 
+          : canvasDataToUse;
+        
+        const extractedData = extractFurniturePositionsAndDimensions(canvasJSON, loadAreaLength, loadAreaWidth);
+
+        console.log("\nPositions et dimensions extraites:", extractedData);
+
+        furnitureData = furnitureData.map((item) => ({
+          ...item,
+          position: extractedData.positions[item.id] || { x: 0, y: 0 },
+          canvasDimensions: extractedData.dimensions[item.id],
+        }));
+
+        console.log("\nMeubles avec positions et dimensions:");
+        furnitureData.forEach((f) => {
+          console.log(`  - ${f.id}:`);
+          console.log(`    Position: (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
+          if (f.canvasDimensions) {
+            console.log(`    Dimensions canvas: ${f.canvasDimensions.widthPx.toFixed(1)}px × ${f.canvasDimensions.heightPx.toFixed(1)}px`);
+          }
+        });
+      }
+
+      setFurniture(furnitureData);
+      toast.success("Données chargées avec succès");
+      console.log("==========================================\n");
+    } catch (error) {
+      console.error("Error loading project data:", error);
+      toast.error("Erreur lors du chargement des données");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProjectData();
+  }, [projectId, loadAreaLength, loadAreaWidth]);
 
   const resetCamera = () => {
     setCameraKey((prev) => prev + 1);
