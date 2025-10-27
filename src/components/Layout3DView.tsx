@@ -53,20 +53,14 @@ const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
       <Box args={[width, height, depth]} castShadow receiveShadow>
         <meshStandardMaterial color="#3b82f6" opacity={0.8} transparent />
       </Box>
-      <Text 
-        position={[0, textOffsetY, 0]} 
-        fontSize={textSize} 
-        color="black" 
-        anchorX="center" 
-        anchorY="middle"
-      >
+      <Text position={[0, textOffsetY, 0]} fontSize={textSize} color="black" anchorX="center" anchorY="middle">
         {`${furniture.longueur_mm}×${furniture.largeur_mm}×${furniture.hauteur_mm}mm`}
       </Text>
-      <Text 
-        position={[0, textOffsetY + textSize * 1.3, 0]} 
-        fontSize={textSize * 0.85} 
-        color="black" 
-        anchorX="center" 
+      <Text
+        position={[0, textOffsetY + textSize * 1.3, 0]}
+        fontSize={textSize * 0.85}
+        color="black"
+        anchorX="center"
         anchorY="middle"
       >
         {`${furniture.poids_kg}kg`}
@@ -75,15 +69,7 @@ const FurnitureBox = ({ furniture, scale }: FurnitureBoxProps) => {
   );
 };
 
-const LoadArea = ({
-  length,
-  width,
-  scale,
-}: {
-  length: number;
-  width: number;
-  scale: number;
-}) => {
+const LoadArea = ({ length, width, scale }: { length: number; width: number; scale: number }) => {
   const scaledLength = length / scale;
   const scaledWidth = width / scale;
 
@@ -103,17 +89,9 @@ const LoadArea = ({
         <planeGeometry args={[scaledLength, scaledWidth]} />
         <meshStandardMaterial color="#e2e8f0" opacity={0.3} transparent side={THREE.DoubleSide} />
       </mesh>
-      
+
       {/* Contour en pointillés */}
-      <Line
-        points={points}
-        color="#3b82f6"
-        lineWidth={3}
-        dashed={true}
-        dashScale={50}
-        dashSize={1}
-        gapSize={0.5}
-      />
+      <Line points={points} color="#3b82f6" lineWidth={3} dashed={true} dashScale={50} dashSize={1} gapSize={0.5} />
     </group>
   );
 };
@@ -146,10 +124,16 @@ const Scene = ({
   // de la zone de chargement corresponde à environ 20 unités 3D
   const maxDimension = Math.max(loadAreaLength, loadAreaWidth);
   const scale = maxDimension / 20; // Par exemple: 3000mm / 20 = 150mm par unité 3D
-  
+
   console.log("📐 Échelle 3D:", scale, "mm par unité 3D");
   console.log("📏 Zone de chargement:", loadAreaLength, "x", loadAreaWidth, "mm");
-  console.log("📦 Dimensions 3D:", (loadAreaLength / scale).toFixed(1), "x", (loadAreaWidth / scale).toFixed(1), "unités");
+  console.log(
+    "📦 Dimensions 3D:",
+    (loadAreaLength / scale).toFixed(1),
+    "x",
+    (loadAreaWidth / scale).toFixed(1),
+    "unités",
+  );
 
   return (
     <>
@@ -205,28 +189,28 @@ export const Layout3DView = ({
         },
       })
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'projects',
+          event: "UPDATE",
+          schema: "public",
+          table: "projects",
           filter: `id=eq.${projectId}`,
         },
         (payload) => {
-          console.log('🔄 Changement détecté dans le projet, rechargement 3D...');
-          console.log('Payload:', payload);
+          console.log("🔄 Changement détecté dans le projet, rechargement 3D...");
+          console.log("Payload:", payload);
           // Recharger après un court délai pour s'assurer que les données sont bien écrites
           setTimeout(() => {
             loadProjectData();
           }, 500);
-        }
+        },
       )
       .subscribe((status) => {
-        console.log('📡 Statut de la subscription 3D:', status);
-        
+        console.log("📡 Statut de la subscription 3D:", status);
+
         // Si la subscription se ferme, réessayer après un délai
-        if (status === 'CLOSED') {
-          console.log('⚠️ Subscription fermée, tentative de reconnexion dans 2s...');
+        if (status === "CLOSED") {
+          console.log("⚠️ Subscription fermée, tentative de reconnexion dans 2s...");
           setTimeout(() => {
             loadProjectData();
           }, 2000);
@@ -235,7 +219,7 @@ export const Layout3DView = ({
 
     // Nettoyer la subscription au démontage
     return () => {
-      console.log('🔌 Déconnexion de la subscription 3D');
+      console.log("🔌 Déconnexion de la subscription 3D");
       supabase.removeChannel(channel);
     };
   }, [projectId]);
@@ -309,7 +293,7 @@ export const Layout3DView = ({
       // La structure est: [["Layer", { children: [...] }]]
       if (data && Array.isArray(data) && data.length > 0) {
         const layer = data[0];
-        
+
         if (Array.isArray(layer) && layer[0] === "Layer" && layer[1]?.children) {
           const children = layer[1].children;
 
@@ -323,7 +307,7 @@ export const Layout3DView = ({
           // IMPORTANT: Dans LayoutCanvas, loadAreaLength est mappé sur la largeur du canvas (X)
           // et loadAreaWidth est mappé sur la hauteur du canvas (Y)
           const scale = Math.min((canvasWidth - 100) / loadAreaLength, (canvasHeight - 100) / loadAreaWidth);
-          
+
           console.log(`Dimensions zone chargement: ${loadAreaLength}mm x ${loadAreaWidth}mm`);
           console.log(`Scale calculée: ${scale}`);
           const scaledLoadAreaLength = loadAreaLength * scale;
@@ -347,7 +331,7 @@ export const Layout3DView = ({
                 // Le groupe contient un Path comme premier enfant avec les segments du rectangle
                 if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
                   const pathChild = childData.children[0];
-                  
+
                   if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
                     const segments = pathChild[1].segments;
 
@@ -367,26 +351,26 @@ export const Layout3DView = ({
 
                       console.log(`Centre canvas pour ${furnitureId}: (${rectCenterX}, ${rectCenterY})`);
 
-                    // Position relative au centre de la zone de chargement en pixels canvas
-                    const relativeX = rectCenterX - centerX;
-                    const relativeY = rectCenterY - centerY;
+                      // Position relative au centre de la zone de chargement en pixels canvas
+                      const relativeX = rectCenterX - centerX;
+                      const relativeY = rectCenterY - centerY;
 
-                    console.log(`Scale utilisée: ${scale}`);
-                    console.log(`Relative X: ${relativeX}, Relative Y: ${relativeY}`);
+                      console.log(`Scale utilisée: ${scale}`);
+                      console.log(`Relative X: ${relativeX}, Relative Y: ${relativeY}`);
 
-                    // Conversion en millimètres réels
-                    const realX = relativeX / scale;
-                    const realY = relativeY / scale;
+                      // Conversion en millimètres réels
+                      const realX = relativeX / scale;
+                      const realY = relativeY / scale;
 
-                    console.log(`Real X: ${realX}, Real Y: ${realY}`);
+                      console.log(`Real X: ${realX}, Real Y: ${realY}`);
 
-                    positions[furnitureId] = {
-                      x: realX,
-                      y: realY,
-                    };
+                      positions[furnitureId] = {
+                        x: realX,
+                        y: realY,
+                      };
 
-                    console.log(`Position 3D pour ${furnitureId}: (${realX}, ${realY}) mm`);
-                    console.log(`Positions stockées:`, positions);
+                      console.log(`Position 3D pour ${furnitureId}: (${realX}, ${realY}) mm`);
+                      console.log(`Positions stockées:`, positions);
                     }
                   }
                 }
@@ -414,14 +398,9 @@ export const Layout3DView = ({
           <p className="text-sm text-muted-foreground">Clic + glisser pour tourner, molette pour zoomer</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={loadProjectData}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Chargement...' : 'Rafraîchir'}
+          <Button variant="outline" size="sm" onClick={loadProjectData} disabled={isRefreshing}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+            {isRefreshing ? "Chargement..." : "Rafraîchir"}
           </Button>
           <Button variant="outline" size="sm" onClick={resetCamera}>
             <RotateCcw className="w-4 h-4 mr-2" />
@@ -442,11 +421,7 @@ export const Layout3DView = ({
             shadows
             className="bg-gradient-to-b from-slate-50 to-slate-100"
           >
-            <Scene
-              furniture={furniture}
-              loadAreaLength={loadAreaLength}
-              loadAreaWidth={loadAreaWidth}
-            />
+            <Scene furniture={furniture} loadAreaLength={loadAreaLength} loadAreaWidth={loadAreaWidth} />
           </Canvas>
         </div>
       </div>
