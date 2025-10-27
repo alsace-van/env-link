@@ -312,11 +312,13 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               </Label>
               <Input
                 id="nom"
+                type="text"
                 required
                 value={formData.nom}
                 onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Ex: Panneau solaire 400W"
+                autoComplete="off"
               />
             </div>
 
@@ -324,10 +326,12 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               <Label htmlFor="marque">Marque</Label>
               <Input
                 id="marque"
+                type="text"
                 value={formData.marque}
                 onChange={(e) => setFormData({ ...formData, marque: e.target.value })}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Ex: Victron Energy"
+                autoComplete="off"
               />
             </div>
           </div>
@@ -355,10 +359,28 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   <Label htmlFor="new_category_name">Nom de la catégorie</Label>
                   <Input
                     id="new_category_name"
+                    type="text"
                     value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    onKeyDown={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      // Force la mise à jour du state
+                      setNewCategoryName(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      // Permettre Enter pour créer la catégorie
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleCreateCategory();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setIsCreatingCategory(false);
+                        setNewCategoryName("");
+                        setNewCategoryParent(null);
+                      }
+                    }}
                     placeholder="Ex: Panneaux solaires"
+                    autoComplete="off"
+                    spellCheck="false"
                   />
                 </div>
 
@@ -607,10 +629,12 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               <Label htmlFor="fournisseur">Fournisseur</Label>
               <Input
                 id="fournisseur"
+                type="text"
                 value={formData.fournisseur}
                 onChange={(e) => setFormData({ ...formData, fournisseur: e.target.value })}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Nom du fournisseur"
+                autoComplete="off"
               />
             </div>
 
