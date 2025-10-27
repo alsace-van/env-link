@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useEffect, useState, useRef } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, Box, Grid, Line } from "@react-three/drei";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Maximize2, RotateCcw, RefreshCw } from "lucide-react";
+import { Maximize2, RotateCcw, RefreshCw, Ruler } from "lucide-react";
 import * as THREE from "three";
+import { toast } from "sonner";
 
 interface Layout3DViewProps {
   projectId: string;
@@ -135,14 +136,177 @@ const AxisHelper = () => {
   );
 };
 
+interface MeasureLine {
+  id: string;
+  start: THREE.Vector3;
+  end: THREE.Vector3;
+  distance: number;
+}
+
+const MeasurementTool = ({
+  isActive,
+  measureLines,
+  onAddMeasure,
+  scale3D,
+}: {
+  isActive: boolean;
+  measureLines: MeasureLine[];
+  onAddMeasure: (start: THREE.Vector3, end: THREE.Vector3, distance: number) => void;
+  scale3D: number;
+}) => {
+  const { camera, raycaster, scene } = useThree();
+  const [startPoint, setStartPoint] = useState<THREE.Vector3 | null>(null);
+  const [currentPoint, setCurrentPoint] = useState<THREE.Vector3 | null>(null);
+
+  useEffect(() => {
+    if (!isActive) {
+      setStartPoint(null);
+      setCurrentPoint(null);
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (event.button !== 0) return; // Only left click
+
+      const canvas = event.target as HTMLCanvasElement;
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+
+      // Raycast on the ground plane (y = 0)
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const intersectPoint = new THREE.Vector3();
+      raycaster.ray.intersectPlane(groundPlane, intersectPoint);
+
+      if (intersectPoint) {
+        if (!startPoint) {
+          setStartPoint(intersectPoint.clone());
+        } else {
+          // Calculate distance in mm
+          const distance = startPoint.distanceTo(intersectPoint) / scale3D;
+          onAddMeasure(startPoint.clone(), intersectPoint.clone(), distance);
+          setStartPoint(null);
+          setCurrentPoint(null);
+        }
+      }
+    };
+
+    const handlePointerMove = (event: MouseEvent) => {
+      if (!startPoint) return;
+
+      const canvas = event.target as HTMLCanvasElement;
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const intersectPoint = new THREE.Vector3();
+      raycaster.ray.intersectPlane(groundPlane, intersectPoint);
+
+      if (intersectPoint) {
+        setCurrentPoint(intersectPoint.clone());
+      }
+    };
+
+    const canvas = scene.children[0]?.parent as any;
+    const domElement = canvas?.domElement || document.querySelector("canvas");
+
+    if (domElement) {
+      domElement.addEventListener("pointerdown", handlePointerDown);
+      domElement.addEventListener("pointermove", handlePointerMove);
+
+      return () => {
+        domElement.removeEventListener("pointerdown", handlePointerDown);
+        domElement.removeEventListener("pointermove", handlePointerMove);
+      };
+    }
+  }, [isActive, startPoint, camera, raycaster, scene, onAddMeasure, scale3D]);
+
+  return (
+    <>
+      {/* Existing measure lines */}
+      {measureLines.map((measure) => {
+        const midPoint = new THREE.Vector3()
+          .addVectors(measure.start, measure.end)
+          .multiplyScalar(0.5);
+
+        return (
+          <group key={measure.id}>
+            <Line
+              points={[measure.start, measure.end]}
+              color="#ef4444"
+              lineWidth={3}
+              dashed
+              dashScale={20}
+              dashSize={0.5}
+              gapSize={0.3}
+            />
+            <Text
+              position={[midPoint.x, midPoint.y + 0.5, midPoint.z]}
+              fontSize={0.4}
+              color="#ef4444"
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.05}
+              outlineColor="#ffffff"
+            >
+              {`${Math.round(measure.distance)}mm`}
+            </Text>
+          </group>
+        );
+      })}
+
+      {/* Current measuring line (preview) */}
+      {startPoint && currentPoint && (
+        <>
+          <Line
+            points={[startPoint, currentPoint]}
+            color="#ef4444"
+            lineWidth={2}
+            dashed
+            dashScale={20}
+            dashSize={0.5}
+            gapSize={0.3}
+          />
+          <Text
+            position={[
+              (startPoint.x + currentPoint.x) / 2,
+              (startPoint.y + currentPoint.y) / 2 + 0.5,
+              (startPoint.z + currentPoint.z) / 2,
+            ]}
+            fontSize={0.4}
+            color="#ef4444"
+            anchorX="center"
+            anchorY="middle"
+            outlineWidth={0.05}
+            outlineColor="#ffffff"
+          >
+            {`${Math.round(startPoint.distanceTo(currentPoint) / scale3D)}mm`}
+          </Text>
+        </>
+      )}
+    </>
+  );
+};
+
 const Scene = ({
   furniture,
   loadAreaLength,
   loadAreaWidth,
+  measureMode,
+  measureLines,
+  onAddMeasure,
 }: {
   furniture: FurnitureItem[];
   loadAreaLength: number;
   loadAreaWidth: number;
+  measureMode: boolean;
+  measureLines: MeasureLine[];
+  onAddMeasure: (start: THREE.Vector3, end: THREE.Vector3, distance: number) => void;
 }) => {
   // ==========================================
   // APPROCHE SIMPLIFIÉE ET CORRIGÉE
@@ -188,6 +352,13 @@ const Scene = ({
         <FurnitureBox key={item.id} furniture={item} mmToUnits3D={mmToUnits3D} canvasScale={canvasScale} />
       ))}
 
+      <MeasurementTool
+        isActive={measureMode}
+        measureLines={measureLines}
+        onAddMeasure={onAddMeasure}
+        scale3D={mmToUnits3D}
+      />
+
       <Grid
         args={[loadAreaLength * mmToUnits3D, loadAreaWidth * mmToUnits3D]}
         cellSize={1}
@@ -201,7 +372,14 @@ const Scene = ({
         position={[0, -0.02, 0]}
       />
 
-      <OrbitControls makeDefault minPolarAngle={0} maxPolarAngle={Math.PI / 2} enableDamping dampingFactor={0.05} />
+      <OrbitControls
+        makeDefault
+        minPolarAngle={0}
+        maxPolarAngle={Math.PI / 2}
+        enableDamping
+        dampingFactor={0.05}
+        enabled={!measureMode}
+      />
     </>
   );
 };
@@ -217,6 +395,9 @@ export const Layout3DView = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     loadProjectData();
@@ -428,6 +609,39 @@ export const Layout3DView = ({
     setCameraKey((prev) => prev + 1); // Force la réinitialisation du Canvas
   };
 
+  const handleAddMeasure = (start: THREE.Vector3, end: THREE.Vector3, distance: number) => {
+    setMeasureLines((prev) => [
+      ...prev,
+      {
+        id: `measure-${Date.now()}`,
+        start,
+        end,
+        distance,
+      },
+    ]);
+  };
+
+  const clearAllMeasures = () => {
+    setMeasureLines([]);
+    toast.success("Mesures effacées");
+  };
+
+  // Handle right click to clear measures
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      if (measureMode) {
+        e.preventDefault();
+        clearAllMeasures();
+      }
+    };
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.addEventListener("contextmenu", handleContextMenu);
+      return () => canvas.removeEventListener("contextmenu", handleContextMenu);
+    }
+  }, [measureMode]);
+
   return (
     <Card className="w-full">
       <div className="p-4 border-b flex items-center justify-between">
@@ -436,6 +650,14 @@ export const Layout3DView = ({
           <p className="text-sm text-muted-foreground">Clic + glisser pour tourner, molette pour zoomer</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant={measureMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMeasureMode(!measureMode)}
+          >
+            <Ruler className="w-4 h-4 mr-2" />
+            Mesure
+          </Button>
           <Button variant="outline" size="sm" onClick={loadProjectData} disabled={isRefreshing}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
             {isRefreshing ? "Chargement..." : "Rafraîchir"}
@@ -454,12 +676,20 @@ export const Layout3DView = ({
       <div className={isFullscreen ? "fixed inset-0 z-50 bg-background" : ""}>
         <div className={isFullscreen ? "h-screen" : "h-[600px]"}>
           <Canvas
-            key={cameraKey} // Force le remontage pour réinitialiser la caméra
+            key={cameraKey}
             camera={{ position: [15, 10, 15], fov: 50 }}
             shadows
             className="bg-gradient-to-b from-slate-50 to-slate-100"
+            ref={canvasRef as any}
           >
-            <Scene furniture={furniture} loadAreaLength={loadAreaLength} loadAreaWidth={loadAreaWidth} />
+            <Scene
+              furniture={furniture}
+              loadAreaLength={loadAreaLength}
+              loadAreaWidth={loadAreaWidth}
+              measureMode={measureMode}
+              measureLines={measureLines}
+              onAddMeasure={handleAddMeasure}
+            />
           </Canvas>
         </div>
       </div>
