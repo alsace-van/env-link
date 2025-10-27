@@ -246,39 +246,31 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
 
             {isEditing ? (
               <div className="flex-1 flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={(e) => {
-                      // Laisser passer TOUTES les touches sauf Enter et Escape
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        saveEdit();
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelEdit();
-                      }
-                      // Ne PAS appeler preventDefault pour les autres touches (Backspace, Delete, etc.)
-                    }}
-                    onKeyUp={(e) => {
-                      // Gestionnaire supplémentaire pour s'assurer que la touche fonctionne
-                      e.stopPropagation();
-                    }}
-                    className="h-8 text-sm flex-1"
-                    placeholder="Nom de la catégorie"
-                    autoFocus
-                    autoComplete="off"
-                  />
-                  <Button size="sm" variant="default" onClick={saveEdit} className="h-8 px-3 flex-shrink-0">
-                    <Check className="h-4 w-4 mr-1" />
-                    OK
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={cancelEdit} className="h-8 px-3 flex-shrink-0">
-                    <X className="h-4 w-4 mr-1" />
-                    Annuler
-                  </Button>
-                </div>
+                {/* Ligne 1 : Champ de saisie du nom sur toute la largeur */}
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Laisser passer TOUTES les touches sauf Enter et Escape
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveEdit();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEdit();
+                    }
+                    // Ne PAS appeler preventDefault pour les autres touches (Backspace, Delete, etc.)
+                  }}
+                  onKeyUp={(e) => {
+                    // Gestionnaire supplémentaire pour s'assurer que la touche fonctionne
+                    e.stopPropagation();
+                  }}
+                  className="h-9 text-sm w-full"
+                  placeholder="Nom de la catégorie"
+                  autoFocus
+                  autoComplete="off"
+                />
+                {/* Ligne 2 : Sélecteur de parent */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground whitespace-nowrap">Parent:</span>
                   <Select
@@ -297,6 +289,15 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                {/* Ligne 3 : Boutons OK et Annuler */}
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="default" onClick={saveEdit} className="h-8 flex-1" title="Valider">
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={cancelEdit} className="h-8 flex-1" title="Annuler">
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -377,8 +378,8 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
               autoFocus
               autoComplete="off"
             />
-            <Button size="sm" onClick={() => handleAddSubCategory(category.id)} className="h-7">
-              OK
+            <Button size="sm" onClick={() => handleAddSubCategory(category.id)} className="h-7 w-7 p-0" title="Ajouter">
+              <Check className="h-3.5 w-3.5" />
             </Button>
             <Button
               size="sm"
@@ -387,9 +388,10 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                 setShowAddSub(null);
                 setNewSubCategoryName("");
               }}
-              className="h-7"
+              className="h-7 w-7 p-0"
+              title="Annuler"
             >
-              Annuler
+              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
@@ -453,8 +455,8 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                 autoFocus
                 autoComplete="off"
               />
-              <Button size="sm" onClick={handleAddRootCategory} className="h-8">
-                OK
+              <Button size="sm" onClick={handleAddRootCategory} className="h-8 w-8 p-0" title="Ajouter">
+                <Check className="h-4 w-4" />
               </Button>
               <Button
                 size="sm"
@@ -463,9 +465,10 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                   setShowAddRoot(false);
                   setNewCategoryName("");
                 }}
-                className="h-8"
+                className="h-8 w-8 p-0"
+                title="Annuler"
               >
-                Annuler
+                <X className="h-4 w-4" />
               </Button>
             </div>
           ) : (
