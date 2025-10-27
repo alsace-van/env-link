@@ -251,7 +251,6 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   onKeyDown={(e) => {
-                    // Laisser passer TOUTES les touches sauf Enter et Escape
                     if (e.key === "Enter") {
                       e.preventDefault();
                       saveEdit();
@@ -259,11 +258,6 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                       e.preventDefault();
                       cancelEdit();
                     }
-                    // Ne PAS appeler preventDefault pour les autres touches (Backspace, Delete, etc.)
-                  }}
-                  onKeyUp={(e) => {
-                    // Gestionnaire supplémentaire pour s'assurer que la touche fonctionne
-                    e.stopPropagation();
                   }}
                   className="h-9 text-sm w-full"
                   placeholder="Nom de la catégorie"
@@ -360,7 +354,6 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
               value={newSubCategoryName}
               onChange={(e) => setNewSubCategoryName(e.target.value)}
               onKeyDown={(e) => {
-                // Laisser passer TOUTES les touches sauf Enter et Escape
                 if (e.key === "Enter") {
                   e.preventDefault();
                   handleAddSubCategory(category.id);
@@ -369,10 +362,6 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                   setShowAddSub(null);
                   setNewSubCategoryName("");
                 }
-                // Ne PAS bloquer Backspace, Delete, etc.
-              }}
-              onKeyUp={(e) => {
-                e.stopPropagation();
               }}
               className="h-7 text-sm"
               autoFocus
@@ -437,7 +426,6 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => {
-                  // Laisser passer TOUTES les touches sauf Enter et Escape
                   if (e.key === "Enter") {
                     e.preventDefault();
                     handleAddRootCategory();
@@ -446,10 +434,6 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                     setShowAddRoot(false);
                     setNewCategoryName("");
                   }
-                  // Ne PAS bloquer Backspace, Delete, etc.
-                }}
-                onKeyUp={(e) => {
-                  e.stopPropagation();
                 }}
                 className="h-8 text-sm"
                 autoFocus
