@@ -31,7 +31,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
   useEffect(() => {
     loadExpensesData();
-  }, [projectId, refreshTrigger]);
+  }, [projectId, refreshTrigger, paymentRefresh]);
 
   const loadExpensesData = async () => {
     const { data, error } = await supabase
