@@ -38,14 +38,17 @@ const PhotosDiagnostic = () => {
   const runTest3 = () => {
     addResult("Test 3: Vérification Paper.js", true);
     try {
-      const paper = require('paper');
-      if (paper) {
-        addResult("Test 3: Paper.js est disponible", true);
-      } else {
-        addResult("Test 3: Paper.js n'est pas disponible", false);
-      }
+      import('paper').then((paper) => {
+        if (paper) {
+          addResult("Test 3: Paper.js est disponible", true);
+        } else {
+          addResult("Test 3: Paper.js n'est pas disponible", false);
+        }
+      }).catch((error) => {
+        addResult(`Test 3: Paper.js manquant - ${error}`, false);
+      });
     } catch (error) {
-      addResult(`Test 3: Paper.js manquant - ${error}`, false);
+      addResult(`Test 3: Erreur - ${error}`, false);
     }
   };
 
