@@ -14,6 +14,7 @@ import {
   Redo,
   Download,
   Save,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -855,6 +856,7 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
 
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
   const [canvasCount, setCanvasCount] = useState(1);
+  const [activeTab, setActiveTab] = useState("canvas1");
   const maxCanvasCount = 2; // Limité à 2 pour l'instant (technical_canvas_data et technical_canvas_data_2)
 
   const handleAddCanvas = () => {
@@ -866,15 +868,59 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     }
   };
 
+  const handleRemoveCanvas = async (canvasNumber: number) => {
+    if (canvasNumber === 1) {
+      toast.error("Impossible de supprimer le schéma 1");
+      return;
+    }
+
+    // Effacer les données du canvas dans la base de données
+    const dbColumn = canvasNumber === 1 ? "technical_canvas_data" : "technical_canvas_data_2";
+    
+    try {
+      await supabase
+        .from("projects")
+        .update({ [dbColumn]: null })
+        .eq("id", projectId);
+
+      setCanvasCount(prev => prev - 1);
+      
+      // Revenir au schéma 1 si on supprime le schéma actif
+      if (activeTab === `canvas${canvasNumber}`) {
+        setActiveTab("canvas1");
+      }
+      
+      toast.success(`Schéma ${canvasNumber} supprimé`);
+    } catch (error) {
+      console.error("Erreur lors de la suppression:", error);
+      toast.error("Erreur lors de la suppression du schéma");
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <Tabs defaultValue="canvas1" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="flex items-center gap-2 mb-4">
           <TabsList className="flex-1">
             {Array.from({ length: canvasCount }, (_, i) => (
-              <TabsTrigger key={i + 1} value={`canvas${i + 1}`}>
-                Schéma {i + 1}
-              </TabsTrigger>
+              <div key={i + 1} className="relative inline-flex items-center">
+                <TabsTrigger value={`canvas${i + 1}`} className="pr-8">
+                  Schéma {i + 1}
+                </TabsTrigger>
+                {i > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 h-5 w-5 p-0 hover:bg-destructive/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveCanvas(i + 1);
+                    }}
+                  >
+                    <X className="h-3 w-3 text-destructive" />
+                  </Button>
+                )}
+              </div>
             ))}
           </TabsList>
           {canvasCount < maxCanvasCount && (
