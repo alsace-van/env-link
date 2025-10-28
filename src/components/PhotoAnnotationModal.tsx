@@ -218,7 +218,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         }
 
         // Variables pour le dessin
-        let currentPath: paper.Path | null = null;
+        let currentPath: paper.Item | null = null;
         let selectedItem: paper.Item | null = null;
         let handles: paper.Path.Circle[] = [];
         let draggedHandle: paper.Path.Circle | null = null;
@@ -439,26 +439,29 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             currentPath.data.type = activeToolRef.current;
             console.log("Created path", currentPath);
           } else if (activeToolRef.current === "draw") {
-            currentPath = new paper.Path({
+            const path = new paper.Path({
               strokeColor: new paper.Color(strokeColorRef.current),
               strokeWidth: strokeWidthRef.current,
               strokeCap: "round",
               strokeJoin: "round",
             });
-            currentPath.add(event.point);
+            path.add(event.point);
+            currentPath = path;
           } else if (activeToolRef.current === "rectangle") {
             currentPath = new paper.Path.Rectangle({
               from: event.point,
               to: event.point,
               strokeColor: new paper.Color(strokeColorRef.current),
               strokeWidth: strokeWidthRef.current,
+              fillColor: null, // Pas de remplissage, seulement le contour
             });
           } else if (activeToolRef.current === "circle") {
-            currentPath = new paper.Path.Circle({
+            currentPath = new paper.Shape.Circle({
               center: event.point,
-              radius: 0.1,
+              radius: 1,
               strokeColor: new paper.Color(strokeColorRef.current),
               strokeWidth: strokeWidthRef.current,
+              fillColor: null, // Pas de remplissage, seulement le contour
             });
             currentPath.data.startPoint = event.point;
           }
@@ -533,9 +536,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
           // Dessiner
           if (currentPath) {
-            if (activeToolRef.current === "draw") {
+            if (activeToolRef.current === "draw" && currentPath instanceof paper.Path) {
               currentPath.add(event.point);
-            } else if (activeToolRef.current === "line" || activeToolRef.current === "arrow") {
+            } else if ((activeToolRef.current === "line" || activeToolRef.current === "arrow") && currentPath instanceof paper.Path) {
               let newPoint = event.point;
 
               // Snapping
@@ -549,10 +552,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               const start = rect.segments[0].point;
               const bounds = new paper.Rectangle(start, event.point);
               rect.bounds = bounds;
-            } else if (activeToolRef.current === "circle" && currentPath instanceof paper.Path.Circle) {
+            } else if (activeToolRef.current === "circle" && currentPath instanceof paper.Shape.Circle) {
               const startPoint = currentPath.data.startPoint;
               const radius = startPoint.getDistance(event.point);
-              (currentPath as any).radius = radius;
+              currentPath.radius = radius;
             }
           }
 
@@ -575,9 +578,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           draggedHandle = null;
 
           if (currentPath) {
-            if (activeToolRef.current === "draw") {
+            if (activeToolRef.current === "draw" && currentPath instanceof paper.Path) {
               currentPath.simplify(10);
-            } else if (activeToolRef.current === "arrow") {
+            } else if (activeToolRef.current === "arrow" && currentPath instanceof paper.Path) {
               createArrowHead(currentPath);
             }
 
