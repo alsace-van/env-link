@@ -248,9 +248,13 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
               <Label>Type de paiement</Label>
               <Select
                 value={newTransaction.type_paiement}
-                onValueChange={(value: "acompte" | "solde") =>
-                  setNewTransaction({ ...newTransaction, type_paiement: value })
-                }
+                onValueChange={(value: "acompte" | "solde") => {
+                  setNewTransaction({ 
+                    ...newTransaction, 
+                    type_paiement: value,
+                    montant: value === "solde" ? remaining : newTransaction.montant
+                  });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
