@@ -593,15 +593,53 @@ const AccessoryImportExportDialog = ({
                 Copiez des lignes depuis Excel, Google Sheets ou Numbers et collez-les ici.
               </p>
               <div className="space-y-2">
-                <Label>En-têtes de colonnes (copiez cette ligne dans votre tableur)</Label>
-                <div className="bg-muted p-3 rounded">
-                  <div className="font-mono text-xs select-all cursor-pointer hover:bg-muted-foreground/10 p-2 rounded">
-                    Nom	Catégorie	Prix référence	Prix vente TTC	Marge %	Fournisseur	Description	URL produit	Type électrique	Poids (kg)	Longueur (mm)	Largeur (mm)	Hauteur (mm)
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Cliquez sur la ligne ci-dessus pour la sélectionner, puis copiez-la (Ctrl+C) et collez-la comme première ligne de votre tableur
-                  </p>
+                <Label>Tableau à copier-coller dans votre tableur</Label>
+                <div className="border rounded-lg overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium border-r">Nom</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Catégorie</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Prix référence</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Prix vente TTC</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Marge %</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Fournisseur</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Description</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">URL produit</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Type électrique</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Poids (kg)</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Longueur (mm)</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Largeur (mm)</th>
+                        <th className="px-3 py-2 text-left font-medium">Hauteur (mm)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t">
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
+                        <td className="px-3 py-2">&nbsp;</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  1. Sélectionnez tout le tableau ci-dessus (cliquez-glissez sur le tableau)<br/>
+                  2. Copiez (Ctrl+C / Cmd+C)<br/>
+                  3. Collez dans Excel, Google Sheets ou Numbers<br/>
+                  4. Remplissez vos données<br/>
+                  5. Sélectionnez et copiez tout (entêtes + données)<br/>
+                  6. Collez dans la zone ci-dessous
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="paste-area">Collez vos données ici</Label>
