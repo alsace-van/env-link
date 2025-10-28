@@ -174,10 +174,11 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
     setIsEditBalanceOpen(true);
   };
 
-  // Filtrer les dépenses et paiements après la date de départ
+  // Filtrer les dépenses fournisseurs (avec fournisseur) après la date de départ
   const filteredExpenses = bankBalance
     ? expenses.filter((expense) => {
         if (!expense.date_achat) return false;
+        if (!expense.fournisseur || expense.fournisseur.trim() === "") return false;
         return new Date(expense.date_achat) >= new Date(bankBalance.date_heure_depart);
       })
     : [];
