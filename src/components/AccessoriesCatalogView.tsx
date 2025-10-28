@@ -285,78 +285,55 @@ const AccessoriesCatalogView = () => {
   };
 
   return (
-    <div>
-      <Card className="mb-6">
+    <div className="relative">
+      <AccessoryCategorySidebar
+        selectedCategories={selectedCategories}
+        onCategoryChange={setSelectedCategories}
+        onAccessoryDrop={handleAccessoryDrop}
+      />
+      
+      <Card className="ml-96">
         <CardHeader>
           <CardTitle>Catalogue d'Accessoires</CardTitle>
           <CardDescription>Votre catalogue personnel partagé entre tous vos projets</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex gap-4 flex-wrap">
-            <div className="flex-1 relative min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher un accessoire..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex gap-1 border rounded-md p-1">
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('list')}
-              >
-                <LayoutList className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-            </div>
-            <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
-              Import/Export
-            </Button>
-            <Button onClick={handleAdd}>
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter un accessoire
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        <div className="flex-1 relative min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher un accessoire..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="flex gap-1 border rounded-md p-1">
+          <Button
+            variant={viewMode === 'list' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('list')}
+          >
+            <LayoutList className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={viewMode === 'grid' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </div>
+        <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
+          Import/Export
+        </Button>
+        <Button onClick={handleAdd}>
+          <Plus className="h-4 w-4 mr-2" />
+          Ajouter un accessoire
+        </Button>
+      </div>
 
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-1">Dimensions totales</p>
-              <p className="text-lg font-semibold">-</p>
-            </div>
-            <div className="text-center border-x">
-              <p className="text-sm text-muted-foreground mb-1">Surface utile</p>
-              <p className="text-lg font-semibold">-</p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-1">Poids</p>
-              <p className="text-lg font-semibold">-</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex gap-4">
-        <AccessoryCategorySidebar
-          selectedCategories={selectedCategories}
-          onCategoryChange={setSelectedCategories}
-          onAccessoryDrop={handleAccessoryDrop}
-        />
-        
-        <div className="flex-1">
-          {loading ? (
+      {loading ? (
         <div className="text-center py-12">Chargement...</div>
       ) : filteredAccessories.length === 0 ? (
         <Card>
@@ -701,8 +678,8 @@ const AccessoriesCatalogView = () => {
         onSuccess={loadAccessories}
         categories={categories}
       />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
