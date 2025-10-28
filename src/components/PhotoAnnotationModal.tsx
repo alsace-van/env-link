@@ -328,6 +328,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       currentPath = null;
     };
 
+    // IMPORTANT: Activer le tool pour capturer les événements
+    tool.activate();
+    console.log("✅ Tool activated");
     console.log("✅ Drawing handlers setup complete");
   };
 
