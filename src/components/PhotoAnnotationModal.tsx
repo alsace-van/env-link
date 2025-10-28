@@ -5,18 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import {
-  Square,
-  ArrowRight,
-  Save,
-  Pencil,
-  Type,
-  CircleIcon,
-  Minus,
-  Trash2,
-  Undo,
-  Redo,
-} from "lucide-react";
+import { Square, ArrowRight, Save, Pencil, Type, CircleIcon, Minus, Trash2, Undo, Redo } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import paper from "paper";
 
@@ -41,8 +30,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
-  
-  const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">("select");
+
+  const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
+    "select",
+  );
   const [comment, setComment] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingImage, setIsLoadingImage] = useState(true);
@@ -53,7 +44,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [isEditingText, setIsEditingText] = useState(false);
   const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
   const [editingTextItem, setEditingTextItem] = useState<paper.PointText | null>(null);
-  
+
   const activeToolRef = useRef(activeTool);
   const strokeColorRef = useRef(strokeColor);
   const strokeWidthRef = useRef(strokeWidth);
@@ -89,6 +80,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isEditingText]);
 
+  // Initialisation Canvas avec Paper.js
   useEffect(() => {
     if (!isOpen || !photo || !canvasRef.current || !containerRef.current) {
       return;
@@ -105,11 +97,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const container = containerRef.current;
         const canvasElement = canvasRef.current;
 
+        // Nettoyer Paper.js avant setup
         try {
           if (paper.project) paper.project.remove();
           if (paper.view) paper.view.remove();
-        } catch (e) {}
-        
+        } catch (e) {
+          // Ignore les erreurs de nettoyage
+        }
+
+        // Setup Paper.js
         paper.setup(canvasElement);
 
         const containerWidth = container.clientWidth || 800;
@@ -117,9 +113,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         paper.view.viewSize = new paper.Size(containerWidth, containerHeight);
 
+        // Charger l'image via Image element puis Paper.js Raster
         const img = new Image();
         img.crossOrigin = "anonymous";
-        
+
         await new Promise<void>((resolve, reject) => {
           img.onload = () => resolve();
           img.onerror = reject;
@@ -128,8 +125,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         if (!mounted) return;
 
+        // Créer le raster avec l'image chargée
         const raster = new paper.Raster(img);
-        
+
+        // Attendre que le raster soit prêt
         await new Promise<void>((resolve) => {
           if (raster.loaded) {
             resolve();
@@ -140,10 +139,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         if (!mounted) return;
 
+        // Adapter l'image au canvas
         const scale = Math.min(
           (paper.view.viewSize.width - 40) / raster.width,
           (paper.view.viewSize.height - 40) / raster.height,
-          1
+          1,
         );
 
         raster.scale(scale);
@@ -158,6 +158,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           saveToHistory();
         }
 
+        // Charger les annotations
         if (photo.annotations && mounted) {
           try {
             paper.project.importJSON(photo.annotations);
@@ -172,8 +173,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           }
         }
 
+        // Setup des event handlers pour le dessin
         setupDrawingHandlers();
-
       } catch (error) {
         console.error("Error initializing canvas:", error);
         if (mounted) {
@@ -285,11 +286,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         if (tool === "arrow" && currentPath) {
           const vector = currentPath.lastSegment.point.subtract(currentPath.firstSegment.point);
           const arrowVector = vector.normalize(10);
-          
+
           const arrowHead = new paper.Path([
-            currentPath.lastSegment.point.add(arrowVector.rotate(150, new paper.Point(0, 0))),
+            currentPath.lastSegment.point.add(arrowVector.rotate(150)),
             currentPath.lastSegment.point,
-            currentPath.lastSegment.point.add(arrowVector.rotate(-150, new paper.Point(0, 0))),
+            currentPath.lastSegment.point.add(arrowVector.rotate(-150)),
           ]);
           arrowHead.strokeColor = currentPath.strokeColor;
           arrowHead.strokeWidth = currentPath.strokeWidth;
@@ -312,7 +313,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       try {
         if (paper.project) paper.project.remove();
         if (paper.view) paper.view.remove();
-      } catch (e) {}
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     };
   }, [isOpen, photo]);
 
@@ -382,7 +385,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     if (!paper.project) return;
 
     const selectedItems = paper.project.activeLayer.children.filter((item) => item.selected && !item.locked);
-    
+
     if (selectedItems.length > 0) {
       selectedItems.forEach((item) => {
         if (item instanceof paper.Path && item.data.type === "arrow") {
@@ -446,6 +449,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         </DialogHeader>
 
         <div className="flex-1 flex flex-col px-6 pb-6 gap-4 overflow-hidden">
+          {/* Toolbar */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1 p-1 bg-muted rounded-lg">
               {tools.map((tool) => (
@@ -509,17 +513,12 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
             <Separator orientation="vertical" className="h-8" />
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleDelete}
-              className="h-8 w-8 p-0"
-              title="Supprimer (Suppr)"
-            >
+            <Button variant="ghost" size="sm" onClick={handleDelete} className="h-8 w-8 p-0" title="Supprimer (Suppr)">
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
 
+          {/* Canvas Container */}
           <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]">
             {isLoadingImage && (
               <div className="absolute inset-0 flex items-center justify-center z-10 bg-muted/50">
@@ -547,6 +546,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             )}
           </div>
 
+          {/* Comment Section */}
           <div className="space-y-2">
             <Label htmlFor="comment">Commentaire</Label>
             <Textarea
@@ -559,6 +559,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             />
           </div>
 
+          {/* Action Buttons */}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={isSaving}>
               Annuler
