@@ -93,13 +93,18 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         // Setup Paper.js avec le canvas
         console.log("🔵 Setting up Paper.js...");
-        paper.setup(canvas);
-
-        console.log("✅ Paper.js setup complete");
-
+        
         // Obtenir les dimensions du conteneur
         const rect = container.getBoundingClientRect();
         console.log("🔵 Container dimensions:", rect.width, "x", rect.height);
+        
+        // IMPORTANT: Définir les dimensions réelles du canvas en pixels
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        
+        paper.setup(canvas);
+
+        console.log("✅ Paper.js setup complete");
 
         // Définir la taille de la vue
         paper.view.viewSize = new paper.Size(rect.width, rect.height);
@@ -524,10 +529,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             {/* Canvas Paper.js - PAR-DESSUS l'image avec fond transparent */}
             <canvas
               ref={canvasRef}
-              className="absolute inset-0 w-full h-full"
+              className="absolute inset-0 w-full h-full pointer-events-auto"
               style={{
                 cursor: activeTool === "select" ? "default" : "crosshair",
-                pointerEvents: paperInitialized ? "auto" : "none", // Désactiver les clics si pas initialisé
+                zIndex: 10,
               }}
             />
 
