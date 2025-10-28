@@ -577,6 +577,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             {/* Canvas Paper.js - PAR-DESSUS l'image avec fond transparent */}
             <canvas
               ref={canvasRef}
+              data-paper-resize="true"
               className="absolute inset-0 w-full h-full"
               style={{
                 cursor: activeTool === "select" ? "default" : "crosshair",
