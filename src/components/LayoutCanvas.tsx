@@ -156,7 +156,7 @@ export const LayoutCanvas = ({
   // Fonction pour supprimer un meuble depuis la liste
   const handleDeleteFromList = async (furnitureId: string) => {
     console.log("🗑️ Suppression du meuble depuis la liste:", furnitureId);
-    
+
     // Supprimer du state
     setFurnitureItems((prev) => {
       const newMap = new Map(prev);
@@ -174,7 +174,7 @@ export const LayoutCanvas = ({
     }
 
     toast.success("Meuble supprimé");
-    
+
     // Sauvegarder automatiquement
     setTimeout(() => {
       (window as any).layoutCanvasSave?.();
@@ -207,6 +207,7 @@ export const LayoutCanvas = ({
     let currentMeasureText: paper.PointText | null = null;
     const history: string[] = [];
     let historyIndex = -1;
+    let itemWasMoved = false; // Flag pour détecter si un meuble a été déplacé
 
     const saveState = () => {
       const state = paper.project.exportJSON();
@@ -421,6 +422,7 @@ export const LayoutCanvas = ({
           }
         } else if (selectedItem && !selectedItem.locked) {
           selectedItem.position = selectedItem.position.add(event.delta);
+          itemWasMoved = true; // Marquer que l'élément a été déplacé
           if (handles.length > 0) {
             if (selectedItem instanceof paper.Group && selectedItem.children[0]) {
               createHandles(selectedItem.children[0]);
@@ -444,6 +446,12 @@ export const LayoutCanvas = ({
         currentMeasureText = null;
       } else if (activeToolRef.current === "select" && selectedItem) {
         saveState();
+        // Sauvegarder automatiquement dans la base de données si un meuble a été déplacé
+        if (itemWasMoved) {
+          console.log("🔄 Sauvegarde automatique après déplacement du meuble");
+          setTimeout(() => handleSave(), 100);
+          itemWasMoved = false;
+        }
       }
 
       currentPath = null;
@@ -506,7 +514,7 @@ export const LayoutCanvas = ({
 
     const handleSave = async () => {
       const json = paper.project.exportJSON();
-      
+
       // Extraire les IDs des meubles présents sur le canvas
       const canvasFurnitureIds = new Set<string>();
       paper.project.activeLayer.children.forEach((child) => {
@@ -514,7 +522,7 @@ export const LayoutCanvas = ({
           canvasFurnitureIds.add(child.data.furnitureId);
         }
       });
-      
+
       // Ne sauvegarder que les meubles qui sont sur le canvas
       const furnitureData = Array.from(furnitureItemsRef.current.entries())
         .filter(([id]) => canvasFurnitureIds.has(id))
@@ -527,7 +535,7 @@ export const LayoutCanvas = ({
       console.log("🔍 Sauvegarde - Nombre de meubles dans les données:", furnitureData.length);
       console.log("🔍 Dimensions zone de chargement:", loadAreaLength, "×", loadAreaWidth, "mm");
       console.log("Détails meubles:", furnitureData);
-      
+
       // Synchroniser furnitureItems avec le canvas
       setFurnitureItems((prev) => {
         const newMap = new Map<string, FurnitureData>();
@@ -563,7 +571,7 @@ export const LayoutCanvas = ({
     const handleDelete = async () => {
       if (selectedItem && !selectedItem.locked && !selectedItem.data.isHandle) {
         const itemId = selectedItem.data.furnitureId;
-        
+
         // Si c'est un groupe de meuble, récupérer l'ID depuis le groupe
         let furnitureId = itemId;
         if (selectedItem instanceof paper.Group && selectedItem.data.isFurniture) {
@@ -580,13 +588,13 @@ export const LayoutCanvas = ({
             return newMap;
           });
         }
-        
+
         selectedItem.remove();
         removeHandles();
         selectedItem = null;
         saveState();
         toast.success("Élément supprimé");
-        
+
         // Sauvegarder automatiquement
         await handleSave();
       }
@@ -612,7 +620,7 @@ export const LayoutCanvas = ({
 
         if (error) throw error;
 
-        if (data?.layout_canvas_data && typeof data.layout_canvas_data === 'string') {
+        if (data?.layout_canvas_data && typeof data.layout_canvas_data === "string") {
           paper.project.clear();
           paper.project.importJSON(data.layout_canvas_data);
           saveState();
@@ -838,9 +846,7 @@ export const LayoutCanvas = ({
                   {remainingWeight < 0 ? "Surcharge" : "Reste"} : {Math.abs(remainingWeight).toFixed(1)} kg
                 </span>
               </div>
-              <div className="text-xs text-muted-foreground text-center">
-                Charge utile maximale : {maxLoad} kg
-              </div>
+              <div className="text-xs text-muted-foreground text-center">Charge utile maximale : {maxLoad} kg</div>
             </div>
           </div>
         </Card>
@@ -943,8 +949,8 @@ export const LayoutCanvas = ({
           </div>
 
           <div className="mt-2 text-xs text-muted-foreground">
-            Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés bleus = zone de chargement utile ({loadAreaLength} x{" "}
-            {loadAreaWidth} mm)
+            Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés bleus = zone de chargement utile ({loadAreaLength}{" "}
+            x {loadAreaWidth} mm)
           </div>
         </div>
       </div>
@@ -974,11 +980,11 @@ export const LayoutCanvas = ({
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">
-                            Meuble #{furniture.id.split("-").pop()}
-                          </p>
+                          <p className="font-medium text-sm truncate">Meuble #{furniture.id.split("-").pop()}</p>
                           <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
-                            <p>📏 {furniture.longueur_mm} × {furniture.largeur_mm} × {furniture.hauteur_mm} mm</p>
+                            <p>
+                              📏 {furniture.longueur_mm} × {furniture.largeur_mm} × {furniture.hauteur_mm} mm
+                            </p>
                             <p>⚖️ {furniture.poids_kg} kg</p>
                           </div>
                         </div>
