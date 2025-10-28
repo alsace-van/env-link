@@ -181,23 +181,23 @@ const ProjectDetail = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
-          <Card className="lg:col-span-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <Card className="lg:col-span-2">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Informations du Projet</CardTitle>
                 <Button variant="outline" size="sm" onClick={handleEditDimensions}>
                   <Edit className="h-4 w-4 mr-2" />
-                  Modifier dimensions
+                  Modifier
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="pb-3">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                 {project.adresse_proprietaire && (
                   <div>
                     <span className="text-muted-foreground">Adresse :</span>
-                    <p className="font-medium">{project.adresse_proprietaire}</p>
+                    <p className="font-medium truncate">{project.adresse_proprietaire}</p>
                   </div>
                 )}
                 {project.telephone_proprietaire && (
@@ -209,30 +209,30 @@ const ProjectDetail = () => {
                 {project.email_proprietaire && (
                   <div>
                     <span className="text-muted-foreground">Email :</span>
-                    <p className="font-medium">{project.email_proprietaire}</p>
+                    <p className="font-medium truncate">{project.email_proprietaire}</p>
                   </div>
                 )}
               </div>
               
               {/* Dimensions du véhicule */}
-              <div className="mt-4 pt-4 border-t">
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Dimensions totales du véhicule</h4>
+              <div className="mt-3 pt-3 border-t">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Dimensions totales</h4>
                 <div className="grid grid-cols-3 gap-3 text-xs">
                   {project.longueur_mm && (
                     <div>
-                      <span className="text-muted-foreground">Longueur :</span>
+                      <span className="text-muted-foreground">L :</span>
                       <p className="font-medium">{project.longueur_mm} mm</p>
                     </div>
                   )}
                   {project.largeur_mm && (
                     <div>
-                      <span className="text-muted-foreground">Largeur :</span>
+                      <span className="text-muted-foreground">l :</span>
                       <p className="font-medium">{project.largeur_mm} mm</p>
                     </div>
                   )}
                   {project.hauteur_mm && (
                     <div>
-                      <span className="text-muted-foreground">Hauteur :</span>
+                      <span className="text-muted-foreground">H :</span>
                       <p className="font-medium">{project.hauteur_mm} mm</p>
                     </div>
                   )}
@@ -241,18 +241,18 @@ const ProjectDetail = () => {
 
               {/* Dimensions de la surface utile de chargement */}
               {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
-                <div className="mt-4 pt-4 border-t">
-                  <h4 className="text-xs font-semibold text-primary mb-2">Surface utile de chargement</h4>
+                <div className="mt-3 pt-3 border-t">
+                  <h4 className="text-xs font-semibold text-primary mb-2">Surface utile</h4>
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     {project.longueur_chargement_mm && (
                       <div>
-                        <span className="text-muted-foreground">Longueur utile :</span>
+                        <span className="text-muted-foreground">L utile :</span>
                         <p className="font-medium">{project.longueur_chargement_mm} mm</p>
                       </div>
                     )}
                     {project.largeur_chargement_mm && (
                       <div>
-                        <span className="text-muted-foreground">Largeur utile :</span>
+                        <span className="text-muted-foreground">l utile :</span>
                         <p className="font-medium">{project.largeur_chargement_mm} mm</p>
                       </div>
                     )}
@@ -261,18 +261,18 @@ const ProjectDetail = () => {
               )}
 
               {/* Poids */}
-              <div className="mt-4 pt-4 border-t">
-                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Poids et charges</h4>
+              <div className="mt-3 pt-3 border-t">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Poids</h4>
                 <div className="grid grid-cols-3 gap-3 text-xs">
                   {project.poids_vide_kg && (
                     <div>
-                      <span className="text-muted-foreground">Poids vide :</span>
+                      <span className="text-muted-foreground">Vide :</span>
                       <p className="font-medium">{project.poids_vide_kg} kg</p>
                     </div>
                   )}
                   {project.charge_utile_kg && (
                     <div>
-                      <span className="text-muted-foreground">Charge utile :</span>
+                      <span className="text-muted-foreground">Charge :</span>
                       <p className="font-medium">{project.charge_utile_kg} kg</p>
                     </div>
                   )}
