@@ -15,7 +15,19 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen, Wrench, Edit } from "lucide-react";
+import {
+  ArrowLeft,
+  Image,
+  Euro,
+  FileText,
+  Package,
+  BookOpen,
+  PanelRightOpen,
+  Wrench,
+  Edit,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
 import UserMenu from "@/components/UserMenu";
@@ -61,6 +73,7 @@ const ProjectDetail = () => {
   const [expenseRefresh, setExpenseRefresh] = useState(0);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
+  const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
   const [editFormData, setEditFormData] = useState({
@@ -220,115 +233,127 @@ const ProjectDetail = () => {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-8">
                 <CardTitle className="text-base">Informations du Projet</CardTitle>
-                <Button variant="outline" size="sm" onClick={handleEditDimensions}>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Modifier
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={handleEditDimensions}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Modifier
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsProjectInfoCollapsed(!isProjectInfoCollapsed)}
+                    className="h-8 w-8 p-0"
+                  >
+                    {isProjectInfoCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Contact */}
-              {(project.adresse_proprietaire || project.telephone_proprietaire || project.email_proprietaire) && (
-                <div className="space-y-2 pb-3 border-b">
-                  {project.adresse_proprietaire && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-20">Adresse :</span>
-                      <p className="font-medium">{project.adresse_proprietaire}</p>
+            {!isProjectInfoCollapsed && (
+              <CardContent className="space-y-4">
+                {/* Contact */}
+                {(project.adresse_proprietaire || project.telephone_proprietaire || project.email_proprietaire) && (
+                  <div className="space-y-2 pb-3 border-b">
+                    {project.adresse_proprietaire && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground w-20">Adresse :</span>
+                        <p className="font-medium">{project.adresse_proprietaire}</p>
+                      </div>
+                    )}
+                    {project.telephone_proprietaire && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground w-20">Téléphone :</span>
+                        <p className="font-medium">{project.telephone_proprietaire}</p>
+                      </div>
+                    )}
+                    {project.email_proprietaire && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground w-20">Email :</span>
+                        <p className="font-medium">{project.email_proprietaire}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Sections horizontales : Dimensions, Surface utile, Poids */}
+                <div className="flex gap-6 justify-between">
+                  {/* Dimensions totales */}
+                  {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
+                    <div className="flex-1 space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground">Dimensions totales</h4>
+                      <div className="space-y-1">
+                        {project.longueur_mm && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">L :</span>
+                            <p className="font-medium">{project.longueur_mm} mm</p>
+                          </div>
+                        )}
+                        {project.largeur_mm && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">l :</span>
+                            <p className="font-medium">{project.largeur_mm} mm</p>
+                          </div>
+                        )}
+                        {project.hauteur_mm && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">H :</span>
+                            <p className="font-medium">{project.hauteur_mm} mm</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-                  {project.telephone_proprietaire && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-20">Téléphone :</span>
-                      <p className="font-medium">{project.telephone_proprietaire}</p>
+
+                  {/* Surface utile */}
+                  {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
+                    <div className="flex-1 space-y-2">
+                      <h4 className="text-xs font-semibold text-blue-600">Surface utile</h4>
+                      <div className="space-y-1">
+                        {project.longueur_chargement_mm && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">L utile :</span>
+                            <p className="font-medium">{project.longueur_chargement_mm} mm</p>
+                          </div>
+                        )}
+                        {project.largeur_chargement_mm && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">l utile :</span>
+                            <p className="font-medium">{project.largeur_chargement_mm} mm</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-                  {project.email_proprietaire && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-20">Email :</span>
-                      <p className="font-medium">{project.email_proprietaire}</p>
+
+                  {/* Poids */}
+                  {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
+                    <div className="flex-1 space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground">Poids</h4>
+                      <div className="space-y-1">
+                        {project.poids_vide_kg && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Vide :</span>
+                            <p className="font-medium">{project.poids_vide_kg} kg</p>
+                          </div>
+                        )}
+                        {project.charge_utile_kg && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Charge :</span>
+                            <p className="font-medium">{project.charge_utile_kg} kg</p>
+                          </div>
+                        )}
+                        {project.ptac_kg && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">PTAC :</span>
+                            <p className="font-medium">{project.ptac_kg} kg</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
-
-              {/* Sections horizontales : Dimensions, Surface utile, Poids */}
-              <div className="flex gap-6 justify-between">
-                {/* Dimensions totales */}
-                {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
-                  <div className="flex-1 space-y-2">
-                    <h4 className="text-xs font-semibold text-muted-foreground">Dimensions totales</h4>
-                    <div className="space-y-1">
-                      {project.longueur_mm && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">L :</span>
-                          <p className="font-medium">{project.longueur_mm} mm</p>
-                        </div>
-                      )}
-                      {project.largeur_mm && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">l :</span>
-                          <p className="font-medium">{project.largeur_mm} mm</p>
-                        </div>
-                      )}
-                      {project.hauteur_mm && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">H :</span>
-                          <p className="font-medium">{project.hauteur_mm} mm</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Surface utile */}
-                {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
-                  <div className="flex-1 space-y-2">
-                    <h4 className="text-xs font-semibold text-blue-600">Surface utile</h4>
-                    <div className="space-y-1">
-                      {project.longueur_chargement_mm && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">L utile :</span>
-                          <p className="font-medium">{project.longueur_chargement_mm} mm</p>
-                        </div>
-                      )}
-                      {project.largeur_chargement_mm && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">l utile :</span>
-                          <p className="font-medium">{project.largeur_chargement_mm} mm</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Poids */}
-                {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
-                  <div className="flex-1 space-y-2">
-                    <h4 className="text-xs font-semibold text-muted-foreground">Poids</h4>
-                    <div className="space-y-1">
-                      {project.poids_vide_kg && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Vide :</span>
-                          <p className="font-medium">{project.poids_vide_kg} kg</p>
-                        </div>
-                      )}
-                      {project.charge_utile_kg && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Charge :</span>
-                          <p className="font-medium">{project.charge_utile_kg} kg</p>
-                        </div>
-                      )}
-                      {project.ptac_kg && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">PTAC :</span>
-                          <p className="font-medium">{project.ptac_kg} kg</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
+              </CardContent>
+            )}
           </Card>
         </div>
 
