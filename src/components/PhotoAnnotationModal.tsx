@@ -42,11 +42,7 @@ const PhotoAnnotationModalTest = ({ photo, isOpen, onClose, onSave }: PhotoAnnot
     }
   }, [isOpen, photo]);
 
-  // Log à chaque render
-  addLog(`Component render - isOpen: ${isOpen}`);
-
   if (!photo) {
-    addLog("No photo provided, returning null");
     return null;
   }
 
