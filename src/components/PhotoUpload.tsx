@@ -93,10 +93,15 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
           id="photos"
           type="file"
           accept="image/*"
+          capture="environment"
           multiple
           onChange={handleFileChange}
           disabled={isUploading}
+          className="cursor-pointer"
         />
+        <p className="text-xs text-muted-foreground">
+          Sur mobile : prenez une photo ou choisissez dans la galerie
+        </p>
       </div>
 
       {selectedFiles && selectedFiles.length > 0 && (
