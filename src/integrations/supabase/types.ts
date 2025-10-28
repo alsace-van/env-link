@@ -276,6 +276,8 @@ export type Database = {
           categorie: string | null
           created_at: string
           date_achat: string | null
+          date_paiement: string | null
+          delai_paiement: string | null
           fournisseur: string | null
           hauteur_mm: number | null
           id: string
@@ -303,6 +305,8 @@ export type Database = {
           categorie?: string | null
           created_at?: string
           date_achat?: string | null
+          date_paiement?: string | null
+          delai_paiement?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
@@ -330,6 +334,8 @@ export type Database = {
           categorie?: string | null
           created_at?: string
           date_achat?: string | null
+          date_paiement?: string | null
+          delai_paiement?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
