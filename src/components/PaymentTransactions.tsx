@@ -91,6 +91,20 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
       return;
     }
 
+    // Calculer le total des paiements pour ce projet (en excluant celui en cours d'édition)
+    const paymentsForProject = transactions.filter(
+      (t) => t.project_id === newTransaction.project_id && t.id !== editingId
+    );
+    const totalPaidForProject = paymentsForProject.reduce((sum, t) => sum + t.montant, 0);
+    
+    // Vérifier que le nouveau total ne dépasse pas le montant des ventes TTC
+    if (totalPaidForProject + newTransaction.montant > totalSales) {
+      toast.error(
+        `Le total des paiements (${(totalPaidForProject + newTransaction.montant).toFixed(2)}€) dépasserait le total des ventes TTC (${totalSales.toFixed(2)}€)`
+      );
+      return;
+    }
+
     const transactionData = {
       project_id: newTransaction.project_id,
       type_paiement: newTransaction.type_paiement,
