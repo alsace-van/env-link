@@ -200,7 +200,7 @@ const ProjectDetail = () => {
         </div>
 
         <Tabs defaultValue="photos" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-5">
+          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
             <TabsTrigger value="photos" className="gap-2">
               <Image className="h-4 w-4" />
               <span className="hidden sm:inline">Photos</span>
