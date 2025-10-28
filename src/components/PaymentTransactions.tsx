@@ -16,15 +16,17 @@ interface PaymentTransaction {
   montant: number;
   date_paiement: string;
   notes?: string;
+  project_id: string;
+  project_name?: string;
 }
 
 interface PaymentTransactionsProps {
-  projectId: string;
   totalSales: number;
   onPaymentChange: () => void;
+  currentProjectId: string;
 }
 
-const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: PaymentTransactionsProps) => {
+const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: PaymentTransactionsProps) => {
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,23 +35,37 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
     montant: 0,
     date_paiement: new Date().toISOString().split("T")[0],
     notes: "",
+    project_id: currentProjectId,
   });
 
   useEffect(() => {
     loadTransactions();
-  }, [projectId]);
+  }, []);
 
   const loadTransactions = async () => {
+    // Charger tous les paiements de l'utilisateur avec les noms de projets
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
     const { data, error } = await supabase
       .from("project_payment_transactions")
-      .select("*")
-      .eq("project_id", projectId)
+      .select(`
+        *,
+        projects:project_id (
+          nom_projet,
+          nom_proprietaire
+        )
+      `)
       .order("date_paiement", { ascending: false });
 
     if (error) {
       console.error(error);
     } else {
-      setTransactions((data || []) as PaymentTransaction[]);
+      const transactionsWithNames = (data || []).map((t: any) => ({
+        ...t,
+        project_name: t.projects?.nom_projet || t.projects?.nom_proprietaire || "Projet sans nom",
+      }));
+      setTransactions(transactionsWithNames as PaymentTransaction[]);
     }
   };
 
@@ -60,7 +76,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
     }
 
     const transactionData = {
-      project_id: projectId,
+      project_id: newTransaction.project_id,
       type_paiement: newTransaction.type_paiement,
       montant: newTransaction.montant,
       date_paiement: newTransaction.date_paiement,
@@ -86,6 +102,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
           montant: 0,
           date_paiement: new Date().toISOString().split("T")[0],
           notes: "",
+          project_id: currentProjectId,
         });
         loadTransactions();
         onPaymentChange();
@@ -107,6 +124,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
           montant: 0,
           date_paiement: new Date().toISOString().split("T")[0],
           notes: "",
+          project_id: currentProjectId,
         });
         loadTransactions();
         onPaymentChange();
@@ -121,6 +139,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
       montant: transaction.montant,
       date_paiement: transaction.date_paiement,
       notes: transaction.notes || "",
+      project_id: transaction.project_id,
     });
     setIsAdding(true);
   };
@@ -153,6 +172,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
       montant: 0,
       date_paiement: new Date().toISOString().split("T")[0],
       notes: "",
+      project_id: currentProjectId,
     });
   };
 
@@ -163,6 +183,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
       montant: 0,
       date_paiement: new Date().toISOString().split("T")[0],
       notes: "",
+      project_id: currentProjectId,
     });
     setIsAdding(true);
   };
@@ -205,6 +226,8 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
                     <span className="font-bold">{transaction.montant.toFixed(0)}€</span>
                   </div>
                   <div className="text-muted-foreground truncate">
+                    <span className="font-medium text-foreground">{transaction.project_name}</span>
+                    {" • "}
                     {new Date(transaction.date_paiement).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
                     {transaction.notes && ` • ${transaction.notes}`}
                   </div>

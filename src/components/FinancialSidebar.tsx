@@ -31,7 +31,7 @@ export const FinancialSidebar = ({
         <ScrollArea className="h-[calc(100vh-80px)] pr-4">
           <div className="space-y-6 mt-4">
             <PaymentTransactions 
-              projectId={projectId} 
+              currentProjectId={projectId}
               totalSales={totalSales}
               onPaymentChange={onPaymentChange}
             />

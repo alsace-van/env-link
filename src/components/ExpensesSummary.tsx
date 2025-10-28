@@ -138,7 +138,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
       </div>
 
       <PaymentTransactions 
-        projectId={projectId} 
+        currentProjectId={projectId}
         totalSales={totalSales}
         onPaymentChange={() => setPaymentRefresh(prev => prev + 1)}
       />
