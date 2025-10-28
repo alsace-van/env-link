@@ -596,7 +596,7 @@ const AccessoryImportExportDialog = ({
                 <Label>En-têtes de colonnes (copiez cette ligne dans votre tableur)</Label>
                 <div className="bg-muted p-3 rounded">
                   <div className="font-mono text-xs select-all cursor-pointer hover:bg-muted-foreground/10 p-2 rounded">
-                    Nom	Catégorie	Prix référence	Prix vente TTC	Marge %	Fournisseur	Description	URL produit
+                    Nom	Catégorie	Prix référence	Prix vente TTC	Marge %	Fournisseur	Description	URL produit	Type électrique	Poids (kg)	Longueur (mm)	Largeur (mm)	Hauteur (mm)
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     Cliquez sur la ligne ci-dessus pour la sélectionner, puis copiez-la (Ctrl+C) et collez-la comme première ligne de votre tableur
