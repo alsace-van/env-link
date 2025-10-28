@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Square, ArrowRight, Save, Pencil, Type, CircleIcon, Minus, Trash2, Undo, Redo } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import paper from "paper";
 
 interface Photo {
   id: string;
@@ -23,14 +24,12 @@ interface PhotoAnnotationModalProps {
   onSave: () => void;
 }
 
-/**
- * VERSION HYBRIDE - Affiche l'image directement, Paper.js optionnel
- */
 const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotationModalProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
+  const paperProjectRef = useRef<paper.Project | null>(null);
 
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
     "select",
@@ -71,96 +70,176 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     }
   }, [photo]);
 
-  // Initialiser Paper.js seulement après que l'image soit chargée
+  // Initialiser Paper.js après chargement de l'image
   useEffect(() => {
-    if (!imageLoaded || !canvasRef.current || !imageRef.current || paperInitialized) {
+    if (!imageLoaded || !canvasRef.current || !imageRef.current || !containerRef.current || paperInitialized) {
       return;
     }
 
+    let mounted = true;
+
     const initPaper = async () => {
+      console.log("🔵 Starting Paper.js initialization...");
+
       try {
-        const paper = await import("paper");
-        const canvasElement = canvasRef.current;
+        const canvas = canvasRef.current;
         const img = imageRef.current;
+        const container = containerRef.current;
 
-        if (!canvasElement || !img) return;
+        if (!canvas || !img || !container) {
+          console.log("❌ Missing refs");
+          return;
+        }
 
-        // Nettoyer avant setup
+        console.log("🔵 Canvas element:", canvas);
+        console.log("🔵 Image element:", img);
+
+        // Nettoyer Paper.js avant setup
         try {
-          if (paper.project) paper.project.remove();
-          if (paper.view) paper.view.remove();
-        } catch (e) {}
+          if (paperProjectRef.current) {
+            paperProjectRef.current.remove();
+            paperProjectRef.current = null;
+          }
+        } catch (e) {
+          console.log("Cleanup skipped");
+        }
 
-        // Setup Paper.js
-        paper.setup(canvasElement);
+        // Setup Paper.js avec le canvas
+        console.log("🔵 Setting up Paper.js...");
+        paper.setup(canvas);
+        paperProjectRef.current = paper.project;
+
+        console.log("🔵 Paper.js setup complete");
+        console.log("🔵 Paper.project:", paper.project);
+        console.log("🔵 Paper.view:", paper.view);
 
         // Obtenir les dimensions du conteneur
-        const rect = canvasElement.getBoundingClientRect();
-        paper.view.viewSize = new paper.Size(rect.width, rect.height);
+        const rect = container.getBoundingClientRect();
+        console.log("🔵 Container dimensions:", rect.width, "x", rect.height);
 
-        // Créer le raster depuis l'image déjà chargée
+        // Définir la taille du canvas
+        paper.view.viewSize = new paper.Size(rect.width, rect.height);
+        console.log("🔵 View size set:", paper.view.viewSize);
+
+        // Créer le raster depuis l'image
+        console.log("🔵 Creating raster from image...");
         const raster = new paper.Raster(img);
 
-        // Attendre que le raster soit prêt
-        if (!raster.loaded) {
-          await new Promise<void>((resolve) => {
-            raster.onLoad = () => resolve();
-          });
-        }
+        console.log("🔵 Raster created:", raster);
+        console.log("🔵 Raster loaded?", raster.loaded);
+        console.log("🔵 Raster size:", raster.size);
 
-        // Adapter au canvas
-        const scale = Math.min(
-          (paper.view.viewSize.width - 40) / raster.width,
-          (paper.view.viewSize.height - 40) / raster.height,
-          1,
-        );
+        // Fonction pour finaliser le raster
+        const finalizeRaster = () => {
+          if (!mounted) return;
 
-        raster.scale(scale);
-        raster.position = paper.view.center;
-        raster.locked = true;
+          console.log("🔵 Finalizing raster...");
+          console.log("🔵 Raster width:", raster.width);
+          console.log("🔵 Raster height:", raster.height);
 
-        paper.view.update();
-
-        // Sauvegarder l'état initial
-        saveToHistory(paper);
-
-        // Charger les annotations si présentes
-        if (photo?.annotations) {
-          try {
-            paper.project.importJSON(photo.annotations);
-            paper.project.activeLayer.children.forEach((item) => {
-              if (item instanceof paper.Raster) {
-                item.locked = true;
-              }
-            });
-            paper.view.update();
-          } catch (error) {
-            console.error("Error loading annotations:", error);
+          if (!raster.width || !raster.height) {
+            console.error("❌ Raster has no dimensions");
+            toast.error("Erreur: l'image n'a pas de dimensions");
+            return;
           }
+
+          // Calculer l'échelle
+          const scale = Math.min(
+            (paper.view.viewSize.width - 40) / raster.width,
+            (paper.view.viewSize.height - 40) / raster.height,
+            1,
+          );
+
+          console.log("🔵 Scale:", scale);
+
+          // Appliquer l'échelle et positionner
+          raster.scale(scale);
+          raster.position = paper.view.center;
+          raster.locked = true;
+
+          console.log("🔵 Raster positioned:", raster.position);
+
+          // Mettre à jour la vue
+          paper.view.update();
+          console.log("🔵 View updated");
+
+          // Sauvegarder l'état initial
+          if (paper.project) {
+            const json = paper.project.exportJSON();
+            setHistory([json]);
+            setHistoryStep(0);
+            console.log("🔵 Initial state saved");
+          }
+
+          // Charger les annotations si présentes
+          if (photo?.annotations) {
+            try {
+              console.log("🔵 Loading annotations...");
+              paper.project.importJSON(photo.annotations);
+
+              // Verrouiller tous les rasters
+              paper.project.activeLayer.children.forEach((item) => {
+                if (item instanceof paper.Raster) {
+                  item.locked = true;
+                }
+              });
+
+              paper.view.update();
+              console.log("✅ Annotations loaded");
+            } catch (error) {
+              console.error("❌ Error loading annotations:", error);
+            }
+          }
+
+          // Setup des event handlers
+          console.log("🔵 Setting up drawing handlers...");
+          setupDrawingHandlers();
+
+          setPaperInitialized(true);
+          console.log("✅ Paper.js initialized successfully!");
+          toast.success("Outils d'annotation prêts");
+        };
+
+        // Si le raster est déjà chargé, finaliser immédiatement
+        if (raster.loaded) {
+          console.log("🔵 Raster already loaded");
+          finalizeRaster();
+        } else {
+          console.log("🔵 Waiting for raster to load...");
+          raster.onLoad = () => {
+            console.log("🔵 Raster.onLoad triggered");
+            finalizeRaster();
+          };
         }
-
-        // Setup des event handlers
-        setupDrawingHandlers(paper);
-
-        setPaperInitialized(true);
-        console.log("✅ Paper.js initialized successfully");
       } catch (error) {
         console.error("❌ Error initializing Paper.js:", error);
-        toast.error("Les outils d'annotation ne sont pas disponibles");
+        toast.error("Les outils d'annotation ne peuvent pas être chargés");
       }
     };
 
-    initPaper();
+    // Petit délai pour s'assurer que tout est prêt
+    const timeoutId = setTimeout(() => {
+      if (mounted) initPaper();
+    }, 100);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [imageLoaded, paperInitialized, photo]);
 
-  const setupDrawingHandlers = (paper: any) => {
-    let currentPath: any = null;
-    let selectedItem: any = null;
+  const setupDrawingHandlers = () => {
+    console.log("🔵 setupDrawingHandlers called");
+
+    let currentPath: paper.Path | null = null;
+    let selectedItem: paper.Item | null = null;
 
     const tool = new paper.Tool();
+    console.log("🔵 Tool created:", tool);
 
-    tool.onMouseDown = (event: any) => {
+    tool.onMouseDown = (event: paper.ToolEvent) => {
       const toolType = activeToolRef.current;
+      console.log("🖱️ MouseDown - Tool:", toolType);
 
       if (toolType === "select") {
         const hitResult = paper.project.hitTest(event.point, {
@@ -215,7 +294,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
     };
 
-    tool.onMouseDrag = (event: any) => {
+    tool.onMouseDrag = (event: paper.ToolEvent) => {
       const toolType = activeToolRef.current;
 
       if (toolType === "draw" && currentPath) {
@@ -249,7 +328,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
     };
 
-    tool.onMouseUp = (event: any) => {
+    tool.onMouseUp = (event: paper.ToolEvent) => {
       const toolType = activeToolRef.current;
 
       if (toolType === "arrow" && currentPath) {
@@ -269,72 +348,52 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
 
       if (currentPath) {
-        saveToHistory(paper);
+        saveToHistory();
       }
       currentPath = null;
     };
+
+    console.log("✅ Drawing handlers setup complete");
   };
 
-  const saveToHistory = async (paperInstance?: any) => {
-    try {
-      const paper = paperInstance || (await import("paper"));
-      if (!paper.project) return;
-      const json = paper.project.exportJSON();
-      setHistory((prev) => [...prev.slice(0, historyStep + 1), json]);
-      setHistoryStep((prev) => prev + 1);
-    } catch (error) {
-      console.error("Error saving to history:", error);
-    }
+  const saveToHistory = () => {
+    if (!paper.project) return;
+    const json = paper.project.exportJSON();
+    setHistory((prev) => [...prev.slice(0, historyStep + 1), json]);
+    setHistoryStep((prev) => prev + 1);
   };
 
-  const handleUndo = async () => {
-    if (historyStep <= 0) return;
-    try {
-      const paper = await import("paper");
-      if (!paper.project) return;
-      const newStep = historyStep - 1;
-      setHistoryStep(newStep);
-      paper.project.clear();
-      paper.project.importJSON(history[newStep]);
-      paper.view.update();
-    } catch (error) {
-      console.error("Error undoing:", error);
-    }
+  const handleUndo = () => {
+    if (historyStep <= 0 || !paper.project) return;
+    const newStep = historyStep - 1;
+    setHistoryStep(newStep);
+    paper.project.clear();
+    paper.project.importJSON(history[newStep]);
+    paper.view.update();
   };
 
-  const handleRedo = async () => {
-    if (historyStep >= history.length - 1) return;
-    try {
-      const paper = await import("paper");
-      if (!paper.project) return;
-      const newStep = historyStep + 1;
-      setHistoryStep(newStep);
-      paper.project.clear();
-      paper.project.importJSON(history[newStep]);
-      paper.view.update();
-    } catch (error) {
-      console.error("Error redoing:", error);
-    }
+  const handleRedo = () => {
+    if (historyStep >= history.length - 1 || !paper.project) return;
+    const newStep = historyStep + 1;
+    setHistoryStep(newStep);
+    paper.project.clear();
+    paper.project.importJSON(history[newStep]);
+    paper.view.update();
   };
 
-  const handleTextSubmit = async () => {
-    if (!textInputRef.current) return;
+  const handleTextSubmit = () => {
+    if (!textInputRef.current || !paper.project) return;
 
     const text = textInputRef.current.value.trim();
 
     if (text) {
-      try {
-        const paper = await import("paper");
-        new paper.PointText({
-          point: [textInputPosition.x, textInputPosition.y],
-          content: text,
-          fillColor: new paper.Color(strokeColorRef.current),
-          fontSize: 20,
-        });
-        saveToHistory(paper);
-      } catch (error) {
-        console.error("Error adding text:", error);
-      }
+      new paper.PointText({
+        point: [textInputPosition.x, textInputPosition.y],
+        content: text,
+        fillColor: new paper.Color(strokeColorRef.current),
+        fontSize: 20,
+      });
+      saveToHistory();
     }
 
     setIsEditingText(false);
@@ -348,29 +407,24 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     }
   };
 
-  const handleDelete = async () => {
-    try {
-      const paper = await import("paper");
-      if (!paper.project) return;
+  const handleDelete = () => {
+    if (!paper.project) return;
 
-      const selectedItems = paper.project.activeLayer.children.filter((item: any) => item.selected && !item.locked);
+    const selectedItems = paper.project.activeLayer.children.filter((item) => item.selected && !item.locked);
 
-      if (selectedItems.length > 0) {
-        selectedItems.forEach((item: any) => {
-          if (item instanceof paper.Path && item.data.type === "arrow") {
-            paper.project.activeLayer.children.forEach((child: any) => {
-              if (child.data.isArrowHead && child.data.parentId === item.id) {
-                child.remove();
-              }
-            });
-          }
-          item.remove();
-        });
-        saveToHistory(paper);
-        toast.success("Élément supprimé");
-      }
-    } catch (error) {
-      console.error("Error deleting:", error);
+    if (selectedItems.length > 0) {
+      selectedItems.forEach((item) => {
+        if (item instanceof paper.Path && item.data.type === "arrow") {
+          paper.project.activeLayer.children.forEach((child) => {
+            if (child.data.isArrowHead && child.data.parentId === item.id) {
+              child.remove();
+            }
+          });
+        }
+        item.remove();
+      });
+      saveToHistory();
+      toast.success("Élément supprimé");
     }
   };
 
@@ -382,11 +436,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     try {
       let annotationsJSON = null;
 
-      if (paperInitialized) {
-        const paper = await import("paper");
-        if (paper.project) {
-          annotationsJSON = paper.project.exportJSON();
-        }
+      if (paperInitialized && paper.project) {
+        annotationsJSON = paper.project.exportJSON();
       }
 
       const { error } = await supabase
@@ -509,13 +560,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             </Button>
 
             {!paperInitialized && imageLoaded && (
-              <span className="text-xs text-muted-foreground ml-2">Chargement des outils...</span>
+              <span className="text-xs text-yellow-600 font-semibold ml-2">
+                ⏳ Chargement des outils... (ouvrez F12 pour voir les logs)
+              </span>
             )}
           </div>
 
           {/* Image Container */}
           <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]">
-            {/* Image de base - toujours visible */}
+            {/* Image de base */}
             <img
               ref={imageRef}
               src={photo.url}
@@ -523,7 +576,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               className="absolute inset-0 w-full h-full object-contain"
               style={{ display: paperInitialized ? "none" : "block" }}
               onLoad={() => {
-                console.log("✅ Image loaded");
+                console.log("✅ Image loaded in DOM");
                 setIsLoadingImage(false);
                 setImageLoaded(true);
               }}
@@ -534,7 +587,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               }}
             />
 
-            {/* Canvas Paper.js - par-dessus l'image */}
+            {/* Canvas Paper.js */}
             <canvas
               ref={canvasRef}
               className="absolute inset-0 w-full h-full"
@@ -546,7 +599,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
             {isLoadingImage && (
               <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-                <div className="text-muted-foreground">Chargement...</div>
+                <div className="text-muted-foreground">Chargement de l'image...</div>
               </div>
             )}
 
