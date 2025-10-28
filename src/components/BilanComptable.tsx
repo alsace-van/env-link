@@ -176,13 +176,8 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
     setIsEditBalanceOpen(true);
   };
 
-  // Filtrer les dépenses fournisseurs après la date de départ
-  const filteredExpenses = bankBalance
-    ? expenses.filter((expense) => {
-        if (!expense.date_achat) return false;
-        return new Date(expense.date_achat) >= new Date(bankBalance.date_heure_depart);
-      })
-    : expenses;
+  // Afficher toutes les dépenses fournisseurs (pas de filtre par date)
+  const filteredExpenses = expenses;
 
   const filteredPayments = bankBalance
     ? payments.filter((payment) => {
@@ -190,8 +185,14 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
       })
     : [];
 
-  // Calculer le solde actuel
-  const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + exp.prix * exp.quantite, 0);
+  // Calculer le solde actuel : déduire uniquement les dépenses NON PAYÉES
+  const totalExpenses = filteredExpenses.reduce((sum, exp) => {
+    // Déduire seulement si non payé
+    if (exp.statut_paiement === "non_paye") {
+      return sum + exp.prix * exp.quantite;
+    }
+    return sum;
+  }, 0);
   const totalPayments = filteredPayments.reduce((sum, pay) => sum + pay.montant, 0);
   const currentBalance = bankBalance
     ? bankBalance.solde_depart - totalExpenses + totalPayments
@@ -262,7 +263,7 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
           <CardHeader>
             <CardTitle>Dépenses Fournisseurs</CardTitle>
             <CardDescription>
-              Depuis le {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}
+              Toutes les dépenses fournisseurs (seules les non payées sont déduites du solde)
             </CardDescription>
           </CardHeader>
           <CardContent>
