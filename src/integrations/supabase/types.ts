@@ -208,6 +208,33 @@ export type Database = {
         }
         Relationships: []
       }
+      project_bank_balance: {
+        Row: {
+          created_at: string
+          date_heure_depart: string
+          id: string
+          project_id: string
+          solde_depart: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date_heure_depart?: string
+          id?: string
+          project_id: string
+          solde_depart?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date_heure_depart?: string
+          id?: string
+          project_id?: string
+          solde_depart?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       project_documents: {
         Row: {
           created_at: string

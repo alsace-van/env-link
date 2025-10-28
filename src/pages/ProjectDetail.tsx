@@ -34,6 +34,7 @@ import UserMenu from "@/components/UserMenu";
 import ExpensesList from "@/components/ExpensesList";
 import ExpensesSummary from "@/components/ExpensesSummary";
 import AccessoriesCatalogView from "@/components/AccessoriesCatalogView";
+import { BilanComptable } from "@/components/BilanComptable";
 import { NoticeUploadDialog } from "@/components/NoticeUploadDialog";
 import { NoticesList } from "@/components/NoticesList";
 import { TechnicalCanvas } from "@/components/TechnicalCanvas";
@@ -494,32 +495,45 @@ const ProjectDetail = () => {
           </TabsContent>
 
           <TabsContent value="expenses">
-            <div className="flex gap-6">
-              <div className="flex-1">
-                <Card>
-                  <CardContent className="pt-6">
-                    <ExpensesList
-                      projectId={project.id}
-                      onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
-                    />
-                  </CardContent>
-                </Card>
-              </div>
+            <Tabs defaultValue="liste" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="liste">Liste des Dépenses</TabsTrigger>
+                <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
+              </TabsList>
 
-              <div className={`transition-all duration-300 ${isSummaryOpen ? "w-[500px]" : "w-0"} overflow-hidden`}>
-                <div className="w-[500px]">
-                  <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
+              <TabsContent value="liste">
+                <div className="flex gap-6">
+                  <div className="flex-1">
+                    <Card>
+                      <CardContent className="pt-6">
+                        <ExpensesList
+                          projectId={project.id}
+                          onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                        />
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className={`transition-all duration-300 ${isSummaryOpen ? "w-[500px]" : "w-0"} overflow-hidden`}>
+                    <div className="w-[500px]">
+                      <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <Button
-              onClick={() => setIsSummaryOpen(!isSummaryOpen)}
-              className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
-              size="icon"
-            >
-              <PanelRightOpen className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
-            </Button>
+                <Button
+                  onClick={() => setIsSummaryOpen(!isSummaryOpen)}
+                  className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+                  size="icon"
+                >
+                  <PanelRightOpen className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </TabsContent>
+
+              <TabsContent value="bilan">
+                <BilanComptable projectId={project.id} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           <TabsContent value="documents">
