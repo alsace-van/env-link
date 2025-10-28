@@ -552,13 +552,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           </div>
 
           {/* Image Container */}
-          <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]">
+          <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]" style={{ pointerEvents: 'none' }}>
             {/* Image de base - TOUJOURS VISIBLE */}
             <img
               ref={imageRef}
               src={photo.url}
               alt={photo.description || "Photo"}
-              className="absolute inset-0 w-full h-full object-contain"
+              className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               onLoad={() => {
                 console.log("✅ Image loaded in DOM");
                 setIsLoadingImage(false);
@@ -580,7 +580,12 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 zIndex: 10,
                 pointerEvents: 'auto',
                 touchAction: 'none',
+                position: 'absolute',
+                top: 0,
+                left: 0,
               }}
+              onMouseMove={(e) => console.log("🖱️ Native mouse move on canvas")}
+              onClick={(e) => console.log("🖱️ Native click on canvas")}
             />
 
             {isLoadingImage && (
