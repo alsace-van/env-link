@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -113,18 +113,19 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const container = containerRef.current;
         const canvasElement = canvasRef.current;
 
-        // Nettoyer Paper.js avant setup si nécessaire
-        if (paper.project) {
-          try {
-            paper.project.activeLayer?.removeChildren();
-            paper.project.clear();
+        // Forcer un nettoyage complet de Paper.js avant setup
+        try {
+          if (paper.project) {
             paper.project.remove();
-          } catch (e) {
-            console.log("Cleaning old project before setup");
           }
+          if (paper.view) {
+            paper.view.remove();
+          }
+        } catch (e) {
+          console.log("Cleaning Paper.js before setup");
         }
         
-        // Setup Paper.js
+        // Setup Paper.js avec un canvas propre
         paper.setup(canvasElement);
 
         const containerWidth = container.clientWidth || 800;
@@ -630,35 +631,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         clearTimeout(timeoutId);
       }
 
-      // Nettoyer paper.js complètement
+      // Nettoyage simplifié de Paper.js
       try {
         if (paper.project) {
-          // Supprimer tous les items du projet
-          paper.project.activeLayer?.removeChildren();
-          // Supprimer toutes les couches
-          const allLayers = paper.project.layers?.slice() || [];
-          allLayers.forEach(layer => {
-            try {
-              layer.remove();
-            } catch (e) {
-              console.error("Error removing layer:", e);
-            }
-          });
-          paper.project.clear();
           paper.project.remove();
         }
-        
         if (paper.view) {
           paper.view.remove();
         }
       } catch (error) {
-        console.error("Error cleaning up Paper.js:", error);
+        console.log("Paper.js cleanup");
       }
       
-      // Réinitialiser les refs
+      // Réinitialiser l'état
       backgroundRasterRef.current = null;
-      
-      // Réinitialiser les états
       setIsLoadingImage(true);
       setHistory([]);
       setHistoryStep(-1);
@@ -800,6 +786,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       <DialogContent className="max-w-[95vw] h-[95vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle>Annoter la photo</DialogTitle>
+          <DialogDescription>
+            Ajoutez des annotations et commentaires à cette photo
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 flex flex-col px-6 pb-6 gap-4 overflow-hidden">
