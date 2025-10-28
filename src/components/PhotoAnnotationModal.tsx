@@ -102,6 +102,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         canvas.width = rect.width;
         canvas.height = rect.height;
         
+        // Configurer le contexte pour supporter la transparence
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.imageSmoothingEnabled = true;
+        }
+        
         paper.setup(canvas);
 
         console.log("✅ Paper.js setup complete");
@@ -204,6 +211,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           strokeWidth: strokeWidthRef.current,
           strokeCap: "round",
           strokeJoin: "round",
+          fillColor: null,
+          opacity: 1,
         });
         currentPath.add(event.point);
       } else if (toolType === "line" || toolType === "arrow") {
@@ -211,6 +220,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
           strokeCap: "round",
+          fillColor: null,
+          opacity: 1,
         });
         currentPath.add(event.point);
         currentPath.data.type = toolType;
@@ -220,6 +231,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           to: event.point,
           strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
+          fillColor: null,
+          opacity: 1,
         });
       } else if (toolType === "circle") {
         currentPath = new paper.Path.Circle({
@@ -227,6 +240,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           radius: 1,
           strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
+          fillColor: null,
+          opacity: 1,
         });
         currentPath.data.startPoint = event.point;
       } else if (toolType === "text") {
@@ -253,6 +268,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           to: event.point,
           strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
+          fillColor: null,
+          opacity: 1,
         });
       } else if (toolType === "circle" && currentPath) {
         const radius = event.point.getDistance(currentPath.data.startPoint);
@@ -262,6 +279,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           radius: radius,
           strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
+          fillColor: null,
+          opacity: 1,
         });
         currentPath.data.startPoint = event.downPoint;
       } else if (toolType === "select" && selectedItem && !selectedItem.locked) {
@@ -284,6 +303,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         arrowHead.strokeColor = currentPath.strokeColor;
         arrowHead.strokeWidth = currentPath.strokeWidth;
         arrowHead.strokeCap = "round";
+        arrowHead.fillColor = null;
+        arrowHead.opacity = 1;
         arrowHead.data.isArrowHead = true;
         arrowHead.data.parentId = currentPath.id;
       }
@@ -302,6 +323,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     const json = paper.project.exportJSON();
     setHistory((prev) => [...prev.slice(0, historyStep + 1), json]);
     setHistoryStep((prev) => prev + 1);
+    // Force le rendu du canvas
+    paper.view.update();
   };
 
   const handleUndo = () => {
@@ -333,6 +356,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         content: text,
         fillColor: new paper.Color(strokeColorRef.current),
         fontSize: 20,
+        opacity: 1,
       });
       saveToHistory();
     }
