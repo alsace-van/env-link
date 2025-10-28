@@ -103,10 +103,10 @@ const TransformGizmo = ({ position, onMove }: TransformGizmoProps) => {
     };
   }, [activeAxis, dragStart, camera, raycaster, onMove, position]);
 
-  const arrowLength = 2;
-  const arrowRadius = 0.1;
-  const coneHeight = 0.4;
-  const coneRadius = 0.15;
+  const arrowLength = 4;
+  const arrowRadius = 0.2;
+  const coneHeight = 0.8;
+  const coneRadius = 0.3;
 
   return (
     <group position={position}>
@@ -532,7 +532,18 @@ const Scene = ({
         infiniteGrid
       />
 
-      <OrbitControls enableDamping dampingFactor={0.05} minDistance={5} maxDistance={100} enabled={!measureMode && !moveMode} />
+      <OrbitControls 
+        enableDamping 
+        dampingFactor={0.05} 
+        minDistance={5} 
+        maxDistance={100} 
+        enabled={!measureMode}
+        mouseButtons={{
+          LEFT: moveMode ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.ROTATE
+        }}
+      />
     </>
   );
 };
