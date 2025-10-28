@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList } from "lucide-react";
+import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import {
@@ -65,10 +65,27 @@ const AccessoriesCatalogView = () => {
     const saved = localStorage.getItem('accessories-view-mode');
     return (saved as 'list' | 'grid') || 'list';
   });
+  const [expandedMainCategories, setExpandedMainCategories] = useState<Set<string>>(new Set());
+  const [expandedSubCategories, setExpandedSubCategories] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadAccessories();
     loadCategories();
+    // Expand all categories by default on first load
+    const mainCats = new Set<string>();
+    const subCats = new Set<string>();
+    categories.forEach(cat => {
+      if (!cat.parent_id) {
+        mainCats.add(cat.nom);
+      } else {
+        const parent = categories.find(c => c.id === cat.parent_id);
+        if (parent) {
+          subCats.add(`${parent.nom}-${cat.nom}`);
+        }
+      }
+    });
+    setExpandedMainCategories(mainCats);
+    setExpandedSubCategories(subCats);
   }, []);
 
   useEffect(() => {
@@ -242,6 +259,31 @@ const AccessoriesCatalogView = () => {
     }
   };
 
+  const toggleMainCategory = (categoryName: string) => {
+    setExpandedMainCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryName)) {
+        newSet.delete(categoryName);
+      } else {
+        newSet.add(categoryName);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSubCategory = (mainCategoryName: string, subCategoryName: string) => {
+    const key = `${mainCategoryName}-${subCategoryName}`;
+    setExpandedSubCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  };
+
   return (
     <div className="relative">
       <AccessoryCategorySidebar
@@ -312,27 +354,42 @@ const AccessoriesCatalogView = () => {
         </Card>
       ) : viewMode === 'list' ? (
         <div className="space-y-8">
-          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => (
-            <div key={mainCategoryName} className="space-y-4">
-              {/* En-tête de catégorie principale */}
-              <div className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg">
-                <h2 className="text-xl font-bold text-primary">
-                  {mainCategoryName}
-                  <span className="text-sm font-normal text-muted-foreground ml-2">
-                    ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
-                  </span>
-                </h2>
-              </div>
-              
-              {/* Sous-catégories */}
-              <div className="space-y-4 pl-4">
-                {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => (
-                  <div key={subCategoryName} className="space-y-2">
-                    <h3 className="text-lg font-semibold text-muted-foreground border-b pb-1">
-                      {subCategoryName} ({categoryAccessories.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {categoryAccessories.map((accessory) => (
+          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => {
+            const isMainExpanded = expandedMainCategories.has(mainCategoryName);
+            return (
+              <div key={mainCategoryName} className="space-y-4">
+                {/* En-tête de catégorie principale */}
+                <div 
+                  className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg cursor-pointer hover:bg-primary/15 transition-colors flex items-center justify-between"
+                  onClick={() => toggleMainCategory(mainCategoryName)}
+                >
+                  <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                    {isMainExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                    {mainCategoryName}
+                    <span className="text-sm font-normal text-muted-foreground ml-2">
+                      ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
+                    </span>
+                  </h2>
+                </div>
+                
+                {/* Sous-catégories */}
+                {isMainExpanded && (
+                  <div className="space-y-4 pl-4 animate-fade-in">
+                    {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => {
+                      const subKey = `${mainCategoryName}-${subCategoryName}`;
+                      const isSubExpanded = expandedSubCategories.has(subKey);
+                      return (
+                        <div key={subCategoryName} className="space-y-2">
+                          <h3 
+                            className="text-lg font-semibold text-muted-foreground border-b pb-1 cursor-pointer hover:text-foreground transition-colors flex items-center gap-2"
+                            onClick={() => toggleSubCategory(mainCategoryName, subCategoryName)}
+                          >
+                            {isSubExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            {subCategoryName} ({categoryAccessories.length})
+                          </h3>
+                          {isSubExpanded && (
+                            <div className="space-y-2 animate-fade-in">
+                              {categoryAccessories.map((accessory) => (
                   <Card 
                     key={accessory.id} 
                     className="hover:bg-muted/50 transition-colors cursor-move"
@@ -407,37 +464,56 @@ const AccessoriesCatalogView = () => {
                       </div>
                     </CardContent>
                   </Card>
-                      ))}
-                    </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-8">
-          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => (
-            <div key={mainCategoryName} className="space-y-4">
-              {/* En-tête de catégorie principale */}
-              <div className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg">
-                <h2 className="text-xl font-bold text-primary">
-                  {mainCategoryName}
-                  <span className="text-sm font-normal text-muted-foreground ml-2">
-                    ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
-                  </span>
-                </h2>
-              </div>
-              
-              {/* Sous-catégories en grille */}
-              <div className="space-y-4 pl-4">
-                {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => (
-                  <div key={subCategoryName} className="space-y-2">
-                    <h3 className="text-lg font-semibold text-muted-foreground border-b pb-1">
-                      {subCategoryName} ({categoryAccessories.length})
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {categoryAccessories.map((accessory) => (
+          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => {
+            const isMainExpanded = expandedMainCategories.has(mainCategoryName);
+            return (
+              <div key={mainCategoryName} className="space-y-4">
+                {/* En-tête de catégorie principale */}
+                <div 
+                  className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg cursor-pointer hover:bg-primary/15 transition-colors flex items-center justify-between"
+                  onClick={() => toggleMainCategory(mainCategoryName)}
+                >
+                  <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                    {isMainExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                    {mainCategoryName}
+                    <span className="text-sm font-normal text-muted-foreground ml-2">
+                      ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
+                    </span>
+                  </h2>
+                </div>
+                
+                {/* Sous-catégories en grille */}
+                {isMainExpanded && (
+                  <div className="space-y-4 pl-4 animate-fade-in">
+                    {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => {
+                      const subKey = `${mainCategoryName}-${subCategoryName}`;
+                      const isSubExpanded = expandedSubCategories.has(subKey);
+                      return (
+                        <div key={subCategoryName} className="space-y-2">
+                          <h3 
+                            className="text-lg font-semibold text-muted-foreground border-b pb-1 cursor-pointer hover:text-foreground transition-colors flex items-center gap-2"
+                            onClick={() => toggleSubCategory(mainCategoryName, subCategoryName)}
+                          >
+                            {isSubExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            {subCategoryName} ({categoryAccessories.length})
+                          </h3>
+                          {isSubExpanded && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
+                              {categoryAccessories.map((accessory) => (
                   <Card 
                     key={accessory.id}
                     draggable
@@ -544,13 +620,17 @@ const AccessoriesCatalogView = () => {
                       </div>
                     </CardContent>
                   </Card>
-                      ))}
-                    </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
