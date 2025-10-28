@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Square, ArrowRight, Save, Pencil, Type, CircleIcon, Minus, Trash2, Undo, Redo } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import paper from "paper";
+import { Canvas as FabricCanvas, PencilBrush, Line, Rect, Circle, Textbox, Path } from "fabric";
 
 interface Photo {
   id: string;
@@ -27,9 +27,9 @@ interface PhotoAnnotationModalProps {
 const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotationModalProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
-  const isInitializedRef = useRef(false);
 
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
     "select",
@@ -37,380 +37,284 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [comment, setComment] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingImage, setIsLoadingImage] = useState(true);
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [paperInitialized, setPaperInitialized] = useState(false);
+  const [fabricInitialized, setFabricInitialized] = useState(false);
   const [strokeColor, setStrokeColor] = useState("#ef4444");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
-  const [isEditingText, setIsEditingText] = useState(false);
-  const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
 
-  const activeToolRef = useRef(activeTool);
-  const strokeColorRef = useRef(strokeColor);
-  const strokeWidthRef = useRef(strokeWidth);
-
-  useEffect(() => {
-    activeToolRef.current = activeTool;
-  }, [activeTool]);
-
-  useEffect(() => {
-    strokeColorRef.current = strokeColor;
-  }, [strokeColor]);
-
-  useEffect(() => {
-    strokeWidthRef.current = strokeWidth;
-  }, [strokeWidth]);
+  const drawingRef = useRef(false);
+  const startPointRef = useRef<{ x: number; y: number } | null>(null);
+  const currentShapeRef = useRef<any>(null);
 
   useEffect(() => {
     if (photo) {
       setComment(photo.comment || "");
-      setImageLoaded(false);
-      setPaperInitialized(false);
+      setFabricInitialized(false);
+      setIsLoadingImage(true);
     }
   }, [photo]);
 
-  // Initialiser Paper.js après chargement de l'image
+  // Initialiser Fabric.js après chargement de l'image
   useEffect(() => {
-    if (!imageLoaded || !canvasRef.current || !imageRef.current || !containerRef.current || paperInitialized) {
+    if (!canvasRef.current || !containerRef.current || !imageRef.current || fabricInitialized || isLoadingImage) {
       return;
     }
 
-    let mounted = true;
-
-    const initPaper = async () => {
-      console.log("🔵 Starting Paper.js initialization...");
-
+    const initFabric = async () => {
       try {
         const canvas = canvasRef.current;
-        const img = imageRef.current;
         const container = containerRef.current;
 
-        if (!canvas || !img || !container) {
-          console.log("❌ Missing refs");
-          return;
-        }
+        if (!canvas || !container) return;
 
-        // Setup Paper.js avec le canvas
-        console.log("🔵 Setting up Paper.js...");
-        
-        // Obtenir les dimensions du conteneur
         const rect = container.getBoundingClientRect();
-        console.log("🔵 Container dimensions:", rect.width, "x", rect.height);
         
-        // IMPORTANT: Définir les dimensions réelles du canvas en pixels
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        
-        // Configurer le contexte pour supporter la transparence
-        const ctx = canvas.getContext('2d', { alpha: true });
-        if (ctx) {
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.imageSmoothingEnabled = true;
-          console.log("✅ Canvas context configured with alpha");
-        }
-        
-        paper.setup(canvas);
-        
-        // S'assurer que le fond du canvas est transparent
-        if (paper.project && paper.project.activeLayer) {
-          paper.project.activeLayer.opacity = 1;
-          console.log("✅ Active layer opacity set to 1");
-        }
+        // Créer le canvas Fabric
+        const fabricCanvas = new FabricCanvas(canvas, {
+          width: rect.width,
+          height: rect.height,
+          backgroundColor: undefined,
+          selection: activeTool === "select",
+        });
 
-        console.log("✅ Paper.js setup complete");
+        fabricCanvasRef.current = fabricCanvas;
 
-        // Définir la taille de la vue
-        paper.view.viewSize = new paper.Size(rect.width, rect.height);
-        console.log("✅ View size set");
-
-        // Sauvegarder l'état initial (projet vide)
-        if (paper.project) {
-          const json = paper.project.exportJSON();
-          setHistory([json]);
-          setHistoryStep(0);
-          console.log("✅ Initial state saved");
+        // Initialiser le brush pour le dessin libre
+        if (fabricCanvas.freeDrawingBrush) {
+          fabricCanvas.freeDrawingBrush.color = strokeColor;
+          fabricCanvas.freeDrawingBrush.width = strokeWidth;
         }
 
         // Charger les annotations si présentes
         if (photo?.annotations) {
           try {
-            console.log("🔵 Loading annotations...");
-            paper.project.importJSON(photo.annotations);
-            paper.view.update();
+            await fabricCanvas.loadFromJSON(photo.annotations);
+            fabricCanvas.renderAll();
             console.log("✅ Annotations loaded");
           } catch (error) {
             console.error("❌ Error loading annotations:", error);
           }
         }
 
-        // Setup des event handlers
-        console.log("🔵 Setting up drawing handlers...");
-        setupDrawingHandlers();
-        
-        isInitializedRef.current = true;
+        // Sauvegarder l'état initial
+        const initialState = fabricCanvas.toJSON();
+        setHistory([JSON.stringify(initialState)]);
+        setHistoryStep(0);
 
-        setPaperInitialized(true);
-        console.log("✅✅✅ Paper.js initialized successfully! ✅✅✅");
+        setFabricInitialized(true);
         toast.success("Outils d'annotation prêts!", { duration: 2000 });
       } catch (error) {
-        console.error("❌❌❌ Error initializing Paper.js:", error);
+        console.error("❌ Error initializing Fabric.js:", error);
         toast.error("Les outils d'annotation ne peuvent pas être chargés");
       }
     };
 
-    // Petit délai pour s'assurer que tout est prêt
-    const timeoutId = setTimeout(() => {
-      if (mounted) initPaper();
-    }, 100);
+    const timeoutId = setTimeout(initFabric, 100);
 
     return () => {
-      mounted = false;
       clearTimeout(timeoutId);
-      // Nettoyer Paper.js
-      if (isInitializedRef.current) {
-        try {
-          if (paper.project) {
-            paper.project.clear();
-          }
-          if (paper.view) {
-            paper.view.remove();
-          }
-          isInitializedRef.current = false;
-        } catch (e) {
-          console.log("Cleanup skipped");
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.dispose();
+        fabricCanvasRef.current = null;
+      }
+    };
+  }, [isLoadingImage, fabricInitialized, photo, activeTool, strokeColor, strokeWidth]);
+
+  // Gérer les outils
+  useEffect(() => {
+    if (!fabricCanvasRef.current) return;
+
+    const canvas = fabricCanvasRef.current;
+
+    // Désactiver tous les modes
+    canvas.isDrawingMode = false;
+    canvas.selection = false;
+    canvas.forEachObject((obj) => {
+      obj.selectable = false;
+      obj.evented = false;
+    });
+
+    // Nettoyer les event listeners
+    canvas.off("mouse:down");
+    canvas.off("mouse:move");
+    canvas.off("mouse:up");
+
+    if (activeTool === "select") {
+      canvas.selection = true;
+      canvas.forEachObject((obj) => {
+        obj.selectable = true;
+        obj.evented = true;
+      });
+    } else if (activeTool === "draw") {
+      canvas.isDrawingMode = true;
+      if (canvas.freeDrawingBrush) {
+        canvas.freeDrawingBrush.color = strokeColor;
+        canvas.freeDrawingBrush.width = strokeWidth;
+      }
+    } else if (["rectangle", "circle", "line", "arrow"].includes(activeTool)) {
+      setupShapeDrawing();
+    } else if (activeTool === "text") {
+      setupTextDrawing();
+    }
+  }, [activeTool, strokeColor, strokeWidth, fabricInitialized]);
+
+  const setupShapeDrawing = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    canvas.on("mouse:down", (o) => {
+      drawingRef.current = true;
+      const pointer = canvas.getPointer(o.e);
+      startPointRef.current = { x: pointer.x, y: pointer.y };
+
+      if (activeTool === "rectangle") {
+        const rect = new Rect({
+          left: pointer.x,
+          top: pointer.y,
+          width: 0,
+          height: 0,
+          fill: "transparent",
+          stroke: strokeColor,
+          strokeWidth: strokeWidth,
+        });
+        canvas.add(rect);
+        currentShapeRef.current = rect;
+      } else if (activeTool === "circle") {
+        const circle = new Circle({
+          left: pointer.x,
+          top: pointer.y,
+          radius: 0,
+          fill: "transparent",
+          stroke: strokeColor,
+          strokeWidth: strokeWidth,
+        });
+        canvas.add(circle);
+        currentShapeRef.current = circle;
+      } else if (activeTool === "line" || activeTool === "arrow") {
+        const line = new Line([pointer.x, pointer.y, pointer.x, pointer.y], {
+          stroke: strokeColor,
+          strokeWidth: strokeWidth,
+        });
+        canvas.add(line);
+        currentShapeRef.current = line;
+      }
+    });
+
+    canvas.on("mouse:move", (o) => {
+      if (!drawingRef.current || !currentShapeRef.current || !startPointRef.current) return;
+
+      const pointer = canvas.getPointer(o.e);
+      const shape = currentShapeRef.current;
+
+      if (activeTool === "rectangle") {
+        const width = pointer.x - startPointRef.current.x;
+        const height = pointer.y - startPointRef.current.y;
+        shape.set({ width: Math.abs(width), height: Math.abs(height) });
+        if (width < 0) shape.set({ left: pointer.x });
+        if (height < 0) shape.set({ top: pointer.y });
+      } else if (activeTool === "circle") {
+        const radius = Math.sqrt(
+          Math.pow(pointer.x - startPointRef.current.x, 2) + 
+          Math.pow(pointer.y - startPointRef.current.y, 2)
+        );
+        shape.set({ radius });
+      } else if (activeTool === "line" || activeTool === "arrow") {
+        shape.set({ x2: pointer.x, y2: pointer.y });
+      }
+
+      canvas.renderAll();
+    });
+
+    canvas.on("mouse:up", () => {
+      if (drawingRef.current && currentShapeRef.current) {
+        if (activeTool === "arrow") {
+          addArrowHead(currentShapeRef.current);
         }
-      }
-    };
-  }, [imageLoaded, paperInitialized, photo]);
-
-  const setupDrawingHandlers = () => {
-    console.log("🔵 setupDrawingHandlers called");
-
-    let currentPath: any = null;
-    let selectedItem: any = null;
-
-    const tool = new paper.Tool();
-    console.log("✅ Tool created");
-
-    // Ajouter un log pour voir si les événements de souris sont détectés
-    tool.onMouseMove = (event: any) => {
-      console.log("🖱️ Mouse move detected at:", event.point);
-    };
-
-    tool.onMouseDown = (event: any) => {
-      const toolType = activeToolRef.current;
-      console.log("🖱️ Mouse down - Tool:", toolType, "Point:", event.point);
-
-      if (toolType === "select") {
-        const hitResult = paper.project.hitTest(event.point, {
-          segments: true,
-          stroke: true,
-          fill: true,
-          tolerance: 5,
-        });
-
-        if (hitResult && !hitResult.item.locked) {
-          if (selectedItem) selectedItem.selected = false;
-          selectedItem = hitResult.item;
-          selectedItem.selected = true;
-        } else {
-          if (selectedItem) selectedItem.selected = false;
-          selectedItem = null;
-        }
-      } else if (toolType === "draw") {
-        currentPath = new paper.Path({
-          strokeColor: new paper.Color(strokeColorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          strokeCap: "round",
-          strokeJoin: "round",
-          fillColor: null,
-        });
-        currentPath.add(event.point);
-        console.log("✏️ Path created - Color:", strokeColorRef.current, "Width:", strokeWidthRef.current, "Opacity:", currentPath.opacity);
-        console.log("✏️ Path bounds:", currentPath.bounds);
-        console.log("✏️ Active layer children count:", paper.project.activeLayer.children.length);
-        paper.view.update();
-      } else if (toolType === "line" || toolType === "arrow") {
-        currentPath = new paper.Path({
-          strokeColor: new paper.Color(strokeColorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          strokeCap: "round",
-          fillColor: null,
-          opacity: 1,
-        });
-        currentPath.add(event.point);
-        currentPath.data.type = toolType;
-      } else if (toolType === "rectangle") {
-        currentPath = new paper.Path.Rectangle({
-          from: event.point,
-          to: event.point,
-          strokeColor: new paper.Color(strokeColorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          fillColor: null,
-        });
-        console.log("📐 Rectangle created at:", event.point);
-      } else if (toolType === "circle") {
-        currentPath = new paper.Path.Circle({
-          center: event.point,
-          radius: 1,
-          strokeColor: new paper.Color(strokeColorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          fillColor: null,
-          opacity: 1,
-        });
-        currentPath.data.startPoint = event.point;
-      } else if (toolType === "text") {
-        setTextInputPosition({ x: event.point.x, y: event.point.y });
-        setIsEditingText(true);
-      }
-    };
-
-    tool.onMouseDrag = (event: any) => {
-      const toolType = activeToolRef.current;
-
-      if (toolType === "draw" && currentPath) {
-        currentPath.add(event.point);
-        paper.view.update();
-      } else if (toolType === "line" || toolType === "arrow") {
-        if (currentPath && currentPath.segments.length === 2) {
-          currentPath.segments[1].point = event.point;
-        } else if (currentPath) {
-          currentPath.add(event.point);
-        }
-      } else if (toolType === "rectangle" && currentPath) {
-        currentPath.remove();
-        currentPath = new paper.Path.Rectangle({
-          from: event.downPoint,
-          to: event.point,
-          strokeColor: new paper.Color(strokeColorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          fillColor: null,
-          opacity: 1,
-        });
-      } else if (toolType === "circle" && currentPath) {
-        const radius = event.point.getDistance(currentPath.data.startPoint);
-        currentPath.remove();
-        currentPath = new paper.Path.Circle({
-          center: currentPath.data.startPoint,
-          radius: radius,
-          strokeColor: new paper.Color(strokeColorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          fillColor: null,
-          opacity: 1,
-        });
-        currentPath.data.startPoint = event.downPoint;
-      } else if (toolType === "select" && selectedItem && !selectedItem.locked) {
-        selectedItem.position = selectedItem.position.add(event.delta);
-      }
-    };
-
-    tool.onMouseUp = (event: any) => {
-      const toolType = activeToolRef.current;
-      console.log("🖱️ Mouse up - Tool:", toolType);
-
-      if (toolType === "arrow" && currentPath) {
-        const vector = currentPath.lastSegment.point.subtract(currentPath.firstSegment.point);
-        const arrowVector = vector.normalize(10);
-
-        const arrowHead = new paper.Path([
-          currentPath.lastSegment.point.add(arrowVector.rotate(150)),
-          currentPath.lastSegment.point,
-          currentPath.lastSegment.point.add(arrowVector.rotate(-150)),
-        ]);
-        arrowHead.strokeColor = currentPath.strokeColor;
-        arrowHead.strokeWidth = currentPath.strokeWidth;
-        arrowHead.strokeCap = "round";
-        arrowHead.fillColor = null;
-        arrowHead.opacity = 1;
-        arrowHead.data.isArrowHead = true;
-        arrowHead.data.parentId = currentPath.id;
-      }
-
-      if (currentPath) {
-        console.log("💾 Saving path to history");
-        paper.view.update();
         saveToHistory();
       }
-      currentPath = null;
-    };
+      drawingRef.current = false;
+      startPointRef.current = null;
+      currentShapeRef.current = null;
+    });
+  };
 
-    // IMPORTANT: Activer le tool pour capturer les événements
-    tool.activate();
-    console.log("✅ Tool activated");
-    console.log("✅ Drawing handlers setup complete");
+  const addArrowHead = (line: any) => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    const x1 = line.x1 || 0;
+    const y1 = line.y1 || 0;
+    const x2 = line.x2 || 0;
+    const y2 = line.y2 || 0;
+
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const headLength = 15;
+    
+    const arrowHead = new Path(
+      `M ${x2} ${y2} L ${x2 - headLength * Math.cos(angle - Math.PI / 6)} ${y2 - headLength * Math.sin(angle - Math.PI / 6)} M ${x2} ${y2} L ${x2 - headLength * Math.cos(angle + Math.PI / 6)} ${y2 - headLength * Math.sin(angle + Math.PI / 6)}`,
+      {
+        stroke: strokeColor,
+        strokeWidth: strokeWidth,
+        fill: "transparent",
+      }
+    );
+
+    canvas.add(arrowHead);
+  };
+
+  const setupTextDrawing = () => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    canvas.on("mouse:down", (o) => {
+      const pointer = canvas.getPointer(o.e);
+      const text = new Textbox("Texte", {
+        left: pointer.x,
+        top: pointer.y,
+        fill: strokeColor,
+        fontSize: 20,
+        editable: true,
+      });
+      canvas.add(text);
+      canvas.setActiveObject(text);
+      text.enterEditing();
+      saveToHistory();
+    });
   };
 
   const saveToHistory = () => {
-    if (!paper.project) return;
-    const json = paper.project.exportJSON();
+    if (!fabricCanvasRef.current) return;
+    const json = JSON.stringify(fabricCanvasRef.current.toJSON());
     setHistory((prev) => [...prev.slice(0, historyStep + 1), json]);
     setHistoryStep((prev) => prev + 1);
-    // Force le rendu du canvas
-    paper.view.update();
   };
 
-  const handleUndo = () => {
-    if (historyStep <= 0 || !paper.project) return;
+  const handleUndo = async () => {
+    if (historyStep <= 0 || !fabricCanvasRef.current) return;
     const newStep = historyStep - 1;
     setHistoryStep(newStep);
-    paper.project.clear();
-    paper.project.importJSON(history[newStep]);
-    paper.view.update();
+    await fabricCanvasRef.current.loadFromJSON(JSON.parse(history[newStep]));
+    fabricCanvasRef.current.renderAll();
   };
 
-  const handleRedo = () => {
-    if (historyStep >= history.length - 1 || !paper.project) return;
+  const handleRedo = async () => {
+    if (historyStep >= history.length - 1 || !fabricCanvasRef.current) return;
     const newStep = historyStep + 1;
     setHistoryStep(newStep);
-    paper.project.clear();
-    paper.project.importJSON(history[newStep]);
-    paper.view.update();
-  };
-
-  const handleTextSubmit = () => {
-    if (!textInputRef.current || !paper.project) return;
-
-    const text = textInputRef.current.value.trim();
-
-    if (text) {
-      new paper.PointText({
-        point: [textInputPosition.x, textInputPosition.y],
-        content: text,
-        fillColor: new paper.Color(strokeColorRef.current),
-        fontSize: 20,
-        opacity: 1,
-      });
-      saveToHistory();
-    }
-
-    setIsEditingText(false);
-  };
-
-  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleTextSubmit();
-    } else if (e.key === "Escape") {
-      setIsEditingText(false);
-    }
+    await fabricCanvasRef.current.loadFromJSON(JSON.parse(history[newStep]));
+    fabricCanvasRef.current.renderAll();
   };
 
   const handleDelete = () => {
-    if (!paper.project) return;
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
 
-    const selectedItems = paper.project.activeLayer.children.filter((item: any) => item.selected && !item.locked);
-
-    if (selectedItems.length > 0) {
-      selectedItems.forEach((item: any) => {
-        if (item.data.type === "arrow") {
-          paper.project.activeLayer.children.forEach((child: any) => {
-            if (child.data.isArrowHead && child.data.parentId === item.id) {
-              child.remove();
-            }
-          });
-        }
-        item.remove();
-      });
+    const activeObjects = canvas.getActiveObjects();
+    if (activeObjects.length > 0) {
+      activeObjects.forEach((obj) => canvas.remove(obj));
+      canvas.discardActiveObject();
+      canvas.renderAll();
       saveToHistory();
       toast.success("Élément supprimé");
     }
@@ -424,8 +328,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     try {
       let annotationsJSON = null;
 
-      if (paperInitialized && paper.project) {
-        annotationsJSON = paper.project.exportJSON();
+      if (fabricInitialized && fabricCanvasRef.current) {
+        annotationsJSON = fabricCanvasRef.current.toJSON();
       }
 
       const { error } = await supabase
@@ -480,7 +384,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                   onClick={() => setActiveTool(tool.name as any)}
                   className="h-8 w-8 p-0"
                   title={tool.label}
-                  disabled={!paperInitialized}
+                  disabled={!fabricInitialized}
                 >
                   {tool.icon && <tool.icon className="h-4 w-4" />}
                   {tool.name === "select" && "↖"}
@@ -497,7 +401,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 onChange={(e) => setStrokeColor(e.target.value)}
                 className="h-8 w-12 rounded cursor-pointer"
                 title="Couleur"
-                disabled={!paperInitialized}
+                disabled={!fabricInitialized}
               />
               <input
                 type="range"
@@ -507,7 +411,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 onChange={(e) => setStrokeWidth(Number(e.target.value))}
                 className="w-24"
                 title={`Épaisseur: ${strokeWidth}px`}
-                disabled={!paperInitialized}
+                disabled={!fabricInitialized}
               />
             </div>
 
@@ -517,7 +421,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               variant="ghost"
               size="sm"
               onClick={handleUndo}
-              disabled={historyStep <= 0 || !paperInitialized}
+              disabled={historyStep <= 0 || !fabricInitialized}
               className="h-8 w-8 p-0"
               title="Annuler"
             >
@@ -527,7 +431,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               variant="ghost"
               size="sm"
               onClick={handleRedo}
-              disabled={historyStep >= history.length - 1 || !paperInitialized}
+              disabled={historyStep >= history.length - 1 || !fabricInitialized}
               className="h-8 w-8 p-0"
               title="Rétablir"
             >
@@ -542,20 +446,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               onClick={handleDelete}
               className="h-8 w-8 p-0"
               title="Supprimer"
-              disabled={!paperInitialized}
+              disabled={!fabricInitialized}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
 
-            {paperInitialized && <span className="text-xs text-green-600 font-semibold ml-2">✅ Outils actifs</span>}
-            {!paperInitialized && imageLoaded && (
+            {fabricInitialized && <span className="text-xs text-green-600 font-semibold ml-2">✅ Outils actifs</span>}
+            {!fabricInitialized && !isLoadingImage && (
               <span className="text-xs text-yellow-600 font-semibold ml-2 animate-pulse">⏳ Chargement...</span>
             )}
           </div>
 
           {/* Image Container */}
-          <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]" style={{ pointerEvents: 'none' }}>
-            {/* Image de base - TOUJOURS VISIBLE */}
+          <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]">
+            {/* Image de base */}
             <img
               ref={imageRef}
               src={photo.url}
@@ -563,9 +467,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               style={{ zIndex: 1 }}
               onLoad={() => {
-                console.log("✅ Image loaded in DOM");
+                console.log("✅ Image loaded");
                 setIsLoadingImage(false);
-                setImageLoaded(true);
               }}
               onError={(e) => {
                 console.error("❌ Image error:", e);
@@ -574,43 +477,17 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               }}
             />
 
-            {/* Canvas Paper.js - PAR-DESSUS l'image avec fond transparent */}
+            {/* Canvas Fabric.js */}
             <canvas
               ref={canvasRef}
-              data-paper-resize="true"
-              className="absolute inset-0 w-full h-full"
-              style={{
-                cursor: activeTool === "select" ? "default" : "crosshair",
-                zIndex: 10,
-                pointerEvents: 'auto',
-                touchAction: 'none',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-              }}
-              onMouseMove={(e) => console.log("🖱️ Native mouse move on canvas")}
-              onClick={(e) => console.log("🖱️ Native click on canvas")}
+              className="absolute inset-0"
+              style={{ zIndex: 10 }}
             />
 
             {isLoadingImage && (
-              <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
+              <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-20">
                 <div className="text-muted-foreground">Chargement de l'image...</div>
               </div>
-            )}
-
-            {isEditingText && (
-              <input
-                ref={textInputRef}
-                type="text"
-                className="absolute border-2 border-primary bg-background px-2 py-1 rounded z-20"
-                style={{
-                  left: `${textInputPosition.x}px`,
-                  top: `${textInputPosition.y}px`,
-                }}
-                onBlur={handleTextSubmit}
-                onKeyDown={handleTextKeyDown}
-                autoFocus
-              />
             )}
           </div>
 
