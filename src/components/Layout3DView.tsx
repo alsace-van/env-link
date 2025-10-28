@@ -118,57 +118,60 @@ const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformG
 
   return (
     <group position={position}>
-      {/* Flèche X (rouge) */}
+      {/* Flèche X (rouge) - vers la droite */}
       <group rotation={[0, 0, -Math.PI / 2]}>
         <mesh 
-          position={[arrowLength / 2, 0, 0]}
+          position={[0, arrowLength / 2, 0]}
           onPointerDown={(e) => handleAxisPointerDown('x', e)}
         >
           <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
-          <meshBasicMaterial color={activeAxis === 'x' ? "#ffff00" : "#ff0000"} />
+          <meshBasicMaterial color={activeAxis === 'x' ? "#ffaa00" : "#ff0000"} depthTest={false} />
         </mesh>
         <mesh 
-          position={[arrowLength + coneHeight / 2, 0, 0]}
+          position={[0, arrowLength + coneHeight / 2, 0]}
+          rotation={[Math.PI, 0, 0]}
           onPointerDown={(e) => handleAxisPointerDown('x', e)}
         >
           <coneGeometry args={[coneRadius, coneHeight, 8]} />
-          <meshBasicMaterial color={activeAxis === 'x' ? "#ffff00" : "#ff0000"} />
+          <meshBasicMaterial color={activeAxis === 'x' ? "#ffaa00" : "#ff0000"} depthTest={false} />
         </mesh>
       </group>
 
-      {/* Flèche Y (vert) */}
+      {/* Flèche Y (verte) - vers le haut */}
       <group>
         <mesh 
           position={[0, arrowLength / 2, 0]}
           onPointerDown={(e) => handleAxisPointerDown('y', e)}
         >
           <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
-          <meshBasicMaterial color={activeAxis === 'y' ? "#ffff00" : "#00ff00"} />
+          <meshBasicMaterial color={activeAxis === 'y' ? "#88ff00" : "#00ff00"} depthTest={false} />
         </mesh>
         <mesh 
           position={[0, arrowLength + coneHeight / 2, 0]}
+          rotation={[Math.PI, 0, 0]}
           onPointerDown={(e) => handleAxisPointerDown('y', e)}
         >
           <coneGeometry args={[coneRadius, coneHeight, 8]} />
-          <meshBasicMaterial color={activeAxis === 'y' ? "#ffff00" : "#00ff00"} />
+          <meshBasicMaterial color={activeAxis === 'y' ? "#88ff00" : "#00ff00"} depthTest={false} />
         </mesh>
       </group>
 
-      {/* Flèche Z (bleu) */}
+      {/* Flèche Z (bleue) - vers l'avant */}
       <group rotation={[Math.PI / 2, 0, 0]}>
         <mesh 
           position={[0, arrowLength / 2, 0]}
           onPointerDown={(e) => handleAxisPointerDown('z', e)}
         >
           <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
-          <meshBasicMaterial color={activeAxis === 'z' ? "#ffff00" : "#0000ff"} />
+          <meshBasicMaterial color={activeAxis === 'z' ? "#00aaff" : "#0000ff"} depthTest={false} />
         </mesh>
         <mesh 
           position={[0, arrowLength + coneHeight / 2, 0]}
+          rotation={[Math.PI, 0, 0]}
           onPointerDown={(e) => handleAxisPointerDown('z', e)}
         >
           <coneGeometry args={[coneRadius, coneHeight, 8]} />
-          <meshBasicMaterial color={activeAxis === 'z' ? "#ffff00" : "#0000ff"} />
+          <meshBasicMaterial color={activeAxis === 'z' ? "#00aaff" : "#0000ff"} depthTest={false} />
         </mesh>
       </group>
     </group>
@@ -1073,7 +1076,7 @@ export const Layout3DView = ({
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
-                <ArrowRight className="w-3 h-3 text-red-500" />
+                <ArrowRight className="w-3 h-3" style={{ color: '#ff0000' }} />
                 Axe X (Largeur)
               </Label>
               <Input
@@ -1086,7 +1089,7 @@ export const Layout3DView = ({
             </div>
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
-                <ArrowUp className="w-3 h-3 text-green-500" />
+                <ArrowUp className="w-3 h-3" style={{ color: '#00ff00' }} />
                 Axe Y (Hauteur)
               </Label>
               <Input
@@ -1099,7 +1102,7 @@ export const Layout3DView = ({
             </div>
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
-                <ArrowDown className="w-3 h-3 text-blue-500" />
+                <ArrowRight className="w-3 h-3" style={{ color: '#0000ff' }} />
                 Axe Z (Profondeur)
               </Label>
               <Input
