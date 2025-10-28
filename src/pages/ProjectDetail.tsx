@@ -47,9 +47,16 @@ import logo from "@/assets/logo.png";
 interface Project {
   id: string;
   nom_proprietaire: string;
+  nom_projet?: string;
   adresse_proprietaire?: string;
   telephone_proprietaire?: string;
   email_proprietaire?: string;
+  numero_chassis?: string;
+  immatriculation?: string;
+  type_mine?: string;
+  date_mise_circulation?: string;
+  marque_custom?: string;
+  modele_custom?: string;
   longueur_mm?: number;
   largeur_mm?: number;
   hauteur_mm?: number;
@@ -257,24 +264,64 @@ const ProjectDetail = () => {
             </CardHeader>
             {!isProjectInfoCollapsed && (
               <CardContent className="space-y-4">
+                {/* Informations générales */}
+                <div className="space-y-2 pb-3 border-b">
+                  {project.nom_projet && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground w-32">Nom du projet :</span>
+                      <p className="font-medium">{project.nom_projet}</p>
+                    </div>
+                  )}
+                  {project.numero_chassis && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground w-32">N° de châssis :</span>
+                      <p className="font-medium">{project.numero_chassis}</p>
+                    </div>
+                  )}
+                  {project.immatriculation && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground w-32">Immatriculation :</span>
+                      <p className="font-medium">{project.immatriculation}</p>
+                    </div>
+                  )}
+                  {project.type_mine && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground w-32">Type mine :</span>
+                      <p className="font-medium">{project.type_mine}</p>
+                    </div>
+                  )}
+                  {project.date_mise_circulation && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground w-32">Date de circulation :</span>
+                      <p className="font-medium">{new Date(project.date_mise_circulation).toLocaleDateString('fr-FR')}</p>
+                    </div>
+                  )}
+                  {(project.marque_custom || project.modele_custom) && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground w-32">Véhicule :</span>
+                      <p className="font-medium">{project.marque_custom} {project.modele_custom}</p>
+                    </div>
+                  )}
+                </div>
+
                 {/* Contact */}
                 {(project.adresse_proprietaire || project.telephone_proprietaire || project.email_proprietaire) && (
                   <div className="space-y-2 pb-3 border-b">
                     {project.adresse_proprietaire && (
                       <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">Adresse :</span>
+                        <span className="text-muted-foreground w-32">Adresse :</span>
                         <p className="font-medium">{project.adresse_proprietaire}</p>
                       </div>
                     )}
                     {project.telephone_proprietaire && (
                       <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">Téléphone :</span>
+                        <span className="text-muted-foreground w-32">Téléphone :</span>
                         <p className="font-medium">{project.telephone_proprietaire}</p>
                       </div>
                     )}
                     {project.email_proprietaire && (
                       <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">Email :</span>
+                        <span className="text-muted-foreground w-32">Email :</span>
                         <p className="font-medium">{project.email_proprietaire}</p>
                       </div>
                     )}
