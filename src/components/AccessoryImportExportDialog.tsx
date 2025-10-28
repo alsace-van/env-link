@@ -593,7 +593,27 @@ const AccessoryImportExportDialog = ({
                 Copiez des lignes depuis Excel, Google Sheets ou Numbers et collez-les ici.
               </p>
               <div className="space-y-2">
-                <Label>Tableau à copier-coller dans votre tableur</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Tableau à copier-coller dans votre tableur</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const headers = "Nom\tCatégorie\tPrix référence\tPrix vente TTC\tMarge %\tFournisseur\tDescription\tURL produit\tType électrique\tPoids (kg)\tLongueur (mm)\tLargeur (mm)\tHauteur (mm)";
+                      const emptyRow = "\t\t\t\t\t\t\t\t\t\t\t\t";
+                      const tableText = headers + "\n" + emptyRow;
+                      navigator.clipboard.writeText(tableText).then(() => {
+                        toast.success("Tableau copié ! Collez-le dans Excel/Sheets");
+                      }).catch(() => {
+                        toast.error("Erreur lors de la copie");
+                      });
+                    }}
+                  >
+                    <ClipboardPaste className="h-4 w-4 mr-2" />
+                    Copier le tableau
+                  </Button>
+                </div>
                 <div className="border rounded-lg overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-muted">
