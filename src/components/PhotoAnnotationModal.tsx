@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Square, ArrowRight, Save, Pencil, Type, CircleIcon, Minus, Trash2, Undo, Redo } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import paper from "paper";
 
 interface Photo {
   id: string;
@@ -24,11 +23,13 @@ interface PhotoAnnotationModalProps {
   onSave: () => void;
 }
 
-const SNAP_ANGLE_THRESHOLD = 15;
-
+/**
+ * VERSION HYBRIDE - Affiche l'image directement, Paper.js optionnel
+ */
 const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotationModalProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
@@ -37,18 +38,18 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const [comment, setComment] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingImage, setIsLoadingImage] = useState(true);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [paperInitialized, setPaperInitialized] = useState(false);
   const [strokeColor, setStrokeColor] = useState("#ef4444");
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(-1);
   const [isEditingText, setIsEditingText] = useState(false);
   const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
-  const [editingTextItem, setEditingTextItem] = useState<paper.PointText | null>(null);
 
   const activeToolRef = useRef(activeTool);
   const strokeColorRef = useRef(strokeColor);
   const strokeWidthRef = useRef(strokeWidth);
-  const backgroundRasterRef = useRef<paper.Raster | null>(null);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -65,81 +66,49 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   useEffect(() => {
     if (photo) {
       setComment(photo.comment || "");
+      setImageLoaded(false);
+      setPaperInitialized(false);
     }
   }, [photo]);
 
+  // Initialiser Paper.js seulement après que l'image soit chargée
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === "Delete" || e.key === "Backspace") && !isEditingText) {
-        e.preventDefault();
-        handleDelete();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isEditingText]);
-
-  // Initialisation Canvas avec Paper.js
-  useEffect(() => {
-    if (!isOpen || !photo || !canvasRef.current || !containerRef.current) {
+    if (!imageLoaded || !canvasRef.current || !imageRef.current || paperInitialized) {
       return;
     }
 
-    let mounted = true;
-
-    const initCanvas = async () => {
-      if (!mounted || !canvasRef.current || !containerRef.current) return;
-
-      setIsLoadingImage(true);
-
+    const initPaper = async () => {
       try {
-        const container = containerRef.current;
+        const paper = await import("paper");
         const canvasElement = canvasRef.current;
+        const img = imageRef.current;
 
-        // Nettoyer Paper.js avant setup
+        if (!canvasElement || !img) return;
+
+        // Nettoyer avant setup
         try {
           if (paper.project) paper.project.remove();
           if (paper.view) paper.view.remove();
-        } catch (e) {
-          // Ignore les erreurs de nettoyage
-        }
+        } catch (e) {}
 
         // Setup Paper.js
         paper.setup(canvasElement);
 
-        const containerWidth = container.clientWidth || 800;
-        const containerHeight = container.clientHeight || 600;
+        // Obtenir les dimensions du conteneur
+        const rect = canvasElement.getBoundingClientRect();
+        paper.view.viewSize = new paper.Size(rect.width, rect.height);
 
-        paper.view.viewSize = new paper.Size(containerWidth, containerHeight);
-
-        // Charger l'image via Image element puis Paper.js Raster
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = reject;
-          img.src = photo.url;
-        });
-
-        if (!mounted) return;
-
-        // Créer le raster avec l'image chargée
+        // Créer le raster depuis l'image déjà chargée
         const raster = new paper.Raster(img);
 
         // Attendre que le raster soit prêt
-        await new Promise<void>((resolve) => {
-          if (raster.loaded) {
-            resolve();
-          } else {
+        if (!raster.loaded) {
+          await new Promise<void>((resolve) => {
             raster.onLoad = () => resolve();
-          }
-        });
+          });
+        }
 
-        if (!mounted) return;
-
-        // Adapter l'image au canvas
+        // Adapter au canvas
         const scale = Math.min(
           (paper.view.viewSize.width - 40) / raster.width,
           (paper.view.viewSize.height - 40) / raster.height,
@@ -150,16 +119,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         raster.position = paper.view.center;
         raster.locked = true;
 
-        backgroundRasterRef.current = raster;
         paper.view.update();
 
-        if (mounted) {
-          setIsLoadingImage(false);
-          saveToHistory();
-        }
+        // Sauvegarder l'état initial
+        saveToHistory(paper);
 
-        // Charger les annotations
-        if (photo.annotations && mounted) {
+        // Charger les annotations si présentes
+        if (photo?.annotations) {
           try {
             paper.project.importJSON(photo.annotations);
             paper.project.activeLayer.children.forEach((item) => {
@@ -173,203 +139,205 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           }
         }
 
-        // Setup des event handlers pour le dessin
-        setupDrawingHandlers();
+        // Setup des event handlers
+        setupDrawingHandlers(paper);
+
+        setPaperInitialized(true);
+        console.log("✅ Paper.js initialized successfully");
       } catch (error) {
-        console.error("Error initializing canvas:", error);
-        if (mounted) {
-          toast.error("Erreur lors du chargement de l'image");
-          setIsLoadingImage(false);
-        }
+        console.error("❌ Error initializing Paper.js:", error);
+        toast.error("Les outils d'annotation ne sont pas disponibles");
       }
     };
 
-    const setupDrawingHandlers = () => {
-      let currentPath: paper.Path | null = null;
-      let selectedItem: paper.Item | null = null;
+    initPaper();
+  }, [imageLoaded, paperInitialized, photo]);
 
-      const tool = new paper.Tool();
+  const setupDrawingHandlers = (paper: any) => {
+    let currentPath: any = null;
+    let selectedItem: any = null;
 
-      tool.onMouseDown = (event: paper.ToolEvent) => {
-        const tool = activeToolRef.current;
+    const tool = new paper.Tool();
 
-        if (tool === "select") {
-          const hitResult = paper.project.hitTest(event.point, {
-            segments: true,
-            stroke: true,
-            fill: true,
-            tolerance: 5,
-          });
+    tool.onMouseDown = (event: any) => {
+      const toolType = activeToolRef.current;
 
-          if (hitResult && !hitResult.item.locked) {
-            if (selectedItem) selectedItem.selected = false;
-            selectedItem = hitResult.item;
-            selectedItem.selected = true;
-          } else {
-            if (selectedItem) selectedItem.selected = false;
-            selectedItem = null;
-          }
-        } else if (tool === "draw") {
-          currentPath = new paper.Path({
-            strokeColor: new paper.Color(strokeColorRef.current),
-            strokeWidth: strokeWidthRef.current,
-            strokeCap: "round",
-            strokeJoin: "round",
-          });
-          currentPath.add(event.point);
-        } else if (tool === "line" || tool === "arrow") {
-          currentPath = new paper.Path({
-            strokeColor: new paper.Color(strokeColorRef.current),
-            strokeWidth: strokeWidthRef.current,
-            strokeCap: "round",
-          });
-          currentPath.add(event.point);
-          currentPath.data.type = tool;
-        } else if (tool === "rectangle") {
-          currentPath = new paper.Path.Rectangle({
-            from: event.point,
-            to: event.point,
-            strokeColor: new paper.Color(strokeColorRef.current),
-            strokeWidth: strokeWidthRef.current,
-          });
-        } else if (tool === "circle") {
-          currentPath = new paper.Path.Circle({
-            center: event.point,
-            radius: 1,
-            strokeColor: new paper.Color(strokeColorRef.current),
-            strokeWidth: strokeWidthRef.current,
-          });
-          currentPath.data.startPoint = event.point;
-        } else if (tool === "text") {
-          setTextInputPosition({ x: event.point.x, y: event.point.y });
-          setIsEditingText(true);
+      if (toolType === "select") {
+        const hitResult = paper.project.hitTest(event.point, {
+          segments: true,
+          stroke: true,
+          fill: true,
+          tolerance: 5,
+        });
+
+        if (hitResult && !hitResult.item.locked) {
+          if (selectedItem) selectedItem.selected = false;
+          selectedItem = hitResult.item;
+          selectedItem.selected = true;
+        } else {
+          if (selectedItem) selectedItem.selected = false;
+          selectedItem = null;
         }
-      };
-
-      tool.onMouseDrag = (event: paper.ToolEvent) => {
-        const tool = activeToolRef.current;
-
-        if (tool === "draw" && currentPath) {
-          currentPath.add(event.point);
-        } else if (tool === "line" || tool === "arrow") {
-          if (currentPath && currentPath.segments.length === 2) {
-            currentPath.segments[1].point = event.point;
-          } else if (currentPath) {
-            currentPath.add(event.point);
-          }
-        } else if (tool === "rectangle" && currentPath) {
-          currentPath.remove();
-          currentPath = new paper.Path.Rectangle({
-            from: event.downPoint,
-            to: event.point,
-            strokeColor: new paper.Color(strokeColorRef.current),
-            strokeWidth: strokeWidthRef.current,
-          });
-        } else if (tool === "circle" && currentPath) {
-          const radius = event.point.getDistance(currentPath.data.startPoint);
-          currentPath.remove();
-          currentPath = new paper.Path.Circle({
-            center: currentPath.data.startPoint,
-            radius: radius,
-            strokeColor: new paper.Color(strokeColorRef.current),
-            strokeWidth: strokeWidthRef.current,
-          });
-          currentPath.data.startPoint = event.downPoint;
-        } else if (tool === "select" && selectedItem && !selectedItem.locked) {
-          selectedItem.position = selectedItem.position.add(event.delta);
-        }
-      };
-
-      tool.onMouseUp = (event: paper.ToolEvent) => {
-        const tool = activeToolRef.current;
-
-        if (tool === "arrow" && currentPath) {
-          const vector = currentPath.lastSegment.point.subtract(currentPath.firstSegment.point);
-          const arrowVector = vector.normalize(10);
-
-          const arrowHead = new paper.Path([
-            currentPath.lastSegment.point.add(arrowVector.rotate(150)),
-            currentPath.lastSegment.point,
-            currentPath.lastSegment.point.add(arrowVector.rotate(-150)),
-          ]);
-          arrowHead.strokeColor = currentPath.strokeColor;
-          arrowHead.strokeWidth = currentPath.strokeWidth;
-          arrowHead.strokeCap = "round";
-          arrowHead.data.isArrowHead = true;
-          arrowHead.data.parentId = currentPath.id;
-        }
-
-        if (currentPath) {
-          saveToHistory();
-        }
-        currentPath = null;
-      };
-    };
-
-    initCanvas();
-
-    return () => {
-      mounted = false;
-      try {
-        if (paper.project) paper.project.remove();
-        if (paper.view) paper.view.remove();
-      } catch (e) {
-        // Ignore cleanup errors
+      } else if (toolType === "draw") {
+        currentPath = new paper.Path({
+          strokeColor: new paper.Color(strokeColorRef.current),
+          strokeWidth: strokeWidthRef.current,
+          strokeCap: "round",
+          strokeJoin: "round",
+        });
+        currentPath.add(event.point);
+      } else if (toolType === "line" || toolType === "arrow") {
+        currentPath = new paper.Path({
+          strokeColor: new paper.Color(strokeColorRef.current),
+          strokeWidth: strokeWidthRef.current,
+          strokeCap: "round",
+        });
+        currentPath.add(event.point);
+        currentPath.data.type = toolType;
+      } else if (toolType === "rectangle") {
+        currentPath = new paper.Path.Rectangle({
+          from: event.point,
+          to: event.point,
+          strokeColor: new paper.Color(strokeColorRef.current),
+          strokeWidth: strokeWidthRef.current,
+        });
+      } else if (toolType === "circle") {
+        currentPath = new paper.Path.Circle({
+          center: event.point,
+          radius: 1,
+          strokeColor: new paper.Color(strokeColorRef.current),
+          strokeWidth: strokeWidthRef.current,
+        });
+        currentPath.data.startPoint = event.point;
+      } else if (toolType === "text") {
+        setTextInputPosition({ x: event.point.x, y: event.point.y });
+        setIsEditingText(true);
       }
     };
-  }, [isOpen, photo]);
 
-  const saveToHistory = () => {
-    if (!paper.project) return;
-    const json = paper.project.exportJSON();
-    setHistory((prev) => [...prev.slice(0, historyStep + 1), json]);
-    setHistoryStep((prev) => prev + 1);
+    tool.onMouseDrag = (event: any) => {
+      const toolType = activeToolRef.current;
+
+      if (toolType === "draw" && currentPath) {
+        currentPath.add(event.point);
+      } else if (toolType === "line" || toolType === "arrow") {
+        if (currentPath && currentPath.segments.length === 2) {
+          currentPath.segments[1].point = event.point;
+        } else if (currentPath) {
+          currentPath.add(event.point);
+        }
+      } else if (toolType === "rectangle" && currentPath) {
+        currentPath.remove();
+        currentPath = new paper.Path.Rectangle({
+          from: event.downPoint,
+          to: event.point,
+          strokeColor: new paper.Color(strokeColorRef.current),
+          strokeWidth: strokeWidthRef.current,
+        });
+      } else if (toolType === "circle" && currentPath) {
+        const radius = event.point.getDistance(currentPath.data.startPoint);
+        currentPath.remove();
+        currentPath = new paper.Path.Circle({
+          center: currentPath.data.startPoint,
+          radius: radius,
+          strokeColor: new paper.Color(strokeColorRef.current),
+          strokeWidth: strokeWidthRef.current,
+        });
+        currentPath.data.startPoint = event.downPoint;
+      } else if (toolType === "select" && selectedItem && !selectedItem.locked) {
+        selectedItem.position = selectedItem.position.add(event.delta);
+      }
+    };
+
+    tool.onMouseUp = (event: any) => {
+      const toolType = activeToolRef.current;
+
+      if (toolType === "arrow" && currentPath) {
+        const vector = currentPath.lastSegment.point.subtract(currentPath.firstSegment.point);
+        const arrowVector = vector.normalize(10);
+
+        const arrowHead = new paper.Path([
+          currentPath.lastSegment.point.add(arrowVector.rotate(150)),
+          currentPath.lastSegment.point,
+          currentPath.lastSegment.point.add(arrowVector.rotate(-150)),
+        ]);
+        arrowHead.strokeColor = currentPath.strokeColor;
+        arrowHead.strokeWidth = currentPath.strokeWidth;
+        arrowHead.strokeCap = "round";
+        arrowHead.data.isArrowHead = true;
+        arrowHead.data.parentId = currentPath.id;
+      }
+
+      if (currentPath) {
+        saveToHistory(paper);
+      }
+      currentPath = null;
+    };
   };
 
-  const handleUndo = () => {
-    if (historyStep > 0 && paper.project) {
+  const saveToHistory = async (paperInstance?: any) => {
+    try {
+      const paper = paperInstance || (await import("paper"));
+      if (!paper.project) return;
+      const json = paper.project.exportJSON();
+      setHistory((prev) => [...prev.slice(0, historyStep + 1), json]);
+      setHistoryStep((prev) => prev + 1);
+    } catch (error) {
+      console.error("Error saving to history:", error);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (historyStep <= 0) return;
+    try {
+      const paper = await import("paper");
+      if (!paper.project) return;
       const newStep = historyStep - 1;
       setHistoryStep(newStep);
       paper.project.clear();
       paper.project.importJSON(history[newStep]);
       paper.view.update();
+    } catch (error) {
+      console.error("Error undoing:", error);
     }
   };
 
-  const handleRedo = () => {
-    if (historyStep < history.length - 1 && paper.project) {
+  const handleRedo = async () => {
+    if (historyStep >= history.length - 1) return;
+    try {
+      const paper = await import("paper");
+      if (!paper.project) return;
       const newStep = historyStep + 1;
       setHistoryStep(newStep);
       paper.project.clear();
       paper.project.importJSON(history[newStep]);
       paper.view.update();
+    } catch (error) {
+      console.error("Error redoing:", error);
     }
   };
 
-  const handleTextSubmit = () => {
-    if (!textInputRef.current || !paper.project) return;
+  const handleTextSubmit = async () => {
+    if (!textInputRef.current) return;
 
     const text = textInputRef.current.value.trim();
 
     if (text) {
-      if (editingTextItem) {
-        editingTextItem.content = text;
-      } else {
+      try {
+        const paper = await import("paper");
         new paper.PointText({
           point: [textInputPosition.x, textInputPosition.y],
           content: text,
           fillColor: new paper.Color(strokeColorRef.current),
           fontSize: 20,
         });
+        saveToHistory(paper);
+      } catch (error) {
+        console.error("Error adding text:", error);
       }
-      saveToHistory();
-    } else if (editingTextItem && !text) {
-      editingTextItem.remove();
-      saveToHistory();
     }
 
     setIsEditingText(false);
-    setEditingTextItem(null);
   };
 
   const handleTextKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -377,38 +345,49 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       handleTextSubmit();
     } else if (e.key === "Escape") {
       setIsEditingText(false);
-      setEditingTextItem(null);
     }
   };
 
-  const handleDelete = () => {
-    if (!paper.project) return;
+  const handleDelete = async () => {
+    try {
+      const paper = await import("paper");
+      if (!paper.project) return;
 
-    const selectedItems = paper.project.activeLayer.children.filter((item) => item.selected && !item.locked);
+      const selectedItems = paper.project.activeLayer.children.filter((item: any) => item.selected && !item.locked);
 
-    if (selectedItems.length > 0) {
-      selectedItems.forEach((item) => {
-        if (item instanceof paper.Path && item.data.type === "arrow") {
-          paper.project.activeLayer.children.forEach((child) => {
-            if (child.data.isArrowHead && child.data.parentId === item.id) {
-              child.remove();
-            }
-          });
-        }
-        item.remove();
-      });
-      saveToHistory();
-      toast.success("Élément supprimé");
+      if (selectedItems.length > 0) {
+        selectedItems.forEach((item: any) => {
+          if (item instanceof paper.Path && item.data.type === "arrow") {
+            paper.project.activeLayer.children.forEach((child: any) => {
+              if (child.data.isArrowHead && child.data.parentId === item.id) {
+                child.remove();
+              }
+            });
+          }
+          item.remove();
+        });
+        saveToHistory(paper);
+        toast.success("Élément supprimé");
+      }
+    } catch (error) {
+      console.error("Error deleting:", error);
     }
   };
 
   const handleSave = async () => {
-    if (!photo || !paper.project) return;
+    if (!photo) return;
 
     setIsSaving(true);
 
     try {
-      const annotationsJSON = paper.project.exportJSON();
+      let annotationsJSON = null;
+
+      if (paperInitialized) {
+        const paper = await import("paper");
+        if (paper.project) {
+          annotationsJSON = paper.project.exportJSON();
+        }
+      }
 
       const { error } = await supabase
         .from("project_photos")
@@ -420,11 +399,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
       if (error) throw error;
 
-      toast.success("Annotations sauvegardées");
+      toast.success("Sauvegardé");
       onSave();
       onClose();
     } catch (error) {
-      console.error("Error saving annotations:", error);
+      console.error("Error saving:", error);
       toast.error("Erreur lors de la sauvegarde");
     } finally {
       setIsSaving(false);
@@ -441,11 +420,13 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     { name: "text", icon: Type, label: "Texte" },
   ] as const;
 
+  if (!photo) return null;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[95vw] h-[95vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle>Annoter la photo</DialogTitle>
+          <DialogTitle>Photo - {photo.description || photo.id}</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 flex flex-col px-6 pb-6 gap-4 overflow-hidden">
@@ -460,6 +441,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                   onClick={() => setActiveTool(tool.name as any)}
                   className="h-8 w-8 p-0"
                   title={tool.label}
+                  disabled={!paperInitialized}
                 >
                   {tool.icon && <tool.icon className="h-4 w-4" />}
                   {tool.name === "select" && "↖"}
@@ -476,6 +458,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 onChange={(e) => setStrokeColor(e.target.value)}
                 className="h-8 w-12 rounded cursor-pointer"
                 title="Couleur"
+                disabled={!paperInitialized}
               />
               <input
                 type="range"
@@ -485,6 +468,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
                 onChange={(e) => setStrokeWidth(Number(e.target.value))}
                 className="w-24"
                 title={`Épaisseur: ${strokeWidth}px`}
+                disabled={!paperInitialized}
               />
             </div>
 
@@ -494,7 +478,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               variant="ghost"
               size="sm"
               onClick={handleUndo}
-              disabled={historyStep <= 0}
+              disabled={historyStep <= 0 || !paperInitialized}
               className="h-8 w-8 p-0"
               title="Annuler"
             >
@@ -504,7 +488,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               variant="ghost"
               size="sm"
               onClick={handleRedo}
-              disabled={historyStep >= history.length - 1}
+              disabled={historyStep >= history.length - 1 || !paperInitialized}
               className="h-8 w-8 p-0"
               title="Rétablir"
             >
@@ -513,28 +497,64 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
             <Separator orientation="vertical" className="h-8" />
 
-            <Button variant="ghost" size="sm" onClick={handleDelete} className="h-8 w-8 p-0" title="Supprimer (Suppr)">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDelete}
+              className="h-8 w-8 p-0"
+              title="Supprimer"
+              disabled={!paperInitialized}
+            >
               <Trash2 className="h-4 w-4" />
             </Button>
+
+            {!paperInitialized && imageLoaded && (
+              <span className="text-xs text-muted-foreground ml-2">Chargement des outils...</span>
+            )}
           </div>
 
-          {/* Canvas Container */}
+          {/* Image Container */}
           <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]">
+            {/* Image de base - toujours visible */}
+            <img
+              ref={imageRef}
+              src={photo.url}
+              alt={photo.description || "Photo"}
+              className="absolute inset-0 w-full h-full object-contain"
+              style={{ display: paperInitialized ? "none" : "block" }}
+              onLoad={() => {
+                console.log("✅ Image loaded");
+                setIsLoadingImage(false);
+                setImageLoaded(true);
+              }}
+              onError={(e) => {
+                console.error("❌ Image error:", e);
+                toast.error("Erreur de chargement de l'image");
+                setIsLoadingImage(false);
+              }}
+            />
+
+            {/* Canvas Paper.js - par-dessus l'image */}
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 w-full h-full"
+              style={{
+                display: paperInitialized ? "block" : "none",
+                cursor: activeTool === "select" ? "default" : "crosshair",
+              }}
+            />
+
             {isLoadingImage && (
-              <div className="absolute inset-0 flex items-center justify-center z-10 bg-muted/50">
+              <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
                 <div className="text-muted-foreground">Chargement...</div>
               </div>
             )}
-            <canvas
-              ref={canvasRef}
-              className="w-full h-full"
-              style={{ cursor: activeTool === "select" ? "default" : "crosshair" }}
-            />
+
             {isEditingText && (
               <input
                 ref={textInputRef}
                 type="text"
-                className="absolute border-2 border-primary bg-background px-2 py-1 rounded"
+                className="absolute border-2 border-primary bg-background px-2 py-1 rounded z-10"
                 style={{
                   left: `${textInputPosition.x}px`,
                   top: `${textInputPosition.y}px`,
@@ -546,23 +566,23 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             )}
           </div>
 
-          {/* Comment Section */}
+          {/* Comment */}
           <div className="space-y-2">
             <Label htmlFor="comment">Commentaire</Label>
             <Textarea
               id="comment"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Ajoutez un commentaire sur cette photo..."
+              placeholder="Ajoutez un commentaire..."
               className="resize-none"
               rows={3}
             />
           </div>
 
-          {/* Action Buttons */}
+          {/* Buttons */}
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={isSaving}>
-              Annuler
+              Fermer
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>
               <Save className="h-4 w-4 mr-2" />
