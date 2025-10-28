@@ -370,7 +370,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
             storage,
             "Systèmes de stockage",
             <Battery className="h-5 w-5 text-blue-600" />,
-            'autonomie'
+            null
           )}
           {renderItemsTable(
             converters,
