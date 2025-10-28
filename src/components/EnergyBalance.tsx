@@ -79,19 +79,15 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     }, 0);
   };
 
-  // Calculate remaining autonomy in hours
+  // Calculate remaining autonomy in days
   const calculateRemainingAutonomy = () => {
     const totalConsumption = calculateTotalConsumption();
     const batteryCapacity = calculateBatteryCapacity();
     
     if (totalConsumption === 0) return null;
     
-    // Daily consumption divided by 24 to get hourly consumption rate
-    const hourlyConsumption = totalConsumption / 24;
-    
-    if (hourlyConsumption === 0) return null;
-    
-    return batteryCapacity / hourlyConsumption;
+    // Autonomy in days = battery capacity (Wh) / daily consumption (Wh/day)
+    return batteryCapacity / totalConsumption;
   };
 
   const totalConsumption = calculateTotalConsumption();
@@ -319,12 +315,9 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-sm text-muted-foreground">Consommation totale</div>
+                    <div className="text-sm text-muted-foreground">Consommation quotidienne</div>
                     <div className="text-xl font-bold text-red-600 dark:text-red-400">
                       {totalConsumption.toFixed(1)} Wh/jour
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {(totalConsumption / 24).toFixed(1)} W en continu
                     </div>
                   </div>
                   <div>
@@ -339,10 +332,10 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                   <div className="pt-3 border-t">
                     <div className="text-sm text-muted-foreground mb-1">Autonomie estimée</div>
                     <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
-                      {remainingAutonomy.toFixed(1)} heures
+                      {remainingAutonomy.toFixed(1)} jours
                     </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      ≈ {(remainingAutonomy / 24).toFixed(1)} jours
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Basée sur votre consommation quotidienne réelle
                     </div>
                   </div>
                 )}
