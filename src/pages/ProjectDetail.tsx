@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen, Wrench } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen, Wrench, Edit } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
 import UserMenu from "@/components/UserMenu";
@@ -51,6 +54,14 @@ const ProjectDetail = () => {
   const [photoRefresh, setPhotoRefresh] = useState(0);
   const [expenseRefresh, setExpenseRefresh] = useState(0);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    longueur_mm: "",
+    largeur_mm: "",
+    hauteur_mm: "",
+    longueur_chargement_mm: "",
+    largeur_chargement_mm: "",
+  });
 
   useEffect(() => {
     if (id) {
@@ -91,6 +102,43 @@ const ProjectDetail = () => {
     }
 
     setProject(data);
+  };
+
+  const handleEditDimensions = () => {
+    if (project) {
+      setEditFormData({
+        longueur_mm: project.longueur_mm?.toString() || "",
+        largeur_mm: project.largeur_mm?.toString() || "",
+        hauteur_mm: project.hauteur_mm?.toString() || "",
+        longueur_chargement_mm: project.longueur_chargement_mm?.toString() || "",
+        largeur_chargement_mm: project.largeur_chargement_mm?.toString() || "",
+      });
+      setIsEditDimensionsOpen(true);
+    }
+  };
+
+  const handleSaveDimensions = async () => {
+    if (!project) return;
+
+    const { error } = await supabase
+      .from("projects")
+      .update({
+        longueur_mm: editFormData.longueur_mm ? parseInt(editFormData.longueur_mm) : null,
+        largeur_mm: editFormData.largeur_mm ? parseInt(editFormData.largeur_mm) : null,
+        hauteur_mm: editFormData.hauteur_mm ? parseInt(editFormData.hauteur_mm) : null,
+        longueur_chargement_mm: editFormData.longueur_chargement_mm ? parseInt(editFormData.longueur_chargement_mm) : null,
+        largeur_chargement_mm: editFormData.largeur_chargement_mm ? parseInt(editFormData.largeur_chargement_mm) : null,
+      })
+      .eq("id", project.id);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+      console.error(error);
+    } else {
+      toast.success("Dimensions mises à jour");
+      setIsEditDimensionsOpen(false);
+      loadProject();
+    }
   };
 
 
@@ -136,7 +184,13 @@ const ProjectDetail = () => {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
           <Card className="lg:col-span-4">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Informations du Projet</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Informations du Projet</CardTitle>
+                <Button variant="outline" size="sm" onClick={handleEditDimensions}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Modifier dimensions
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="pb-3">
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
@@ -158,42 +212,77 @@ const ProjectDetail = () => {
                     <p className="font-medium">{project.email_proprietaire}</p>
                   </div>
                 )}
-                {project.longueur_mm && (
-                  <div>
-                    <span className="text-muted-foreground">Longueur :</span>
-                    <p className="font-medium">{project.longueur_mm} mm</p>
+              </div>
+              
+              {/* Dimensions du véhicule */}
+              <div className="mt-4 pt-4 border-t">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Dimensions totales du véhicule</h4>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  {project.longueur_mm && (
+                    <div>
+                      <span className="text-muted-foreground">Longueur :</span>
+                      <p className="font-medium">{project.longueur_mm} mm</p>
+                    </div>
+                  )}
+                  {project.largeur_mm && (
+                    <div>
+                      <span className="text-muted-foreground">Largeur :</span>
+                      <p className="font-medium">{project.largeur_mm} mm</p>
+                    </div>
+                  )}
+                  {project.hauteur_mm && (
+                    <div>
+                      <span className="text-muted-foreground">Hauteur :</span>
+                      <p className="font-medium">{project.hauteur_mm} mm</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dimensions de la surface utile de chargement */}
+              {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
+                <div className="mt-4 pt-4 border-t">
+                  <h4 className="text-xs font-semibold text-primary mb-2">Surface utile de chargement</h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    {project.longueur_chargement_mm && (
+                      <div>
+                        <span className="text-muted-foreground">Longueur utile :</span>
+                        <p className="font-medium">{project.longueur_chargement_mm} mm</p>
+                      </div>
+                    )}
+                    {project.largeur_chargement_mm && (
+                      <div>
+                        <span className="text-muted-foreground">Largeur utile :</span>
+                        <p className="font-medium">{project.largeur_chargement_mm} mm</p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {project.largeur_mm && (
-                  <div>
-                    <span className="text-muted-foreground">Largeur :</span>
-                    <p className="font-medium">{project.largeur_mm} mm</p>
-                  </div>
-                )}
-                {project.hauteur_mm && (
-                  <div>
-                    <span className="text-muted-foreground">Hauteur :</span>
-                    <p className="font-medium">{project.hauteur_mm} mm</p>
-                  </div>
-                )}
-                {project.poids_vide_kg && (
-                  <div>
-                    <span className="text-muted-foreground">Poids vide :</span>
-                    <p className="font-medium">{project.poids_vide_kg} kg</p>
-                  </div>
-                )}
-                {project.charge_utile_kg && (
-                  <div>
-                    <span className="text-muted-foreground">Charge utile :</span>
-                    <p className="font-medium">{project.charge_utile_kg} kg</p>
-                  </div>
-                )}
-                {project.ptac_kg && (
-                  <div>
-                    <span className="text-muted-foreground">PTAC :</span>
-                    <p className="font-medium">{project.ptac_kg} kg</p>
-                  </div>
-                )}
+                </div>
+              )}
+
+              {/* Poids */}
+              <div className="mt-4 pt-4 border-t">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2">Poids et charges</h4>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  {project.poids_vide_kg && (
+                    <div>
+                      <span className="text-muted-foreground">Poids vide :</span>
+                      <p className="font-medium">{project.poids_vide_kg} kg</p>
+                    </div>
+                  )}
+                  {project.charge_utile_kg && (
+                    <div>
+                      <span className="text-muted-foreground">Charge utile :</span>
+                      <p className="font-medium">{project.charge_utile_kg} kg</p>
+                    </div>
+                  )}
+                  {project.ptac_kg && (
+                    <div>
+                      <span className="text-muted-foreground">PTAC :</span>
+                      <p className="font-medium">{project.ptac_kg} kg</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -366,6 +455,97 @@ const ProjectDetail = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Dialog de modification des dimensions */}
+      <Dialog open={isEditDimensionsOpen} onOpenChange={setIsEditDimensionsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Modifier les dimensions du véhicule</DialogTitle>
+            <DialogDescription>
+              Ajustez les dimensions totales et la surface utile de chargement
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Dimensions totales */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold">Dimensions totales du véhicule</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="longueur_mm">Longueur (mm)</Label>
+                  <Input
+                    id="longueur_mm"
+                    type="number"
+                    value={editFormData.longueur_mm}
+                    onChange={(e) => setEditFormData({ ...editFormData, longueur_mm: e.target.value })}
+                    placeholder="5000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="largeur_mm">Largeur (mm)</Label>
+                  <Input
+                    id="largeur_mm"
+                    type="number"
+                    value={editFormData.largeur_mm}
+                    onChange={(e) => setEditFormData({ ...editFormData, largeur_mm: e.target.value })}
+                    placeholder="2000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hauteur_mm">Hauteur (mm)</Label>
+                  <Input
+                    id="hauteur_mm"
+                    type="number"
+                    value={editFormData.hauteur_mm}
+                    onChange={(e) => setEditFormData({ ...editFormData, hauteur_mm: e.target.value })}
+                    placeholder="2500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Surface utile de chargement */}
+            <div className="space-y-4 pt-4 border-t">
+              <h3 className="text-sm font-semibold text-primary">Surface utile de chargement</h3>
+              <p className="text-xs text-muted-foreground">
+                Ces dimensions représentent l'espace réellement utilisable pour l'aménagement, 
+                sans les passages de roues, la cabine, etc.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="longueur_chargement_mm">Longueur utile (mm)</Label>
+                  <Input
+                    id="longueur_chargement_mm"
+                    type="number"
+                    value={editFormData.longueur_chargement_mm}
+                    onChange={(e) => setEditFormData({ ...editFormData, longueur_chargement_mm: e.target.value })}
+                    placeholder="3000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="largeur_chargement_mm">Largeur utile (mm)</Label>
+                  <Input
+                    id="largeur_chargement_mm"
+                    type="number"
+                    value={editFormData.largeur_chargement_mm}
+                    onChange={(e) => setEditFormData({ ...editFormData, largeur_chargement_mm: e.target.value })}
+                    placeholder="1800"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button variant="outline" onClick={() => setIsEditDimensionsOpen(false)}>
+                Annuler
+              </Button>
+              <Button onClick={handleSaveDimensions}>
+                Enregistrer
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
