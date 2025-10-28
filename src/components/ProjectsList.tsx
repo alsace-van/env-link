@@ -410,202 +410,207 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
           </DialogHeader>
           {editingProject && (
             <form onSubmit={handleUpdateProject} className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="edit_nom_projet">Nom du projet</Label>
-                  <Input
-                    id="edit_nom_projet"
-                    name="nom_projet"
-                    defaultValue={editingProject.nom_projet || ""}
-                    placeholder="Aménagement camping-car"
-                  />
+              <div className="grid grid-cols-3 gap-6">
+                {/* Colonne 1: Informations Projet */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_nom_projet">Nom du projet</Label>
+                    <Input
+                      id="edit_nom_projet"
+                      name="nom_projet"
+                      defaultValue={editingProject.nom_projet || ""}
+                      placeholder="Aménagement camping-car"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_photo">Photo du projet</Label>
+                    <Input
+                      id="edit_photo"
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoChange}
+                    />
+                    {photoPreview && (
+                      <div className="mt-2">
+                        <img
+                          src={photoPreview}
+                          alt="Aperçu"
+                          className="w-full h-32 object-cover rounded-lg"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="edit_photo">Photo du projet</Label>
-                  <Input
-                    id="edit_photo"
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoChange}
-                  />
-                  {photoPreview && (
-                    <div className="mt-2">
-                      <img
-                        src={photoPreview}
-                        alt="Aperçu"
-                        className="w-full h-32 object-cover rounded-lg"
-                      />
+                {/* Colonne 2: Informations Propriétaire */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground">Informations Propriétaire</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_nom_proprietaire">Nom du propriétaire *</Label>
+                    <Input
+                      id="edit_nom_proprietaire"
+                      name="nom_proprietaire"
+                      defaultValue={editingProject.nom_proprietaire}
+                      required
+                      placeholder="Jean Dupont"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_adresse_proprietaire">Adresse</Label>
+                    <Input
+                      id="edit_adresse_proprietaire"
+                      name="adresse_proprietaire"
+                      defaultValue={editingProject.adresse_proprietaire || ""}
+                      placeholder="123 rue de la Paix, 75000 Paris"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_telephone_proprietaire">Téléphone</Label>
+                    <Input
+                      id="edit_telephone_proprietaire"
+                      name="telephone_proprietaire"
+                      type="tel"
+                      defaultValue={editingProject.telephone_proprietaire || ""}
+                      placeholder="06 12 34 56 78"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_email_proprietaire">Email</Label>
+                    <Input
+                      id="edit_email_proprietaire"
+                      name="email_proprietaire"
+                      type="email"
+                      defaultValue={editingProject.email_proprietaire || ""}
+                      placeholder="contact@example.com"
+                    />
+                  </div>
+                </div>
+
+                {/* Colonne 3: Informations Véhicule */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground">Informations Véhicule</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_marque">Marque</Label>
+                    <Select value={selectedMarque} onValueChange={handleMarqueChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionnez une marque" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableMarques.map((marque) => (
+                          <SelectItem key={marque} value={marque}>
+                            {marque}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedMarque && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit_modele">Modèle</Label>
+                      <Select value={selectedModele} onValueChange={handleModeleChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionnez un modèle" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableModeles.map((modele) => (
+                            <SelectItem key={modele} value={modele}>
+                              {modele}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
-                </div>
-              </div>
 
-              <div className="space-y-4 pt-4 border-t">
-                <h3 className="text-sm font-semibold text-muted-foreground">Informations Propriétaire</h3>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="edit_nom_proprietaire">Nom du propriétaire *</Label>
-                  <Input
-                    id="edit_nom_proprietaire"
-                    name="nom_proprietaire"
-                    defaultValue={editingProject.nom_proprietaire}
-                    required
-                    placeholder="Jean Dupont"
-                  />
-                </div>
+                  {selectedMarque && selectedModele && availableDimensions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="edit_dimension">Dimensions</Label>
+                      <Select value={selectedVehicle?.id} onValueChange={handleDimensionChange}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sélectionnez les dimensions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableDimensions.map((vehicle) => (
+                            <SelectItem key={vehicle.id} value={vehicle.id}>
+                              L: {vehicle.longueur_mm}mm × l: {vehicle.largeur_mm}mm × H: {vehicle.hauteur_mm}mm
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="edit_adresse_proprietaire">Adresse</Label>
-                  <Input
-                    id="edit_adresse_proprietaire"
-                    name="adresse_proprietaire"
-                    defaultValue={editingProject.adresse_proprietaire || ""}
-                    placeholder="123 rue de la Paix, 75000 Paris"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit_telephone_proprietaire">Téléphone</Label>
-                  <Input
-                    id="edit_telephone_proprietaire"
-                    name="telephone_proprietaire"
-                    type="tel"
-                    defaultValue={editingProject.telephone_proprietaire || ""}
-                    placeholder="06 12 34 56 78"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit_email_proprietaire">Email</Label>
-                  <Input
-                    id="edit_email_proprietaire"
-                    name="email_proprietaire"
-                    type="email"
-                    defaultValue={editingProject.email_proprietaire || ""}
-                    placeholder="contact@example.com"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-4 border-t">
-                <h3 className="text-sm font-semibold text-muted-foreground">Informations Véhicule</h3>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="edit_marque">Marque</Label>
-                  <Select value={selectedMarque} onValueChange={handleMarqueChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionnez une marque" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableMarques.map((marque) => (
-                        <SelectItem key={marque} value={marque}>
-                          {marque}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedMarque && (
                   <div className="space-y-2">
-                    <Label htmlFor="edit_modele">Modèle</Label>
-                    <Select value={selectedModele} onValueChange={handleModeleChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sélectionnez un modèle" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableModeles.map((modele) => (
-                          <SelectItem key={modele} value={modele}>
-                            {modele}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {selectedMarque && selectedModele && availableDimensions.length > 0 && (
-                  <div className="space-y-2">
-                    <Label htmlFor="edit_dimension">Dimensions</Label>
-                    <Select value={selectedVehicle?.id} onValueChange={handleDimensionChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sélectionnez les dimensions" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableDimensions.map((vehicle) => (
-                          <SelectItem key={vehicle.id} value={vehicle.id}>
-                            L: {vehicle.longueur_mm}mm × l: {vehicle.largeur_mm}mm × H: {vehicle.hauteur_mm}mm
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit_numero_chassis">Numéro de chassis</Label>
-                  <Input
-                    id="edit_numero_chassis"
-                    name="numero_chassis"
-                    defaultValue={editingProject.numero_chassis || ""}
-                    placeholder="VF1234567890ABCDE"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit_immatriculation">Immatriculation</Label>
-                  <Input
-                    id="edit_immatriculation"
-                    name="immatriculation"
-                    defaultValue={editingProject.immatriculation || ""}
-                    placeholder="AB-123-CD"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit_date_mise_circulation">Date de mise en circulation</Label>
-                  <Input
-                    id="edit_date_mise_circulation"
-                    name="date_mise_circulation"
-                    type="date"
-                    defaultValue={editingProject.date_mise_circulation || ""}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit_type_mine">Type mine</Label>
-                  <Input
-                    id="edit_type_mine"
-                    name="type_mine"
-                    defaultValue={editingProject.type_mine || ""}
-                    placeholder="CTTE, VASP, Ambulance..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit_poids_vide">Poids à vide (kg)</Label>
+                    <Label htmlFor="edit_numero_chassis">Numéro de chassis</Label>
                     <Input
-                      id="edit_poids_vide"
-                      type="number"
-                      value={customPoidsVide}
-                      onChange={(e) => setCustomPoidsVide(e.target.value)}
-                      placeholder="1800"
+                      id="edit_numero_chassis"
+                      name="numero_chassis"
+                      defaultValue={editingProject.numero_chassis || ""}
+                      placeholder="VF1234567890ABCDE"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="edit_ptac">PTAC (kg)</Label>
+                    <Label htmlFor="edit_immatriculation">Immatriculation</Label>
                     <Input
-                      id="edit_ptac"
-                      type="number"
-                      value={customPtac}
-                      onChange={(e) => setCustomPtac(e.target.value)}
-                      placeholder="3000"
+                      id="edit_immatriculation"
+                      name="immatriculation"
+                      defaultValue={editingProject.immatriculation || ""}
+                      placeholder="AB-123-CD"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_date_mise_circulation">Date de mise en circulation</Label>
+                    <Input
+                      id="edit_date_mise_circulation"
+                      name="date_mise_circulation"
+                      type="date"
+                      defaultValue={editingProject.date_mise_circulation || ""}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_type_mine">Type mine</Label>
+                    <Input
+                      id="edit_type_mine"
+                      name="type_mine"
+                      defaultValue={editingProject.type_mine || ""}
+                      placeholder="CTTE, VASP, Ambulance..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit_poids_vide">Poids à vide (kg)</Label>
+                      <Input
+                        id="edit_poids_vide"
+                        type="number"
+                        value={customPoidsVide}
+                        onChange={(e) => setCustomPoidsVide(e.target.value)}
+                        placeholder="1800"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit_ptac">PTAC (kg)</Label>
+                      <Input
+                        id="edit_ptac"
+                        type="number"
+                        value={customPtac}
+                        onChange={(e) => setCustomPtac(e.target.value)}
+                        placeholder="3000"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
