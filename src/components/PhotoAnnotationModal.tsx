@@ -96,7 +96,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
   // Initialisation du canvas avec Paper.js
   useEffect(() => {
+    console.log("🔵 PhotoAnnotationModal useEffect:", { isOpen, hasPhoto: !!photo, photoUrl: photo?.url });
+    
     if (!isOpen || !photo || !canvasRef.current || !containerRef.current) {
+      console.log("🔴 Conditions not met:", { 
+        isOpen, 
+        hasPhoto: !!photo, 
+        hasCanvas: !!canvasRef.current, 
+        hasContainer: !!containerRef.current 
+      });
       return;
     }
 
