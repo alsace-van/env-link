@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2, Move, ArrowRight, ArrowUp, ArrowDown } from "lucide-react";
+import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2, Move, ArrowRight, ArrowUp, ArrowDown, Save } from "lucide-react";
 import * as THREE from "three";
 import { toast } from "sonner";
 
@@ -946,9 +946,7 @@ export const Layout3DView = ({
     });
     
     setFurniture(updatedFurniture);
-
-    // Sauvegarder automatiquement dans la base de données
-    await saveFurniturePositions(updatedFurniture);
+    // La sauvegarde est maintenant manuelle via le bouton "Sauvegarder"
   };
 
   const saveFurniturePositions = async (updatedFurniture: typeof furniture) => {
@@ -1138,6 +1136,14 @@ export const Layout3DView = ({
           <Button variant="outline" size="sm" onClick={loadProjectData} disabled={isRefreshing}>
             <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
             {isRefreshing ? "Chargement..." : "Rafraîchir"}
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => saveFurniturePositions(furniture)}
+          >
+            <Save className="w-4 h-4 mr-2" />
+            Sauvegarder
           </Button>
           <Button variant="outline" size="sm" onClick={resetCamera}>
             <RotateCcw className="w-4 h-4 mr-2" />
