@@ -127,6 +127,25 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     };
   }, [isLoadingImage, fabricInitialized, photo, activeTool, strokeColor, strokeWidth]);
 
+  // Gérer le mode dessin libre
+  useEffect(() => {
+    if (!fabricCanvasRef.current) return;
+    
+    const canvas = fabricCanvasRef.current;
+    
+    if (canvas.isDrawingMode) {
+      canvas.on('path:created', () => {
+        console.log("✅ Free drawing path created");
+        console.log("Canvas objects count:", canvas.getObjects().length);
+        saveToHistory();
+      });
+    }
+    
+    return () => {
+      canvas.off('path:created');
+    };
+  }, [fabricCanvasRef.current?.isDrawingMode]);
+
   // Gérer les outils
   useEffect(() => {
     if (!fabricCanvasRef.current) return;
@@ -237,6 +256,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         if (activeTool === "arrow") {
           addArrowHead(currentShapeRef.current);
         }
+        console.log("✅ Shape created:", currentShapeRef.current.type, "at", currentShapeRef.current.left, currentShapeRef.current.top);
+        console.log("Canvas objects count:", canvas.getObjects().length);
+        canvas.renderAll();
+        console.log("Canvas rendered");
         saveToHistory();
       }
       drawingRef.current = false;
