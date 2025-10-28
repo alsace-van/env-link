@@ -156,6 +156,17 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
     });
   };
 
+  const handleAddNew = () => {
+    setEditingId(null);
+    setNewTransaction({
+      type_paiement: "acompte",
+      montant: 0,
+      date_paiement: new Date().toISOString().split("T")[0],
+      notes: "",
+    });
+    setIsAdding(true);
+  };
+
   const totalPaid = transactions.reduce((sum, t) => sum + t.montant, 0);
   const remaining = totalSales - totalPaid;
 
@@ -222,7 +233,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
         )}
 
         {!isAdding ? (
-          <Button onClick={() => setIsAdding(true)} className="w-full h-8 text-xs" variant="outline">
+          <Button onClick={handleAddNew} className="w-full h-8 text-xs" variant="outline">
             <Plus className="h-3 w-3 mr-1" />
             Ajouter
           </Button>
