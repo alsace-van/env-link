@@ -6,7 +6,18 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2, Move, ArrowRight, ArrowUp, ArrowDown, Save } from "lucide-react";
+import {
+  Maximize2,
+  RotateCcw,
+  RefreshCw,
+  Ruler,
+  MousePointer2,
+  Move,
+  ArrowRight,
+  ArrowUp,
+  ArrowDown,
+  Save,
+} from "lucide-react";
 import * as THREE from "three";
 import { toast } from "sonner";
 
@@ -38,22 +49,22 @@ interface FurnitureBoxProps {
 
 interface TransformGizmoProps {
   position: [number, number, number];
-  onMove: (axis: 'x' | 'y' | 'z', delta: number) => void;
+  onMove: (axis: "x" | "y" | "z", delta: number) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }
 
 const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformGizmoProps) => {
-  const [activeAxis, setActiveAxis] = useState<'x' | 'y' | 'z' | null>(null);
+  const [activeAxis, setActiveAxis] = useState<"x" | "y" | "z" | null>(null);
   const [dragStart, setDragStart] = useState<THREE.Vector3 | null>(null);
   const { camera, raycaster, gl } = useThree();
 
-  const handleAxisPointerDown = (axis: 'x' | 'y' | 'z', event: ThreeEvent<PointerEvent>) => {
+  const handleAxisPointerDown = (axis: "x" | "y" | "z", event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
     setActiveAxis(axis);
     setDragStart(event.point.clone());
     onDragStart();
-    gl.domElement.style.cursor = 'grabbing';
+    gl.domElement.style.cursor = "grabbing";
   };
 
   useEffect(() => {
@@ -66,12 +77,12 @@ const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformG
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
-      
+
       // Créer un plan perpendiculaire à l'axe de déplacement
       let plane: THREE.Plane;
-      if (activeAxis === 'x') {
+      if (activeAxis === "x") {
         plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -position[1]);
-      } else if (activeAxis === 'y') {
+      } else if (activeAxis === "y") {
         plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), -position[0]);
       } else {
         plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), -position[0]);
@@ -82,14 +93,14 @@ const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformG
 
       if (intersectPoint) {
         let delta = 0;
-        if (activeAxis === 'x') {
+        if (activeAxis === "x") {
           delta = intersectPoint.x - dragStart.x;
-        } else if (activeAxis === 'y') {
+        } else if (activeAxis === "y") {
           delta = intersectPoint.y - dragStart.y;
-        } else if (activeAxis === 'z') {
+        } else if (activeAxis === "z") {
           delta = intersectPoint.z - dragStart.z;
         }
-        
+
         onMove(activeAxis, delta);
         setDragStart(intersectPoint);
       }
@@ -99,15 +110,15 @@ const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformG
       setActiveAxis(null);
       setDragStart(null);
       onDragEnd();
-      gl.domElement.style.cursor = 'default';
+      gl.domElement.style.cursor = "default";
     };
 
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
 
     return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
     };
   }, [activeAxis, dragStart, camera, raycaster, onMove, position, gl, onDragEnd]);
 
@@ -120,55 +131,37 @@ const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformG
     <group position={position}>
       {/* Flèche X (rouge) - largeur, vers la droite */}
       <group rotation={[0, 0, -Math.PI / 2]}>
-        <mesh 
-          position={[0, arrowLength / 2, 0]}
-          onPointerDown={(e) => handleAxisPointerDown('x', e)}
-        >
+        <mesh position={[0, arrowLength / 2, 0]} onPointerDown={(e) => handleAxisPointerDown("x", e)}>
           <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
-          <meshBasicMaterial color={activeAxis === 'x' ? "#ffaa00" : "#ff0000"} depthTest={false} />
+          <meshBasicMaterial color={activeAxis === "x" ? "#ffaa00" : "#ff0000"} depthTest={false} />
         </mesh>
-        <mesh 
-          position={[0, arrowLength + coneHeight / 2, 0]}
-          onPointerDown={(e) => handleAxisPointerDown('x', e)}
-        >
+        <mesh position={[0, arrowLength + coneHeight / 2, 0]} onPointerDown={(e) => handleAxisPointerDown("x", e)}>
           <coneGeometry args={[coneRadius, coneHeight, 8]} />
-          <meshBasicMaterial color={activeAxis === 'x' ? "#ffaa00" : "#ff0000"} depthTest={false} />
+          <meshBasicMaterial color={activeAxis === "x" ? "#ffaa00" : "#ff0000"} depthTest={false} />
         </mesh>
       </group>
 
       {/* Flèche Y (bleue) - hauteur, vers le haut */}
       <group>
-        <mesh 
-          position={[0, arrowLength / 2, 0]}
-          onPointerDown={(e) => handleAxisPointerDown('y', e)}
-        >
+        <mesh position={[0, arrowLength / 2, 0]} onPointerDown={(e) => handleAxisPointerDown("y", e)}>
           <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
-          <meshBasicMaterial color={activeAxis === 'y' ? "#00aaff" : "#0000ff"} depthTest={false} />
+          <meshBasicMaterial color={activeAxis === "y" ? "#00aaff" : "#0000ff"} depthTest={false} />
         </mesh>
-        <mesh 
-          position={[0, arrowLength + coneHeight / 2, 0]}
-          onPointerDown={(e) => handleAxisPointerDown('y', e)}
-        >
+        <mesh position={[0, arrowLength + coneHeight / 2, 0]} onPointerDown={(e) => handleAxisPointerDown("y", e)}>
           <coneGeometry args={[coneRadius, coneHeight, 8]} />
-          <meshBasicMaterial color={activeAxis === 'y' ? "#00aaff" : "#0000ff"} depthTest={false} />
+          <meshBasicMaterial color={activeAxis === "y" ? "#00aaff" : "#0000ff"} depthTest={false} />
         </mesh>
       </group>
 
       {/* Flèche Z (verte) - longueur, vers l'avant */}
       <group rotation={[Math.PI / 2, 0, 0]}>
-        <mesh 
-          position={[0, arrowLength / 2, 0]}
-          onPointerDown={(e) => handleAxisPointerDown('z', e)}
-        >
+        <mesh position={[0, arrowLength / 2, 0]} onPointerDown={(e) => handleAxisPointerDown("z", e)}>
           <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
-          <meshBasicMaterial color={activeAxis === 'z' ? "#88ff00" : "#00ff00"} depthTest={false} />
+          <meshBasicMaterial color={activeAxis === "z" ? "#88ff00" : "#00ff00"} depthTest={false} />
         </mesh>
-        <mesh 
-          position={[0, arrowLength + coneHeight / 2, 0]}
-          onPointerDown={(e) => handleAxisPointerDown('z', e)}
-        >
+        <mesh position={[0, arrowLength + coneHeight / 2, 0]} onPointerDown={(e) => handleAxisPointerDown("z", e)}>
           <coneGeometry args={[coneRadius, coneHeight, 8]} />
-          <meshBasicMaterial color={activeAxis === 'z' ? "#88ff00" : "#00ff00"} depthTest={false} />
+          <meshBasicMaterial color={activeAxis === "z" ? "#88ff00" : "#00ff00"} depthTest={false} />
         </mesh>
       </group>
     </group>
@@ -177,30 +170,33 @@ const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformG
 
 const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, isSelected, onSelect }: FurnitureBoxProps) => {
   let widthMm, depthMm;
-  
+
   // Vérifier si les dimensions du canvas sont valides (non nulles et > 10px)
-  const hasValidCanvasDimensions = furniture.canvasDimensions 
-    && furniture.canvasDimensions.widthPx > 10 
-    && furniture.canvasDimensions.heightPx > 10;
-  
+  const hasValidCanvasDimensions =
+    furniture.canvasDimensions && furniture.canvasDimensions.widthPx > 10 && furniture.canvasDimensions.heightPx > 10;
+
   if (hasValidCanvasDimensions) {
     widthMm = furniture.canvasDimensions!.widthPx / canvasScale;
     depthMm = furniture.canvasDimensions!.heightPx / canvasScale;
-    
+
     console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS DU CANVAS) ===`);
-    console.log(`Canvas: ${furniture.canvasDimensions!.widthPx.toFixed(1)}px × ${furniture.canvasDimensions!.heightPx.toFixed(1)}px`);
+    console.log(
+      `Canvas: ${furniture.canvasDimensions!.widthPx.toFixed(1)}px × ${furniture.canvasDimensions!.heightPx.toFixed(1)}px`,
+    );
     console.log(`Converties: ${widthMm.toFixed(1)}mm × ${depthMm.toFixed(1)}mm`);
   } else {
     widthMm = furniture.longueur_mm || 100;
     depthMm = furniture.largeur_mm || 100;
-    
+
     console.log(`\n=== MEUBLE ${furniture.id} (DIMENSIONS STOCKÉES) ===`);
     console.log(`Dimensions: ${widthMm}mm × ${depthMm}mm`);
     if (furniture.canvasDimensions) {
-      console.log(`⚠️ Dimensions canvas invalides: ${furniture.canvasDimensions.widthPx}px × ${furniture.canvasDimensions.heightPx}px`);
+      console.log(
+        `⚠️ Dimensions canvas invalides: ${furniture.canvasDimensions.widthPx}px × ${furniture.canvasDimensions.heightPx}px`,
+      );
     }
   }
-  
+
   const heightMm = furniture.hauteur_mm || 100;
 
   const width3D = widthMm * mmToUnits3D;
@@ -217,10 +213,10 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, isSelected, onSelec
 
   const posX3D = posXmm * mmToUnits3D;
   const posZ3D = posZmm * mmToUnits3D;
-  
+
   // Utiliser hauteur_sol_mm pour positionner le meuble en hauteur
   const hauteurSolMm = furniture.hauteur_sol_mm || 0;
-  const posY3D = (hauteurSolMm * mmToUnits3D) + (height3D / 2);
+  const posY3D = hauteurSolMm * mmToUnits3D + height3D / 2;
 
   console.log(`Position (pixels relatifs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
   console.log(`Position (mm): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
@@ -233,11 +229,7 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, isSelected, onSelec
   return (
     <group position={[posX3D, posY3D, posZ3D]} onClick={onSelect}>
       <Box args={[width3D, height3D, depth3D]} castShadow receiveShadow>
-        <meshStandardMaterial 
-          color={isSelected ? "#fbbf24" : "#3b82f6"} 
-          opacity={0.8} 
-          transparent 
-        />
+        <meshStandardMaterial color={isSelected ? "#fbbf24" : "#3b82f6"} opacity={0.8} transparent />
       </Box>
       <Text position={[0, textOffsetY, 0]} fontSize={textSize} color="black" anchorX="center" anchorY="middle">
         {`${Math.round(widthMm)}×${Math.round(depthMm)}×${heightMm}mm`}
@@ -455,7 +447,7 @@ const Scene = ({
   moveMode: boolean;
   selectedFurnitureId: string | null;
   onSelectFurniture: (id: string | null) => void;
-  onMoveFurniture: (id: string, axis: 'x' | 'y' | 'z', delta: number) => void;
+  onMoveFurniture: (id: string, axis: "x" | "y" | "z", delta: number) => void;
   isDraggingGizmo: boolean;
   onGizmoDragStart: () => void;
   onGizmoDragEnd: () => void;
@@ -476,27 +468,27 @@ const Scene = ({
   console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
   console.log("==========================================\n");
 
-  const selectedFurniture = furniture.find(f => f.id === selectedFurnitureId);
-  
+  const selectedFurniture = furniture.find((f) => f.id === selectedFurnitureId);
+
   const getGizmoPosition = (): [number, number, number] => {
     if (!selectedFurniture || !selectedFurniture.position) return [0, 0, 0];
-    
+
     const posXpixelsRel = selectedFurniture.position.x || 0;
     const posYpixelsRel = selectedFurniture.position.y || 0;
     const posXmm = posXpixelsRel / canvasScale;
     const posZmm = posYpixelsRel / canvasScale;
     const posX3D = posXmm * mmToUnits3D;
     const posZ3D = posZmm * mmToUnits3D;
-    
+
     const heightMm = selectedFurniture.hauteur_mm || 100;
     const height3D = heightMm * mmToUnits3D;
     const hauteurSolMm = selectedFurniture.hauteur_sol_mm || 0;
-    const posY3D = (hauteurSolMm * mmToUnits3D) + (height3D / 2);
-    
+    const posY3D = hauteurSolMm * mmToUnits3D + height3D / 2;
+
     return [posX3D, posY3D, posZ3D];
   };
 
-  const handleGizmoMove = (axis: 'x' | 'y' | 'z', delta: number) => {
+  const handleGizmoMove = (axis: "x" | "y" | "z", delta: number) => {
     if (selectedFurnitureId) {
       onMoveFurniture(selectedFurnitureId, axis, delta);
     }
@@ -511,19 +503,19 @@ const Scene = ({
       <LoadArea length={loadAreaLength} width={loadAreaWidth} mmToUnits3D={mmToUnits3D} />
 
       {furniture.map((item) => (
-        <FurnitureBox 
-          key={item.id} 
-          furniture={item} 
-          mmToUnits3D={mmToUnits3D} 
+        <FurnitureBox
+          key={item.id}
+          furniture={item}
+          mmToUnits3D={mmToUnits3D}
           canvasScale={canvasScale}
           isSelected={moveMode && item.id === selectedFurnitureId}
-          onSelect={() => moveMode ? onSelectFurniture(item.id) : undefined}
+          onSelect={() => (moveMode ? onSelectFurniture(item.id) : undefined)}
         />
       ))}
 
       {moveMode && selectedFurnitureId && (
-        <TransformGizmo 
-          position={getGizmoPosition()} 
+        <TransformGizmo
+          position={getGizmoPosition()}
           onMove={handleGizmoMove}
           onDragStart={onGizmoDragStart}
           onDragEnd={onGizmoDragEnd}
@@ -548,16 +540,16 @@ const Scene = ({
         infiniteGrid
       />
 
-      <OrbitControls 
-        enableDamping 
-        dampingFactor={0.05} 
-        minDistance={5} 
-        maxDistance={100} 
+      <OrbitControls
+        enableDamping
+        dampingFactor={0.05}
+        minDistance={5}
+        maxDistance={100}
         enabled={!measureMode && !isDraggingGizmo}
         mouseButtons={{
           LEFT: moveMode ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
           MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.ROTATE
+          RIGHT: THREE.MOUSE.ROTATE,
         }}
       />
     </>
@@ -588,7 +580,9 @@ export const Layout3DView = ({
    * Fonction d'extraction stable - définie en dehors du composant pour éviter les re-créations
    */
   const extractFurniturePositionsAndDimensions = useCallback(
-    (canvasJSON: any): {
+    (
+      canvasJSON: any,
+    ): {
       positions: { [furnitureId: string]: { x: number; y: number } };
       dimensions: { [furnitureId: string]: { widthPx: number; heightPx: number } };
       scale: number;
@@ -612,10 +606,10 @@ export const Layout3DView = ({
       try {
         // Trouver les children dans le canvasJSON
         let children = null;
-        
+
         if (canvasJSON && Array.isArray(canvasJSON)) {
           console.log(`\nStructure canvasJSON: Array avec ${canvasJSON.length} élément(s)`);
-          
+
           // Essayer différents emplacements
           if (canvasJSON.length > 1 && canvasJSON[1]?.children) {
             children = canvasJSON[1].children;
@@ -623,7 +617,12 @@ export const Layout3DView = ({
           } else if (canvasJSON.length > 0 && canvasJSON[0]?.children) {
             children = canvasJSON[0].children;
             console.log(`✓ Trouvé children dans canvasJSON[0]`);
-          } else if (canvasJSON.length > 0 && Array.isArray(canvasJSON[0]) && canvasJSON[0].length > 1 && canvasJSON[0][1]?.children) {
+          } else if (
+            canvasJSON.length > 0 &&
+            Array.isArray(canvasJSON[0]) &&
+            canvasJSON[0].length > 1 &&
+            canvasJSON[0][1]?.children
+          ) {
             children = canvasJSON[0][1].children;
             console.log(`✓ Trouvé children dans canvasJSON[0][1]`);
           }
@@ -631,130 +630,142 @@ export const Layout3DView = ({
 
         if (children && Array.isArray(children)) {
           console.log(`✓ Analyse de ${children.length} enfant(s) du canvas`);
-          
+
           const centerX = CANVAS_WIDTH / 2;
           const centerY = CANVAS_HEIGHT / 2;
 
           children.forEach((child: any) => {
-              if (Array.isArray(child) && child.length > 1) {
-                const childType = child[0];
-                const childData = child[1];
+            if (Array.isArray(child) && child.length > 1) {
+              const childType = child[0];
+              const childData = child[1];
 
-                if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
-                  const furnitureId = childData.data.furnitureId;
+              if (childType === "Group" && childData?.data?.isFurniture && childData?.data?.furnitureId) {
+                const furnitureId = childData.data.furnitureId;
 
-                  console.log(`\n*** MEUBLE: ${furnitureId} ***`);
+                console.log(`\n*** MEUBLE: ${furnitureId} ***`);
 
-                  if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
-                    const pathChild = childData.children[0];
+                if (childData.children && Array.isArray(childData.children) && childData.children.length > 0) {
+                  const pathChild = childData.children[0];
 
-                    if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
-                      const segments = pathChild[1].segments;
+                  if (Array.isArray(pathChild) && pathChild[0] === "Path" && pathChild[1]?.segments) {
+                    const segments = pathChild[1].segments;
 
-                      if (segments.length >= 4) {
-                        const getPoint = (seg: any) => {
-                          if (Array.isArray(seg)) {
-                            if (Array.isArray(seg[0])) {
-                              return { x: seg[0][0], y: seg[0][1] };
-                            }
-                            return { x: seg[0], y: seg[1] };
+                    if (segments.length >= 4) {
+                      const getPoint = (seg: any) => {
+                        if (Array.isArray(seg)) {
+                          if (Array.isArray(seg[0])) {
+                            return { x: seg[0][0], y: seg[0][1] };
                           }
-                          return { x: 0, y: 0 };
-                        };
-
-                        const p1 = getPoint(segments[0]);
-                        const p2 = getPoint(segments[1]);
-                        const p3 = getPoint(segments[2]);
-                        const p4 = getPoint(segments[3]);
-
-                        console.log(`  Segments bruts:`);
-                        console.log(`    p1: (${p1.x}, ${p1.y})`);
-                        console.log(`    p2: (${p2.x}, ${p2.y})`);
-                        console.log(`    p3: (${p3.x}, ${p3.y})`);
-                        console.log(`    p4: (${p4.x}, ${p4.y})`);
-
-                        let x1 = p1.x, y1 = p1.y;
-                        let x2 = p2.x, y2 = p2.y;
-                        let x3 = p3.x, y3 = p3.y;
-                        let x4 = p4.x, y4 = p4.y;
-
-                        const pathMatrix = pathChild[1]?.matrix;
-                        if (pathMatrix && Array.isArray(pathMatrix) && pathMatrix.length === 6) {
-                          const [a, b, c, d, tx, ty] = pathMatrix;
-
-                          const transform = (x: number, y: number) => ({
-                            x: a * x + c * y + tx,
-                            y: b * x + d * y + ty,
-                          });
-
-                          const t1 = transform(x1, y1);
-                          const t2 = transform(x2, y2);
-                          const t3 = transform(x3, y3);
-                          const t4 = transform(x4, y4);
-
-                          x1 = t1.x; y1 = t1.y;
-                          x2 = t2.x; y2 = t2.y;
-                          x3 = t3.x; y3 = t3.y;
-                          x4 = t4.x; y4 = t4.y;
-
-                          console.log(`  Après matrice Path: [${pathMatrix}]`);
+                          return { x: seg[0], y: seg[1] };
                         }
+                        return { x: 0, y: 0 };
+                      };
 
-                        const groupMatrix = childData.matrix;
-                        if (groupMatrix && Array.isArray(groupMatrix) && groupMatrix.length === 6) {
-                          const [a, b, c, d, tx, ty] = groupMatrix;
+                      const p1 = getPoint(segments[0]);
+                      const p2 = getPoint(segments[1]);
+                      const p3 = getPoint(segments[2]);
+                      const p4 = getPoint(segments[3]);
 
-                          const transform = (x: number, y: number) => ({
-                            x: a * x + c * y + tx,
-                            y: b * x + d * y + ty,
-                          });
+                      console.log(`  Segments bruts:`);
+                      console.log(`    p1: (${p1.x}, ${p1.y})`);
+                      console.log(`    p2: (${p2.x}, ${p2.y})`);
+                      console.log(`    p3: (${p3.x}, ${p3.y})`);
+                      console.log(`    p4: (${p4.x}, ${p4.y})`);
 
-                          const t1 = transform(x1, y1);
-                          const t2 = transform(x2, y2);
-                          const t3 = transform(x3, y3);
-                          const t4 = transform(x4, y4);
+                      let x1 = p1.x,
+                        y1 = p1.y;
+                      let x2 = p2.x,
+                        y2 = p2.y;
+                      let x3 = p3.x,
+                        y3 = p3.y;
+                      let x4 = p4.x,
+                        y4 = p4.y;
 
-                          x1 = t1.x; y1 = t1.y;
-                          x2 = t2.x; y2 = t2.y;
-                          x3 = t3.x; y3 = t3.y;
-                          x4 = t4.x; y4 = t4.y;
+                      const pathMatrix = pathChild[1]?.matrix;
+                      if (pathMatrix && Array.isArray(pathMatrix) && pathMatrix.length === 6) {
+                        const [a, b, c, d, tx, ty] = pathMatrix;
 
-                          console.log(`  Après matrice Group: [${groupMatrix}]`);
-                        }
+                        const transform = (x: number, y: number) => ({
+                          x: a * x + c * y + tx,
+                          y: b * x + d * y + ty,
+                        });
 
-                        const rectCenterX = (x1 + x3) / 2;
-                        const rectCenterY = (y1 + y3) / 2;
+                        const t1 = transform(x1, y1);
+                        const t2 = transform(x2, y2);
+                        const t3 = transform(x3, y3);
+                        const t4 = transform(x4, y4);
 
-                        const widthPx = Math.abs(x2 - x1);
-                        const heightPx = Math.abs(y3 - y1);
+                        x1 = t1.x;
+                        y1 = t1.y;
+                        x2 = t2.x;
+                        y2 = t2.y;
+                        x3 = t3.x;
+                        y3 = t3.y;
+                        x4 = t4.x;
+                        y4 = t4.y;
 
-                        console.log(`  Centre: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
-                        console.log(`  Dimensions: ${widthPx.toFixed(1)}px × ${heightPx.toFixed(1)}px`);
-
-                        const relativeX = rectCenterX - centerX;
-                        const relativeY = rectCenterY - centerY;
-
-                        console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
-
-                        const widthMm = widthPx / scale;
-                        const heightMm = heightPx / scale;
-                        console.log(`  Dimensions en mm: ${widthMm.toFixed(1)}mm × ${heightMm.toFixed(1)}mm`);
-
-                        positions[furnitureId] = {
-                          x: relativeX,
-                          y: relativeY,
-                        };
-
-                        dimensions[furnitureId] = {
-                          widthPx: widthPx,
-                          heightPx: heightPx,
-                        };
+                        console.log(`  Après matrice Path: [${pathMatrix}]`);
                       }
+
+                      const groupMatrix = childData.matrix;
+                      if (groupMatrix && Array.isArray(groupMatrix) && groupMatrix.length === 6) {
+                        const [a, b, c, d, tx, ty] = groupMatrix;
+
+                        const transform = (x: number, y: number) => ({
+                          x: a * x + c * y + tx,
+                          y: b * x + d * y + ty,
+                        });
+
+                        const t1 = transform(x1, y1);
+                        const t2 = transform(x2, y2);
+                        const t3 = transform(x3, y3);
+                        const t4 = transform(x4, y4);
+
+                        x1 = t1.x;
+                        y1 = t1.y;
+                        x2 = t2.x;
+                        y2 = t2.y;
+                        x3 = t3.x;
+                        y3 = t3.y;
+                        x4 = t4.x;
+                        y4 = t4.y;
+
+                        console.log(`  Après matrice Group: [${groupMatrix}]`);
+                      }
+
+                      const rectCenterX = (x1 + x3) / 2;
+                      const rectCenterY = (y1 + y3) / 2;
+
+                      const widthPx = Math.abs(x2 - x1);
+                      const heightPx = Math.abs(y3 - y1);
+
+                      console.log(`  Centre: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
+                      console.log(`  Dimensions: ${widthPx.toFixed(1)}px × ${heightPx.toFixed(1)}px`);
+
+                      const relativeX = rectCenterX - centerX;
+                      const relativeY = rectCenterY - centerY;
+
+                      console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
+
+                      const widthMm = widthPx / scale;
+                      const heightMm = heightPx / scale;
+                      console.log(`  Dimensions en mm: ${widthMm.toFixed(1)}mm × ${heightMm.toFixed(1)}mm`);
+
+                      positions[furnitureId] = {
+                        x: relativeX,
+                        y: relativeY,
+                      };
+
+                      dimensions[furnitureId] = {
+                        widthPx: widthPx,
+                        heightPx: heightPx,
+                      };
                     }
                   }
                 }
               }
-            });
+            }
+          });
         } else {
           console.log("⚠️ Aucun enfant trouvé dans le canvas");
         }
@@ -775,7 +786,7 @@ export const Layout3DView = ({
         canvasHeight: CANVAS_HEIGHT,
       };
     },
-    [loadAreaLength, loadAreaWidth]
+    [loadAreaLength, loadAreaWidth],
   );
 
   const loadProjectData = useCallback(async () => {
@@ -812,13 +823,13 @@ export const Layout3DView = ({
       console.log("\n==========================================");
       console.log("CHARGEMENT DES DONNÉES PROJET");
       console.log("==========================================");
-      console.log("Données brutes:", { 
+      console.log("Données brutes:", {
         hasFurnitureData: !!projectData.furniture_data,
-        hasLayoutCanvasData: !!projectData.layout_canvas_data
+        hasLayoutCanvasData: !!projectData.layout_canvas_data,
       });
 
       let furnitureData: FurnitureItem[] = [];
-      
+
       if (projectData.furniture_data && Array.isArray(projectData.furniture_data)) {
         furnitureData = projectData.furniture_data.map((item: any) => ({
           id: item.id,
@@ -837,15 +848,13 @@ export const Layout3DView = ({
       }
 
       const canvasDataToUse = projectData.layout_canvas_data;
-      
+
       if (canvasDataToUse) {
         try {
-          const canvasJSON = typeof canvasDataToUse === 'string' 
-            ? JSON.parse(canvasDataToUse) 
-            : canvasDataToUse;
-          
+          const canvasJSON = typeof canvasDataToUse === "string" ? JSON.parse(canvasDataToUse) : canvasDataToUse;
+
           console.log("✅ Canvas data parsée avec succès");
-          
+
           const extractedData = extractFurniturePositionsAndDimensions(canvasJSON);
 
           console.log("\n✅ Positions et dimensions extraites:", {
@@ -865,7 +874,9 @@ export const Layout3DView = ({
             console.log(`  - ${f.id}:`);
             console.log(`    Position: (${f.position?.x.toFixed(1)}, ${f.position?.y.toFixed(1)}) pixels`);
             if (f.canvasDimensions) {
-              console.log(`    Dimensions canvas: ${f.canvasDimensions.widthPx.toFixed(1)}px × ${f.canvasDimensions.heightPx.toFixed(1)}px`);
+              console.log(
+                `    Dimensions canvas: ${f.canvasDimensions.widthPx.toFixed(1)}px × ${f.canvasDimensions.heightPx.toFixed(1)}px`,
+              );
             }
           });
         } catch (parseError) {
@@ -913,27 +924,27 @@ export const Layout3DView = ({
     toast.success("Mesures effacées");
   };
 
-  const handleMoveFurniture = async (id: string, axis: 'x' | 'y' | 'z', delta: number) => {
+  const handleMoveFurniture = async (id: string, axis: "x" | "y" | "z", delta: number) => {
     const mmToUnits3D = 1 / 100;
     const CANVAS_WIDTH = 800;
     const CANVAS_HEIGHT = 600;
     const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
-    
-    const updatedFurniture = furniture.map(item => {
+
+    const updatedFurniture = furniture.map((item) => {
       if (item.id !== id || !item.position) return item;
-      
+
       const newPosition = { ...item.position };
-      
-      if (axis === 'x') {
+
+      if (axis === "x") {
         // Convertir le delta 3D en pixels canvas
         const deltaMm = delta / mmToUnits3D;
         const deltaPx = deltaMm * canvasScale;
         newPosition.x += deltaPx;
-      } else if (axis === 'z') {
+      } else if (axis === "z") {
         const deltaMm = delta / mmToUnits3D;
         const deltaPx = deltaMm * canvasScale;
         newPosition.y += deltaPx;
-      } else if (axis === 'y') {
+      } else if (axis === "y") {
         // Pour l'axe Y, on modifie hauteur_sol_mm
         const deltaMm = delta / mmToUnits3D;
         return {
@@ -941,13 +952,13 @@ export const Layout3DView = ({
           hauteur_sol_mm: Math.max(0, (item.hauteur_sol_mm || 0) + deltaMm),
         };
       }
-      
+
       return {
         ...item,
         position: newPosition,
       };
     });
-    
+
     setFurniture(updatedFurniture);
     // La sauvegarde est maintenant manuelle via le bouton "Sauvegarder"
   };
@@ -955,10 +966,10 @@ export const Layout3DView = ({
   const saveFurniturePositions = async (updatedFurniture: typeof furniture) => {
     const CANVAS_WIDTH = 800;
     const CANVAS_HEIGHT = 600;
-    
+
     try {
       toast.info("Sauvegarde en cours...");
-      
+
       // Charger le layout_canvas_data existant
       const { data: projectData } = await supabase
         .from("projects")
@@ -969,27 +980,27 @@ export const Layout3DView = ({
       let layoutCanvasData = projectData?.layout_canvas_data;
 
       // Mettre à jour les positions dans le JSON Paper.js si disponible
-      if (layoutCanvasData && typeof layoutCanvasData === 'string') {
+      if (layoutCanvasData && typeof layoutCanvasData === "string") {
         try {
           const canvasJson = JSON.parse(layoutCanvasData);
-          
+
           // Mettre à jour les positions des groupes de meubles dans le JSON
           if (canvasJson && Array.isArray(canvasJson[1])) {
             const children = canvasJson[1];
             children.forEach((child: any) => {
-              if (child && Array.isArray(child) && child[0] === 'Group' && child[1]?.data?.isFurniture) {
+              if (child && Array.isArray(child) && child[0] === "Group" && child[1]?.data?.isFurniture) {
                 const furnitureId = child[1].data.furnitureId;
-                const furnitureItem = updatedFurniture.find(f => f.id === furnitureId);
-                
+                const furnitureItem = updatedFurniture.find((f) => f.id === furnitureId);
+
                 if (furnitureItem && furnitureItem.position && child[1].matrix) {
                   // Calculer la position absolue du centre du canvas
                   const centerX = CANVAS_WIDTH / 2;
                   const centerY = CANVAS_HEIGHT / 2;
-                  
+
                   // Nouvelle position absolue
                   const newAbsX = centerX + furnitureItem.position.x;
                   const newAbsY = centerY + furnitureItem.position.y;
-                  
+
                   // Mettre à jour la matrice de transformation
                   child[1].matrix[4] = newAbsX;
                   child[1].matrix[5] = newAbsY;
@@ -997,14 +1008,14 @@ export const Layout3DView = ({
               }
             });
           }
-          
+
           layoutCanvasData = JSON.stringify(canvasJson);
         } catch (error) {
           console.error("Erreur lors de la mise à jour du JSON canvas:", error);
         }
       }
 
-      const furnitureData = updatedFurniture.map(item => ({
+      const furnitureData = updatedFurniture.map((item) => ({
         id: item.id,
         longueur_mm: item.longueur_mm || 0,
         largeur_mm: item.largeur_mm || 0,
@@ -1044,36 +1055,36 @@ export const Layout3DView = ({
 
   const applyPrecisionMove = async () => {
     if (!selectedFurnitureId) return;
-    
+
     const mmToUnits3D = 1 / 100;
     const CANVAS_WIDTH = 800;
     const CANVAS_HEIGHT = 600;
     const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
-    
-    const updatedFurniture = furniture.map(item => {
+
+    const updatedFurniture = furniture.map((item) => {
       if (item.id !== selectedFurnitureId || !item.position) return item;
-      
+
       const newPosition = { ...item.position };
-      
+
       // Convertir cm en mm
       const deltaXmm = precisionMove.x * 10;
       const deltaZmm = precisionMove.z * 10;
       const deltaYmm = precisionMove.y * 10;
-      
+
       // Convertir mm en pixels pour X et Z
       newPosition.x += deltaXmm * canvasScale;
       newPosition.y += deltaZmm * canvasScale;
-      
+
       return {
         ...item,
         position: newPosition,
         hauteur_sol_mm: Math.max(0, (item.hauteur_sol_mm || 0) + deltaYmm),
       };
     });
-    
+
     setFurniture(updatedFurniture);
     setPrecisionMove({ x: 0, y: 0, z: 0 });
-    
+
     // Sauvegarder et synchroniser
     await saveFurniturePositions(updatedFurniture);
     toast.success("Déplacement précis appliqué et sauvegardé");
@@ -1108,9 +1119,9 @@ export const Layout3DView = ({
           <p className="text-sm text-muted-foreground">Clic + glisser pour tourner, molette pour zoomer</p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant={!measureMode && !moveMode ? "default" : "outline"} 
-            size="sm" 
+          <Button
+            variant={!measureMode && !moveMode ? "default" : "outline"}
+            size="sm"
             onClick={() => {
               setMeasureMode(false);
               setMoveMode(false);
@@ -1119,9 +1130,9 @@ export const Layout3DView = ({
             <MousePointer2 className="w-4 h-4 mr-2" />
             Navigation
           </Button>
-          <Button 
-            variant={moveMode ? "default" : "outline"} 
-            size="sm" 
+          <Button
+            variant={moveMode ? "default" : "outline"}
+            size="sm"
             onClick={() => {
               setMoveMode(!moveMode);
               setMeasureMode(false);
@@ -1130,9 +1141,9 @@ export const Layout3DView = ({
             <Move className="w-4 h-4 mr-2" />
             Déplacer
           </Button>
-          <Button 
-            variant={measureMode ? "default" : "outline"} 
-            size="sm" 
+          <Button
+            variant={measureMode ? "default" : "outline"}
+            size="sm"
             onClick={() => {
               setMeasureMode(true);
               setMoveMode(false);
@@ -1145,11 +1156,7 @@ export const Layout3DView = ({
             <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
             {isRefreshing ? "Chargement..." : "Rafraîchir"}
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => saveFurniturePositions(furniture)}
-          >
+          <Button variant="outline" size="sm" onClick={() => saveFurniturePositions(furniture)}>
             <Save className="w-4 h-4 mr-2" />
             Sauvegarder
           </Button>
@@ -1173,47 +1180,47 @@ export const Layout3DView = ({
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
-                <ArrowRight className="w-3 h-3" style={{ color: '#ff0000' }} />
+                <ArrowRight className="w-3 h-3" style={{ color: "#ff0000" }} />
                 Axe X (Largeur)
               </Label>
               <Input
                 type="number"
                 value={precisionMove.x}
-                onChange={(e) => setPrecisionMove(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))}
+                onChange={(e) => setPrecisionMove((prev) => ({ ...prev, x: parseFloat(e.target.value) || 0 }))}
                 className="h-8"
                 step="0.1"
               />
             </div>
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
-                <ArrowUp className="w-3 h-3" style={{ color: '#0000ff' }} />
+                <ArrowUp className="w-3 h-3" style={{ color: "#0000ff" }} />
                 Axe Y (Hauteur)
               </Label>
               <Input
                 type="number"
                 value={precisionMove.y}
-                onChange={(e) => setPrecisionMove(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))}
+                onChange={(e) => setPrecisionMove((prev) => ({ ...prev, y: parseFloat(e.target.value) || 0 }))}
                 className="h-8"
                 step="0.1"
               />
             </div>
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
-                <ArrowRight className="w-3 h-3" style={{ color: '#00ff00' }} />
+                <ArrowRight className="w-3 h-3" style={{ color: "#00ff00" }} />
                 Axe Z (Longueur)
               </Label>
               <Input
                 type="number"
                 value={precisionMove.z}
-                onChange={(e) => setPrecisionMove(prev => ({ ...prev, z: parseFloat(e.target.value) || 0 }))}
+                onChange={(e) => setPrecisionMove((prev) => ({ ...prev, z: parseFloat(e.target.value) || 0 }))}
                 className="h-8"
                 step="0.1"
               />
             </div>
           </div>
-          <Button 
-            onClick={applyPrecisionMove} 
-            className="w-full mt-3" 
+          <Button
+            onClick={applyPrecisionMove}
+            className="w-full mt-3"
             size="sm"
             disabled={precisionMove.x === 0 && precisionMove.y === 0 && precisionMove.z === 0}
           >
@@ -1244,7 +1251,12 @@ export const Layout3DView = ({
               onMoveFurniture={handleMoveFurniture}
               isDraggingGizmo={isDraggingGizmo}
               onGizmoDragStart={() => setIsDraggingGizmo(true)}
-              onGizmoDragEnd={() => setIsDraggingGizmo(false)}
+              onGizmoDragEnd={() => {
+                setIsDraggingGizmo(false);
+                // Sauvegarder automatiquement après avoir déplacé le meuble avec le gizmo
+                console.log("🔄 Sauvegarde automatique après déplacement 3D");
+                saveFurniturePositions(furniture);
+              }}
             />
           </Canvas>
         </div>
