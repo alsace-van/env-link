@@ -29,7 +29,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
-  const paperScopeRef = useRef<paper.PaperScope | null>(null);
+  const isInitializedRef = useRef(false);
 
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
     "select",
@@ -91,31 +91,23 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           return;
         }
 
-        // Créer une nouvelle instance Paper.js
-        console.log("🔵 Creating Paper.js scope...");
-        const scope = new paper.PaperScope();
-        paperScopeRef.current = scope;
+        // Setup Paper.js avec le canvas
+        console.log("🔵 Setting up Paper.js...");
+        paper.setup(canvas);
 
-        // Setup avec le canvas
-        console.log("🔵 Setting up Paper.js scope with canvas...");
-        scope.setup(canvas);
-
-        console.log("✅ Paper.js scope created");
+        console.log("✅ Paper.js setup complete");
 
         // Obtenir les dimensions du conteneur
         const rect = container.getBoundingClientRect();
         console.log("🔵 Container dimensions:", rect.width, "x", rect.height);
 
-        // Définir la taille de la vue - IMPORTANT: même taille que le conteneur
-        scope.view.viewSize = new scope.Size(rect.width, rect.height);
+        // Définir la taille de la vue
+        paper.view.viewSize = new paper.Size(rect.width, rect.height);
         console.log("✅ View size set");
 
-        // PAS de raster - on dessine juste par-dessus l'image HTML
-        // L'image reste visible en dessous via l'élément <img>
-
         // Sauvegarder l'état initial (projet vide)
-        if (scope.project) {
-          const json = scope.project.exportJSON();
+        if (paper.project) {
+          const json = paper.project.exportJSON();
           setHistory([json]);
           setHistoryStep(0);
           console.log("✅ Initial state saved");
@@ -125,8 +117,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         if (photo?.annotations) {
           try {
             console.log("🔵 Loading annotations...");
-            scope.project.importJSON(photo.annotations);
-            scope.view.update();
+            paper.project.importJSON(photo.annotations);
+            paper.view.update();
             console.log("✅ Annotations loaded");
           } catch (error) {
             console.error("❌ Error loading annotations:", error);
@@ -135,7 +127,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         // Setup des event handlers
         console.log("🔵 Setting up drawing handlers...");
-        setupDrawingHandlers(scope);
+        setupDrawingHandlers();
+        
+        isInitializedRef.current = true;
 
         setPaperInitialized(true);
         console.log("✅✅✅ Paper.js initialized successfully! ✅✅✅");
@@ -155,14 +149,15 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       mounted = false;
       clearTimeout(timeoutId);
       // Nettoyer Paper.js
-      if (paperScopeRef.current) {
+      if (isInitializedRef.current) {
         try {
-          if (paperScopeRef.current.project) {
-            paperScopeRef.current.project.clear();
+          if (paper.project) {
+            paper.project.clear();
           }
-          if (paperScopeRef.current.view) {
-            paperScopeRef.current.view.remove();
+          if (paper.view) {
+            paper.view.remove();
           }
+          isInitializedRef.current = false;
         } catch (e) {
           console.log("Cleanup skipped");
         }
@@ -170,20 +165,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     };
   }, [imageLoaded, paperInitialized, photo]);
 
-  const setupDrawingHandlers = (scope: paper.PaperScope) => {
+  const setupDrawingHandlers = () => {
     console.log("🔵 setupDrawingHandlers called");
 
     let currentPath: any = null;
     let selectedItem: any = null;
 
-    const tool = new scope.Tool();
+    const tool = new paper.Tool();
     console.log("✅ Tool created");
 
     tool.onMouseDown = (event: any) => {
       const toolType = activeToolRef.current;
 
       if (toolType === "select") {
-        const hitResult = scope.project.hitTest(event.point, {
+        const hitResult = paper.project.hitTest(event.point, {
           segments: true,
           stroke: true,
           fill: true,
@@ -199,33 +194,33 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           selectedItem = null;
         }
       } else if (toolType === "draw") {
-        currentPath = new scope.Path({
-          strokeColor: new scope.Color(strokeColorRef.current),
+        currentPath = new paper.Path({
+          strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
           strokeCap: "round",
           strokeJoin: "round",
         });
         currentPath.add(event.point);
       } else if (toolType === "line" || toolType === "arrow") {
-        currentPath = new scope.Path({
-          strokeColor: new scope.Color(strokeColorRef.current),
+        currentPath = new paper.Path({
+          strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
           strokeCap: "round",
         });
         currentPath.add(event.point);
         currentPath.data.type = toolType;
       } else if (toolType === "rectangle") {
-        currentPath = new scope.Path.Rectangle({
+        currentPath = new paper.Path.Rectangle({
           from: event.point,
           to: event.point,
-          strokeColor: new scope.Color(strokeColorRef.current),
+          strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
         });
       } else if (toolType === "circle") {
-        currentPath = new scope.Path.Circle({
+        currentPath = new paper.Path.Circle({
           center: event.point,
           radius: 1,
-          strokeColor: new scope.Color(strokeColorRef.current),
+          strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
         });
         currentPath.data.startPoint = event.point;
@@ -248,19 +243,19 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         }
       } else if (toolType === "rectangle" && currentPath) {
         currentPath.remove();
-        currentPath = new scope.Path.Rectangle({
+        currentPath = new paper.Path.Rectangle({
           from: event.downPoint,
           to: event.point,
-          strokeColor: new scope.Color(strokeColorRef.current),
+          strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
         });
       } else if (toolType === "circle" && currentPath) {
         const radius = event.point.getDistance(currentPath.data.startPoint);
         currentPath.remove();
-        currentPath = new scope.Path.Circle({
+        currentPath = new paper.Path.Circle({
           center: currentPath.data.startPoint,
           radius: radius,
-          strokeColor: new scope.Color(strokeColorRef.current),
+          strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
         });
         currentPath.data.startPoint = event.downPoint;
@@ -276,7 +271,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const vector = currentPath.lastSegment.point.subtract(currentPath.firstSegment.point);
         const arrowVector = vector.normalize(10);
 
-        const arrowHead = new scope.Path([
+        const arrowHead = new paper.Path([
           currentPath.lastSegment.point.add(arrowVector.rotate(150)),
           currentPath.lastSegment.point,
           currentPath.lastSegment.point.add(arrowVector.rotate(-150)),
@@ -298,44 +293,40 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   };
 
   const saveToHistory = () => {
-    const scope = paperScopeRef.current;
-    if (!scope || !scope.project) return;
-    const json = scope.project.exportJSON();
+    if (!paper.project) return;
+    const json = paper.project.exportJSON();
     setHistory((prev) => [...prev.slice(0, historyStep + 1), json]);
     setHistoryStep((prev) => prev + 1);
   };
 
   const handleUndo = () => {
-    const scope = paperScopeRef.current;
-    if (historyStep <= 0 || !scope || !scope.project) return;
+    if (historyStep <= 0 || !paper.project) return;
     const newStep = historyStep - 1;
     setHistoryStep(newStep);
-    scope.project.clear();
-    scope.project.importJSON(history[newStep]);
-    scope.view.update();
+    paper.project.clear();
+    paper.project.importJSON(history[newStep]);
+    paper.view.update();
   };
 
   const handleRedo = () => {
-    const scope = paperScopeRef.current;
-    if (historyStep >= history.length - 1 || !scope || !scope.project) return;
+    if (historyStep >= history.length - 1 || !paper.project) return;
     const newStep = historyStep + 1;
     setHistoryStep(newStep);
-    scope.project.clear();
-    scope.project.importJSON(history[newStep]);
-    scope.view.update();
+    paper.project.clear();
+    paper.project.importJSON(history[newStep]);
+    paper.view.update();
   };
 
   const handleTextSubmit = () => {
-    const scope = paperScopeRef.current;
-    if (!textInputRef.current || !scope || !scope.project) return;
+    if (!textInputRef.current || !paper.project) return;
 
     const text = textInputRef.current.value.trim();
 
     if (text) {
-      new scope.PointText({
+      new paper.PointText({
         point: [textInputPosition.x, textInputPosition.y],
         content: text,
-        fillColor: new scope.Color(strokeColorRef.current),
+        fillColor: new paper.Color(strokeColorRef.current),
         fontSize: 20,
       });
       saveToHistory();
@@ -353,15 +344,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   };
 
   const handleDelete = () => {
-    const scope = paperScopeRef.current;
-    if (!scope || !scope.project) return;
+    if (!paper.project) return;
 
-    const selectedItems = scope.project.activeLayer.children.filter((item: any) => item.selected && !item.locked);
+    const selectedItems = paper.project.activeLayer.children.filter((item: any) => item.selected && !item.locked);
 
     if (selectedItems.length > 0) {
       selectedItems.forEach((item: any) => {
         if (item.data.type === "arrow") {
-          scope.project.activeLayer.children.forEach((child: any) => {
+          paper.project.activeLayer.children.forEach((child: any) => {
             if (child.data.isArrowHead && child.data.parentId === item.id) {
               child.remove();
             }
@@ -382,9 +372,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     try {
       let annotationsJSON = null;
 
-      const scope = paperScopeRef.current;
-      if (paperInitialized && scope && scope.project) {
-        annotationsJSON = scope.project.exportJSON();
+      if (paperInitialized && paper.project) {
+        annotationsJSON = paper.project.exportJSON();
       }
 
       const { error } = await supabase
