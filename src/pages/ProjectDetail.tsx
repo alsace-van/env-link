@@ -8,7 +8,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
-import PhotosDiagnostic from "@/components/PhotosDiagnostic";
 import UserMenu from "@/components/UserMenu";
 import ExpensesList from "@/components/ExpensesList";
 import ExpensesSummary from "@/components/ExpensesSummary";
@@ -367,8 +366,6 @@ const ProjectDetail = () => {
           </TabsContent>
         </Tabs>
       </main>
-      
-      <PhotosDiagnostic />
     </div>
   );
 };

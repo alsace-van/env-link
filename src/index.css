@@ -102,3 +102,12 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Dialog z-index fixes for proper overlay display */
+[data-radix-dialog-overlay] {
+  z-index: 100 !important;
+}
+
+[data-radix-dialog-content] {
+  z-index: 101 !important;
+}

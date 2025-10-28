@@ -22,11 +22,8 @@ const PhotosTab = ({ projectId }: PhotosTabProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handlePhotoClick = (photo: Photo) => {
-    console.log("📸 Photo clicked:", photo);
     setSelectedPhoto(photo);
-    console.log("📸 Setting modal to open...");
     setIsModalOpen(true);
-    console.log("📸 Modal state:", { selectedPhoto: photo, isModalOpen: true });
   };
 
   const handleModalClose = () => {
