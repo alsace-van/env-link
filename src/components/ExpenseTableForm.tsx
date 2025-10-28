@@ -183,13 +183,20 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     }
   }, []);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveRows();
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Ajouter des dépenses fournisseurs</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" onKeyDown={handleKeyDown}>
           <Table>
             <TableHeader>
               <TableRow>
