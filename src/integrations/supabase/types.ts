@@ -369,6 +369,75 @@ export type Database = {
           },
         ]
       }
+      project_installment_payments: {
+        Row: {
+          created_at: string
+          date_debut: string
+          id: string
+          montant_mensualite: number
+          montant_total: number
+          nom_paiement: string
+          nombre_mensualites_restantes: number
+          nombre_mensualites_total: number
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date_debut: string
+          id?: string
+          montant_mensualite?: number
+          montant_total?: number
+          nom_paiement: string
+          nombre_mensualites_restantes?: number
+          nombre_mensualites_total?: number
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date_debut?: string
+          id?: string
+          montant_mensualite?: number
+          montant_total?: number
+          nom_paiement?: string
+          nombre_mensualites_restantes?: number
+          nombre_mensualites_total?: number
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_monthly_charges: {
+        Row: {
+          created_at: string
+          date_echeance: string
+          id: string
+          montant: number
+          nom_charge: string
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date_echeance: string
+          id?: string
+          montant?: number
+          nom_charge: string
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date_echeance?: string
+          id?: string
+          montant?: number
+          nom_charge?: string
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       project_payment_transactions: {
         Row: {
           created_at: string

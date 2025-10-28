@@ -9,6 +9,8 @@ import { Edit, Plus, Trash2, Euro } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import PaymentTransactions from "@/components/PaymentTransactions";
+import { MonthlyCharges } from "@/components/MonthlyCharges";
+import { InstallmentPayments } from "@/components/InstallmentPayments";
 
 interface BankBalance {
   id: string;
@@ -332,6 +334,12 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
           loadBankBalance();
         }}
       />
+
+      {/* Charges mensuelles */}
+      <MonthlyCharges projectId={projectId} />
+
+      {/* Paiements échelonnés */}
+      <InstallmentPayments projectId={projectId} />
 
       {/* Dialog pour modifier le solde */}
       <Dialog open={isEditBalanceOpen} onOpenChange={setIsEditBalanceOpen}>
