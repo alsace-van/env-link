@@ -827,6 +827,8 @@ export const Layout3DView = ({
           hauteur_mm: item.hauteur_mm || 0,
           poids_kg: item.poids_kg || 0,
           hauteur_sol_mm: item.hauteur_sol_mm || 0,
+          position: item.position, // Charger les positions sauvegardées
+          canvasDimensions: item.canvasDimensions, // Charger les dimensions canvas sauvegardées
         }));
 
         console.log(`✅ Meubles chargés: ${furnitureData.length}`);
@@ -853,8 +855,9 @@ export const Layout3DView = ({
 
           furnitureData = furnitureData.map((item) => ({
             ...item,
-            position: extractedData.positions[item.id] || { x: 0, y: 0 },
-            canvasDimensions: extractedData.dimensions[item.id],
+            // Utiliser les positions sauvegardées si disponibles, sinon extraire de layout_canvas_data
+            position: item.position || extractedData.positions[item.id] || { x: 0, y: 0 },
+            canvasDimensions: item.canvasDimensions || extractedData.dimensions[item.id],
           }));
 
           console.log("\n✅ Meubles avec positions et dimensions:");
