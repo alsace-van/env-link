@@ -7,9 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen, Wrench } from "lucide-react";
 import { toast } from "sonner";
-import PhotoUpload from "@/components/PhotoUpload";
-import PhotoGallery from "@/components/PhotoGallery";
-import PhotoAnnotationModal from "@/components/PhotoAnnotationModal";
+import PhotosTab from "@/components/PhotosTab";
 import UserMenu from "@/components/UserMenu";
 import ExpensesList from "@/components/ExpensesList";
 import ExpensesSummary from "@/components/ExpensesSummary";
@@ -43,13 +41,6 @@ interface Project {
   };
 }
 
-interface SelectedPhoto {
-  id: string;
-  url: string;
-  description?: string;
-  comment?: string;
-  annotations?: any;
-}
 
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -58,8 +49,6 @@ const ProjectDetail = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [photoRefresh, setPhotoRefresh] = useState(0);
-  const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhoto | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [expenseRefresh, setExpenseRefresh] = useState(0);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
@@ -104,19 +93,6 @@ const ProjectDetail = () => {
     setProject(data);
   };
 
-  const handlePhotoClick = (photo: SelectedPhoto) => {
-    setSelectedPhoto(photo);
-    setIsModalOpen(true);
-  };
-
-  const handleModalClose = () => {
-    setIsModalOpen(false);
-    setSelectedPhoto(null);
-  };
-
-  const handleSaveAnnotations = () => {
-    setPhotoRefresh((prev) => prev + 1);
-  };
 
   if (isLoading) {
     return (
@@ -224,14 +200,10 @@ const ProjectDetail = () => {
         </div>
 
         <Tabs defaultValue="photos" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-5">
             <TabsTrigger value="photos" className="gap-2">
               <Image className="h-4 w-4" />
               <span className="hidden sm:inline">Photos</span>
-            </TabsTrigger>
-            <TabsTrigger value="inspiration" className="gap-2">
-              <Image className="h-4 w-4" />
-              <span className="hidden sm:inline">Inspiration</span>
             </TabsTrigger>
             <TabsTrigger value="expenses" className="gap-2">
               <Euro className="h-4 w-4" />
@@ -258,43 +230,11 @@ const ProjectDetail = () => {
           <TabsContent value="photos">
             <Card>
               <CardHeader>
-                <CardTitle>Photos du Projet</CardTitle>
-                <CardDescription>Photos de l'avancement de votre aménagement</CardDescription>
+                <CardTitle>Photos</CardTitle>
+                <CardDescription>Gérez vos photos de projet et d'inspiration</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <PhotoUpload
-                  projectId={project.id}
-                  type="projet"
-                  onUploadComplete={() => setPhotoRefresh((prev) => prev + 1)}
-                />
-                <PhotoGallery
-                  projectId={project.id}
-                  type="projet"
-                  refresh={photoRefresh}
-                  onPhotoClick={handlePhotoClick}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="inspiration">
-            <Card>
-              <CardHeader>
-                <CardTitle>Photos d'Inspiration</CardTitle>
-                <CardDescription>Vos idées et inspirations pour l'aménagement</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <PhotoUpload
-                  projectId={project.id}
-                  type="inspiration"
-                  onUploadComplete={() => setPhotoRefresh((prev) => prev + 1)}
-                />
-                <PhotoGallery
-                  projectId={project.id}
-                  type="inspiration"
-                  refresh={photoRefresh}
-                  onPhotoClick={handlePhotoClick}
-                />
+              <CardContent>
+                <PhotosTab projectId={project.id} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -425,13 +365,6 @@ const ProjectDetail = () => {
             </Tabs>
           </TabsContent>
         </Tabs>
-
-        <PhotoAnnotationModal
-          photo={selectedPhoto}
-          isOpen={isModalOpen}
-          onClose={handleModalClose}
-          onSave={handleSaveAnnotations}
-        />
       </main>
     </div>
   );
