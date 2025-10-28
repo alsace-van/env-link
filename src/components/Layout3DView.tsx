@@ -4,7 +4,9 @@ import { OrbitControls, Text, Box, Grid, Line, Cone } from "@react-three/drei";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2, Move } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2, Move, ArrowRight, ArrowUp, ArrowDown } from "lucide-react";
 import * as THREE from "three";
 import { toast } from "sonner";
 
@@ -579,6 +581,7 @@ export const Layout3DView = ({
   const [moveMode, setMoveMode] = useState(false);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
+  const [precisionMove, setPrecisionMove] = useState({ x: 0, y: 0, z: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /**
@@ -948,6 +951,40 @@ export const Layout3DView = ({
 
   const handleSelectFurniture = (id: string | null) => {
     setSelectedFurnitureId(id);
+    setPrecisionMove({ x: 0, y: 0, z: 0 });
+  };
+
+  const applyPrecisionMove = () => {
+    if (!selectedFurnitureId) return;
+    
+    const mmToUnits3D = 1 / 100;
+    const CANVAS_WIDTH = 800;
+    const CANVAS_HEIGHT = 600;
+    const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
+    
+    setFurniture(prev => prev.map(item => {
+      if (item.id !== selectedFurnitureId || !item.position) return item;
+      
+      const newPosition = { ...item.position };
+      
+      // Convertir cm en mm
+      const deltaXmm = precisionMove.x * 10;
+      const deltaZmm = precisionMove.z * 10;
+      const deltaYmm = precisionMove.y * 10;
+      
+      // Convertir mm en pixels pour X et Z
+      newPosition.x += deltaXmm * canvasScale;
+      newPosition.y += deltaZmm * canvasScale;
+      
+      return {
+        ...item,
+        position: newPosition,
+        hauteur_sol_mm: Math.max(0, (item.hauteur_sol_mm || 0) + deltaYmm),
+      };
+    }));
+    
+    setPrecisionMove({ x: 0, y: 0, z: 0 });
+    toast.success("Déplacement précis appliqué");
   };
 
   useEffect(() => {
@@ -1026,6 +1063,64 @@ export const Layout3DView = ({
           </Button>
         </div>
       </div>
+
+      {moveMode && selectedFurnitureId && (
+        <div className="p-4 border-b bg-muted/50">
+          <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <Move className="w-4 h-4" />
+            Déplacement précis (en cm)
+          </h4>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label className="text-xs flex items-center gap-1">
+                <ArrowRight className="w-3 h-3 text-red-500" />
+                Axe X (Longueur)
+              </Label>
+              <Input
+                type="number"
+                value={precisionMove.x}
+                onChange={(e) => setPrecisionMove(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))}
+                className="h-8"
+                step="0.1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs flex items-center gap-1">
+                <ArrowUp className="w-3 h-3 text-green-500" />
+                Axe Y (Hauteur)
+              </Label>
+              <Input
+                type="number"
+                value={precisionMove.y}
+                onChange={(e) => setPrecisionMove(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))}
+                className="h-8"
+                step="0.1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs flex items-center gap-1">
+                <ArrowDown className="w-3 h-3 text-blue-500" />
+                Axe Z (Profondeur)
+              </Label>
+              <Input
+                type="number"
+                value={precisionMove.z}
+                onChange={(e) => setPrecisionMove(prev => ({ ...prev, z: parseFloat(e.target.value) || 0 }))}
+                className="h-8"
+                step="0.1"
+              />
+            </div>
+          </div>
+          <Button 
+            onClick={applyPrecisionMove} 
+            className="w-full mt-3" 
+            size="sm"
+            disabled={precisionMove.x === 0 && precisionMove.y === 0 && precisionMove.z === 0}
+          >
+            Appliquer le déplacement
+          </Button>
+        </div>
+      )}
 
       <div className={isFullscreen ? "fixed inset-0 z-50 bg-background" : ""}>
         <div className={isFullscreen ? "h-screen" : "h-[600px]"}>
