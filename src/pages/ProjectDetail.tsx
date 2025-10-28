@@ -56,6 +56,7 @@ const ProjectDetail = () => {
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
   const [layout3DKey, setLayout3DKey] = useState(0);
+  const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
   const [editFormData, setEditFormData] = useState({
     longueur_mm: "",
     largeur_mm: "",
@@ -84,6 +85,8 @@ const ProjectDetail = () => {
           console.log('🔄 Changement détecté dans le projet:', payload);
           // Recharger les données du projet quand il y a un changement
           loadProject();
+          // Forcer le rechargement du canvas 2D
+          setLayoutCanvasKey(prev => prev + 1);
         }
       )
       .subscribe();
@@ -446,6 +449,7 @@ const ProjectDetail = () => {
                   </CardHeader>
                   <CardContent>
                     <LayoutCanvas
+                      key={layoutCanvasKey}
                       projectId={project.id}
                       vehicleLength={project.longueur_mm}
                       vehicleWidth={project.largeur_mm}
