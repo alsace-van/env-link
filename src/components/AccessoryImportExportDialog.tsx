@@ -15,6 +15,7 @@ interface AccessoryRow {
   id: string;
   nom: string;
   categorie: string;
+  sous_categorie: string;
   prix_reference: string;
   prix_vente_ttc: string;
   marge_pourcent: string;
@@ -44,7 +45,7 @@ const AccessoryImportExportDialog = ({
   const [pastedData, setPastedData] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [tableRows, setTableRows] = useState<AccessoryRow[]>([
-    { id: "1", nom: "", categorie: "", prix_reference: "", prix_vente_ttc: "", marge_pourcent: "", fournisseur: "", description: "", url_produit: "", type_electrique: "", poids_kg: "", longueur_mm: "", largeur_mm: "", hauteur_mm: "" }
+    { id: "1", nom: "", categorie: "", sous_categorie: "", prix_reference: "", prix_vente_ttc: "", marge_pourcent: "", fournisseur: "", description: "", url_produit: "", type_electrique: "", poids_kg: "", longueur_mm: "", largeur_mm: "", hauteur_mm: "" }
   ]);
 
   const addTableRow = () => {
@@ -52,6 +53,7 @@ const AccessoryImportExportDialog = ({
       id: Date.now().toString(),
       nom: "",
       categorie: "",
+      sous_categorie: "",
       prix_reference: "",
       prix_vente_ttc: "",
       marge_pourcent: "",
@@ -84,6 +86,7 @@ const AccessoryImportExportDialog = ({
     const dataToImport = tableRows.filter(row => row.nom.trim() !== "").map(row => ({
       Nom: row.nom,
       Catégorie: row.categorie,
+      "Sous-catégorie": row.sous_categorie,
       "Prix référence": row.prix_reference,
       "Prix vente TTC": row.prix_vente_ttc,
       "Marge %": row.marge_pourcent,
@@ -252,6 +255,7 @@ const AccessoryImportExportDialog = ({
           // Mapper les colonnes (supporter différents formats de colonnes)
           const nom = row["Nom"] || row["nom"] || row["Name"] || "";
           const categoryName = row["Catégorie"] || row["categorie"] || row["Category"] || "";
+          const subCategoryName = row["Sous-catégorie"] || row["sous_categorie"] || row["Subcategory"] || "";
           const prixReference = parseFloat(row["Prix référence"] || row["Prix reference"] || row["prix_reference"] || "0") || null;
           const prixVenteTTC = parseFloat(row["Prix vente TTC"] || row["prix_vente_ttc"] || "0") || null;
           const margePourcent = parseFloat(row["Marge %"] || row["Marge"] || row["marge_pourcent"] || "0") || null;
@@ -269,13 +273,67 @@ const AccessoryImportExportDialog = ({
             continue;
           }
 
-          // Trouver la catégorie correspondante
+          // Gérer la catégorie et la sous-catégorie avec création automatique
           let categoryId = null;
+          
           if (categoryName) {
-            const category = categories.find(cat => 
-              cat.nom.toLowerCase() === categoryName.toLowerCase()
-            );
-            categoryId = category?.id || null;
+            // Chercher ou créer la catégorie principale
+            const { data: existingCategory } = await supabase
+              .from("categories")
+              .select("id, nom")
+              .eq("user_id", user.id)
+              .eq("nom", categoryName)
+              .is("parent_id", null)
+              .maybeSingle();
+
+            if (existingCategory) {
+              categoryId = existingCategory.id;
+            } else {
+              // Créer la catégorie
+              const { data: newCategory, error: catError } = await supabase
+                .from("categories")
+                .insert({
+                  user_id: user.id,
+                  nom: categoryName,
+                  parent_id: null
+                })
+                .select("id")
+                .single();
+
+              if (!catError && newCategory) {
+                categoryId = newCategory.id;
+              }
+            }
+
+            // Si une sous-catégorie est spécifiée
+            if (subCategoryName && categoryId) {
+              const { data: existingSubCategory } = await supabase
+                .from("categories")
+                .select("id")
+                .eq("user_id", user.id)
+                .eq("nom", subCategoryName)
+                .eq("parent_id", categoryId)
+                .maybeSingle();
+
+              if (existingSubCategory) {
+                categoryId = existingSubCategory.id;
+              } else {
+                // Créer la sous-catégorie
+                const { data: newSubCategory, error: subCatError } = await supabase
+                  .from("categories")
+                  .insert({
+                    user_id: user.id,
+                    nom: subCategoryName,
+                    parent_id: categoryId
+                  })
+                  .select("id")
+                  .single();
+
+                if (!subCatError && newSubCategory) {
+                  categoryId = newSubCategory.id;
+                }
+              }
+            }
           }
 
           // Insérer l'accessoire
@@ -364,6 +422,7 @@ const AccessoryImportExportDialog = ({
                     <tr>
                       <th className="px-2 py-2 text-left font-medium text-xs">Nom *</th>
                       <th className="px-2 py-2 text-left font-medium text-xs">Catégorie</th>
+                      <th className="px-2 py-2 text-left font-medium text-xs">Sous-catégorie</th>
                       <th className="px-2 py-2 text-left font-medium text-xs">Prix réf.</th>
                       <th className="px-2 py-2 text-left font-medium text-xs">Prix TTC</th>
                       <th className="px-2 py-2 text-left font-medium text-xs">Marge %</th>
@@ -394,6 +453,14 @@ const AccessoryImportExportDialog = ({
                             value={row.categorie}
                             onChange={(e) => updateTableRow(row.id, "categorie", e.target.value)}
                             placeholder="Catégorie"
+                            className="h-8 text-xs min-w-[100px]"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <Input
+                            value={row.sous_categorie}
+                            onChange={(e) => updateTableRow(row.id, "sous_categorie", e.target.value)}
+                            placeholder="Sous-catégorie"
                             className="h-8 text-xs min-w-[100px]"
                           />
                         </td>
@@ -600,8 +667,8 @@ const AccessoryImportExportDialog = ({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const headers = "Nom\tCatégorie\tPrix référence\tPrix vente TTC\tMarge %\tFournisseur\tDescription\tURL produit\tType électrique\tPoids (kg)\tLongueur (mm)\tLargeur (mm)\tHauteur (mm)";
-                      const emptyRow = "\t\t\t\t\t\t\t\t\t\t\t\t";
+                      const headers = "Nom\tCatégorie\tSous-catégorie\tPrix référence\tPrix vente TTC\tMarge %\tFournisseur\tDescription\tURL produit\tType électrique\tPoids (kg)\tLongueur (mm)\tLargeur (mm)\tHauteur (mm)";
+                      const emptyRow = "\t\t\t\t\t\t\t\t\t\t\t\t\t";
                       const tableText = headers + "\n" + emptyRow;
                       navigator.clipboard.writeText(tableText).then(() => {
                         toast.success("Tableau copié ! Collez-le dans Excel/Sheets");
@@ -620,6 +687,7 @@ const AccessoryImportExportDialog = ({
                       <tr>
                         <th className="px-3 py-2 text-left font-medium border-r">Nom</th>
                         <th className="px-3 py-2 text-left font-medium border-r">Catégorie</th>
+                        <th className="px-3 py-2 text-left font-medium border-r">Sous-catégorie</th>
                         <th className="px-3 py-2 text-left font-medium border-r">Prix référence</th>
                         <th className="px-3 py-2 text-left font-medium border-r">Prix vente TTC</th>
                         <th className="px-3 py-2 text-left font-medium border-r">Marge %</th>
@@ -635,6 +703,7 @@ const AccessoryImportExportDialog = ({
                     </thead>
                     <tbody>
                       <tr className="border-t">
+                        <td className="px-3 py-2 border-r">&nbsp;</td>
                         <td className="px-3 py-2 border-r">&nbsp;</td>
                         <td className="px-3 py-2 border-r">&nbsp;</td>
                         <td className="px-3 py-2 border-r">&nbsp;</td>
