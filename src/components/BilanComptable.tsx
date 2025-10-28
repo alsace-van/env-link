@@ -206,7 +206,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
           <div className="flex items-center justify-between">
             <CardTitle>Solde Bancaire</CardTitle>
             <div className="flex gap-2">
-              <Button onClick={() => setIsSidebarOpen(true)} variant="outline" size="sm">
+              <Button onClick={() => setIsSidebarOpen(true)} size="sm">
                 <Euro className="h-4 w-4 mr-2" />
                 Gestion Financière
               </Button>

@@ -23,7 +23,7 @@ export const FinancialSidebar = ({
 }: FinancialSidebarProps) => {
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-[600px] sm:w-[700px] sm:max-w-[700px]">
+      <SheetContent side="right" className="w-[450px] sm:w-[500px] sm:max-w-[500px]">
         <SheetHeader>
           <SheetTitle>Gestion Financière - {projectName}</SheetTitle>
         </SheetHeader>
