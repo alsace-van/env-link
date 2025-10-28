@@ -854,18 +854,41 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
 };
 
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
+  const [canvasCount, setCanvasCount] = useState(1);
+  const maxCanvasCount = 2; // Limité à 2 pour l'instant (technical_canvas_data et technical_canvas_data_2)
+
+  const handleAddCanvas = () => {
+    if (canvasCount < maxCanvasCount) {
+      setCanvasCount(prev => prev + 1);
+      toast.success(`Schéma ${canvasCount + 1} ajouté`);
+    } else {
+      toast.error("Nombre maximum de schémas atteint");
+    }
+  };
+
   return (
-    <Tabs defaultValue="canvas1" className="w-full">
-      <TabsList className="grid w-full grid-cols-2 mb-4">
-        <TabsTrigger value="canvas1">Schéma 1</TabsTrigger>
-        <TabsTrigger value="canvas2">Schéma 2</TabsTrigger>
-      </TabsList>
-      <TabsContent value="canvas1">
-        <CanvasInstance projectId={projectId} canvasNumber={1} onExpenseAdded={onExpenseAdded} />
-      </TabsContent>
-      <TabsContent value="canvas2">
-        <CanvasInstance projectId={projectId} canvasNumber={2} onExpenseAdded={onExpenseAdded} />
-      </TabsContent>
-    </Tabs>
+    <div className="space-y-4">
+      <Tabs defaultValue="canvas1" className="w-full">
+        <div className="flex items-center gap-2 mb-4">
+          <TabsList className="flex-1">
+            {Array.from({ length: canvasCount }, (_, i) => (
+              <TabsTrigger key={i + 1} value={`canvas${i + 1}`}>
+                Schéma {i + 1}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {canvasCount < maxCanvasCount && (
+            <Button onClick={handleAddCanvas} size="sm" variant="outline">
+              + Ajouter un schéma
+            </Button>
+          )}
+        </div>
+        {Array.from({ length: canvasCount }, (_, i) => (
+          <TabsContent key={i + 1} value={`canvas${i + 1}`}>
+            <CanvasInstance projectId={projectId} canvasNumber={(i + 1) as 1 | 2} onExpenseAdded={onExpenseAdded} />
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
   );
 };
