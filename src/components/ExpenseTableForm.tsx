@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Save, X } from "lucide-react";
+import { Plus, Save, X, Upload, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface ExpenseTableFormProps {
@@ -22,11 +22,15 @@ interface ExpenseRow {
   statut_paiement: string;
   delai_paiement: string;
   prix_vente_ttc: string;
+  facture_file?: File;
+  facture_url?: string;
 }
 
 const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+  const [uploading, setUploading] = useState<Set<string>>(new Set());
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   useEffect(() => {
     loadFournisseurs();
@@ -65,10 +69,28 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     setRows(rows.filter((row) => row.id !== id));
   };
 
-  const updateRow = (id: string, field: keyof ExpenseRow, value: string) => {
+  const updateRow = (id: string, field: keyof ExpenseRow, value: string | File) => {
     setRows(
       rows.map((row) => (row.id === id ? { ...row, [field]: value } : row))
     );
+  };
+
+  const handleFileSelect = async (rowId: string, file: File | null) => {
+    if (!file) return;
+
+    const row = rows.find(r => r.id === rowId);
+    if (!row) return;
+
+    // Store file temporarily in row
+    updateRow(rowId, "facture_file", file);
+  };
+
+  const removeInvoice = (rowId: string) => {
+    setRows(rows.map(row => 
+      row.id === rowId 
+        ? { ...row, facture_file: undefined, facture_url: undefined }
+        : row
+    ));
   };
 
   const saveRows = async () => {
@@ -89,7 +111,39 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       }
     }
 
-    const expensesToInsert = rows.map((row) => ({
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
+
+    // Upload invoices first
+    const rowsWithUrls = await Promise.all(
+      rows.map(async (row) => {
+        if (row.facture_file) {
+          const fileExt = row.facture_file.name.split('.').pop();
+          const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          
+          const { error: uploadError, data } = await supabase.storage
+            .from('project-invoices')
+            .upload(fileName, row.facture_file);
+
+          if (uploadError) {
+            console.error("Upload error:", uploadError);
+            return row;
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('project-invoices')
+            .getPublicUrl(fileName);
+
+          return { ...row, facture_url: publicUrl };
+        }
+        return row;
+      })
+    );
+
+    const expensesToInsert = rowsWithUrls.map((row) => ({
       project_id: projectId,
       nom_accessoire: row.nom_accessoire,
       fournisseur: row.fournisseur || null,
@@ -102,6 +156,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       quantite: 1,
       categorie: "",
       statut_livraison: "commande",
+      facture_url: row.facture_url || null,
     }));
 
     const { error } = await supabase
@@ -141,6 +196,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                 <TableHead className="min-w-[140px]">Statut de paiement</TableHead>
                 <TableHead className="min-w-[160px]">Délai de paiement</TableHead>
                 <TableHead className="min-w-[120px]">Montant TTC (€)</TableHead>
+                <TableHead className="min-w-[120px]">Facture</TableHead>
                 <TableHead className="w-[80px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -237,6 +293,45 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       placeholder="0.00"
                       className="h-8"
                     />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {row.facture_file || row.facture_url ? (
+                        <div className="flex items-center gap-1">
+                          <FileText className="h-4 w-4 text-green-600" />
+                          <span className="text-xs text-muted-foreground truncate max-w-[60px]">
+                            {row.facture_file?.name || "Facture"}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => removeInvoice(row.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <input
+                            ref={(el) => (fileInputRefs.current[row.id] = el)}
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            className="hidden"
+                            onChange={(e) => handleFileSelect(row.id, e.target.files?.[0] || null)}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => fileInputRefs.current[row.id]?.click()}
+                          >
+                            <Upload className="h-3 w-3 mr-1" />
+                            Joindre
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Button

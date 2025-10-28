@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Edit, Plus, Trash2, Euro } from "lucide-react";
+import { Edit, Plus, Trash2, Euro, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import PaymentTransactions from "@/components/PaymentTransactions";
@@ -27,6 +27,7 @@ interface Expense {
   quantite: number;
   date_achat?: string;
   statut_paiement: string;
+  facture_url?: string;
 }
 
 interface Payment {
@@ -276,6 +277,7 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
                         <th className="text-right py-2 px-2">Prix Unit.</th>
                         <th className="text-right py-2 px-2">Total</th>
                         <th className="text-center py-2 px-2">Statut</th>
+                        <th className="text-center py-2 px-2">Facture</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -312,12 +314,26 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
                                 : "Non payé"}
                             </span>
                           </td>
+                          <td className="py-2 px-2 text-center">
+                            {expense.facture_url ? (
+                              <a
+                                href={expense.facture_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center text-primary hover:text-primary/80"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </a>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="font-bold border-t-2">
-                        <td colSpan={5} className="py-3 px-2 text-right">
+                        <td colSpan={6} className="py-3 px-2 text-right">
                           Total des dépenses :
                         </td>
                         <td className="py-3 px-2 text-right text-destructive">
