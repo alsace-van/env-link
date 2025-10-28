@@ -33,7 +33,6 @@ import PhotosTab from "@/components/PhotosTab";
 import UserMenu from "@/components/UserMenu";
 import ExpensesList from "@/components/ExpensesList";
 import ExpensesSummary from "@/components/ExpensesSummary";
-import ExpenseTableForm from "@/components/ExpenseTableForm";
 import AccessoriesCatalogView from "@/components/AccessoriesCatalogView";
 import { BilanComptable } from "@/components/BilanComptable";
 import { NoticeUploadDialog } from "@/components/NoticeUploadDialog";
@@ -505,21 +504,14 @@ const ProjectDetail = () => {
               <TabsContent value="liste">
                 <div className="flex gap-6">
                   <div className="flex-1">
-                    <div className="space-y-6">
-                      <ExpenseTableForm
-                        projectId={project.id}
-                        onSuccess={() => setExpenseRefresh((prev) => prev + 1)}
-                      />
-                      
-                      <Card>
-                        <CardContent className="pt-6">
-                          <ExpensesList
-                            projectId={project.id}
-                            onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
-                          />
-                        </CardContent>
-                      </Card>
-                    </div>
+                    <Card>
+                      <CardContent className="pt-6">
+                        <ExpensesList
+                          projectId={project.id}
+                          onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                        />
+                      </CardContent>
+                    </Card>
                   </div>
 
                   <div className={`transition-all duration-300 ${isSummaryOpen ? "w-[500px]" : "w-0"} overflow-hidden`}>

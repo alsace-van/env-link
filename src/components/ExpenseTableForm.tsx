@@ -16,6 +16,7 @@ interface ExpenseTableFormProps {
 interface ExpenseRow {
   id: string;
   nom_accessoire: string;
+  fournisseur: string;
   date_achat: string;
   date_paiement: string;
   statut_paiement: string;
@@ -25,6 +26,24 @@ interface ExpenseRow {
 
 const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   const [rows, setRows] = useState<ExpenseRow[]>([]);
+  const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+
+  useEffect(() => {
+    loadFournisseurs();
+  }, [projectId]);
+
+  const loadFournisseurs = async () => {
+    const { data } = await supabase
+      .from("project_expenses")
+      .select("fournisseur")
+      .eq("project_id", projectId)
+      .not("fournisseur", "is", null);
+
+    if (data) {
+      const uniqueFournisseurs = Array.from(new Set(data.map(d => d.fournisseur).filter(Boolean)));
+      setFournisseurs(uniqueFournisseurs as string[]);
+    }
+  };
 
   const addNewRow = () => {
     setRows([
@@ -32,6 +51,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       {
         id: crypto.randomUUID(),
         nom_accessoire: "",
+        fournisseur: "",
         date_achat: new Date().toISOString().split("T")[0],
         date_paiement: "",
         statut_paiement: "non_paye",
@@ -72,11 +92,12 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const expensesToInsert = rows.map((row) => ({
       project_id: projectId,
       nom_accessoire: row.nom_accessoire,
+      fournisseur: row.fournisseur || null,
       date_achat: row.date_achat,
       date_paiement: row.date_paiement || null,
       statut_paiement: row.statut_paiement,
       delai_paiement: row.delai_paiement,
-      prix: parseFloat(row.prix_vente_ttc), // On utilise le même montant pour prix et prix_vente_ttc
+      prix: parseFloat(row.prix_vente_ttc),
       prix_vente_ttc: parseFloat(row.prix_vente_ttc),
       quantite: 1,
       categorie: "",
@@ -114,12 +135,13 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[200px]">Nom de la dépense</TableHead>
+                <TableHead className="min-w-[150px]">Fournisseur</TableHead>
                 <TableHead className="min-w-[140px]">Jour de la dépense</TableHead>
                 <TableHead className="min-w-[140px]">Date de paiement</TableHead>
                 <TableHead className="min-w-[140px]">Statut de paiement</TableHead>
                 <TableHead className="min-w-[160px]">Délai de paiement</TableHead>
                 <TableHead className="min-w-[120px]">Montant TTC (€)</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
+                <TableHead className="w-[80px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -134,6 +156,22 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       placeholder="Nom de l'article"
                       className="h-8"
                     />
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      value={row.fournisseur}
+                      onChange={(e) =>
+                        updateRow(row.id, "fournisseur", e.target.value)
+                      }
+                      placeholder="Fournisseur"
+                      className="h-8"
+                      list={`fournisseurs-${row.id}`}
+                    />
+                    <datalist id={`fournisseurs-${row.id}`}>
+                      {fournisseurs.map((f) => (
+                        <option key={f} value={f} />
+                      ))}
+                    </datalist>
                   </TableCell>
                   <TableCell>
                     <Input

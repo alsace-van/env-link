@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import PaymentTransactions from "@/components/PaymentTransactions";
 import { MonthlyCharges } from "@/components/MonthlyCharges";
 import { InstallmentPayments } from "@/components/InstallmentPayments";
+import ExpenseTableForm from "@/components/ExpenseTableForm";
 
 interface BankBalance {
   id: string;
@@ -240,6 +241,17 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
           )}
         </CardContent>
       </Card>
+
+      {/* Formulaire d'ajout rapide */}
+      {bankBalance && (
+        <ExpenseTableForm
+          projectId={projectId}
+          onSuccess={() => {
+            loadExpenses();
+            setPaymentRefresh(prev => prev + 1);
+          }}
+        />
+      )}
 
       {/* Dépenses après la date de départ */}
       {bankBalance && (
