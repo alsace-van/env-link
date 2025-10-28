@@ -99,26 +99,68 @@ const AccessoriesCatalogView = () => {
     setFilteredAccessories(filtered);
   }, [searchTerm, accessories, selectedCategories]);
 
-  // Grouper les accessoires par catégorie
+  // Grouper les accessoires par catégorie principale puis sous-catégories
   const groupedAccessories = () => {
-    const groups = new Map<string, Accessory[]>();
+    interface CategoryGroup {
+      mainCategory: string;
+      mainCategoryId: string | null;
+      subGroups: Map<string, Accessory[]>;
+    }
+    
+    const mainGroups = new Map<string, CategoryGroup>();
     
     filteredAccessories.forEach((accessory) => {
-      const categoryName = accessory.categories?.nom || "Sans catégorie";
-      if (!groups.has(categoryName)) {
-        groups.set(categoryName, []);
+      if (!accessory.category_id) {
+        // Accessoires sans catégorie
+        if (!mainGroups.has("Sans catégorie")) {
+          mainGroups.set("Sans catégorie", {
+            mainCategory: "Sans catégorie",
+            mainCategoryId: null,
+            subGroups: new Map([["Sans catégorie", []]]),
+          });
+        }
+        mainGroups.get("Sans catégorie")!.subGroups.get("Sans catégorie")!.push(accessory);
+        return;
       }
-      groups.get(categoryName)?.push(accessory);
+      
+      const category = accessory.categories;
+      if (!category) return;
+      
+      // Trouver la catégorie principale
+      const mainCategory = category.parent_id 
+        ? categories.find(c => c.id === category.parent_id)
+        : category;
+      
+      if (!mainCategory) return;
+      
+      const mainCategoryName = mainCategory.nom;
+      
+      if (!mainGroups.has(mainCategoryName)) {
+        mainGroups.set(mainCategoryName, {
+          mainCategory: mainCategoryName,
+          mainCategoryId: mainCategory.id,
+          subGroups: new Map(),
+        });
+      }
+      
+      const subCategoryName = category.parent_id ? category.nom : "Général";
+      const group = mainGroups.get(mainCategoryName)!;
+      
+      if (!group.subGroups.has(subCategoryName)) {
+        group.subGroups.set(subCategoryName, []);
+      }
+      
+      group.subGroups.get(subCategoryName)!.push(accessory);
     });
     
-    // Trier les catégories (Sans catégorie en dernier)
-    const sortedGroups = Array.from(groups.entries()).sort(([a], [b]) => {
+    // Trier les catégories principales (Sans catégorie en dernier)
+    const sortedMainGroups = Array.from(mainGroups.entries()).sort(([a], [b]) => {
       if (a === "Sans catégorie") return 1;
       if (b === "Sans catégorie") return -1;
       return a.localeCompare(b);
     });
     
-    return sortedGroups;
+    return sortedMainGroups;
   };
 
   const loadCategories = async () => {
@@ -269,14 +311,28 @@ const AccessoriesCatalogView = () => {
           </CardContent>
         </Card>
       ) : viewMode === 'list' ? (
-        <div className="space-y-6">
-          {groupedAccessories().map(([categoryName, categoryAccessories]) => (
-            <div key={categoryName} className="space-y-2">
-              <h3 className="text-lg font-semibold sticky top-0 bg-background/95 backdrop-blur-sm py-2 border-b">
-                {categoryName} ({categoryAccessories.length})
-              </h3>
-              <div className="space-y-2">
-                {categoryAccessories.map((accessory) => (
+        <div className="space-y-8">
+          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => (
+            <div key={mainCategoryName} className="space-y-4">
+              {/* En-tête de catégorie principale */}
+              <div className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg">
+                <h2 className="text-xl font-bold text-primary">
+                  {mainCategoryName}
+                  <span className="text-sm font-normal text-muted-foreground ml-2">
+                    ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
+                  </span>
+                </h2>
+              </div>
+              
+              {/* Sous-catégories */}
+              <div className="space-y-4 pl-4">
+                {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => (
+                  <div key={subCategoryName} className="space-y-2">
+                    <h3 className="text-lg font-semibold text-muted-foreground border-b pb-1">
+                      {subCategoryName} ({categoryAccessories.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {categoryAccessories.map((accessory) => (
                   <Card 
                     key={accessory.id} 
                     className="hover:bg-muted/50 transition-colors cursor-move"
@@ -351,20 +407,37 @@ const AccessoriesCatalogView = () => {
                       </div>
                     </CardContent>
                   </Card>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="space-y-6">
-          {groupedAccessories().map(([categoryName, categoryAccessories]) => (
-            <div key={categoryName} className="space-y-2">
-              <h3 className="text-lg font-semibold sticky top-0 bg-background/95 backdrop-blur-sm py-2 border-b">
-                {categoryName} ({categoryAccessories.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {categoryAccessories.map((accessory) => (
+        <div className="space-y-8">
+          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => (
+            <div key={mainCategoryName} className="space-y-4">
+              {/* En-tête de catégorie principale */}
+              <div className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg">
+                <h2 className="text-xl font-bold text-primary">
+                  {mainCategoryName}
+                  <span className="text-sm font-normal text-muted-foreground ml-2">
+                    ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
+                  </span>
+                </h2>
+              </div>
+              
+              {/* Sous-catégories en grille */}
+              <div className="space-y-4 pl-4">
+                {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => (
+                  <div key={subCategoryName} className="space-y-2">
+                    <h3 className="text-lg font-semibold text-muted-foreground border-b pb-1">
+                      {subCategoryName} ({categoryAccessories.length})
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {categoryAccessories.map((accessory) => (
                   <Card 
                     key={accessory.id}
                     draggable
@@ -471,6 +544,9 @@ const AccessoriesCatalogView = () => {
                       </div>
                     </CardContent>
                   </Card>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
