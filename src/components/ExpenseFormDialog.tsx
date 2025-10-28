@@ -376,28 +376,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
         toast.error("Erreur lors de la modification");
         console.error(error);
       } else {
-        // Si lié à un accessoire du catalogue, mettre à jour le catalogue
-        if (expense.accessory_id) {
-          const { error: catalogError } = await supabase
-            .from("accessories_catalog")
-            .update({
-              nom: formData.nom_accessoire,
-              fournisseur: formData.fournisseur || null,
-              prix_reference: parseFloat(formData.prix_achat),
-            })
-            .eq("id", expense.accessory_id);
-
-          if (catalogError) {
-            console.error("Erreur lors de la mise à jour du catalogue:", catalogError);
-            toast.error("Erreur lors de la mise à jour du catalogue");
-          } else {
-            toast.success("Dépense et catalogue mis à jour");
-          }
-        } else {
-          toast.success("Dépense modifiée avec succès");
-          toast.info("Cette dépense n'est pas liée au catalogue");
-        }
-
+        toast.success("Dépense modifiée avec succès");
         onSuccess();
       }
     } else {
