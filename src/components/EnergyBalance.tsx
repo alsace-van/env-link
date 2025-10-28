@@ -79,6 +79,14 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     }, 0);
   };
 
+  // Calculate total daily usage hours
+  const calculateTotalUsageHours = () => {
+    return consumers.reduce((total, item) => {
+      const usageTime = item.temps_utilisation_heures || 0;
+      return total + usageTime;
+    }, 0);
+  };
+
   // Calculate remaining autonomy in days
   const calculateRemainingAutonomy = () => {
     const totalConsumption = calculateTotalConsumption();
@@ -93,6 +101,8 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   const totalConsumption = calculateTotalConsumption();
   const batteryCapacity = calculateBatteryCapacity();
   const remainingAutonomy = calculateRemainingAutonomy();
+  const totalUsageHours = calculateTotalUsageHours();
+  const cumulativeUsageHours = remainingAutonomy ? remainingAutonomy * totalUsageHours : null;
 
   if (loading) {
     return (
@@ -336,6 +346,9 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
                       Basée sur votre consommation quotidienne réelle
+                      {cumulativeUsageHours !== null && totalUsageHours > 0 && (
+                        <> · Durée cumulée : {cumulativeUsageHours.toFixed(1)}h d'utilisation</>
+                      )}
                     </div>
                   </div>
                 )}
