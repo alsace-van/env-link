@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Text, Box, Grid, Line } from "@react-three/drei";
+import { Canvas, useThree, ThreeEvent } from "@react-three/fiber";
+import { OrbitControls, Text, Box, Grid, Line, Cone } from "@react-three/drei";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2 } from "lucide-react";
+import { Maximize2, RotateCcw, RefreshCw, Ruler, MousePointer2, Move } from "lucide-react";
 import * as THREE from "three";
 import { toast } from "sonner";
 
@@ -30,9 +30,144 @@ interface FurnitureBoxProps {
   furniture: FurnitureItem;
   mmToUnits3D: number;
   canvasScale: number;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
-const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps) => {
+interface TransformGizmoProps {
+  position: [number, number, number];
+  onMove: (axis: 'x' | 'y' | 'z', delta: number) => void;
+}
+
+const TransformGizmo = ({ position, onMove }: TransformGizmoProps) => {
+  const [activeAxis, setActiveAxis] = useState<'x' | 'y' | 'z' | null>(null);
+  const [dragStart, setDragStart] = useState<THREE.Vector3 | null>(null);
+  const { camera, raycaster } = useThree();
+
+  const handleAxisPointerDown = (axis: 'x' | 'y' | 'z', event: ThreeEvent<PointerEvent>) => {
+    event.stopPropagation();
+    setActiveAxis(axis);
+    setDragStart(event.point.clone());
+  };
+
+  useEffect(() => {
+    if (!activeAxis || !dragStart) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const canvas = event.target as HTMLCanvasElement;
+      const rect = canvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+      
+      // Créer un plan perpendiculaire à l'axe de déplacement
+      let plane: THREE.Plane;
+      if (activeAxis === 'x') {
+        plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -position[1]);
+      } else if (activeAxis === 'y') {
+        plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), -position[0]);
+      } else {
+        plane = new THREE.Plane(new THREE.Vector3(1, 0, 0), -position[0]);
+      }
+
+      const intersectPoint = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, intersectPoint);
+
+      if (intersectPoint) {
+        let delta = 0;
+        if (activeAxis === 'x') {
+          delta = intersectPoint.x - dragStart.x;
+        } else if (activeAxis === 'y') {
+          delta = intersectPoint.y - dragStart.y;
+        } else if (activeAxis === 'z') {
+          delta = intersectPoint.z - dragStart.z;
+        }
+        
+        onMove(activeAxis, delta);
+        setDragStart(intersectPoint);
+      }
+    };
+
+    const handlePointerUp = () => {
+      setActiveAxis(null);
+      setDragStart(null);
+    };
+
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [activeAxis, dragStart, camera, raycaster, onMove, position]);
+
+  const arrowLength = 2;
+  const arrowRadius = 0.1;
+  const coneHeight = 0.4;
+  const coneRadius = 0.15;
+
+  return (
+    <group position={position}>
+      {/* Flèche X (rouge) */}
+      <group rotation={[0, 0, -Math.PI / 2]}>
+        <mesh 
+          position={[arrowLength / 2, 0, 0]}
+          onPointerDown={(e) => handleAxisPointerDown('x', e)}
+        >
+          <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
+          <meshBasicMaterial color={activeAxis === 'x' ? "#ffff00" : "#ff0000"} />
+        </mesh>
+        <mesh 
+          position={[arrowLength + coneHeight / 2, 0, 0]}
+          onPointerDown={(e) => handleAxisPointerDown('x', e)}
+        >
+          <coneGeometry args={[coneRadius, coneHeight, 8]} />
+          <meshBasicMaterial color={activeAxis === 'x' ? "#ffff00" : "#ff0000"} />
+        </mesh>
+      </group>
+
+      {/* Flèche Y (vert) */}
+      <group>
+        <mesh 
+          position={[0, arrowLength / 2, 0]}
+          onPointerDown={(e) => handleAxisPointerDown('y', e)}
+        >
+          <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
+          <meshBasicMaterial color={activeAxis === 'y' ? "#ffff00" : "#00ff00"} />
+        </mesh>
+        <mesh 
+          position={[0, arrowLength + coneHeight / 2, 0]}
+          onPointerDown={(e) => handleAxisPointerDown('y', e)}
+        >
+          <coneGeometry args={[coneRadius, coneHeight, 8]} />
+          <meshBasicMaterial color={activeAxis === 'y' ? "#ffff00" : "#00ff00"} />
+        </mesh>
+      </group>
+
+      {/* Flèche Z (bleu) */}
+      <group rotation={[Math.PI / 2, 0, 0]}>
+        <mesh 
+          position={[0, arrowLength / 2, 0]}
+          onPointerDown={(e) => handleAxisPointerDown('z', e)}
+        >
+          <cylinderGeometry args={[arrowRadius, arrowRadius, arrowLength, 8]} />
+          <meshBasicMaterial color={activeAxis === 'z' ? "#ffff00" : "#0000ff"} />
+        </mesh>
+        <mesh 
+          position={[0, arrowLength + coneHeight / 2, 0]}
+          onPointerDown={(e) => handleAxisPointerDown('z', e)}
+        >
+          <coneGeometry args={[coneRadius, coneHeight, 8]} />
+          <meshBasicMaterial color={activeAxis === 'z' ? "#ffff00" : "#0000ff"} />
+        </mesh>
+      </group>
+    </group>
+  );
+};
+
+const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, isSelected, onSelect }: FurnitureBoxProps) => {
   let widthMm, depthMm;
   
   // Vérifier si les dimensions du canvas sont valides (non nulles et > 10px)
@@ -88,9 +223,13 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
   const textOffsetY = height3D / 2 + textSize * 1.2;
 
   return (
-    <group position={[posX3D, posY3D, posZ3D]}>
+    <group position={[posX3D, posY3D, posZ3D]} onClick={onSelect}>
       <Box args={[width3D, height3D, depth3D]} castShadow receiveShadow>
-        <meshStandardMaterial color="#3b82f6" opacity={0.8} transparent />
+        <meshStandardMaterial 
+          color={isSelected ? "#fbbf24" : "#3b82f6"} 
+          opacity={0.8} 
+          transparent 
+        />
       </Box>
       <Text position={[0, textOffsetY, 0]} fontSize={textSize} color="black" anchorX="center" anchorY="middle">
         {`${Math.round(widthMm)}×${Math.round(depthMm)}×${heightMm}mm`}
@@ -291,6 +430,10 @@ const Scene = ({
   measureMode,
   measureLines,
   onAddMeasure,
+  moveMode,
+  selectedFurnitureId,
+  onSelectFurniture,
+  onMoveFurniture,
 }: {
   furniture: FurnitureItem[];
   loadAreaLength: number;
@@ -298,6 +441,10 @@ const Scene = ({
   measureMode: boolean;
   measureLines: MeasureLine[];
   onAddMeasure: (start: THREE.Vector3, end: THREE.Vector3, distance: number) => void;
+  moveMode: boolean;
+  selectedFurnitureId: string | null;
+  onSelectFurniture: (id: string | null) => void;
+  onMoveFurniture: (id: string, axis: 'x' | 'y' | 'z', delta: number) => void;
 }) => {
   const mmToUnits3D = 1 / 100;
   const scale3D = mmToUnits3D;
@@ -315,6 +462,32 @@ const Scene = ({
   console.log(`Canvas: ${CANVAS_WIDTH}px × ${CANVAS_HEIGHT}px`);
   console.log("==========================================\n");
 
+  const selectedFurniture = furniture.find(f => f.id === selectedFurnitureId);
+  
+  const getGizmoPosition = (): [number, number, number] => {
+    if (!selectedFurniture || !selectedFurniture.position) return [0, 0, 0];
+    
+    const posXpixelsRel = selectedFurniture.position.x || 0;
+    const posYpixelsRel = selectedFurniture.position.y || 0;
+    const posXmm = posXpixelsRel / canvasScale;
+    const posZmm = posYpixelsRel / canvasScale;
+    const posX3D = posXmm * mmToUnits3D;
+    const posZ3D = posZmm * mmToUnits3D;
+    
+    const heightMm = selectedFurniture.hauteur_mm || 100;
+    const height3D = heightMm * mmToUnits3D;
+    const hauteurSolMm = selectedFurniture.hauteur_sol_mm || 0;
+    const posY3D = (hauteurSolMm * mmToUnits3D) + (height3D / 2);
+    
+    return [posX3D, posY3D, posZ3D];
+  };
+
+  const handleGizmoMove = (axis: 'x' | 'y' | 'z', delta: number) => {
+    if (selectedFurnitureId) {
+      onMoveFurniture(selectedFurnitureId, axis, delta);
+    }
+  };
+
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -324,8 +497,22 @@ const Scene = ({
       <LoadArea length={loadAreaLength} width={loadAreaWidth} mmToUnits3D={mmToUnits3D} />
 
       {furniture.map((item) => (
-        <FurnitureBox key={item.id} furniture={item} mmToUnits3D={mmToUnits3D} canvasScale={canvasScale} />
+        <FurnitureBox 
+          key={item.id} 
+          furniture={item} 
+          mmToUnits3D={mmToUnits3D} 
+          canvasScale={canvasScale}
+          isSelected={moveMode && item.id === selectedFurnitureId}
+          onSelect={() => moveMode ? onSelectFurniture(item.id) : undefined}
+        />
       ))}
+
+      {moveMode && selectedFurnitureId && (
+        <TransformGizmo 
+          position={getGizmoPosition()} 
+          onMove={handleGizmoMove}
+        />
+      )}
 
       <MeasurementTool
         isActive={measureMode}
@@ -345,7 +532,7 @@ const Scene = ({
         infiniteGrid
       />
 
-      <OrbitControls enableDamping dampingFactor={0.05} minDistance={5} maxDistance={100} enabled={!measureMode} />
+      <OrbitControls enableDamping dampingFactor={0.05} minDistance={5} maxDistance={100} enabled={!measureMode && !moveMode} />
     </>
   );
 };
@@ -364,6 +551,8 @@ export const Layout3DView = ({
   const [measureLines, setMeasureLines] = useState<MeasureLine[]>([]);
   const [loadAreaLength, setLoadAreaLength] = useState<number>(propLoadAreaLength || 3000);
   const [loadAreaWidth, setLoadAreaWidth] = useState<number>(propLoadAreaWidth || 1800);
+  const [moveMode, setMoveMode] = useState(false);
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /**
@@ -692,6 +881,55 @@ export const Layout3DView = ({
     toast.success("Mesures effacées");
   };
 
+  const handleMoveFurniture = async (id: string, axis: 'x' | 'y' | 'z', delta: number) => {
+    const mmToUnits3D = 1 / 100;
+    const CANVAS_WIDTH = 800;
+    const CANVAS_HEIGHT = 600;
+    const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
+    
+    setFurniture(prev => prev.map(item => {
+      if (item.id !== id || !item.position) return item;
+      
+      const newPosition = { ...item.position };
+      
+      if (axis === 'x') {
+        // Convertir le delta 3D en pixels canvas
+        const deltaMm = delta / mmToUnits3D;
+        const deltaPx = deltaMm * canvasScale;
+        newPosition.x += deltaPx;
+      } else if (axis === 'z') {
+        const deltaMm = delta / mmToUnits3D;
+        const deltaPx = deltaMm * canvasScale;
+        newPosition.y += deltaPx;
+      } else if (axis === 'y') {
+        // Pour l'axe Y, on modifie hauteur_sol_mm
+        const deltaMm = delta / mmToUnits3D;
+        return {
+          ...item,
+          hauteur_sol_mm: Math.max(0, (item.hauteur_sol_mm || 0) + deltaMm),
+        };
+      }
+      
+      return {
+        ...item,
+        position: newPosition,
+      };
+    }));
+
+    // Sauvegarder automatiquement après le déplacement
+    toast.success("Position mise à jour");
+  };
+
+  const handleSelectFurniture = (id: string | null) => {
+    setSelectedFurnitureId(id);
+  };
+
+  useEffect(() => {
+    if (!moveMode) {
+      setSelectedFurnitureId(null);
+    }
+  }, [moveMode]);
+
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
       if (measureMode) {
@@ -715,11 +953,36 @@ export const Layout3DView = ({
           <p className="text-sm text-muted-foreground">Clic + glisser pour tourner, molette pour zoomer</p>
         </div>
         <div className="flex gap-2">
-          <Button variant={!measureMode ? "default" : "outline"} size="sm" onClick={() => setMeasureMode(false)}>
+          <Button 
+            variant={!measureMode && !moveMode ? "default" : "outline"} 
+            size="sm" 
+            onClick={() => {
+              setMeasureMode(false);
+              setMoveMode(false);
+            }}
+          >
             <MousePointer2 className="w-4 h-4 mr-2" />
             Navigation
           </Button>
-          <Button variant={measureMode ? "default" : "outline"} size="sm" onClick={() => setMeasureMode(true)}>
+          <Button 
+            variant={moveMode ? "default" : "outline"} 
+            size="sm" 
+            onClick={() => {
+              setMoveMode(!moveMode);
+              setMeasureMode(false);
+            }}
+          >
+            <Move className="w-4 h-4 mr-2" />
+            Déplacer
+          </Button>
+          <Button 
+            variant={measureMode ? "default" : "outline"} 
+            size="sm" 
+            onClick={() => {
+              setMeasureMode(true);
+              setMoveMode(false);
+            }}
+          >
             <Ruler className="w-4 h-4 mr-2" />
             Mesure
           </Button>
@@ -754,6 +1017,10 @@ export const Layout3DView = ({
               measureMode={measureMode}
               measureLines={measureLines}
               onAddMeasure={handleAddMeasure}
+              moveMode={moveMode}
+              selectedFurnitureId={selectedFurnitureId}
+              onSelectFurniture={handleSelectFurniture}
+              onMoveFurniture={handleMoveFurniture}
             />
           </Canvas>
         </div>
