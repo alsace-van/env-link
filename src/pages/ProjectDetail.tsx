@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Image, Euro, FileText, Package, BookOpen, PanelRightOpen, Wrench, Edit } from "lucide-react";
@@ -44,7 +51,6 @@ interface Project {
   };
 }
 
-
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -72,22 +78,22 @@ const ProjectDetail = () => {
 
     // Écouter les changements en temps réel sur la table projects
     const channel = supabase
-      .channel('project-changes')
+      .channel("project-changes")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'projects',
-          filter: `id=eq.${id}`
+          event: "UPDATE",
+          schema: "public",
+          table: "projects",
+          filter: `id=eq.${id}`,
         },
         (payload) => {
-          console.log('🔄 Changement détecté dans le projet:', payload);
+          console.log("🔄 Changement détecté dans le projet:", payload);
           // Recharger les données du projet quand il y a un changement
           loadProject();
           // Forcer le rechargement du canvas 2D
-          setLayoutCanvasKey(prev => prev + 1);
-        }
+          setLayoutCanvasKey((prev) => prev + 1);
+        },
       )
       .subscribe();
 
@@ -99,7 +105,9 @@ const ProjectDetail = () => {
   const loadProject = async () => {
     if (!id) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       navigate("/auth");
       return;
@@ -109,13 +117,15 @@ const ProjectDetail = () => {
 
     const { data, error } = await supabase
       .from("projects")
-      .select(`
+      .select(
+        `
         *,
         vehicles_catalog (
           marque,
           modele
         )
-      `)
+      `,
+      )
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
@@ -153,7 +163,9 @@ const ProjectDetail = () => {
         longueur_mm: editFormData.longueur_mm ? parseInt(editFormData.longueur_mm) : null,
         largeur_mm: editFormData.largeur_mm ? parseInt(editFormData.largeur_mm) : null,
         hauteur_mm: editFormData.hauteur_mm ? parseInt(editFormData.hauteur_mm) : null,
-        longueur_chargement_mm: editFormData.longueur_chargement_mm ? parseInt(editFormData.longueur_chargement_mm) : null,
+        longueur_chargement_mm: editFormData.longueur_chargement_mm
+          ? parseInt(editFormData.longueur_chargement_mm)
+          : null,
         largeur_chargement_mm: editFormData.largeur_chargement_mm ? parseInt(editFormData.largeur_chargement_mm) : null,
       })
       .eq("id", project.id);
@@ -167,7 +179,6 @@ const ProjectDetail = () => {
       loadProject();
     }
   };
-
 
   if (isLoading) {
     return (
@@ -186,11 +197,7 @@ const ProjectDetail = () => {
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate("/dashboard")}
-            >
+            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
             </Button>
@@ -222,7 +229,7 @@ const ProjectDetail = () => {
             <CardContent className="space-y-4">
               {/* Contact */}
               {(project.adresse_proprietaire || project.telephone_proprietaire || project.email_proprietaire) && (
-                <div className="space-y-2">
+                <div className="space-y-2 pb-3 border-b">
                   {project.adresse_proprietaire && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground w-20">Adresse :</span>
@@ -243,81 +250,84 @@ const ProjectDetail = () => {
                   )}
                 </div>
               )}
-              
-              {/* Dimensions totales */}
-              {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
-                <div className="pt-3 border-t space-y-2">
-                  <h4 className="text-xs font-semibold text-muted-foreground">Dimensions totales</h4>
-                  <div className="space-y-1">
-                    {project.longueur_mm && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">L :</span>
-                        <p className="font-medium">{project.longueur_mm} mm</p>
-                      </div>
-                    )}
-                    {project.largeur_mm && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">l :</span>
-                        <p className="font-medium">{project.largeur_mm} mm</p>
-                      </div>
-                    )}
-                    {project.hauteur_mm && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">H :</span>
-                        <p className="font-medium">{project.hauteur_mm} mm</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
-              {/* Surface utile */}
-              {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
-                <div className="pt-3 border-t space-y-2">
-                  <h4 className="text-xs font-semibold text-primary">Surface utile</h4>
-                  <div className="space-y-1">
-                    {project.longueur_chargement_mm && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">L utile :</span>
-                        <p className="font-medium">{project.longueur_chargement_mm} mm</p>
-                      </div>
-                    )}
-                    {project.largeur_chargement_mm && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">l utile :</span>
-                        <p className="font-medium">{project.largeur_chargement_mm} mm</p>
-                      </div>
-                    )}
+              {/* Sections horizontales : Dimensions, Surface utile, Poids */}
+              <div className="flex gap-6 justify-between">
+                {/* Dimensions totales */}
+                {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
+                  <div className="flex-1 space-y-2">
+                    <h4 className="text-xs font-semibold text-muted-foreground">Dimensions totales</h4>
+                    <div className="space-y-1">
+                      {project.longueur_mm && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">L :</span>
+                          <p className="font-medium">{project.longueur_mm} mm</p>
+                        </div>
+                      )}
+                      {project.largeur_mm && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">l :</span>
+                          <p className="font-medium">{project.largeur_mm} mm</p>
+                        </div>
+                      )}
+                      {project.hauteur_mm && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">H :</span>
+                          <p className="font-medium">{project.hauteur_mm} mm</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Poids */}
-              {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
-                <div className="pt-3 border-t space-y-2">
-                  <h4 className="text-xs font-semibold text-muted-foreground">Poids</h4>
-                  <div className="space-y-1">
-                    {project.poids_vide_kg && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">Vide :</span>
-                        <p className="font-medium">{project.poids_vide_kg} kg</p>
-                      </div>
-                    )}
-                    {project.charge_utile_kg && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">Charge :</span>
-                        <p className="font-medium">{project.charge_utile_kg} kg</p>
-                      </div>
-                    )}
-                    {project.ptac_kg && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-20">PTAC :</span>
-                        <p className="font-medium">{project.ptac_kg} kg</p>
-                      </div>
-                    )}
+                {/* Surface utile */}
+                {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
+                  <div className="flex-1 space-y-2">
+                    <h4 className="text-xs font-semibold text-blue-600">Surface utile</h4>
+                    <div className="space-y-1">
+                      {project.longueur_chargement_mm && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">L utile :</span>
+                          <p className="font-medium">{project.longueur_chargement_mm} mm</p>
+                        </div>
+                      )}
+                      {project.largeur_chargement_mm && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">l utile :</span>
+                          <p className="font-medium">{project.largeur_chargement_mm} mm</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Poids */}
+                {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
+                  <div className="flex-1 space-y-2">
+                    <h4 className="text-xs font-semibold text-muted-foreground">Poids</h4>
+                    <div className="space-y-1">
+                      {project.poids_vide_kg && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Vide :</span>
+                          <p className="font-medium">{project.poids_vide_kg} kg</p>
+                        </div>
+                      )}
+                      {project.charge_utile_kg && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Charge :</span>
+                          <p className="font-medium">{project.charge_utile_kg} kg</p>
+                        </div>
+                      )}
+                      {project.ptac_kg && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">PTAC :</span>
+                          <p className="font-medium">{project.ptac_kg} kg</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -369,18 +379,15 @@ const ProjectDetail = () => {
                   <CardContent className="pt-6">
                     <ExpensesList
                       projectId={project.id}
-                      onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
+                      onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
                     />
                   </CardContent>
                 </Card>
               </div>
 
-              <div className={`transition-all duration-300 ${isSummaryOpen ? 'w-[500px]' : 'w-0'} overflow-hidden`}>
+              <div className={`transition-all duration-300 ${isSummaryOpen ? "w-[500px]" : "w-0"} overflow-hidden`}>
                 <div className="w-[500px]">
-                  <ExpensesSummary
-                    projectId={project.id}
-                    refreshTrigger={expenseRefresh}
-                  />
+                  <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
                 </div>
               </div>
             </div>
@@ -390,7 +397,7 @@ const ProjectDetail = () => {
               className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
               size="icon"
             >
-              <PanelRightOpen className={`h-6 w-6 transition-transform ${isSummaryOpen ? 'rotate-180' : ''}`} />
+              <PanelRightOpen className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
             </Button>
           </TabsContent>
 
@@ -401,9 +408,7 @@ const ProjectDetail = () => {
                 <CardDescription>Certificats, factures et documents du projet</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground text-center py-12">
-                  Fonctionnalité à venir
-                </p>
+                <p className="text-muted-foreground text-center py-12">Fonctionnalité à venir</p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -421,19 +426,23 @@ const ProjectDetail = () => {
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-                <NoticeUploadDialog onSuccess={() => setPhotoRefresh(prev => prev + 1)} />
+                <NoticeUploadDialog onSuccess={() => setPhotoRefresh((prev) => prev + 1)} />
                 <NoticesList refreshTrigger={photoRefresh} />
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="technical">
-            <Tabs defaultValue="layout" className="w-full" onValueChange={(value) => {
-              // Force le rechargement de la vue 3D quand on y accède
-              if (value === '3d') {
-                setLayout3DKey(prev => prev + 1);
-              }
-            }}>
+            <Tabs
+              defaultValue="layout"
+              className="w-full"
+              onValueChange={(value) => {
+                // Force le rechargement de la vue 3D quand on y accède
+                if (value === "3d") {
+                  setLayout3DKey((prev) => prev + 1);
+                }
+              }}
+            >
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="layout">Aménagement</TabsTrigger>
                 <TabsTrigger value="3d">Vue 3D</TabsTrigger>
@@ -478,9 +487,9 @@ const ProjectDetail = () => {
                     <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <TechnicalCanvas 
-                      projectId={project.id} 
-                      onExpenseAdded={() => setExpenseRefresh(prev => prev + 1)}
+                    <TechnicalCanvas
+                      projectId={project.id}
+                      onExpenseAdded={() => setExpenseRefresh((prev) => prev + 1)}
                     />
                   </CardContent>
                 </Card>
@@ -502,11 +511,9 @@ const ProjectDetail = () => {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Modifier les dimensions du véhicule</DialogTitle>
-            <DialogDescription>
-              Ajustez les dimensions totales et la surface utile de chargement
-            </DialogDescription>
+            <DialogDescription>Ajustez les dimensions totales et la surface utile de chargement</DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-6">
             {/* Dimensions totales */}
             <div className="space-y-4">
@@ -549,8 +556,8 @@ const ProjectDetail = () => {
             <div className="space-y-4 pt-4 border-t">
               <h3 className="text-sm font-semibold text-primary">Surface utile de chargement</h3>
               <p className="text-xs text-muted-foreground">
-                Ces dimensions représentent l'espace réellement utilisable pour l'aménagement, 
-                sans les passages de roues, la cabine, etc.
+                Ces dimensions représentent l'espace réellement utilisable pour l'aménagement, sans les passages de
+                roues, la cabine, etc.
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -580,9 +587,7 @@ const ProjectDetail = () => {
               <Button variant="outline" onClick={() => setIsEditDimensionsOpen(false)}>
                 Annuler
               </Button>
-              <Button onClick={handleSaveDimensions}>
-                Enregistrer
-              </Button>
+              <Button onClick={handleSaveDimensions}>Enregistrer</Button>
             </div>
           </div>
         </DialogContent>
