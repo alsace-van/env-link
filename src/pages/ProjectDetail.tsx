@@ -305,77 +305,78 @@ const ProjectDetail = () => {
               </div>
             </CardHeader>
             {!isProjectInfoCollapsed && (
-              <CardContent className="space-y-4">
-                {/* Informations générales */}
-                <div className="space-y-2 pb-3 border-b">
-                  {project.nom_projet && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-32">Nom du projet :</span>
-                      <p className="font-medium">{project.nom_projet}</p>
-                    </div>
-                  )}
-                  {project.numero_chassis && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-32">N° de châssis :</span>
-                      <p className="font-medium">{project.numero_chassis}</p>
-                    </div>
-                  )}
-                  {project.immatriculation && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-32">Immatriculation :</span>
-                      <p className="font-medium">{project.immatriculation}</p>
-                    </div>
-                  )}
-                  {project.type_mine && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-32">Type mine :</span>
-                      <p className="font-medium">{project.type_mine}</p>
-                    </div>
-                  )}
-                  {project.date_mise_circulation && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-32">Date de circulation :</span>
-                      <p className="font-medium">{new Date(project.date_mise_circulation).toLocaleDateString('fr-FR')}</p>
-                    </div>
-                  )}
-                  {(project.marque_custom || project.modele_custom) && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground w-32">Véhicule :</span>
-                      <p className="font-medium">{project.marque_custom} {project.modele_custom}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Contact */}
-                {(project.adresse_proprietaire || project.telephone_proprietaire || project.email_proprietaire) && (
-                  <div className="space-y-2 pb-3 border-b">
-                    {project.adresse_proprietaire && (
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Informations générales */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-3">Informations générales</h4>
+                    {project.nom_projet && (
                       <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Adresse :</span>
-                        <p className="font-medium">{project.adresse_proprietaire}</p>
+                        <span className="text-muted-foreground w-32">Nom du projet :</span>
+                        <p className="font-medium">{project.nom_projet}</p>
                       </div>
                     )}
-                    {project.telephone_proprietaire && (
+                    {project.numero_chassis && (
                       <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Téléphone :</span>
-                        <p className="font-medium">{project.telephone_proprietaire}</p>
+                        <span className="text-muted-foreground w-32">N° de châssis :</span>
+                        <p className="font-medium">{project.numero_chassis}</p>
                       </div>
                     )}
-                    {project.email_proprietaire && (
+                    {project.immatriculation && (
                       <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Email :</span>
-                        <p className="font-medium">{project.email_proprietaire}</p>
+                        <span className="text-muted-foreground w-32">Immatriculation :</span>
+                        <p className="font-medium">{project.immatriculation}</p>
+                      </div>
+                    )}
+                    {project.type_mine && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground w-32">Type mine :</span>
+                        <p className="font-medium">{project.type_mine}</p>
+                      </div>
+                    )}
+                    {project.date_mise_circulation && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground w-32">Date de circulation :</span>
+                        <p className="font-medium">{new Date(project.date_mise_circulation).toLocaleDateString('fr-FR')}</p>
+                      </div>
+                    )}
+                    {(project.marque_custom || project.modele_custom) && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground w-32">Véhicule :</span>
+                        <p className="font-medium">{project.marque_custom} {project.modele_custom}</p>
                       </div>
                     )}
                   </div>
-                )}
 
-                {/* Sections horizontales : Dimensions, Surface utile, Poids */}
-                <div className="flex gap-6 justify-between">
+                  {/* Contact */}
+                  {(project.adresse_proprietaire || project.telephone_proprietaire || project.email_proprietaire) && (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-3">Contact</h4>
+                      {project.adresse_proprietaire && (
+                        <div className="flex gap-2 text-xs">
+                          <span className="text-muted-foreground w-32">Adresse :</span>
+                          <p className="font-medium">{project.adresse_proprietaire}</p>
+                        </div>
+                      )}
+                      {project.telephone_proprietaire && (
+                        <div className="flex gap-2 text-xs">
+                          <span className="text-muted-foreground w-32">Téléphone :</span>
+                          <p className="font-medium">{project.telephone_proprietaire}</p>
+                        </div>
+                      )}
+                      {project.email_proprietaire && (
+                        <div className="flex gap-2 text-xs">
+                          <span className="text-muted-foreground w-32">Email :</span>
+                          <p className="font-medium">{project.email_proprietaire}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Dimensions totales */}
                   {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
-                    <div className="flex-1 space-y-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground">Dimensions totales</h4>
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-3">Dimensions totales</h4>
                       <div className="space-y-1">
                         {project.longueur_mm && (
                           <div className="flex justify-between text-xs">
@@ -401,8 +402,8 @@ const ProjectDetail = () => {
 
                   {/* Surface utile */}
                   {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
-                    <div className="flex-1 space-y-2">
-                      <h4 className="text-xs font-semibold text-blue-600">Surface utile</h4>
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-primary mb-3">Surface utile</h4>
                       <div className="space-y-1">
                         {project.longueur_chargement_mm && (
                           <div className="flex justify-between text-xs">
@@ -422,8 +423,8 @@ const ProjectDetail = () => {
 
                   {/* Poids */}
                   {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
-                    <div className="flex-1 space-y-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground">Poids</h4>
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-3">Poids</h4>
                       <div className="space-y-1">
                         {project.poids_vide_kg && (
                           <div className="flex justify-between text-xs">
