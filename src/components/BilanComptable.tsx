@@ -200,20 +200,22 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   return (
     <div className="space-y-6">
+      {/* Bouton flottant Gestion Financière */}
+      <Button 
+        onClick={() => setIsSidebarOpen(true)} 
+        size="icon"
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+        title="Gestion Financière"
+      >
+        <Euro className="h-6 w-6" />
+      </Button>
+
       {/* Solde bancaire */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Solde Bancaire</CardTitle>
             <div className="flex gap-2">
-              <Button 
-                onClick={() => setIsSidebarOpen(true)} 
-                size="icon"
-                className="h-12 w-12 rounded-full"
-                title="Gestion Financière"
-              >
-                <Euro className="h-5 w-5" />
-              </Button>
               <Button onClick={openEditBalance} variant="outline" size="sm">
                 {bankBalance ? <Edit className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
                 {bankBalance ? "Modifier" : "Définir le solde"}
