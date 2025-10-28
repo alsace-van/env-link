@@ -147,7 +147,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const loadedImg = await loadPromise;
         const raster = new paper.Raster(loadedImg);
         
-        raster.onLoad = () => {
+        // Fonction pour initialiser le raster une fois qu'il est chargé
+        const initializeRaster = () => {
           if (!mounted) {
             raster.remove();
             return;
@@ -198,14 +199,23 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             }
           }
         };
-
-        raster.onError = () => {
-          console.error("Error loading image");
-          if (mounted) {
-            toast.error("Erreur lors du chargement de l'image");
-            setIsLoadingImage(false);
-          }
-        };
+        
+        // Si l'image est déjà chargée (loaded=true), exécuter immédiatement
+        // Sinon attendre l'événement onLoad
+        if (raster.loaded) {
+          console.log("Image already loaded, initializing immediately");
+          initializeRaster();
+        } else {
+          raster.onLoad = initializeRaster;
+          
+          raster.onError = () => {
+            console.error("Error loading image in raster");
+            if (mounted) {
+              toast.error("Erreur lors du chargement de l'image");
+              setIsLoadingImage(false);
+            }
+          };
+        }
 
         // Variables pour le dessin
         let currentPath: paper.Path | null = null;
