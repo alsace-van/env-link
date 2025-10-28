@@ -105,6 +105,10 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         toast.error("Le nom de la dépense est requis pour toutes les lignes");
         return;
       }
+      if (!row.fournisseur.trim()) {
+        toast.error("Le fournisseur est requis pour toutes les dépenses fournisseurs");
+        return;
+      }
       if (!row.prix_vente_ttc || parseFloat(row.prix_vente_ttc) <= 0) {
         toast.error("Le montant TTC est requis et doit être positif");
         return;
@@ -146,7 +150,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const expensesToInsert = rowsWithUrls.map((row) => ({
       project_id: projectId,
       nom_accessoire: row.nom_accessoire,
-      fournisseur: row.fournisseur || null,
+      fournisseur: row.fournisseur,
       date_achat: row.date_achat,
       date_paiement: row.date_paiement || null,
       statut_paiement: row.statut_paiement,
@@ -182,7 +186,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ajouter des dépenses</CardTitle>
+        <CardTitle>Ajouter des dépenses fournisseurs</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
