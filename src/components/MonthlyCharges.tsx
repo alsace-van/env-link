@@ -134,38 +134,38 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Charges Mensuelles</CardTitle>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Charges Mensuelles</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {charges.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left py-2 px-2">Charge</th>
-                  <th className="text-left py-2 px-2">Échéance</th>
-                  <th className="text-right py-2 px-2">Montant</th>
-                  <th className="text-center py-2 px-2">Actions</th>
+                  <th className="text-left py-1 px-1">Charge</th>
+                  <th className="text-left py-1 px-1">Échéance</th>
+                  <th className="text-right py-1 px-1">Montant</th>
+                  <th className="text-center py-1 px-1 w-16">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {charges.map((charge) => (
                   <tr key={charge.id} className="border-b hover:bg-muted/50">
-                    <td className="py-2 px-2 font-medium">{charge.nom_charge}</td>
-                    <td className="py-2 px-2">
+                    <td className="py-1 px-1 font-medium">{charge.nom_charge}</td>
+                    <td className="py-1 px-1 text-muted-foreground">
                       {format(new Date(charge.date_echeance), "dd/MM/yyyy")}
                     </td>
-                    <td className="py-2 px-2 text-right font-medium">
+                    <td className="py-1 px-1 text-right font-medium">
                       {charge.montant.toFixed(2)} €
                     </td>
-                    <td className="py-2 px-2">
-                      <div className="flex justify-center gap-1">
+                    <td className="py-1 px-1">
+                      <div className="flex justify-center gap-0.5">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleEdit(charge)}
-                          className="h-6 w-6"
+                          className="h-5 w-5"
                         >
                           <Edit className="h-3 w-3" />
                         </Button>
@@ -173,7 +173,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDelete(charge.id)}
-                          className="h-6 w-6"
+                          className="h-5 w-5"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -184,10 +184,10 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
               </tbody>
               <tfoot>
                 <tr className="font-bold border-t-2">
-                  <td colSpan={2} className="py-3 px-2 text-right">
-                    Total des charges :
+                  <td colSpan={2} className="py-2 px-1 text-right">
+                    Total :
                   </td>
-                  <td className="py-3 px-2 text-right text-destructive">
+                  <td className="py-2 px-1 text-right text-destructive">
                     {totalCharges.toFixed(2)} €
                   </td>
                   <td></td>
@@ -198,53 +198,58 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
         )}
 
         {!isAdding ? (
-          <Button onClick={() => setIsAdding(true)} className="w-full" variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter une charge
+          <Button onClick={() => setIsAdding(true)} className="w-full h-8 text-xs" variant="outline">
+            <Plus className="h-3 w-3 mr-1" />
+            Ajouter
           </Button>
         ) : (
-          <div className="border rounded-lg p-4 space-y-3">
-            <h4 className="font-semibold text-sm">
+          <div className="border rounded-lg p-3 space-y-2">
+            <h4 className="font-semibold text-xs">
               {editingId ? "Modifier la charge" : "Ajouter une charge"}
             </h4>
 
-            <div className="space-y-2">
-              <Label htmlFor="nom_charge">Nom de la charge</Label>
+            <div className="space-y-1">
+              <Label htmlFor="nom_charge" className="text-xs">Nom</Label>
               <Input
                 id="nom_charge"
                 value={formData.nom_charge}
                 onChange={(e) => setFormData({ ...formData, nom_charge: e.target.value })}
                 placeholder="Loyer, assurance..."
+                className="h-8 text-xs"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="montant">Montant (€)</Label>
-              <Input
-                id="montant"
-                type="number"
-                step="0.01"
-                value={formData.montant}
-                onChange={(e) => setFormData({ ...formData, montant: e.target.value })}
-                placeholder="0.00"
-              />
-            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="montant" className="text-xs">Montant (€)</Label>
+                <Input
+                  id="montant"
+                  type="number"
+                  step="0.01"
+                  value={formData.montant}
+                  onChange={(e) => setFormData({ ...formData, montant: e.target.value })}
+                  placeholder="0.00"
+                  className="h-8 text-xs"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="date_echeance">Date d'échéance</Label>
-              <Input
-                id="date_echeance"
-                type="date"
-                value={formData.date_echeance}
-                onChange={(e) => setFormData({ ...formData, date_echeance: e.target.value })}
-              />
+              <div className="space-y-1">
+                <Label htmlFor="date_echeance" className="text-xs">Échéance</Label>
+                <Input
+                  id="date_echeance"
+                  type="date"
+                  value={formData.date_echeance}
+                  onChange={(e) => setFormData({ ...formData, date_echeance: e.target.value })}
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={handleSave} className="flex-1">
-                {editingId ? "Modifier" : "Enregistrer"}
+              <Button onClick={handleSave} className="flex-1 h-7 text-xs">
+                {editingId ? "Modifier" : "OK"}
               </Button>
-              <Button onClick={resetForm} variant="outline" className="flex-1">
+              <Button onClick={resetForm} variant="outline" className="flex-1 h-7 text-xs">
                 Annuler
               </Button>
             </div>
@@ -252,7 +257,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
         )}
 
         {charges.length === 0 && !isAdding && (
-          <p className="text-center py-4 text-muted-foreground">Aucune charge enregistrée</p>
+          <p className="text-center py-2 text-xs text-muted-foreground">Aucune charge</p>
         )}
       </CardContent>
     </Card>

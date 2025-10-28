@@ -159,50 +159,46 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Paiements Échelonnés</CardTitle>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Paiements Échelonnés</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         {installments.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left py-2 px-2">Paiement</th>
-                  <th className="text-left py-2 px-2">Début</th>
-                  <th className="text-right py-2 px-2">Total</th>
-                  <th className="text-right py-2 px-2">Mensualité</th>
-                  <th className="text-center py-2 px-2">Total</th>
-                  <th className="text-center py-2 px-2">Restantes</th>
-                  <th className="text-center py-2 px-2">Actions</th>
+                  <th className="text-left py-1 px-1">Paiement</th>
+                  <th className="text-right py-1 px-1">Total</th>
+                  <th className="text-right py-1 px-1">Mens.</th>
+                  <th className="text-center py-1 px-1">Tot.</th>
+                  <th className="text-center py-1 px-1">Rest.</th>
+                  <th className="text-center py-1 px-1 w-16">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {installments.map((installment) => (
                   <tr key={installment.id} className="border-b hover:bg-muted/50">
-                    <td className="py-2 px-2 font-medium">{installment.nom_paiement}</td>
-                    <td className="py-2 px-2">
-                      {format(new Date(installment.date_debut), "dd/MM/yyyy")}
+                    <td className="py-1 px-1 font-medium">{installment.nom_paiement}</td>
+                    <td className="py-1 px-1 text-right text-muted-foreground">
+                      {installment.montant_total.toFixed(0)} €
                     </td>
-                    <td className="py-2 px-2 text-right font-medium">
-                      {installment.montant_total.toFixed(2)} €
+                    <td className="py-1 px-1 text-right">
+                      {installment.montant_mensualite.toFixed(0)} €
                     </td>
-                    <td className="py-2 px-2 text-right">
-                      {installment.montant_mensualite.toFixed(2)} €
-                    </td>
-                    <td className="py-2 px-2 text-center">
+                    <td className="py-1 px-1 text-center text-muted-foreground">
                       {installment.nombre_mensualites_total}
                     </td>
-                    <td className="py-2 px-2 text-center font-medium text-orange-600">
+                    <td className="py-1 px-1 text-center font-medium text-orange-600">
                       {installment.nombre_mensualites_restantes}
                     </td>
-                    <td className="py-2 px-2">
-                      <div className="flex justify-center gap-1">
+                    <td className="py-1 px-1">
+                      <div className="flex justify-center gap-0.5">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleEdit(installment)}
-                          className="h-6 w-6"
+                          className="h-5 w-5"
                         >
                           <Edit className="h-3 w-3" />
                         </Button>
@@ -210,7 +206,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDelete(installment.id)}
-                          className="h-6 w-6"
+                          className="h-5 w-5"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -221,10 +217,10 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
               </tbody>
               <tfoot>
                 <tr className="font-bold border-t-2">
-                  <td colSpan={2} className="py-3 px-2 text-right">
-                    Total restant à payer :
+                  <td className="py-2 px-1 text-right">
+                    Total restant :
                   </td>
-                  <td className="py-3 px-2 text-right text-orange-600" colSpan={4}>
+                  <td className="py-2 px-1 text-right text-orange-600" colSpan={4}>
                     {totalRestant.toFixed(2)} €
                   </td>
                   <td></td>
@@ -235,41 +231,43 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
         )}
 
         {!isAdding ? (
-          <Button onClick={() => setIsAdding(true)} className="w-full" variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter un paiement échelonné
+          <Button onClick={() => setIsAdding(true)} className="w-full h-8 text-xs" variant="outline">
+            <Plus className="h-3 w-3 mr-1" />
+            Ajouter
           </Button>
         ) : (
-          <div className="border rounded-lg p-4 space-y-3">
-            <h4 className="font-semibold text-sm">
-              {editingId ? "Modifier le paiement échelonné" : "Ajouter un paiement échelonné"}
+          <div className="border rounded-lg p-3 space-y-2">
+            <h4 className="font-semibold text-xs">
+              {editingId ? "Modifier" : "Ajouter un paiement"}
             </h4>
 
-            <div className="space-y-2">
-              <Label htmlFor="nom_paiement">Nom du paiement</Label>
+            <div className="space-y-1">
+              <Label htmlFor="nom_paiement" className="text-xs">Nom</Label>
               <Input
                 id="nom_paiement"
                 value={formData.nom_paiement}
                 onChange={(e) => setFormData({ ...formData, nom_paiement: e.target.value })}
                 placeholder="Crédit, leasing..."
+                className="h-8 text-xs"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="montant_total">Montant total (€)</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="montant_total" className="text-xs">Total (€)</Label>
                 <Input
                   id="montant_total"
                   type="number"
                   step="0.01"
                   value={formData.montant_total}
                   onChange={(e) => setFormData({ ...formData, montant_total: e.target.value })}
-                  placeholder="0.00"
+                  placeholder="0"
+                  className="h-8 text-xs"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="montant_mensualite">Mensualité (€)</Label>
+              <div className="space-y-1">
+                <Label htmlFor="montant_mensualite" className="text-xs">Mensualité</Label>
                 <Input
                   id="montant_mensualite"
                   type="number"
@@ -278,14 +276,15 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                   onChange={(e) =>
                     setFormData({ ...formData, montant_mensualite: e.target.value })
                   }
-                  placeholder="0.00"
+                  placeholder="0"
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="nombre_mensualites_total">Nombre total</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="nombre_mensualites_total" className="text-xs">Total</Label>
                 <Input
                   id="nombre_mensualites_total"
                   type="number"
@@ -294,11 +293,12 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                     setFormData({ ...formData, nombre_mensualites_total: e.target.value })
                   }
                   placeholder="12"
+                  className="h-8 text-xs"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="nombre_mensualites_restantes">Restantes</Label>
+              <div className="space-y-1">
+                <Label htmlFor="nombre_mensualites_restantes" className="text-xs">Restantes</Label>
                 <Input
                   id="nombre_mensualites_restantes"
                   type="number"
@@ -307,25 +307,27 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                     setFormData({ ...formData, nombre_mensualites_restantes: e.target.value })
                   }
                   placeholder="8"
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="date_debut" className="text-xs">Début</Label>
+                <Input
+                  id="date_debut"
+                  type="date"
+                  value={formData.date_debut}
+                  onChange={(e) => setFormData({ ...formData, date_debut: e.target.value })}
+                  className="h-8 text-xs"
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="date_debut">Date de début</Label>
-              <Input
-                id="date_debut"
-                type="date"
-                value={formData.date_debut}
-                onChange={(e) => setFormData({ ...formData, date_debut: e.target.value })}
-              />
-            </div>
-
             <div className="flex gap-2">
-              <Button onClick={handleSave} className="flex-1">
-                {editingId ? "Modifier" : "Enregistrer"}
+              <Button onClick={handleSave} className="flex-1 h-7 text-xs">
+                {editingId ? "Modifier" : "OK"}
               </Button>
-              <Button onClick={resetForm} variant="outline" className="flex-1">
+              <Button onClick={resetForm} variant="outline" className="flex-1 h-7 text-xs">
                 Annuler
               </Button>
             </div>
@@ -333,8 +335,8 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
         )}
 
         {installments.length === 0 && !isAdding && (
-          <p className="text-center py-4 text-muted-foreground">
-            Aucun paiement échelonné enregistré
+          <p className="text-center py-2 text-xs text-muted-foreground">
+            Aucun paiement échelonné
           </p>
         )}
       </CardContent>
