@@ -6,13 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
 
 interface MonthlyCharge {
   id: string;
   nom_charge: string;
   montant: number;
-  date_echeance: string;
+  jour_mois: number;
 }
 
 interface MonthlyChargesProps {
@@ -26,7 +25,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
   const [formData, setFormData] = useState({
     nom_charge: "",
     montant: "",
-    date_echeance: "",
+    jour_mois: "",
   });
 
   useEffect(() => {
@@ -38,7 +37,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
       .from("project_monthly_charges")
       .select("*")
       .eq("project_id", projectId)
-      .order("date_echeance", { ascending: true });
+      .order("jour_mois", { ascending: true });
 
     if (error) {
       console.error("Error loading charges:", error);
@@ -49,8 +48,14 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
   };
 
   const handleSave = async () => {
-    if (!formData.nom_charge || !formData.montant || !formData.date_echeance) {
+    if (!formData.nom_charge || !formData.montant || !formData.jour_mois) {
       toast.error("Veuillez remplir tous les champs");
+      return;
+    }
+
+    const jourMois = parseInt(formData.jour_mois);
+    if (jourMois < 1 || jourMois > 31) {
+      toast.error("Le jour doit être entre 1 et 31");
       return;
     }
 
@@ -58,7 +63,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
       project_id: projectId,
       nom_charge: formData.nom_charge,
       montant: parseFloat(formData.montant),
-      date_echeance: formData.date_echeance,
+      jour_mois: jourMois,
     };
 
     if (editingId) {
@@ -95,7 +100,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
     setFormData({
       nom_charge: charge.nom_charge,
       montant: charge.montant.toString(),
-      date_echeance: charge.date_echeance,
+      jour_mois: charge.jour_mois.toString(),
     });
     setIsAdding(true);
   };
@@ -124,7 +129,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
     setFormData({
       nom_charge: "",
       montant: "",
-      date_echeance: "",
+      jour_mois: "",
     });
     setIsAdding(false);
     setEditingId(null);
@@ -145,7 +150,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{charge.nom_charge}</div>
                   <div className="text-muted-foreground">
-                    {format(new Date(charge.date_echeance), "dd/MM/yy")}
+                    Le {charge.jour_mois} du mois
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -215,12 +220,15 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="date_echeance" className="text-xs">Échéance</Label>
+                <Label htmlFor="jour_mois" className="text-xs">Jour du mois</Label>
                 <Input
-                  id="date_echeance"
-                  type="date"
-                  value={formData.date_echeance}
-                  onChange={(e) => setFormData({ ...formData, date_echeance: e.target.value })}
+                  id="jour_mois"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={formData.jour_mois}
+                  onChange={(e) => setFormData({ ...formData, jour_mois: e.target.value })}
+                  placeholder="15"
                   className="h-8 text-xs"
                 />
               </div>

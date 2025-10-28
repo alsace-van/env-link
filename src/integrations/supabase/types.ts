@@ -411,8 +411,8 @@ export type Database = {
       project_monthly_charges: {
         Row: {
           created_at: string
-          date_echeance: string
           id: string
+          jour_mois: number
           montant: number
           nom_charge: string
           project_id: string
@@ -420,8 +420,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          date_echeance: string
           id?: string
+          jour_mois?: number
           montant?: number
           nom_charge: string
           project_id: string
@@ -429,8 +429,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          date_echeance?: string
           id?: string
+          jour_mois?: number
           montant?: number
           nom_charge?: string
           project_id?: string
