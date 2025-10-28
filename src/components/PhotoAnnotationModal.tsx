@@ -113,6 +113,17 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         const container = containerRef.current;
         const canvasElement = canvasRef.current;
 
+        // Nettoyer Paper.js avant setup si nécessaire
+        if (paper.project) {
+          try {
+            paper.project.activeLayer?.removeChildren();
+            paper.project.clear();
+            paper.project.remove();
+          } catch (e) {
+            console.log("Cleaning old project before setup");
+          }
+        }
+        
         // Setup Paper.js
         paper.setup(canvasElement);
 
@@ -620,15 +631,37 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
 
       // Nettoyer paper.js complètement
-      if (paper.project) {
-        const allLayers = paper.project.layers.slice();
-        allLayers.forEach(layer => layer.remove());
-        paper.project.clear();
+      try {
+        if (paper.project) {
+          // Supprimer tous les items du projet
+          paper.project.activeLayer?.removeChildren();
+          // Supprimer toutes les couches
+          const allLayers = paper.project.layers?.slice() || [];
+          allLayers.forEach(layer => {
+            try {
+              layer.remove();
+            } catch (e) {
+              console.error("Error removing layer:", e);
+            }
+          });
+          paper.project.clear();
+          paper.project.remove();
+        }
+        
+        if (paper.view) {
+          paper.view.remove();
+        }
+      } catch (error) {
+        console.error("Error cleaning up Paper.js:", error);
       }
       
-      if (paper.view) {
-        paper.view.remove();
-      }
+      // Réinitialiser les refs
+      backgroundRasterRef.current = null;
+      
+      // Réinitialiser les états
+      setIsLoadingImage(true);
+      setHistory([]);
+      setHistoryStep(-1);
     };
   }, [isOpen, photo]);
 
