@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Square, ArrowRight, Save, Pencil, Type, CircleIcon, Minus, Trash2, Undo, Redo } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-// Import Paper.js correctement pour Vite/Lovable
 import * as paper from "paper";
 
 interface Photo {
@@ -102,104 +101,45 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         scope.setup(canvas);
 
         console.log("✅ Paper.js scope created");
-        console.log("🔵 Scope.project:", scope.project);
-        console.log("🔵 Scope.view:", scope.view);
 
         // Obtenir les dimensions du conteneur
         const rect = container.getBoundingClientRect();
         console.log("🔵 Container dimensions:", rect.width, "x", rect.height);
 
-        // Définir la taille de la vue
+        // Définir la taille de la vue - IMPORTANT: même taille que le conteneur
         scope.view.viewSize = new scope.Size(rect.width, rect.height);
         console.log("✅ View size set");
 
-        // Créer le raster depuis l'image
-        console.log("🔵 Creating raster from image...");
-        const raster = new scope.Raster(img);
+        // PAS de raster - on dessine juste par-dessus l'image HTML
+        // L'image reste visible en dessous via l'élément <img>
 
-        console.log("🔵 Raster created");
-
-        // Fonction pour finaliser le raster
-        const finalizeRaster = () => {
-          if (!mounted) return;
-
-          console.log("🔵 Finalizing raster...");
-          console.log("🔵 Raster dimensions:", raster.width, "x", raster.height);
-
-          if (!raster.width || !raster.height) {
-            console.error("❌ Raster has no dimensions");
-            toast.error("Erreur: l'image n'a pas de dimensions");
-            return;
-          }
-
-          // Calculer l'échelle
-          const scale = Math.min(
-            (scope.view.viewSize.width - 40) / raster.width,
-            (scope.view.viewSize.height - 40) / raster.height,
-            1,
-          );
-
-          console.log("🔵 Scale:", scale);
-
-          // Appliquer l'échelle et positionner
-          raster.scale(scale);
-          raster.position = scope.view.center;
-          raster.locked = true;
-
-          console.log("✅ Raster positioned");
-
-          // Mettre à jour la vue
-          scope.view.update();
-          console.log("✅ View updated");
-
-          // Sauvegarder l'état initial
-          if (scope.project) {
-            const json = scope.project.exportJSON();
-            setHistory([json]);
-            setHistoryStep(0);
-            console.log("✅ Initial state saved");
-          }
-
-          // Charger les annotations si présentes
-          if (photo?.annotations) {
-            try {
-              console.log("🔵 Loading annotations...");
-              scope.project.importJSON(photo.annotations);
-
-              // Verrouiller tous les rasters
-              scope.project.activeLayer.children.forEach((item: any) => {
-                if (item.className === "Raster") {
-                  item.locked = true;
-                }
-              });
-
-              scope.view.update();
-              console.log("✅ Annotations loaded");
-            } catch (error) {
-              console.error("❌ Error loading annotations:", error);
-            }
-          }
-
-          // Setup des event handlers
-          console.log("🔵 Setting up drawing handlers...");
-          setupDrawingHandlers(scope);
-
-          setPaperInitialized(true);
-          console.log("✅✅✅ Paper.js initialized successfully! ✅✅✅");
-          toast.success("Outils d'annotation prêts!", { duration: 2000 });
-        };
-
-        // Si le raster est déjà chargé, finaliser immédiatement
-        if (raster.loaded) {
-          console.log("✅ Raster already loaded");
-          finalizeRaster();
-        } else {
-          console.log("🔵 Waiting for raster to load...");
-          raster.onLoad = () => {
-            console.log("✅ Raster.onLoad triggered");
-            finalizeRaster();
-          };
+        // Sauvegarder l'état initial (projet vide)
+        if (scope.project) {
+          const json = scope.project.exportJSON();
+          setHistory([json]);
+          setHistoryStep(0);
+          console.log("✅ Initial state saved");
         }
+
+        // Charger les annotations si présentes
+        if (photo?.annotations) {
+          try {
+            console.log("🔵 Loading annotations...");
+            scope.project.importJSON(photo.annotations);
+            scope.view.update();
+            console.log("✅ Annotations loaded");
+          } catch (error) {
+            console.error("❌ Error loading annotations:", error);
+          }
+        }
+
+        // Setup des event handlers
+        console.log("🔵 Setting up drawing handlers...");
+        setupDrawingHandlers(scope);
+
+        setPaperInitialized(true);
+        console.log("✅✅✅ Paper.js initialized successfully! ✅✅✅");
+        toast.success("Outils d'annotation prêts!", { duration: 2000 });
       } catch (error) {
         console.error("❌❌❌ Error initializing Paper.js:", error);
         toast.error("Les outils d'annotation ne peuvent pas être chargés");
@@ -217,8 +157,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       // Nettoyer Paper.js
       if (paperScopeRef.current) {
         try {
-          if (paperScopeRef.current.project) paperScopeRef.current.project.clear();
-          if (paperScopeRef.current.view) paperScopeRef.current.view.remove();
+          paperScopeRef.current.remove();
         } catch (e) {
           console.log("Cleanup skipped");
         }
@@ -562,22 +501,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               <Trash2 className="h-4 w-4" />
             </Button>
 
+            {paperInitialized && <span className="text-xs text-green-600 font-semibold ml-2">✅ Outils actifs</span>}
             {!paperInitialized && imageLoaded && (
-              <span className="text-xs text-green-600 font-semibold ml-2 animate-pulse">
-                ⏳ Chargement des outils...
-              </span>
+              <span className="text-xs text-yellow-600 font-semibold ml-2 animate-pulse">⏳ Chargement...</span>
             )}
           </div>
 
           {/* Image Container */}
           <div ref={containerRef} className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[500px]">
-            {/* Image de base */}
+            {/* Image de base - TOUJOURS VISIBLE */}
             <img
               ref={imageRef}
               src={photo.url}
               alt={photo.description || "Photo"}
               className="absolute inset-0 w-full h-full object-contain"
-              style={{ display: paperInitialized ? "none" : "block" }}
               onLoad={() => {
                 console.log("✅ Image loaded in DOM");
                 setIsLoadingImage(false);
@@ -590,18 +527,18 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               }}
             />
 
-            {/* Canvas Paper.js */}
+            {/* Canvas Paper.js - PAR-DESSUS l'image avec fond transparent */}
             <canvas
               ref={canvasRef}
               className="absolute inset-0 w-full h-full"
               style={{
-                display: paperInitialized ? "block" : "none",
                 cursor: activeTool === "select" ? "default" : "crosshair",
+                pointerEvents: paperInitialized ? "auto" : "none", // Désactiver les clics si pas initialisé
               }}
             />
 
             {isLoadingImage && (
-              <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+              <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
                 <div className="text-muted-foreground">Chargement de l'image...</div>
               </div>
             )}
@@ -610,7 +547,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               <input
                 ref={textInputRef}
                 type="text"
-                className="absolute border-2 border-primary bg-background px-2 py-1 rounded z-10"
+                className="absolute border-2 border-primary bg-background px-2 py-1 rounded z-20"
                 style={{
                   left: `${textInputPosition.x}px`,
                   top: `${textInputPosition.y}px`,
