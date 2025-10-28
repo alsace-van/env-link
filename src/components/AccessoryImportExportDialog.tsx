@@ -668,7 +668,7 @@ const AccessoryImportExportDialog = ({
                     size="sm"
                     onClick={() => {
                       const headers = "Nom\tCatégorie\tSous-catégorie\tPrix référence\tPrix vente TTC\tMarge %\tFournisseur\tDescription\tURL produit\tType électrique\tPoids (kg)\tLongueur (mm)\tLargeur (mm)\tHauteur (mm)";
-                      const emptyRow = "\t\t\t\t\t\t\t\t\t\t\t\t\t";
+                      const emptyRow = "\t\t\t\t\t\t\t\t\t\t\t\t\t\t";
                       const tableText = headers + "\n" + emptyRow;
                       navigator.clipboard.writeText(tableText).then(() => {
                         toast.success("Tableau copié ! Collez-le dans Excel/Sheets");
