@@ -193,6 +193,11 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
     const tool = new paper.Tool();
     console.log("✅ Tool created");
 
+    // Ajouter un log pour voir si les événements de souris sont détectés
+    tool.onMouseMove = (event: any) => {
+      console.log("🖱️ Mouse move detected at:", event.point);
+    };
+
     tool.onMouseDown = (event: any) => {
       const toolType = activeToolRef.current;
       console.log("🖱️ Mouse down - Tool:", toolType, "Point:", event.point);
@@ -569,10 +574,12 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             {/* Canvas Paper.js - PAR-DESSUS l'image avec fond transparent */}
             <canvas
               ref={canvasRef}
-              className="absolute inset-0 w-full h-full pointer-events-auto"
+              className="absolute inset-0 w-full h-full"
               style={{
                 cursor: activeTool === "select" ? "default" : "crosshair",
                 zIndex: 10,
+                pointerEvents: 'auto',
+                touchAction: 'none',
               }}
             />
 
