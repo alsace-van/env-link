@@ -103,13 +103,20 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         canvas.height = rect.height;
         
         // Configurer le contexte pour supporter la transparence
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: true });
         if (ctx) {
           ctx.globalCompositeOperation = 'source-over';
           ctx.imageSmoothingEnabled = true;
+          console.log("✅ Canvas context configured with alpha");
         }
         
         paper.setup(canvas);
+        
+        // S'assurer que le fond du canvas est transparent
+        if (paper.project && paper.project.activeLayer) {
+          paper.project.activeLayer.opacity = 1;
+          console.log("✅ Active layer opacity set to 1");
+        }
 
         console.log("✅ Paper.js setup complete");
 
@@ -188,6 +195,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     tool.onMouseDown = (event: any) => {
       const toolType = activeToolRef.current;
+      console.log("🖱️ Mouse down - Tool:", toolType, "Point:", event.point);
 
       if (toolType === "select") {
         const hitResult = paper.project.hitTest(event.point, {
@@ -212,9 +220,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           strokeCap: "round",
           strokeJoin: "round",
           fillColor: null,
-          opacity: 1,
         });
         currentPath.add(event.point);
+        console.log("✏️ Path created - Color:", strokeColorRef.current, "Width:", strokeWidthRef.current);
+        paper.view.update();
       } else if (toolType === "line" || toolType === "arrow") {
         currentPath = new paper.Path({
           strokeColor: new paper.Color(strokeColorRef.current),
@@ -255,6 +264,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
       if (toolType === "draw" && currentPath) {
         currentPath.add(event.point);
+        paper.view.update();
       } else if (toolType === "line" || toolType === "arrow") {
         if (currentPath && currentPath.segments.length === 2) {
           currentPath.segments[1].point = event.point;
@@ -290,6 +300,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
     tool.onMouseUp = (event: any) => {
       const toolType = activeToolRef.current;
+      console.log("🖱️ Mouse up - Tool:", toolType);
 
       if (toolType === "arrow" && currentPath) {
         const vector = currentPath.lastSegment.point.subtract(currentPath.firstSegment.point);
@@ -310,6 +321,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       }
 
       if (currentPath) {
+        console.log("💾 Saving path to history");
+        paper.view.update();
         saveToHistory();
       }
       currentPath = null;
