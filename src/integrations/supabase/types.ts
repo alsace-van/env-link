@@ -292,7 +292,7 @@ export type Database = {
           poids_kg: number | null
           prix: number
           prix_vente_ttc: number | null
-          project_id: string
+          project_id: string | null
           puissance_watts: number | null
           quantite: number
           statut_livraison: string | null
@@ -322,7 +322,7 @@ export type Database = {
           poids_kg?: number | null
           prix: number
           prix_vente_ttc?: number | null
-          project_id: string
+          project_id?: string | null
           puissance_watts?: number | null
           quantite?: number
           statut_livraison?: string | null
@@ -352,7 +352,7 @@ export type Database = {
           poids_kg?: number | null
           prix?: number
           prix_vente_ttc?: number | null
-          project_id?: string
+          project_id?: string | null
           puissance_watts?: number | null
           quantite?: number
           statut_livraison?: string | null
