@@ -5,13 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Edit, Plus, Trash2, Euro, FileText } from "lucide-react";
+import { Edit, Plus, Euro, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import PaymentTransactions from "@/components/PaymentTransactions";
-import { MonthlyCharges } from "@/components/MonthlyCharges";
-import { InstallmentPayments } from "@/components/InstallmentPayments";
 import ExpenseTableForm from "@/components/ExpenseTableForm";
+import { FinancialSidebar } from "@/components/FinancialSidebar";
 
 interface BankBalance {
   id: string;
@@ -40,15 +38,17 @@ interface Payment {
 
 interface BilanComptableProps {
   projectId: string;
+  projectName: string;
 }
 
-export const BilanComptable = ({ projectId }: BilanComptableProps) => {
+export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) => {
   const [paymentRefresh, setPaymentRefresh] = useState(0);
   const [totalSales, setTotalSales] = useState(0);
   const [bankBalance, setBankBalance] = useState<BankBalance | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isEditBalanceOpen, setIsEditBalanceOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [balanceForm, setBalanceForm] = useState({
     solde_depart: "",
     date_heure_depart: "",
@@ -205,10 +205,16 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Solde Bancaire</CardTitle>
-            <Button onClick={openEditBalance} variant="outline" size="sm">
-              {bankBalance ? <Edit className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-              {bankBalance ? "Modifier" : "Définir le solde"}
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setIsSidebarOpen(true)} variant="outline" size="sm">
+                <Euro className="h-4 w-4 mr-2" />
+                Gestion Financière
+              </Button>
+              <Button onClick={openEditBalance} variant="outline" size="sm">
+                {bankBalance ? <Edit className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                {bankBalance ? "Modifier" : "Définir le solde"}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -355,9 +361,12 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
         </Card>
       )}
 
-      {/* Gestion des paiements */}
-      <PaymentTransactions 
-        projectId={projectId} 
+      {/* Financial Sidebar */}
+      <FinancialSidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        projectId={projectId}
+        projectName={projectName}
         totalSales={totalSales}
         onPaymentChange={() => {
           setPaymentRefresh(prev => prev + 1);
@@ -365,12 +374,6 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
           loadBankBalance();
         }}
       />
-
-      {/* Charges mensuelles */}
-      <MonthlyCharges projectId={projectId} />
-
-      {/* Paiements échelonnés */}
-      <InstallmentPayments projectId={projectId} />
 
       {/* Dialog pour modifier le solde */}
       <Dialog open={isEditBalanceOpen} onOpenChange={setIsEditBalanceOpen}>
