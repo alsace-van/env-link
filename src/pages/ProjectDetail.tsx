@@ -218,7 +218,7 @@ const ProjectDetail = () => {
             <img 
               src={logo} 
               alt="Alsace Van Création" 
-              className="h-16 w-auto object-contain"
+              className="h-20 w-auto object-contain"
             />
             <div className="flex-1">
               <h1 className="text-xl font-bold">{project.nom_proprietaire}</h1>

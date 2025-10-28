@@ -70,7 +70,7 @@ const Dashboard = () => {
             <img 
               src={logo} 
               alt="Alsace Van Création" 
-              className="h-20 w-auto object-contain"
+              className="h-24 w-auto object-contain"
             />
           </div>
           <div className="flex items-center gap-2">
