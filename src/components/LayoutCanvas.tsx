@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler, Package } from "lucide-react";
+import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler, Package, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
@@ -922,6 +922,10 @@ export const LayoutCanvas = ({
             <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasLoad?.()}>
               <Upload className="h-4 w-4 mr-2" />
               Charger
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasLoad?.()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Rafraîchir
             </Button>
             <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasExport?.()}>
               <Download className="h-4 w-4 mr-2" />
