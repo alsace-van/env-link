@@ -1074,7 +1074,7 @@ export const Layout3DView = ({
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
                 <ArrowRight className="w-3 h-3 text-red-500" />
-                Axe X (Longueur)
+                Axe X (Largeur)
               </Label>
               <Input
                 type="number"
