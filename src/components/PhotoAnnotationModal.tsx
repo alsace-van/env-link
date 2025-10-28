@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Square, ArrowRight, Save, Pencil, Type, CircleIcon, Minus, Trash2, Undo, Redo } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
-import * as paper from "paper";
+import paper from "paper";
 
 interface Photo {
   id: string;
