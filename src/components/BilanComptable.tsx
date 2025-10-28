@@ -77,10 +77,12 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
   };
 
   const loadExpenses = async () => {
+    // Charger toutes les dépenses fournisseurs (project_id null et avec fournisseur)
     const { data, error } = await supabase
       .from("project_expenses")
       .select("*")
-      .eq("project_id", projectId)
+      .is("project_id", null)
+      .not("fournisseur", "is", null)
       .order("date_achat", { ascending: false });
 
     if (error) {
@@ -174,14 +176,13 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
     setIsEditBalanceOpen(true);
   };
 
-  // Filtrer les dépenses fournisseurs (avec fournisseur) après la date de départ
+  // Filtrer les dépenses fournisseurs après la date de départ
   const filteredExpenses = bankBalance
     ? expenses.filter((expense) => {
         if (!expense.date_achat) return false;
-        if (!expense.fournisseur || expense.fournisseur.trim() === "") return false;
         return new Date(expense.date_achat) >= new Date(bankBalance.date_heure_depart);
       })
-    : [];
+    : expenses;
 
   const filteredPayments = bankBalance
     ? payments.filter((payment) => {

@@ -40,7 +40,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const { data } = await supabase
       .from("project_expenses")
       .select("fournisseur")
-      .eq("project_id", projectId)
+      .is("project_id", null)
       .not("fournisseur", "is", null);
 
     if (data) {
@@ -148,7 +148,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     );
 
     const expensesToInsert = rowsWithUrls.map((row) => ({
-      project_id: projectId,
+      project_id: null,
       nom_accessoire: row.nom_accessoire,
       fournisseur: row.fournisseur,
       date_achat: row.date_achat,
@@ -158,7 +158,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       prix: parseFloat(row.prix_vente_ttc),
       prix_vente_ttc: parseFloat(row.prix_vente_ttc),
       quantite: 1,
-      categorie: "",
+      categorie: "Fournisseur",
       statut_livraison: "commande",
       facture_url: row.facture_url || null,
     }));
