@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import ProjectsList from "@/components/ProjectsList";
 import ProjectForm from "@/components/ProjectForm";
 import UserMenu from "@/components/UserMenu";
+import logo from "@/assets/logo.png";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -64,14 +65,13 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-background">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Suivi Aménagement Fourgon
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Gérez vos projets d'aménagement
-            </p>
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center">
+            <img 
+              src={logo} 
+              alt="Alsace Van Création" 
+              className="h-16 w-auto object-contain"
+            />
           </div>
           <div className="flex items-center gap-2">
             {user && <UserMenu user={user} />}

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
+import logo from "@/assets/logo.png";
 
 const Account = () => {
   const navigate = useNavigate();
@@ -67,16 +68,22 @@ const Account = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Retour
+            </Button>
+            <img 
+              src={logo} 
+              alt="Alsace Van Création" 
+              className="h-12 w-auto object-contain"
+            />
+          </div>
+        </div>
+      </header>
       <div className="container max-w-4xl mx-auto py-8 px-4">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/dashboard")}
-          className="mb-6"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Retour au tableau de bord
-        </Button>
-
         <div className="space-y-6">
           <div>
             <h1 className="text-3xl font-bold">Mon Compte</h1>
