@@ -124,26 +124,28 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         console.log("Canvas initialized, loading image from:", photo.url);
 
-        // Obtenir l'URL de l'image (avec signature si nécessaire)
-        let imageUrl = photo.url;
-
-        if (photo.url.includes("/storage/v1/object/public/project-photos/")) {
-          const urlParts = photo.url.split("/project-photos/");
-          if (urlParts.length >= 2) {
-            const filePath = urlParts[1];
-            const { data } = await supabase.storage.from("project-photos").createSignedUrl(filePath, 3600);
-
-            if (data?.signedUrl) {
-              imageUrl = data.signedUrl;
-              console.log("Using signed URL");
-            }
-          }
-        }
-
+        // Le bucket est public, pas besoin de signed URL
+        const imageUrl = photo.url;
         console.log("Loading image from URL:", imageUrl);
 
-        // Charger l'image avec Paper.js
-        const raster = new paper.Raster(imageUrl);
+        // Charger l'image avec Paper.js - utiliser crossOrigin pour éviter les problèmes CORS
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        
+        const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
+          img.onload = () => {
+            console.log("Image loaded successfully via Image element");
+            resolve(img);
+          };
+          img.onerror = (error) => {
+            console.error("Error loading image via Image element:", error);
+            reject(error);
+          };
+          img.src = imageUrl;
+        });
+
+        const loadedImg = await loadPromise;
+        const raster = new paper.Raster(loadedImg);
         
         raster.onLoad = () => {
           if (!mounted) {
