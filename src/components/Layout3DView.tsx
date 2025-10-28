@@ -608,6 +608,7 @@ export const Layout3DView = ({
           largeur_mm: item.largeur_mm || 0,
           hauteur_mm: item.hauteur_mm || 0,
           poids_kg: item.poids_kg || 0,
+          hauteur_sol_mm: item.hauteur_sol_mm || 0,
         }));
 
         console.log(`✅ Meubles chargés: ${furnitureData.length}`);
