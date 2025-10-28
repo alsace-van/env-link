@@ -70,6 +70,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         const rect = container.getBoundingClientRect();
         
+        // Définir les dimensions réelles du canvas HTML
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        
         // Créer le canvas Fabric
         const fabricCanvas = new FabricCanvas(canvas, {
           width: rect.width,
@@ -77,6 +81,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           backgroundColor: undefined,
           selection: activeTool === "select",
         });
+
+        console.log("✅ Fabric canvas created:", rect.width, "x", rect.height);
 
         fabricCanvasRef.current = fabricCanvas;
 
@@ -480,8 +486,12 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             {/* Canvas Fabric.js */}
             <canvas
               ref={canvasRef}
-              className="absolute inset-0"
-              style={{ zIndex: 10 }}
+              className="absolute top-0 left-0 w-full h-full"
+              style={{ 
+                zIndex: 10,
+                position: 'absolute',
+                pointerEvents: 'auto',
+              }}
             />
 
             {isLoadingImage && (
