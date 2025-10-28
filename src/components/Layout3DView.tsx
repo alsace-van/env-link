@@ -916,7 +916,7 @@ export const Layout3DView = ({
     const CANVAS_HEIGHT = 600;
     const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
     
-    setFurniture(prev => prev.map(item => {
+    const updatedFurniture = furniture.map(item => {
       if (item.id !== id || !item.position) return item;
       
       const newPosition = { ...item.position };
@@ -943,10 +943,92 @@ export const Layout3DView = ({
         ...item,
         position: newPosition,
       };
-    }));
+    });
+    
+    setFurniture(updatedFurniture);
 
-    // Sauvegarder automatiquement après le déplacement
-    toast.success("Position mise à jour");
+    // Sauvegarder automatiquement dans la base de données
+    await saveFurniturePositions(updatedFurniture);
+  };
+
+  const saveFurniturePositions = async (updatedFurniture: typeof furniture) => {
+    const CANVAS_WIDTH = 800;
+    const CANVAS_HEIGHT = 600;
+    
+    try {
+      // Charger le layout_canvas_data existant
+      const { data: projectData } = await supabase
+        .from("projects")
+        .select("layout_canvas_data")
+        .eq("id", projectId)
+        .single();
+
+      let layoutCanvasData = projectData?.layout_canvas_data;
+
+      // Mettre à jour les positions dans le JSON Paper.js si disponible
+      if (layoutCanvasData && typeof layoutCanvasData === 'string') {
+        try {
+          const canvasJson = JSON.parse(layoutCanvasData);
+          
+          // Mettre à jour les positions des groupes de meubles dans le JSON
+          if (canvasJson && Array.isArray(canvasJson[1])) {
+            const children = canvasJson[1];
+            children.forEach((child: any) => {
+              if (child && Array.isArray(child) && child[0] === 'Group' && child[1]?.data?.isFurniture) {
+                const furnitureId = child[1].data.furnitureId;
+                const furnitureItem = updatedFurniture.find(f => f.id === furnitureId);
+                
+                if (furnitureItem && furnitureItem.position && child[1].matrix) {
+                  // Calculer la position absolue du centre du canvas
+                  const centerX = CANVAS_WIDTH / 2;
+                  const centerY = CANVAS_HEIGHT / 2;
+                  
+                  // Nouvelle position absolue
+                  const newAbsX = centerX + furnitureItem.position.x;
+                  const newAbsY = centerY + furnitureItem.position.y;
+                  
+                  // Mettre à jour la matrice de transformation
+                  child[1].matrix[4] = newAbsX;
+                  child[1].matrix[5] = newAbsY;
+                }
+              }
+            });
+          }
+          
+          layoutCanvasData = JSON.stringify(canvasJson);
+        } catch (error) {
+          console.error("Erreur lors de la mise à jour du JSON canvas:", error);
+        }
+      }
+
+      const furnitureData = updatedFurniture.map(item => ({
+        id: item.id,
+        longueur_mm: item.longueur_mm || 0,
+        largeur_mm: item.largeur_mm || 0,
+        hauteur_mm: item.hauteur_mm || 0,
+        poids_kg: item.poids_kg || 0,
+        hauteur_sol_mm: item.hauteur_sol_mm || 0,
+        position: item.position,
+        canvasDimensions: item.canvasDimensions,
+      }));
+
+      const { error } = await supabase
+        .from("projects")
+        .update({
+          furniture_data: furnitureData,
+          layout_canvas_data: layoutCanvasData,
+        })
+        .eq("id", projectId);
+
+      if (error) {
+        console.error("❌ Erreur sauvegarde:", error);
+        toast.error("Erreur lors de la sauvegarde de la position");
+      } else {
+        console.log("✅ Position sauvegardée et synchronisée avec la vue 2D");
+      }
+    } catch (error) {
+      console.error("❌ Erreur sauvegarde:", error);
+    }
   };
 
   const handleSelectFurniture = (id: string | null) => {
@@ -954,7 +1036,7 @@ export const Layout3DView = ({
     setPrecisionMove({ x: 0, y: 0, z: 0 });
   };
 
-  const applyPrecisionMove = () => {
+  const applyPrecisionMove = async () => {
     if (!selectedFurnitureId) return;
     
     const mmToUnits3D = 1 / 100;
@@ -962,7 +1044,7 @@ export const Layout3DView = ({
     const CANVAS_HEIGHT = 600;
     const canvasScale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
     
-    setFurniture(prev => prev.map(item => {
+    const updatedFurniture = furniture.map(item => {
       if (item.id !== selectedFurnitureId || !item.position) return item;
       
       const newPosition = { ...item.position };
@@ -981,10 +1063,14 @@ export const Layout3DView = ({
         position: newPosition,
         hauteur_sol_mm: Math.max(0, (item.hauteur_sol_mm || 0) + deltaYmm),
       };
-    }));
+    });
     
+    setFurniture(updatedFurniture);
     setPrecisionMove({ x: 0, y: 0, z: 0 });
-    toast.success("Déplacement précis appliqué");
+    
+    // Sauvegarder et synchroniser
+    await saveFurniturePositions(updatedFurniture);
+    toast.success("Déplacement précis appliqué et sauvegardé");
   };
 
   useEffect(() => {
