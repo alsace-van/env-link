@@ -160,22 +160,22 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
   const remaining = totalSales - totalPaid;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Historique des paiements</CardTitle>
+    <Card className="max-w-md">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Paiements</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2 text-sm border-b pb-4">
+      <CardContent className="space-y-2">
+        <div className="space-y-1 text-xs border-b pb-2">
           <div className="flex justify-between">
-            <span>Total ventes TTC:</span>
+            <span className="text-muted-foreground">Total ventes TTC:</span>
             <span className="font-semibold">{totalSales.toFixed(2)} €</span>
           </div>
           <div className="flex justify-between">
-            <span>Total payé:</span>
+            <span className="text-muted-foreground">Total payé:</span>
             <span className="font-semibold text-green-600">{totalPaid.toFixed(2)} €</span>
           </div>
-          <div className="flex justify-between text-base font-bold pt-2 border-t">
-            <span>Reste à payer:</span>
+          <div className="flex justify-between text-sm font-bold pt-1 border-t">
+            <span>Reste:</span>
             <span className={remaining <= 0 ? "text-green-600" : "text-primary"}>
               {remaining.toFixed(2)} €
             </span>
@@ -183,69 +183,56 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
         </div>
 
         {transactions.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Montant</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell className="text-xs">
-                    {new Date(transaction.date_paiement).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    <span className={transaction.type_paiement === "acompte" ? "text-orange-600" : "text-blue-600"}>
+          <div className="space-y-1">
+            {transactions.map((transaction) => (
+              <div key={transaction.id} className="flex items-center justify-between py-1 px-2 hover:bg-muted/50 rounded text-xs border-b">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span className={transaction.type_paiement === "acompte" ? "text-orange-600 font-medium" : "text-blue-600 font-medium"}>
                       {transaction.type_paiement === "acompte" ? "Acompte" : "Solde"}
                     </span>
-                  </TableCell>
-                  <TableCell className="text-xs font-semibold">
-                    {transaction.montant.toFixed(2)} €
-                  </TableCell>
-                  <TableCell className="text-xs">{transaction.notes || "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => editTransaction(transaction)}
-                        className="h-6 w-6"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteTransaction(transaction.id)}
-                        className="h-6 w-6"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    <span className="font-bold">{transaction.montant.toFixed(0)}€</span>
+                  </div>
+                  <div className="text-muted-foreground truncate">
+                    {new Date(transaction.date_paiement).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+                    {transaction.notes && ` • ${transaction.notes}`}
+                  </div>
+                </div>
+                <div className="flex gap-0.5 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => editTransaction(transaction)}
+                    className="h-6 w-6"
+                  >
+                    <Edit className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => deleteTransaction(transaction.id)}
+                    className="h-6 w-6"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
 
         {!isAdding ? (
-          <Button onClick={() => setIsAdding(true)} className="w-full" variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter un paiement
+          <Button onClick={() => setIsAdding(true)} className="w-full h-8 text-xs" variant="outline">
+            <Plus className="h-3 w-3 mr-1" />
+            Ajouter
           </Button>
         ) : (
-          <div className="border rounded-lg p-4 space-y-3">
-            <h4 className="font-semibold text-sm">
-              {editingId ? "Modifier le paiement" : "Ajouter un paiement"}
+          <div className="border rounded-lg p-3 space-y-2">
+            <h4 className="font-semibold text-xs">
+              {editingId ? "Modifier" : "Ajouter un paiement"}
             </h4>
-            <div className="space-y-2">
-              <Label>Type de paiement</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Type</Label>
               <Select
                 value={newTransaction.type_paiement}
                 onValueChange={(value: "acompte" | "solde") => {
@@ -256,7 +243,7 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
                   });
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -266,48 +253,53 @@ const PaymentTransactions = ({ projectId, totalSales, onPaymentChange }: Payment
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Montant (€)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={newTransaction.montant}
-                onChange={(e) =>
-                  setNewTransaction({ ...newTransaction, montant: parseFloat(e.target.value) || 0 })
-                }
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Montant (€)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={newTransaction.montant}
+                  onChange={(e) =>
+                    setNewTransaction({ ...newTransaction, montant: parseFloat(e.target.value) || 0 })
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Date</Label>
+                <Input
+                  type="date"
+                  value={newTransaction.date_paiement}
+                  onChange={(e) =>
+                    setNewTransaction({ ...newTransaction, date_paiement: e.target.value })
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Date de paiement</Label>
-              <Input
-                type="date"
-                value={newTransaction.date_paiement}
-                onChange={(e) =>
-                  setNewTransaction({ ...newTransaction, date_paiement: e.target.value })
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Notes (optionnel)</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Notes</Label>
               <Textarea
                 value={newTransaction.notes}
                 onChange={(e) =>
                   setNewTransaction({ ...newTransaction, notes: e.target.value })
                 }
-                placeholder="Notes sur ce paiement..."
+                placeholder="Notes..."
+                className="h-16 text-xs resize-none"
               />
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={addOrUpdateTransaction} className="flex-1">
-                {editingId ? "Modifier" : "Enregistrer"}
+              <Button onClick={addOrUpdateTransaction} className="flex-1 h-7 text-xs">
+                {editingId ? "Modifier" : "OK"}
               </Button>
               <Button
                 onClick={cancelEdit}
                 variant="outline"
-                className="flex-1"
+                className="flex-1 h-7 text-xs"
               >
                 Annuler
               </Button>
