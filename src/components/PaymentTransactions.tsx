@@ -43,27 +43,43 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   }, []);
 
   const loadTransactions = async () => {
-    // Charger tous les paiements de l'utilisateur avec les noms de projets
+    // Charger tous les paiements de l'utilisateur
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
+    // Récupérer les projets de l'utilisateur
+    const { data: projectsData, error: projectsError } = await supabase
+      .from("projects")
+      .select("id, nom_projet, nom_proprietaire")
+      .eq("user_id", userData.user.id);
+
+    if (projectsError) {
+      console.error("Error loading projects:", projectsError);
+      return;
+    }
+
+    const projectsMap = new Map(
+      (projectsData || []).map((p) => [
+        p.id,
+        p.nom_projet || p.nom_proprietaire || "Projet sans nom",
+      ])
+    );
+
+    // Récupérer tous les paiements des projets de l'utilisateur
+    const projectIds = Array.from(projectsMap.keys());
+    
     const { data, error } = await supabase
       .from("project_payment_transactions")
-      .select(`
-        *,
-        projects:project_id (
-          nom_projet,
-          nom_proprietaire
-        )
-      `)
+      .select("*")
+      .in("project_id", projectIds)
       .order("date_paiement", { ascending: false });
 
     if (error) {
-      console.error(error);
+      console.error("Error loading payments:", error);
     } else {
       const transactionsWithNames = (data || []).map((t: any) => ({
         ...t,
-        project_name: t.projects?.nom_projet || t.projects?.nom_proprietaire || "Projet sans nom",
+        project_name: projectsMap.get(t.project_id) || "Projet sans nom",
       }));
       setTransactions(transactionsWithNames as PaymentTransaction[]);
     }
