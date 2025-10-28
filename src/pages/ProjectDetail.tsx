@@ -55,6 +55,7 @@ const ProjectDetail = () => {
   const [expenseRefresh, setExpenseRefresh] = useState(0);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
+  const [layout3DKey, setLayout3DKey] = useState(0);
   const [editFormData, setEditFormData] = useState({
     longueur_mm: "",
     largeur_mm: "",
@@ -67,6 +68,29 @@ const ProjectDetail = () => {
     if (id) {
       loadProject();
     }
+
+    // Écouter les changements en temps réel sur la table projects
+    const channel = supabase
+      .channel('project-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'projects',
+          filter: `id=eq.${id}`
+        },
+        (payload) => {
+          console.log('🔄 Changement détecté dans le projet:', payload);
+          // Recharger les données du projet quand il y a un changement
+          loadProject();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [id]);
 
   const loadProject = async () => {
@@ -401,7 +425,12 @@ const ProjectDetail = () => {
           </TabsContent>
 
           <TabsContent value="technical">
-            <Tabs defaultValue="layout" className="w-full">
+            <Tabs defaultValue="layout" className="w-full" onValueChange={(value) => {
+              // Force le rechargement de la vue 3D quand on y accède
+              if (value === '3d') {
+                setLayout3DKey(prev => prev + 1);
+              }
+            }}>
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="layout">Aménagement</TabsTrigger>
                 <TabsTrigger value="3d">Vue 3D</TabsTrigger>
@@ -430,6 +459,7 @@ const ProjectDetail = () => {
 
               <TabsContent value="3d">
                 <Layout3DView
+                  key={layout3DKey}
                   projectId={project.id}
                   loadAreaLength={project.longueur_chargement_mm || 3000}
                   loadAreaWidth={project.largeur_chargement_mm || 1800}
