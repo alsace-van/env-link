@@ -21,6 +21,7 @@ interface FurnitureItem {
   largeur_mm: number;
   hauteur_mm: number;
   poids_kg: number;
+  hauteur_sol_mm?: number;
   position?: { x: number; y: number };
   canvasDimensions?: { widthPx: number; heightPx: number };
 }
@@ -73,10 +74,14 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale }: FurnitureBoxProps
 
   const posX3D = posXmm * mmToUnits3D;
   const posZ3D = posZmm * mmToUnits3D;
-  const posY3D = height3D / 2;
+  
+  // Utiliser hauteur_sol_mm pour positionner le meuble en hauteur
+  const hauteurSolMm = furniture.hauteur_sol_mm || 0;
+  const posY3D = (hauteurSolMm * mmToUnits3D) + (height3D / 2);
 
   console.log(`Position (pixels relatifs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
   console.log(`Position (mm): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
+  console.log(`Hauteur sol (mm): ${hauteurSolMm}`);
   console.log(`Position (3D): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)})`);
 
   const textSize = Math.max(0.2, Math.min(0.5, 0.3));

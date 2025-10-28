@@ -34,6 +34,7 @@ interface FurnitureData {
   largeur_mm: number;
   hauteur_mm: number;
   poids_kg: number;
+  hauteur_sol_mm: number;
 }
 
 const CANVAS_WIDTH = 800;
@@ -66,6 +67,7 @@ export const LayoutCanvas = ({
     largeur_mm: 0,
     hauteur_mm: 0,
     poids_kg: 0,
+    hauteur_sol_mm: 0,
   });
 
   const activeToolRef = useRef(activeTool);
@@ -126,6 +128,7 @@ export const LayoutCanvas = ({
               largeur_mm: item.largeur_mm,
               hauteur_mm: item.hauteur_mm,
               poids_kg: item.poids_kg,
+              hauteur_sol_mm: item.hauteur_sol_mm || 0,
             });
           });
           setFurnitureItems(newMap);
@@ -625,6 +628,7 @@ export const LayoutCanvas = ({
               largeur_mm: item.largeur_mm,
               hauteur_mm: item.hauteur_mm,
               poids_kg: item.poids_kg,
+              hauteur_sol_mm: item.hauteur_sol_mm || 0,
             });
           });
           setFurnitureItems(newMap);
@@ -701,6 +705,7 @@ export const LayoutCanvas = ({
         largeur_mm: 0,
         hauteur_mm: 0,
         poids_kg: 0,
+        hauteur_sol_mm: 0,
       });
       toast.success("Meuble modifié");
 
@@ -761,6 +766,7 @@ export const LayoutCanvas = ({
         largeur_mm: 0,
         hauteur_mm: 0,
         poids_kg: 0,
+        hauteur_sol_mm: 0,
       });
       toast.success("Meuble ajouté");
     }
@@ -778,6 +784,7 @@ export const LayoutCanvas = ({
       largeur_mm: 0,
       hauteur_mm: 0,
       poids_kg: 0,
+      hauteur_sol_mm: 0,
     });
   };
 
@@ -793,6 +800,7 @@ export const LayoutCanvas = ({
         largeur_mm: furnitureData.largeur_mm,
         hauteur_mm: furnitureData.hauteur_mm,
         poids_kg: furnitureData.poids_kg,
+        hauteur_sol_mm: furnitureData.hauteur_sol_mm || 0,
       });
       setShowFurnitureDialog(true);
       setContextMenu(null);
@@ -1105,6 +1113,31 @@ export const LayoutCanvas = ({
                   }}
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="hauteur_sol">Hauteur par rapport au sol (mm)</Label>
+              <Input
+                id="hauteur_sol"
+                type="number"
+                value={furnitureForm.hauteur_sol_mm}
+                onChange={(e) =>
+                  setFurnitureForm((prev) => ({
+                    ...prev,
+                    hauteur_sol_mm: Number(e.target.value),
+                  }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleFurnitureSubmit();
+                  }
+                  e.stopPropagation();
+                }}
+                placeholder="0"
+              />
+              <p className="text-xs text-muted-foreground">
+                Distance entre le sol et le dessous du meuble (0 = posé au sol)
+              </p>
             </div>
           </div>
 
