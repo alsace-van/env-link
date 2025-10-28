@@ -954,12 +954,14 @@ export const Layout3DView = ({
     const CANVAS_HEIGHT = 600;
     
     try {
+      toast.info("Sauvegarde en cours...");
+      
       // Charger le layout_canvas_data existant
       const { data: projectData } = await supabase
         .from("projects")
         .select("layout_canvas_data")
         .eq("id", projectId)
-        .single();
+        .maybeSingle();
 
       let layoutCanvasData = projectData?.layout_canvas_data;
 
@@ -1021,11 +1023,14 @@ export const Layout3DView = ({
       if (error) {
         console.error("❌ Erreur sauvegarde:", error);
         toast.error("Erreur lors de la sauvegarde de la position");
+        throw error;
       } else {
         console.log("✅ Position sauvegardée et synchronisée avec la vue 2D");
+        toast.success("Positions sauvegardées avec succès");
       }
     } catch (error) {
       console.error("❌ Erreur sauvegarde:", error);
+      toast.error("Erreur lors de la sauvegarde");
     }
   };
 
