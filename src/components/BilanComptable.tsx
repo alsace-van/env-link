@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Edit, Plus, Trash2, Euro } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import PaymentTransactions from "@/components/PaymentTransactions";
 
 interface BankBalance {
   id: string;
@@ -38,6 +39,8 @@ interface BilanComptableProps {
 }
 
 export const BilanComptable = ({ projectId }: BilanComptableProps) => {
+  const [paymentRefresh, setPaymentRefresh] = useState(0);
+  const [totalSales, setTotalSales] = useState(0);
   const [bankBalance, setBankBalance] = useState<BankBalance | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -51,7 +54,8 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
     loadBankBalance();
     loadExpenses();
     loadPayments();
-  }, [projectId]);
+    loadTotalSales();
+  }, [projectId, paymentRefresh]);
 
   const loadBankBalance = async () => {
     const { data, error } = await supabase
@@ -96,6 +100,24 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
     }
 
     setPayments(data || []);
+  };
+
+  const loadTotalSales = async () => {
+    const { data, error } = await supabase
+      .from("project_expenses")
+      .select("prix_vente_ttc, quantite")
+      .eq("project_id", projectId);
+
+    if (error) {
+      console.error("Error loading total sales:", error);
+      return;
+    }
+
+    const total = (data || []).reduce((sum, item) => {
+      return sum + (item.prix_vente_ttc || 0) * item.quantite;
+    }, 0);
+
+    setTotalSales(total);
   };
 
   const handleSaveBalance = async () => {
@@ -300,68 +322,16 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
         </Card>
       )}
 
-      {/* Paiements reçus après la date de départ */}
-      {bankBalance && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Paiements Reçus</CardTitle>
-            <CardDescription>
-              Depuis le {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {filteredPayments.length > 0 ? (
-              <div className="space-y-2">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2 px-2">Date</th>
-                        <th className="text-left py-2 px-2">Type</th>
-                        <th className="text-right py-2 px-2">Montant</th>
-                        <th className="text-left py-2 px-2">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPayments.map((payment) => (
-                        <tr key={payment.id} className="border-b hover:bg-muted/50">
-                          <td className="py-2 px-2">
-                            {format(new Date(payment.date_paiement), "dd/MM/yyyy")}
-                          </td>
-                          <td className="py-2 px-2">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              {payment.type_paiement}
-                            </span>
-                          </td>
-                          <td className="py-2 px-2 text-right font-medium text-green-600">
-                            +{payment.montant.toFixed(2)} €
-                          </td>
-                          <td className="py-2 px-2 text-muted-foreground">
-                            {payment.notes || "-"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="font-bold border-t-2">
-                        <td colSpan={2} className="py-3 px-2 text-right">
-                          Total des paiements :
-                        </td>
-                        <td className="py-3 px-2 text-right text-green-600">
-                          +{totalPayments.toFixed(2)} €
-                        </td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            ) : (
-              <p className="text-center py-4 text-muted-foreground">Aucun paiement enregistré</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Gestion des paiements */}
+      <PaymentTransactions 
+        projectId={projectId} 
+        totalSales={totalSales}
+        onPaymentChange={() => {
+          setPaymentRefresh(prev => prev + 1);
+          loadPayments();
+          loadBankBalance();
+        }}
+      />
 
       {/* Dialog pour modifier le solde */}
       <Dialog open={isEditBalanceOpen} onOpenChange={setIsEditBalanceOpen}>
@@ -370,6 +340,9 @@ export const BilanComptable = ({ projectId }: BilanComptableProps) => {
             <DialogTitle>
               {bankBalance ? "Modifier le solde bancaire" : "Définir le solde bancaire"}
             </DialogTitle>
+            <DialogDescription>
+              Définissez le solde bancaire de départ et la date de référence
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
