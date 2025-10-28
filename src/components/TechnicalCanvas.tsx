@@ -28,15 +28,16 @@ interface TechnicalCanvasProps {
 
 interface CanvasInstanceProps {
   projectId: string;
-  canvasNumber: 1 | 2;
+  schemaNumber: number;
   onExpenseAdded?: () => void;
+  onSchemaDeleted?: () => void;
 }
 
 // Constantes pour le snapping
 const SNAP_ANGLE_THRESHOLD = 15;
 const SNAP_DISTANCE = 10;
 
-const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInstanceProps) => {
+const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDeleted }: CanvasInstanceProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -49,8 +50,7 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
   const [isEditingText, setIsEditingText] = useState(false);
   const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
   const [editingTextItem, setEditingTextItem] = useState<any | null>(null);
-  
-  const dbColumn = canvasNumber === 1 ? "technical_canvas_data" : "technical_canvas_data_2";
+  const [schemaId, setSchemaId] = useState<string | null>(null);
 
   // Refs pour éviter la réinitialisation du canvas
   const activeToolRef = useRef(activeTool);
@@ -94,23 +94,27 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
     // Redimensionner le view pour correspondre au canvas
     scope.view.viewSize = new scope.Size(canvasRef.current.width, canvasRef.current.height);
 
-    console.log("Paper.js initialized", scope.project, "Canvas:", canvasNumber);
+    console.log("Paper.js initialized", scope.project, "Schema:", schemaNumber);
 
     // Charger les dessins depuis la base de données
     const loadDrawings = async () => {
       try {
         const { data, error } = await supabase
-          .from("projects")
-          .select(dbColumn)
-          .eq("id", projectId)
-          .single();
+          .from("technical_schemas")
+          .select("*")
+          .eq("project_id", projectId)
+          .eq("schema_number", schemaNumber)
+          .maybeSingle();
 
         if (error) throw error;
 
-        if (data && data[dbColumn]) {
-          scope.project.activeLayer.importJSON(data[dbColumn]);
-          scope.view.update();
-          console.log("Dessins chargés pour canvas", canvasNumber);
+        if (data) {
+          setSchemaId(data.id);
+          if (data.canvas_data) {
+            scope.project.activeLayer.importJSON(data.canvas_data);
+            scope.view.update();
+            console.log("Dessins chargés pour schéma", schemaNumber);
+          }
         }
       } catch (error) {
         console.error("Erreur lors du chargement des dessins:", error);
@@ -500,7 +504,7 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
     return () => {
       tool.remove();
     };
-  }, [projectId, canvasNumber]); 
+  }, [projectId, schemaNumber]);
 
   const handleTextSubmit = () => {
     if (!textInputRef.current || !paperScopeRef.current) return;
@@ -612,15 +616,29 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
     try {
       const json = scope.project.activeLayer.exportJSON();
 
-      const updateData: any = {};
-      updateData[dbColumn] = json;
+      if (schemaId) {
+        // Update existing schema
+        const { error } = await supabase
+          .from("technical_schemas")
+          .update({ canvas_data: json })
+          .eq("id", schemaId);
 
-      const { error } = await supabase
-        .from("projects")
-        .update(updateData)
-        .eq("id", projectId);
+        if (error) throw error;
+      } else {
+        // Create new schema
+        const { data, error } = await supabase
+          .from("technical_schemas")
+          .insert({
+            project_id: projectId,
+            schema_number: schemaNumber,
+            canvas_data: json,
+          })
+          .select()
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
+        if (data) setSchemaId(data.id);
+      }
 
       toast.success("Schéma sauvegardé");
     } catch (error) {
@@ -634,7 +652,7 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
     const dataURL = canvasRef.current.toDataURL("image/png");
     const link = document.createElement("a");
     link.href = dataURL;
-    link.download = `schema-technique-${canvasNumber}-${Date.now()}.png`;
+    link.download = `schema-technique-${schemaNumber}-${Date.now()}.png`;
     link.click();
     toast.success("Schéma téléchargé");
   };
@@ -703,7 +721,7 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
   };
 
   return (
-    <div className="space-y-4" key={`canvas-${canvasNumber}`}>
+    <div className="space-y-4" key={`canvas-${schemaNumber}`}>
       <div className="flex flex-wrap items-center gap-2 p-4 bg-muted/50 rounded-lg">
         <Button
           variant={activeTool === "select" ? "default" : "outline"}
@@ -855,66 +873,93 @@ const CanvasInstance = ({ projectId, canvasNumber, onExpenseAdded }: CanvasInsta
 };
 
 export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasProps) => {
-  const [canvasCount, setCanvasCount] = useState(1);
+  const [schemas, setSchemas] = useState<number[]>([1]);
   const [activeTab, setActiveTab] = useState("canvas1");
-  const maxCanvasCount = 2; // Limité à 2 pour l'instant (technical_canvas_data et technical_canvas_data_2)
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Charger les schémas existants
+  useEffect(() => {
+    const loadSchemas = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("technical_schemas")
+          .select("schema_number")
+          .eq("project_id", projectId)
+          .order("schema_number");
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const schemaNumbers = data.map(s => s.schema_number);
+          setSchemas(schemaNumbers);
+        }
+      } catch (error) {
+        console.error("Erreur lors du chargement des schémas:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSchemas();
+  }, [projectId]);
 
   const handleAddCanvas = () => {
-    if (canvasCount < maxCanvasCount) {
-      setCanvasCount(prev => prev + 1);
-      toast.success(`Schéma ${canvasCount + 1} ajouté`);
-    } else {
-      toast.error("Nombre maximum de schémas atteint");
-    }
+    const nextNumber = Math.max(...schemas) + 1;
+    setSchemas(prev => [...prev, nextNumber]);
+    setActiveTab(`canvas${nextNumber}`);
+    toast.success(`Schéma ${nextNumber} ajouté`);
   };
 
-  const handleRemoveCanvas = async (canvasNumber: number) => {
-    if (canvasNumber === 1) {
-      toast.error("Impossible de supprimer le schéma 1");
+  const handleRemoveCanvas = async (schemaNumber: number) => {
+    if (schemaNumber === 1 && schemas.length === 1) {
+      toast.error("Impossible de supprimer le dernier schéma");
       return;
     }
 
-    // Effacer les données du canvas dans la base de données
-    const dbColumn = canvasNumber === 1 ? "technical_canvas_data" : "technical_canvas_data_2";
-    
     try {
       await supabase
-        .from("projects")
-        .update({ [dbColumn]: null })
-        .eq("id", projectId);
+        .from("technical_schemas")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("schema_number", schemaNumber);
 
-      setCanvasCount(prev => prev - 1);
+      setSchemas(prev => prev.filter(s => s !== schemaNumber));
       
-      // Revenir au schéma 1 si on supprime le schéma actif
-      if (activeTab === `canvas${canvasNumber}`) {
-        setActiveTab("canvas1");
+      // Revenir au premier schéma si on supprime le schéma actif
+      if (activeTab === `canvas${schemaNumber}`) {
+        const remainingSchemas = schemas.filter(s => s !== schemaNumber);
+        setActiveTab(`canvas${remainingSchemas[0]}`);
       }
       
-      toast.success(`Schéma ${canvasNumber} supprimé`);
+      toast.success(`Schéma ${schemaNumber} supprimé`);
     } catch (error) {
       console.error("Erreur lors de la suppression:", error);
       toast.error("Erreur lors de la suppression du schéma");
     }
   };
 
+  if (isLoading) {
+    return <div className="text-center py-8 text-muted-foreground">Chargement des schémas...</div>;
+  }
+
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="flex items-center gap-2 mb-4">
           <TabsList className="flex-1">
-            {Array.from({ length: canvasCount }, (_, i) => (
-              <div key={i + 1} className="relative inline-flex items-center">
-                <TabsTrigger value={`canvas${i + 1}`} className="pr-8">
-                  Schéma {i + 1}
+            {schemas.map((schemaNum) => (
+              <div key={schemaNum} className="relative inline-flex items-center">
+                <TabsTrigger value={`canvas${schemaNum}`} className="pr-8">
+                  Schéma {schemaNum}
                 </TabsTrigger>
-                {i > 0 && (
+                {schemas.length > 1 && (
                   <Button
                     variant="ghost"
                     size="icon"
                     className="absolute right-1 h-5 w-5 p-0 hover:bg-destructive/10"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleRemoveCanvas(i + 1);
+                      handleRemoveCanvas(schemaNum);
                     }}
                   >
                     <X className="h-3 w-3 text-destructive" />
@@ -923,15 +968,18 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
               </div>
             ))}
           </TabsList>
-          {canvasCount < maxCanvasCount && (
-            <Button onClick={handleAddCanvas} size="sm" variant="outline">
-              + Ajouter un schéma
-            </Button>
-          )}
+          <Button onClick={handleAddCanvas} size="sm" variant="outline">
+            + Ajouter un schéma
+          </Button>
         </div>
-        {Array.from({ length: canvasCount }, (_, i) => (
-          <TabsContent key={i + 1} value={`canvas${i + 1}`}>
-            <CanvasInstance projectId={projectId} canvasNumber={(i + 1) as 1 | 2} onExpenseAdded={onExpenseAdded} />
+        {schemas.map((schemaNum) => (
+          <TabsContent key={schemaNum} value={`canvas${schemaNum}`}>
+            <CanvasInstance 
+              projectId={projectId} 
+              schemaNumber={schemaNum}
+              onExpenseAdded={onExpenseAdded}
+              onSchemaDeleted={() => handleRemoveCanvas(schemaNum)}
+            />
           </TabsContent>
         ))}
       </Tabs>

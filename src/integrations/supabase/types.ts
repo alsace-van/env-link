@@ -568,6 +568,41 @@ export type Database = {
           },
         ]
       }
+      technical_schemas: {
+        Row: {
+          canvas_data: string | null
+          created_at: string
+          id: string
+          project_id: string
+          schema_number: number
+          updated_at: string
+        }
+        Insert: {
+          canvas_data?: string | null
+          created_at?: string
+          id?: string
+          project_id: string
+          schema_number: number
+          updated_at?: string
+        }
+        Update: {
+          canvas_data?: string | null
+          created_at?: string
+          id?: string
+          project_id?: string
+          schema_number?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_schemas_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_logins: {
         Row: {
           id: string
