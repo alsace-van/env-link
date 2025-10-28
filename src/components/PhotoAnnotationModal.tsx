@@ -217,7 +217,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
       // Nettoyer Paper.js
       if (paperScopeRef.current) {
         try {
-          paperScopeRef.current.remove();
+          if (paperScopeRef.current.project) paperScopeRef.current.project.clear();
+          if (paperScopeRef.current.view) paperScopeRef.current.view.remove();
         } catch (e) {
           console.log("Cleanup skipped");
         }
