@@ -227,7 +227,9 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           fillColor: null,
         });
         currentPath.add(event.point);
-        console.log("✏️ Path created - Color:", strokeColorRef.current, "Width:", strokeWidthRef.current);
+        console.log("✏️ Path created - Color:", strokeColorRef.current, "Width:", strokeWidthRef.current, "Opacity:", currentPath.opacity);
+        console.log("✏️ Path bounds:", currentPath.bounds);
+        console.log("✏️ Active layer children count:", paper.project.activeLayer.children.length);
         paper.view.update();
       } else if (toolType === "line" || toolType === "arrow") {
         currentPath = new paper.Path({
@@ -246,8 +248,8 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           strokeColor: new paper.Color(strokeColorRef.current),
           strokeWidth: strokeWidthRef.current,
           fillColor: null,
-          opacity: 1,
         });
+        console.log("📐 Rectangle created at:", event.point);
       } else if (toolType === "circle") {
         currentPath = new paper.Path.Circle({
           center: event.point,
@@ -559,6 +561,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
               src={photo.url}
               alt={photo.description || "Photo"}
               className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+              style={{ zIndex: 1 }}
               onLoad={() => {
                 console.log("✅ Image loaded in DOM");
                 setIsLoadingImage(false);
