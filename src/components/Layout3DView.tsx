@@ -37,17 +37,21 @@ interface FurnitureBoxProps {
 interface TransformGizmoProps {
   position: [number, number, number];
   onMove: (axis: 'x' | 'y' | 'z', delta: number) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }
 
-const TransformGizmo = ({ position, onMove }: TransformGizmoProps) => {
+const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformGizmoProps) => {
   const [activeAxis, setActiveAxis] = useState<'x' | 'y' | 'z' | null>(null);
   const [dragStart, setDragStart] = useState<THREE.Vector3 | null>(null);
-  const { camera, raycaster } = useThree();
+  const { camera, raycaster, gl } = useThree();
 
   const handleAxisPointerDown = (axis: 'x' | 'y' | 'z', event: ThreeEvent<PointerEvent>) => {
     event.stopPropagation();
     setActiveAxis(axis);
     setDragStart(event.point.clone());
+    onDragStart();
+    gl.domElement.style.cursor = 'grabbing';
   };
 
   useEffect(() => {
@@ -92,16 +96,18 @@ const TransformGizmo = ({ position, onMove }: TransformGizmoProps) => {
     const handlePointerUp = () => {
       setActiveAxis(null);
       setDragStart(null);
+      onDragEnd();
+      gl.domElement.style.cursor = 'default';
     };
 
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
 
     return () => {
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [activeAxis, dragStart, camera, raycaster, onMove, position]);
+  }, [activeAxis, dragStart, camera, raycaster, onMove, position, gl, onDragEnd]);
 
   const arrowLength = 4;
   const arrowRadius = 0.2;
@@ -434,6 +440,9 @@ const Scene = ({
   selectedFurnitureId,
   onSelectFurniture,
   onMoveFurniture,
+  isDraggingGizmo,
+  onGizmoDragStart,
+  onGizmoDragEnd,
 }: {
   furniture: FurnitureItem[];
   loadAreaLength: number;
@@ -445,6 +454,9 @@ const Scene = ({
   selectedFurnitureId: string | null;
   onSelectFurniture: (id: string | null) => void;
   onMoveFurniture: (id: string, axis: 'x' | 'y' | 'z', delta: number) => void;
+  isDraggingGizmo: boolean;
+  onGizmoDragStart: () => void;
+  onGizmoDragEnd: () => void;
 }) => {
   const mmToUnits3D = 1 / 100;
   const scale3D = mmToUnits3D;
@@ -511,6 +523,8 @@ const Scene = ({
         <TransformGizmo 
           position={getGizmoPosition()} 
           onMove={handleGizmoMove}
+          onDragStart={onGizmoDragStart}
+          onDragEnd={onGizmoDragEnd}
         />
       )}
 
@@ -537,7 +551,7 @@ const Scene = ({
         dampingFactor={0.05} 
         minDistance={5} 
         maxDistance={100} 
-        enabled={!measureMode}
+        enabled={!measureMode && !isDraggingGizmo}
         mouseButtons={{
           LEFT: moveMode ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
           MIDDLE: THREE.MOUSE.DOLLY,
@@ -564,6 +578,7 @@ export const Layout3DView = ({
   const [loadAreaWidth, setLoadAreaWidth] = useState<number>(propLoadAreaWidth || 1800);
   const [moveMode, setMoveMode] = useState(false);
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   /**
@@ -1032,6 +1047,9 @@ export const Layout3DView = ({
               selectedFurnitureId={selectedFurnitureId}
               onSelectFurniture={handleSelectFurniture}
               onMoveFurniture={handleMoveFurniture}
+              isDraggingGizmo={isDraggingGizmo}
+              onGizmoDragStart={() => setIsDraggingGizmo(true)}
+              onGizmoDragEnd={() => setIsDraggingGizmo(false)}
             />
           </Canvas>
         </div>
