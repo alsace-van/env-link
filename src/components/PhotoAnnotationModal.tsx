@@ -32,7 +32,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
   const textInputRef = useRef<HTMLInputElement>(null);
 
   const [activeTool, setActiveTool] = useState<"select" | "draw" | "rectangle" | "arrow" | "circle" | "line" | "text">(
-    "select",
+    "draw",
   );
   const [comment, setComment] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -110,6 +110,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         setFabricInitialized(true);
         toast.success("Outils d'annotation prêts!", { duration: 2000 });
+        
+        // Activer le mode dessin par défaut
+        if (activeTool === "draw" && fabricCanvas.freeDrawingBrush) {
+          fabricCanvas.isDrawingMode = true;
+          fabricCanvas.freeDrawingBrush.color = strokeColor;
+          fabricCanvas.freeDrawingBrush.width = strokeWidth;
+          console.log("✅ Drawing mode activated");
+        }
       } catch (error) {
         console.error("❌ Error initializing Fabric.js:", error);
         toast.error("Les outils d'annotation ne peuvent pas être chargés");
