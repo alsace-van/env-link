@@ -133,67 +133,48 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
   const totalCharges = charges.reduce((sum, charge) => sum + charge.montant, 0);
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Charges Mensuelles</CardTitle>
+    <Card className="max-w-md">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Charges Mensuelles</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         {charges.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-1 px-1">Charge</th>
-                  <th className="text-left py-1 px-1">Échéance</th>
-                  <th className="text-right py-1 px-1">Montant</th>
-                  <th className="text-center py-1 px-1 w-16">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {charges.map((charge) => (
-                  <tr key={charge.id} className="border-b hover:bg-muted/50">
-                    <td className="py-1 px-1 font-medium">{charge.nom_charge}</td>
-                    <td className="py-1 px-1 text-muted-foreground">
-                      {format(new Date(charge.date_echeance), "dd/MM/yyyy")}
-                    </td>
-                    <td className="py-1 px-1 text-right font-medium">
-                      {charge.montant.toFixed(2)} €
-                    </td>
-                    <td className="py-1 px-1">
-                      <div className="flex justify-center gap-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(charge)}
-                          className="h-5 w-5"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(charge.id)}
-                          className="h-5 w-5"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="font-bold border-t-2">
-                  <td colSpan={2} className="py-2 px-1 text-right">
-                    Total :
-                  </td>
-                  <td className="py-2 px-1 text-right text-destructive">
-                    {totalCharges.toFixed(2)} €
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+          <div className="space-y-1">
+            {charges.map((charge) => (
+              <div key={charge.id} className="flex items-center justify-between py-1 px-2 hover:bg-muted/50 rounded text-xs border-b">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{charge.nom_charge}</div>
+                  <div className="text-muted-foreground">
+                    {format(new Date(charge.date_echeance), "dd/MM/yy")}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-bold text-destructive whitespace-nowrap">
+                    {charge.montant.toFixed(0)}€
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleEdit(charge)}
+                    className="h-6 w-6 flex-shrink-0"
+                  >
+                    <Edit className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDelete(charge.id)}
+                    className="h-6 w-6 flex-shrink-0"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-between pt-2 border-t-2 font-bold text-xs">
+              <span>Total :</span>
+              <span className="text-destructive">{totalCharges.toFixed(2)} €</span>
+            </div>
           </div>
         )}
 

@@ -158,75 +158,48 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
   );
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Paiements Échelonnés</CardTitle>
+    <Card className="max-w-md">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Paiements Échelonnés</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         {installments.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-1 px-1">Paiement</th>
-                  <th className="text-right py-1 px-1">Total</th>
-                  <th className="text-right py-1 px-1">Mens.</th>
-                  <th className="text-center py-1 px-1">Tot.</th>
-                  <th className="text-center py-1 px-1">Rest.</th>
-                  <th className="text-center py-1 px-1 w-16">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {installments.map((installment) => (
-                  <tr key={installment.id} className="border-b hover:bg-muted/50">
-                    <td className="py-1 px-1 font-medium">{installment.nom_paiement}</td>
-                    <td className="py-1 px-1 text-right text-muted-foreground">
-                      {installment.montant_total.toFixed(0)} €
-                    </td>
-                    <td className="py-1 px-1 text-right">
-                      {installment.montant_mensualite.toFixed(0)} €
-                    </td>
-                    <td className="py-1 px-1 text-center text-muted-foreground">
-                      {installment.nombre_mensualites_total}
-                    </td>
-                    <td className="py-1 px-1 text-center font-medium text-orange-600">
-                      {installment.nombre_mensualites_restantes}
-                    </td>
-                    <td className="py-1 px-1">
-                      <div className="flex justify-center gap-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(installment)}
-                          className="h-5 w-5"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(installment.id)}
-                          className="h-5 w-5"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="font-bold border-t-2">
-                  <td className="py-2 px-1 text-right">
-                    Total restant :
-                  </td>
-                  <td className="py-2 px-1 text-right text-orange-600" colSpan={4}>
-                    {totalRestant.toFixed(2)} €
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+          <div className="space-y-1">
+            {installments.map((installment) => (
+              <div key={installment.id} className="border rounded p-2 hover:bg-muted/50 text-xs space-y-1">
+                <div className="flex items-start justify-between">
+                  <div className="font-medium truncate flex-1">{installment.nom_paiement}</div>
+                  <div className="flex gap-0.5 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEdit(installment)}
+                      className="h-5 w-5"
+                    >
+                      <Edit className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(installment.id)}
+                      className="h-5 w-5"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-1 text-muted-foreground">
+                  <div>Total: <span className="font-medium text-foreground">{installment.montant_total.toFixed(0)}€</span></div>
+                  <div>Mens.: <span className="font-medium text-foreground">{installment.montant_mensualite.toFixed(0)}€</span></div>
+                  <div>Total: <span className="font-medium text-foreground">{installment.nombre_mensualites_total}</span></div>
+                  <div>Rest.: <span className="font-medium text-orange-600">{installment.nombre_mensualites_restantes}</span></div>
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-between pt-2 border-t-2 font-bold text-xs">
+              <span>Total restant :</span>
+              <span className="text-orange-600">{totalRestant.toFixed(2)} €</span>
+            </div>
           </div>
         )}
 
