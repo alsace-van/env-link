@@ -136,31 +136,18 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
         console.log("Canvas initialized, loading image from:", photo.url);
 
-        // Le bucket est public, pas besoin de signed URL
+        // Charger l'image directement avec Paper.js Raster
         const imageUrl = photo.url;
-        console.log("Loading image from URL:", imageUrl);
+        console.log("Creating raster from URL:", imageUrl);
 
-        // Charger l'image avec Paper.js - utiliser crossOrigin pour éviter les problèmes CORS
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        
-        const loadPromise = new Promise<HTMLImageElement>((resolve, reject) => {
-          img.onload = () => {
-            console.log("Image loaded successfully via Image element");
-            resolve(img);
-          };
-          img.onerror = (error) => {
-            console.error("Error loading image via Image element:", error);
-            reject(error);
-          };
-          img.src = imageUrl;
+        // Créer le raster directement avec l'URL - Paper.js gère le chargement
+        const raster = new paper.Raster({
+          source: imageUrl,
+          position: paper.view.center
         });
 
-        const loadedImg = await loadPromise;
-        const raster = new paper.Raster(loadedImg);
-        
-        // Fonction pour initialiser le raster une fois qu'il est chargé
-        const initializeRaster = () => {
+        // Attendre que l'image soit chargée
+        raster.onLoad = () => {
           if (!mounted) {
             raster.remove();
             return;
@@ -169,14 +156,25 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           console.log("Image loaded successfully:", {
             width: raster.width,
             height: raster.height,
+            size: raster.size
           });
 
-          // Adapter l'image au canvas
+          // Vérifier que l'image a bien des dimensions
+          if (!raster.width || !raster.height) {
+            console.error("Image has no dimensions");
+            toast.error("L'image n'a pas pu être chargée correctement");
+            setIsLoadingImage(false);
+            return;
+          }
+
+          // Adapter l'image au canvas avec un padding
           const scale = Math.min(
             (paper.view.viewSize.width - 40) / raster.width,
             (paper.view.viewSize.height - 40) / raster.height,
-            1,
+            1
           );
+
+          console.log("Scaling image:", { scale, viewSize: paper.view.viewSize });
 
           raster.scale(scale);
           raster.position = paper.view.center;
@@ -184,7 +182,10 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
 
           backgroundRasterRef.current = raster;
 
-          console.log("Canvas rendered with image");
+          // Forcer le rendu
+          paper.view.update();
+          
+          console.log("Canvas rendered with image at position:", raster.position);
 
           if (mounted) {
             setIsLoadingImage(false);
@@ -211,23 +212,14 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
             }
           }
         };
-        
-        // Si l'image est déjà chargée (loaded=true), exécuter immédiatement
-        // Sinon attendre l'événement onLoad
-        if (raster.loaded) {
-          console.log("Image already loaded, initializing immediately");
-          initializeRaster();
-        } else {
-          raster.onLoad = initializeRaster;
-          
-          raster.onError = () => {
-            console.error("Error loading image in raster");
-            if (mounted) {
-              toast.error("Erreur lors du chargement de l'image");
-              setIsLoadingImage(false);
-            }
-          };
-        }
+
+        raster.onError = (error: any) => {
+          console.error("Error loading image in raster:", error);
+          if (mounted) {
+            toast.error("Erreur lors du chargement de l'image");
+            setIsLoadingImage(false);
+          }
+        };
 
         // Variables pour le dessin
         let currentPath: paper.Path | null = null;
