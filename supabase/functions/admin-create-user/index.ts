@@ -46,6 +46,20 @@ serve(async (req) => {
 
     const { email, password, display_name } = await req.json();
 
+    // Input validation
+    if (!email || typeof email !== 'string' || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      throw new Error("Email invalide");
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      throw new Error("Le mot de passe doit contenir au moins 6 caractères");
+    }
+    if (email.length > 255) {
+      throw new Error("L'email est trop long");
+    }
+    if (display_name && (typeof display_name !== 'string' || display_name.length > 100)) {
+      throw new Error("Le nom d'affichage est trop long");
+    }
+
     // Créer l'utilisateur
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,

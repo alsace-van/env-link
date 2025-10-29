@@ -46,6 +46,15 @@ serve(async (req) => {
 
     const { userId } = await req.json();
 
+    // Input validation
+    if (!userId || typeof userId !== 'string') {
+      throw new Error("ID utilisateur invalide");
+    }
+    // Validate UUID format
+    if (!userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+      throw new Error("Format d'ID utilisateur invalide");
+    }
+
     // Ne pas permettre de se supprimer soi-même
     if (userId === user.id) {
       throw new Error("Vous ne pouvez pas supprimer votre propre compte");
