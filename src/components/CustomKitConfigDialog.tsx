@@ -327,7 +327,7 @@ const CustomKitConfigDialog = ({
             {/* Colonne de gauche - Configuration des instances */}
             <div className="lg:col-span-2">
               <ScrollArea className="h-[60vh] pr-4">
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {allowedCategories.map((category) => {
                     const categoryAccessories = accessoriesByCategory.get(category.id) || [];
                     const instances = categoryInstances.filter(inst => inst.categoryId === category.id);
@@ -336,23 +336,24 @@ const CustomKitConfigDialog = ({
 
                     return (
                       <Card key={category.id}>
-                        <CardHeader className="pb-3">
+                        <CardHeader className="pb-2 pt-3 px-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <CardTitle className="text-base">{category.nom}</CardTitle>
-                              <Badge variant="secondary">{categoryAccessories.length} accessoires</Badge>
+                              <CardTitle className="text-sm">{category.nom}</CardTitle>
+                              <Badge variant="secondary" className="text-xs">{categoryAccessories.length} accessoires</Badge>
                             </div>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => duplicateCategory(category.id)}
+                              className="h-7 text-xs px-2"
                             >
-                              <Copy className="h-3 w-3 mr-2" />
+                              <Copy className="h-3 w-3 mr-1" />
                               Dupliquer
                             </Button>
                           </div>
                         </CardHeader>
-                        <CardContent className="space-y-3">
+                        <CardContent className="space-y-2 px-3 pb-3">
                           {instances.map((instance, idx) => {
                             const selectedAccessory = instance.accessoryId
                               ? getAccessoryById(instance.categoryId, instance.accessoryId)
@@ -360,16 +361,16 @@ const CustomKitConfigDialog = ({
 
                             return (
                               <Card key={instance.id} className="border-primary/20 bg-muted/30">
-                                <CardContent className="p-4">
-                                  <div className="space-y-3">
+                                <CardContent className="p-3">
+                                  <div className="space-y-2">
                                     <div className="flex items-center justify-between">
-                                      <Badge variant="outline">Choix {idx + 1}</Badge>
+                                      <Badge variant="outline" className="text-xs">Choix {idx + 1}</Badge>
                                       {instances.length > 1 && (
                                         <Button
                                           size="sm"
                                           variant="ghost"
                                           onClick={() => removeInstance(instance.id)}
-                                          className="text-destructive"
+                                          className="text-destructive h-7 px-2"
                                         >
                                           <Trash2 className="h-3 w-3 mr-1" />
                                           Retirer
@@ -377,8 +378,8 @@ const CustomKitConfigDialog = ({
                                       )}
                                     </div>
 
-                                    <div className="space-y-2">
-                                      <Label className="text-sm">Accessoire</Label>
+                                    <div className="space-y-1">
+                                      <Label className="text-xs">Accessoire</Label>
                                       <Select
                                         value={instance.accessoryId || ""}
                                         onValueChange={(value) => updateInstanceAccessory(instance.id, value)}
@@ -413,15 +414,15 @@ const CustomKitConfigDialog = ({
 
                                         {selectedAccessory && (
                                           <>
-                                            <div className="grid grid-cols-2 gap-3">
-                                              <div className="space-y-2">
-                                                <Label className="text-sm">Quantité</Label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div className="space-y-1">
+                                                <Label className="text-xs">Quantité</Label>
                                                 <Input
                                                   type="number"
                                                   min="1"
                                                   value={instance.quantity}
                                                   onChange={(e) => updateInstanceQuantity(instance.id, parseInt(e.target.value))}
-                                                  className="h-9"
+                                                  className="h-8 text-sm"
                                                 />
                                               </div>
 
@@ -443,15 +444,15 @@ const CustomKitConfigDialog = ({
                                                 if (filteredColors.length === 0) return null;
 
                                                 return (
-                                                  <div className="space-y-2">
-                                                    <Label className="text-sm">Couleur</Label>
-                                                    <div className="flex gap-2 flex-wrap">
+                                                  <div className="space-y-1">
+                                                    <Label className="text-xs">Couleur</Label>
+                                                    <div className="flex gap-1.5 flex-wrap">
                                                       {filteredColors.map((color) => (
                                                         <button
                                                           key={color.value}
                                                           type="button"
                                                           onClick={() => updateInstanceColor(instance.id, color.value)}
-                                                          className={`w-8 h-8 rounded-full border-2 transition-all ${
+                                                          className={`w-7 h-7 rounded-full border-2 transition-all ${
                                                             instance.color === color.value 
                                                               ? 'border-primary ring-2 ring-primary ring-offset-2' 
                                                               : 'border-muted hover:border-primary/50'
@@ -477,19 +478,20 @@ const CustomKitConfigDialog = ({
                                             </div>
 
                                         {selectedAccessory.options && selectedAccessory.options.length > 0 && (
-                                          <div className="space-y-2">
-                                            <Label className="text-sm">Options disponibles</Label>
-                                            <div className="space-y-2">
+                                          <div className="space-y-1.5">
+                                            <Label className="text-xs">Options disponibles</Label>
+                                            <div className="space-y-1">
                                               {selectedAccessory.options.map((option) => (
                                                 <div key={option.id} className="flex items-center space-x-2">
                                                   <Checkbox
                                                     id={`${instance.id}-${option.id}`}
                                                     checked={instance.selectedOptions.includes(option.id)}
                                                     onCheckedChange={() => toggleInstanceOption(instance.id, option.id)}
+                                                    className="h-4 w-4"
                                                   />
                                                   <label
                                                     htmlFor={`${instance.id}-${option.id}`}
-                                                    className="text-sm cursor-pointer flex-1"
+                                                    className="text-xs cursor-pointer flex-1"
                                                   >
                                                     {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
                                                   </label>
@@ -499,9 +501,9 @@ const CustomKitConfigDialog = ({
                                           </div>
                                         )}
 
-                                        <div className="flex justify-between items-center pt-2 border-t">
-                                          <span className="text-sm text-muted-foreground">Prix de cet article</span>
-                                          <span className="font-semibold">
+                                        <div className="flex justify-between items-center pt-1.5 border-t">
+                                          <span className="text-xs text-muted-foreground">Prix de cet article</span>
+                                          <span className="font-semibold text-sm">
                                             {calculateInstancePrice(instance).toFixed(2)} €
                                           </span>
                                         </div>
