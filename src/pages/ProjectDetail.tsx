@@ -43,6 +43,8 @@ import { EnergyBalance } from "@/components/EnergyBalance";
 import { LayoutCanvas } from "@/components/LayoutCanvas";
 import { Layout3DView } from "@/components/Layout3DView";
 import { User } from "@supabase/supabase-js";
+import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
+import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import logo from "@/assets/logo.png";
 
 interface Project {
@@ -81,6 +83,7 @@ const ProjectDetail = () => {
   const [photoRefresh, setPhotoRefresh] = useState(0);
   const [expenseRefresh, setExpenseRefresh] = useState(0);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
   const [layout3DKey, setLayout3DKey] = useState(0);
@@ -278,33 +281,43 @@ const ProjectDetail = () => {
                 </p>
               )}
             </div>
-            {user && <UserMenu user={user} />}
+            <div className="flex items-center gap-2">
+              {user && (
+                <>
+                  <AdminMessagesNotification />
+                  <UserMenu user={user} />
+                </>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <Card className="w-fit">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between gap-8">
-                <CardTitle className="text-base">Informations du Projet</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleEditDimensions}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Modifier
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsProjectInfoCollapsed(!isProjectInfoCollapsed)}
-                    className="h-8 w-8 p-0"
-                  >
-                    {isProjectInfoCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
+        <div className="flex gap-6">
+          {/* Contenu principal */}
+          <div className={`flex-1 transition-all duration-300 ${isSidebarOpen ? "mr-0" : "mr-0"}`}>
+            <div className="mb-6">
+              <Card className="w-fit">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-8">
+                    <CardTitle className="text-base">Informations du Projet</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={handleEditDimensions}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Modifier
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsProjectInfoCollapsed(!isProjectInfoCollapsed)}
+                        className="h-8 w-8 p-0"
+                      >
+                        {isProjectInfoCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
             {!isProjectInfoCollapsed && (
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -639,6 +652,25 @@ const ProjectDetail = () => {
             </Tabs>
           </TabsContent>
         </Tabs>
+          </div>
+
+          {/* Sidebar droite */}
+          <div className={`transition-all duration-300 ${isSidebarOpen ? "w-[400px]" : "w-0"} overflow-hidden`}>
+            <div className="w-[400px] sticky top-20">
+              <ProjectSidebar projectId={project.id} />
+            </div>
+          </div>
+
+          {/* Toggle Sidebar Button */}
+          <Button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="fixed bottom-20 right-6 h-12 w-12 rounded-full shadow-lg z-40"
+            size="icon"
+            variant="secondary"
+          >
+            <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
+          </Button>
+        </div>
       </main>
 
       {/* Dialog de modification des informations du projet */}
