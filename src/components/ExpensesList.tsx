@@ -26,7 +26,12 @@ interface Expense {
   fournisseur?: string;
   notes?: string;
   accessory_id?: string;
-  selectedOptions?: Array<{ nom: string }>;
+  selectedOptions?: Array<{ 
+    nom: string;
+    prix_reference: number;
+    prix_vente_ttc: number;
+    marge_pourcent: number;
+  }>;
 }
 
 interface ExpensesListProps {
@@ -75,13 +80,23 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
             .from("expense_selected_options")
             .select(`
               option_id,
-              accessory_options!inner(nom)
+              accessory_options!inner(
+                nom,
+                prix_reference,
+                prix_vente_ttc,
+                marge_pourcent
+              )
             `)
             .eq("expense_id", expense.id);
           
           return {
             ...expense,
-            selectedOptions: selectedOptions?.map((opt: any) => ({ nom: opt.accessory_options.nom })) || []
+            selectedOptions: selectedOptions?.map((opt: any) => ({
+              nom: opt.accessory_options.nom,
+              prix_reference: opt.accessory_options.prix_reference || 0,
+              prix_vente_ttc: opt.accessory_options.prix_vente_ttc || 0,
+              marge_pourcent: opt.accessory_options.marge_pourcent || 0
+            })) || []
           };
         })
       );
@@ -94,11 +109,12 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       ));
       setCategories(uniqueCategories);
 
-      // Calculate total sales
+      // Calculate total sales including options
       let total = 0;
       expensesWithOptions.forEach((expense) => {
         if (expense.prix_vente_ttc) {
-          total += expense.prix_vente_ttc * expense.quantite;
+          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+          total += (expense.prix_vente_ttc + optionsVenteTotal) * expense.quantite;
         }
       });
       setTotalSales(total);
@@ -287,46 +303,59 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                       {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                     </div>
                     
-                    <div className="text-xs text-muted-foreground flex items-center gap-2">
-                      <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-5 w-5"
-                          onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={expense.quantite}
-                          onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
-                          className="h-6 w-12 text-center text-xs p-0"
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-5 w-5"
-                          onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>
-                    </div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                              <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={expense.quantite}
+                                  onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                                  className="h-6 w-12 text-center text-xs p-0"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-semibold">Total achat: {(() => {
+                                const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                                return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                              })()} €</span>
+                            </div>
 
                     {expense.prix_vente_ttc && (
                       <div className="text-xs text-muted-foreground">
-                        <span>Prix vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</span>
+                        <span>Prix vente TTC: {(() => {
+                          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+                          return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
+                        })()} €</span>
                       </div>
                     )}
-                    {expense.marge_pourcent && (
+                    {expense.marge_pourcent !== undefined && (
                       <div className="text-xs text-muted-foreground">
-                        <span>Marge: {expense.marge_pourcent.toFixed(2)} %</span>
+                        <span>Marge: {(() => {
+                          const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                          const totalAchat = expense.prix + optionsTotal;
+                          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+                          const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                          const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
+                          return marge.toFixed(2);
+                        })()} %</span>
                       </div>
                     )}
 
@@ -481,17 +510,30 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                               </div>
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              <span className="font-semibold">Total achat: {(expense.prix * expense.quantite).toFixed(2)} €</span>
+                              <span className="font-semibold">Total achat: {(() => {
+                                const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                                return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                              })()} €</span>
                             </div>
 
                             {expense.prix_vente_ttc && (
                               <div className="text-xs text-muted-foreground">
-                                <span>Prix vente TTC: {expense.prix_vente_ttc.toFixed(2)} €</span>
+                                <span>Prix vente TTC: {(() => {
+                                  const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+                                  return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
+                                })()} €</span>
                               </div>
                             )}
-                            {expense.marge_pourcent && (
+                            {expense.marge_pourcent !== undefined && (
                               <div className="text-xs text-muted-foreground">
-                                <span>Marge: {expense.marge_pourcent.toFixed(2)} %</span>
+                                <span>Marge: {(() => {
+                                  const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                                  const totalAchat = expense.prix + optionsTotal;
+                                  const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+                                  const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                                  const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
+                                  return marge.toFixed(2);
+                                })()} %</span>
                               </div>
                             )}
 
