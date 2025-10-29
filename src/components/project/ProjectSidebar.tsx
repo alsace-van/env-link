@@ -12,7 +12,7 @@ interface ProjectSidebarProps {
 
 export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="h-full flex flex-col overflow-hidden">
       <Tabs defaultValue="project" className="h-full flex flex-col">
         <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
           <TabsTrigger value="project">
@@ -25,29 +25,27 @@ export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 relative overflow-hidden">
-          <TabsContent value="project" className="absolute inset-0 p-4 space-y-4 mt-0 overflow-auto data-[state=inactive]:hidden">
-            <div>
-              <h3 className="font-semibold mb-3">Tâches à faire</h3>
-              <ProjectTodoList projectId={projectId} />
-            </div>
-            <div>
-              <h3 className="font-semibold mb-3">Notes</h3>
-              <ProjectNotes projectId={projectId} />
-            </div>
-          </TabsContent>
+        <TabsContent value="project" className="flex-1 p-4 space-y-4 m-0 overflow-auto">
+          <div>
+            <h3 className="font-semibold mb-3">Tâches à faire</h3>
+            <ProjectTodoList projectId={projectId} />
+          </div>
+          <div>
+            <h3 className="font-semibold mb-3">Notes</h3>
+            <ProjectNotes projectId={projectId} />
+          </div>
+        </TabsContent>
 
-          <TabsContent value="global" className="absolute inset-0 p-4 space-y-4 mt-0 overflow-auto data-[state=inactive]:hidden">
-            <div>
-              <h3 className="font-semibold mb-3">Toutes les tâches</h3>
-              <GlobalTodoList />
-            </div>
-            <div>
-              <h3 className="font-semibold mb-3">Toutes les notes</h3>
-              <GlobalNotes />
-            </div>
-          </TabsContent>
-        </div>
+        <TabsContent value="global" className="flex-1 p-4 space-y-4 m-0 overflow-auto">
+          <div>
+            <h3 className="font-semibold mb-3">Toutes les tâches</h3>
+            <GlobalTodoList />
+          </div>
+          <div>
+            <h3 className="font-semibold mb-3">Toutes les notes</h3>
+            <GlobalNotes />
+          </div>
+        </TabsContent>
       </Tabs>
     </Card>
   );
