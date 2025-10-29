@@ -470,27 +470,27 @@ const ProjectDetail = () => {
         <Tabs defaultValue="photos" className="w-full">
           <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
             <TabsTrigger value="photos" className="gap-2">
-              <Image className="h-4 w-4" />
+              <Image className="h-4 w-4 text-purple-600" />
               <span className="hidden sm:inline">Photos</span>
             </TabsTrigger>
             <TabsTrigger value="expenses" className="gap-2">
-              <Euro className="h-4 w-4" />
+              <Euro className="h-4 w-4 text-green-600" />
               <span className="hidden sm:inline">Dépenses</span>
             </TabsTrigger>
             <TabsTrigger value="documents" className="gap-2">
-              <FileText className="h-4 w-4" />
+              <FileText className="h-4 w-4 text-blue-600" />
               <span className="hidden sm:inline">Documents</span>
             </TabsTrigger>
             <TabsTrigger value="accessories" className="gap-2">
-              <Package className="h-4 w-4" />
+              <Package className="h-4 w-4 text-orange-600" />
               <span className="hidden sm:inline">Catalogue</span>
             </TabsTrigger>
             <TabsTrigger value="notices" className="gap-2">
-              <BookOpen className="h-4 w-4" />
+              <BookOpen className="h-4 w-4 text-indigo-600" />
               <span className="hidden sm:inline">Notices</span>
             </TabsTrigger>
             <TabsTrigger value="technical" className="gap-2">
-              <Wrench className="h-4 w-4" />
+              <Wrench className="h-4 w-4 text-red-600" />
               <span className="hidden sm:inline">Technique</span>
             </TabsTrigger>
           </TabsList>
