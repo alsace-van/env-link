@@ -437,6 +437,41 @@ export type Database = {
           },
         ]
       }
+      product_tiered_pricing: {
+        Row: {
+          created_at: string
+          discount_percent: number
+          id: string
+          min_quantity: number
+          product_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discount_percent: number
+          id?: string
+          min_quantity: number
+          product_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discount_percent?: number
+          id?: string
+          min_quantity?: number
+          product_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_tiered_pricing_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "shop_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -1079,6 +1114,10 @@ export type Database = {
           is_active: boolean
           name: string
           price: number
+          promo_active: boolean | null
+          promo_end_date: string | null
+          promo_price: number | null
+          promo_start_date: string | null
           type: string
           updated_at: string
           user_id: string
@@ -1091,6 +1130,10 @@ export type Database = {
           is_active?: boolean
           name: string
           price?: number
+          promo_active?: boolean | null
+          promo_end_date?: string | null
+          promo_price?: number | null
+          promo_start_date?: string | null
           type: string
           updated_at?: string
           user_id: string
@@ -1103,6 +1146,10 @@ export type Database = {
           is_active?: boolean
           name?: string
           price?: number
+          promo_active?: boolean | null
+          promo_end_date?: string | null
+          promo_price?: number | null
+          promo_start_date?: string | null
           type?: string
           updated_at?: string
           user_id?: string
@@ -1233,6 +1280,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_tiered_price: {
+        Args: { p_base_price: number; p_product_id: string; p_quantity: number }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

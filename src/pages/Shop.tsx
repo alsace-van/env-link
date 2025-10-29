@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye, Settings, ShoppingBag } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye, Settings, ShoppingBag, Percent } from "lucide-react";
 import UserMenu from "@/components/UserMenu";
 import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
 import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
 import { ShoppingCartDialog } from "@/components/ShoppingCartDialog";
+import { ProductPricingDialog } from "@/components/ProductPricingDialog";
 import { useCart } from "@/hooks/useCart";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
@@ -23,6 +24,10 @@ interface ShopProduct {
   price: number;
   is_active: boolean;
   created_at: string;
+  promo_active?: boolean;
+  promo_price?: number;
+  promo_start_date?: string;
+  promo_end_date?: string;
 }
 
 const Shop = () => {
@@ -33,6 +38,7 @@ const Shop = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedKitProduct, setSelectedKitProduct] = useState<ShopProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [pricingDialogProduct, setPricingDialogProduct] = useState<ShopProduct | null>(null);
   
   const cart = useCart(user?.id);
 
@@ -74,6 +80,29 @@ const Shop = () => {
       setProducts(data || []);
     }
     setLoading(false);
+  };
+
+  const getEffectivePrice = (product: ShopProduct) => {
+    if (product.promo_active && product.promo_price) {
+      const now = new Date();
+      const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
+      const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
+      
+      if ((!start || now >= start) && (!end || now <= end)) {
+        return product.promo_price;
+      }
+    }
+    return product.price;
+  };
+
+  const isOnPromo = (product: ShopProduct) => {
+    if (!product.promo_active || !product.promo_price) return false;
+    
+    const now = new Date();
+    const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
+    const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
+    
+    return (!start || now >= start) && (!end || now <= end);
   };
 
   const handleDelete = async (productId: string) => {
@@ -292,6 +321,17 @@ const Shop = () => {
                             variant="outline"
                             size="sm"
                             className="flex-1"
+                            onClick={() => setPricingDialogProduct(product)}
+                          >
+                            <Percent className="h-4 w-4 mr-2" />
+                            Tarifs
+                          </Button>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1"
                             onClick={() => handleToggleActive(product.id, product.is_active)}
                           >
                             <Eye className="h-4 w-4 mr-2" />
@@ -348,8 +388,29 @@ const Shop = () => {
                            <CardContent>
                               <div className="space-y-2">
                                 <div className="flex items-end justify-between">
-                                  <div className="text-2xl font-bold text-primary">
-                                    {product.price.toFixed(2)} €
+                                  <div>
+                                    {isOnPromo(product) ? (
+                                      <>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <Badge variant="destructive" className="text-xs">PROMO</Badge>
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                          <span className="text-2xl font-bold text-primary">
+                                            {getEffectivePrice(product).toFixed(2)} €
+                                          </span>
+                                          <span className="text-lg text-muted-foreground line-through">
+                                            {product.price.toFixed(2)} €
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          Économisez {((product.price - getEffectivePrice(product)) / product.price * 100).toFixed(0)}%
+                                        </p>
+                                      </>
+                                    ) : (
+                                      <div className="text-2xl font-bold text-primary">
+                                        {product.price.toFixed(2)} €
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                 {product.type === "custom_kit" ? (
@@ -363,7 +424,7 @@ const Shop = () => {
                                 ) : (
                                   <Button
                                     className="w-full"
-                                    onClick={() => handleAddToCart(product.id, product.price)}
+                                    onClick={() => handleAddToCart(product.id, getEffectivePrice(product))}
                                   >
                                     <ShoppingCart className="h-4 w-4 mr-2" />
                                     Ajouter au panier
@@ -402,6 +463,19 @@ const Shop = () => {
         onClearCart={cart.clearCart}
         onCheckout={handleCheckout}
       />
+
+      {pricingDialogProduct && (
+        <ProductPricingDialog
+          open={!!pricingDialogProduct}
+          onClose={() => {
+            setPricingDialogProduct(null);
+            setRefreshKey(prev => prev + 1);
+          }}
+          productId={pricingDialogProduct.id}
+          productName={pricingDialogProduct.name}
+          basePrice={pricingDialogProduct.price}
+        />
+      )}
     </div>
   );
 };
