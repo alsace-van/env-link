@@ -183,7 +183,7 @@ const AccessoriesCatalogView = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("accessories_catalog")
-      .select("*, categories!category_id(*)")
+      .select("*, categories!accessories_catalog_category_id_fkey(*)")
       .order("created_at", { ascending: false });
 
     if (error) {
