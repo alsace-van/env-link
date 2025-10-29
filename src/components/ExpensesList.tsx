@@ -295,160 +295,157 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
           <div className="space-y-3">
             {filteredExpenses.map((expense) => (
               <Card key={expense.id} className="p-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-1">
-                    <div className="col-span-2 flex items-center gap-2 mb-1">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
                       <Badge variant="outline" className="text-xs">{expense.categorie}</Badge>
                       {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                     </div>
                     
-                            <div className="text-xs text-muted-foreground flex items-center gap-2">
-                              <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  value={expense.quantite}
-                                  onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
-                                  className="h-6 w-12 text-center text-xs p-0"
-                                />
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-semibold">Total achat: {(() => {
-                                const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                                return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
-                              })()} €</span>
-                            </div>
-
-                    {expense.prix_vente_ttc && (
-                      <div className="text-xs text-muted-foreground">
-                        <span>Prix vente TTC: {(() => {
+                    <div className="grid grid-cols-3 gap-x-4 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-4 w-4"
+                            onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
+                          >
+                            <Minus className="h-2 w-2" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={expense.quantite}
+                            onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                            className="h-5 w-10 text-center text-xs p-0"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-4 w-4"
+                            onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
+                          >
+                            <Plus className="h-2 w-2" />
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {expense.prix_vente_ttc && (
+                        <div>Prix vente TTC: {(() => {
                           const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
                           return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
-                        })()} €</span>
-                      </div>
+                        })()} €</div>
+                      )}
+                      
+                      {expense.date_achat && (
+                        <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>
+                      )}
+                    </div>
+                    
+                    {expense.notes && (
+                      <p className="text-xs text-muted-foreground italic">{expense.notes}</p>
                     )}
-                    {expense.marge_pourcent !== undefined && (
-                      <div className="text-xs text-muted-foreground">
-                        <span>Marge: {(() => {
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="text-right space-y-0.5 min-w-[160px]">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total achat</p>
+                        <p className="font-semibold text-sm">{(() => {
+                          const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                          return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                        })()} €</p>
+                      </div>
+                      {expense.marge_pourcent !== undefined && (
+                        <p className="text-xs text-muted-foreground">Marge: {(() => {
                           const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
                           const totalAchat = expense.prix + optionsTotal;
                           const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
                           const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
                           const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
                           return marge.toFixed(2);
-                        })()} %</span>
-                      </div>
-                    )}
+                        })()} %</p>
+                      )}
+                      {expense.fournisseur && (
+                        <p className="text-xs text-muted-foreground">Fournisseur: {expense.fournisseur}</p>
+                      )}
+                      {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                        <div className="mt-1 pt-1 border-t">
+                          <p className="text-xs text-muted-foreground mb-0.5">Options:</p>
+                          <ul className="text-xs space-y-0.5">
+                            {expense.selectedOptions.map((opt, idx) => (
+                              <li key={idx}>• {opt.nom}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
 
-                    {expense.date_achat && (
-                      <div className="text-xs text-muted-foreground">
-                        <span>Date: {new Date(expense.date_achat).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                    {expense.fournisseur && (
-                      <div className="text-xs text-muted-foreground">
-                        <span>Fournisseur: {expense.fournisseur}</span>
-                      </div>
-                    )}
-                    
-                    {expense.selectedOptions && expense.selectedOptions.length > 0 && (
-                      <div className="col-span-2 text-xs">
-                        <span className="font-medium">Options: </span>
-                        {expense.selectedOptions.map((opt, idx) => (
-                          <Badge key={idx} variant="outline" className="text-xs mr-1">
-                            {opt.nom}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {expense.notes && (
-                      <div className="col-span-2 text-xs text-muted-foreground italic">
-                        {expense.notes}
-                      </div>
-                    )}
-                  </div>
+                    <div className="flex gap-1.5">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => setEditingExpense(expense)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Modifier</p>
+                          </TooltipContent>
+                        </Tooltip>
 
-                  <div className="flex gap-1.5">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setEditingExpense(expense)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Modifier</p>
-                        </TooltipContent>
-                      </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
+                              <CreditCard className="h-4 w-4" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{getPaymentStatus().label}</p>
+                          </TooltipContent>
+                        </Tooltip>
 
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
-                            <CreditCard className="h-4 w-4" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{getPaymentStatus().label}</p>
-                        </TooltipContent>
-                      </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                              onClick={() => cycleDeliveryStatus(expense)}
+                            >
+                              {getDeliveryInfo(expense.statut_livraison).icon}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                          </TooltipContent>
+                        </Tooltip>
 
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
-                            onClick={() => cycleDeliveryStatus(expense)}
-                          >
-                            {getDeliveryInfo(expense.statut_livraison).icon}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
-                        </TooltipContent>
-                      </Tooltip>
-
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => deleteExpense(expense.id)}
-                          >
-                            <span className="text-xs font-bold">×</span>
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Supprimer</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => deleteExpense(expense.id)}
+                            >
+                              <span className="text-xs font-bold">×</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Supprimer</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -474,159 +471,156 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                   <div className="space-y-3 pt-2">
                     {groupedByCategory[category].map((expense) => (
                       <Card key={expense.id} className="p-3">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-1">
-                            <div className="col-span-2 flex items-center gap-2 mb-1">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-center gap-2">
                               <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
                               {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                             </div>
                             
-                            <div className="text-xs text-muted-foreground flex items-center gap-2">
-                              <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                            <div className="grid grid-cols-3 gap-x-4 text-xs text-muted-foreground">
                               <div className="flex items-center gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  value={expense.quantite}
-                                  onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
-                                  className="h-6 w-12 text-center text-xs p-0"
-                                />
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
+                                <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                                <div className="flex items-center gap-0.5">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-4 w-4"
+                                    onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
+                                  >
+                                    <Minus className="h-2 w-2" />
+                                  </Button>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={expense.quantite}
+                                    onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                                    className="h-5 w-10 text-center text-xs p-0"
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-4 w-4"
+                                    onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
+                                  >
+                                    <Plus className="h-2 w-2" />
+                                  </Button>
+                                </div>
                               </div>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-semibold">Total achat: {(() => {
-                                const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                                return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
-                              })()} €</span>
-                            </div>
-
-                            {expense.prix_vente_ttc && (
-                              <div className="text-xs text-muted-foreground">
-                                <span>Prix vente TTC: {(() => {
+                              
+                              {expense.prix_vente_ttc && (
+                                <div>Prix vente TTC: {(() => {
                                   const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
                                   return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
-                                })()} €</span>
-                              </div>
+                                })()} €</div>
+                              )}
+                              
+                              {expense.date_achat && (
+                                <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>
+                              )}
+                            </div>
+                            
+                            {expense.notes && (
+                              <p className="text-xs text-muted-foreground italic">{expense.notes}</p>
                             )}
-                            {expense.marge_pourcent !== undefined && (
-                              <div className="text-xs text-muted-foreground">
-                                <span>Marge: {(() => {
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <div className="text-right space-y-0.5 min-w-[160px]">
+                              <div>
+                                <p className="text-xs text-muted-foreground">Total achat</p>
+                                <p className="font-semibold text-sm">{(() => {
+                                  const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                                  return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                                })()} €</p>
+                              </div>
+                              {expense.marge_pourcent !== undefined && (
+                                <p className="text-xs text-muted-foreground">Marge: {(() => {
                                   const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
                                   const totalAchat = expense.prix + optionsTotal;
                                   const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
                                   const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
                                   const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
                                   return marge.toFixed(2);
-                                })()} %</span>
-                              </div>
-                            )}
+                                })()} %</p>
+                              )}
+                              {expense.fournisseur && (
+                                <p className="text-xs text-muted-foreground">Fournisseur: {expense.fournisseur}</p>
+                              )}
+                              {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                                <div className="mt-1 pt-1 border-t">
+                                  <p className="text-xs text-muted-foreground mb-0.5">Options:</p>
+                                  <ul className="text-xs space-y-0.5">
+                                    {expense.selectedOptions.map((opt, idx) => (
+                                      <li key={idx}>• {opt.nom}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
 
-                            {expense.date_achat && (
-                              <div className="text-xs text-muted-foreground">
-                                <span>Date: {new Date(expense.date_achat).toLocaleDateString()}</span>
-                              </div>
-                            )}
-                            {expense.fournisseur && (
-                              <div className="text-xs text-muted-foreground">
-                                <span>Fournisseur: {expense.fournisseur}</span>
-                              </div>
-                            )}
-                            
-                            {expense.selectedOptions && expense.selectedOptions.length > 0 && (
-                              <div className="col-span-2 text-xs">
-                                <span className="font-medium">Options: </span>
-                                {expense.selectedOptions.map((opt, idx) => (
-                                  <Badge key={idx} variant="outline" className="text-xs mr-1">
-                                    {opt.nom}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                            
-                            {expense.notes && (
-                              <div className="col-span-2 text-xs text-muted-foreground italic">
-                                {expense.notes}
-                              </div>
-                            )}
-                          </div>
+                            <div className="flex gap-1.5">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => setEditingExpense(expense)}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Modifier</p>
+                                  </TooltipContent>
+                                </Tooltip>
 
-                          <div className="flex gap-1.5">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => setEditingExpense(expense)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Modifier</p>
-                                </TooltipContent>
-                              </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
+                                      <CreditCard className="h-4 w-4" />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{getPaymentStatus().label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
 
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
-                                    <CreditCard className="h-4 w-4" />
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{getPaymentStatus().label}</p>
-                                </TooltipContent>
-                              </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                                      onClick={() => cycleDeliveryStatus(expense)}
+                                    >
+                                      {getDeliveryInfo(expense.statut_livraison).icon}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
 
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
-                                    onClick={() => cycleDeliveryStatus(expense)}
-                                  >
-                                    {getDeliveryInfo(expense.statut_livraison).icon}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
-                                </TooltipContent>
-                              </Tooltip>
-
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="destructive"
-                                    size="icon"
-                                    className="h-8 w-8"
-                                    onClick={() => deleteExpense(expense.id)}
-                                  >
-                                    <span className="text-xs font-bold">×</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Supprimer</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="destructive"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => deleteExpense(expense.id)}
+                                    >
+                                      <span className="text-xs font-bold">×</span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Supprimer</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
                           </div>
                         </div>
                       </Card>
