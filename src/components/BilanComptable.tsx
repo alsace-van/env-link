@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Edit, Plus, Euro, FileText } from "lucide-react";
+import { Edit, Plus, Euro, FileText, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import ExpenseTableForm from "@/components/ExpenseTableForm";
 import { FinancialSidebar } from "@/components/FinancialSidebar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface BankBalance {
   id: string;
@@ -24,6 +25,8 @@ interface Expense {
   prix: number;
   quantite: number;
   date_achat?: string;
+  date_paiement?: string;
+  delai_paiement?: string;
   statut_paiement: string;
   facture_url?: string;
 }
@@ -52,6 +55,18 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   const [balanceForm, setBalanceForm] = useState({
     solde_depart: "",
     date_heure_depart: "",
+  });
+  const [isEditExpenseOpen, setIsEditExpenseOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [expenseForm, setExpenseForm] = useState({
+    nom_accessoire: "",
+    fournisseur: "",
+    prix: "",
+    quantite: "1",
+    date_achat: "",
+    date_paiement: "",
+    delai_paiement: "commande",
+    statut_paiement: "non_paye",
   });
 
   useEffect(() => {
@@ -176,6 +191,54 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     setIsEditBalanceOpen(true);
   };
 
+  const openEditExpense = (expense: Expense) => {
+    setEditingExpense(expense);
+    setExpenseForm({
+      nom_accessoire: expense.nom_accessoire,
+      fournisseur: expense.fournisseur || "",
+      prix: expense.prix.toString(),
+      quantite: expense.quantite.toString(),
+      date_achat: expense.date_achat || "",
+      date_paiement: expense.date_paiement || "",
+      delai_paiement: expense.delai_paiement || "commande",
+      statut_paiement: expense.statut_paiement,
+    });
+    setIsEditExpenseOpen(true);
+  };
+
+  const handleSaveExpense = async () => {
+    if (!editingExpense) return;
+
+    if (!expenseForm.nom_accessoire.trim() || !expenseForm.fournisseur.trim() || !expenseForm.prix) {
+      toast.error("Veuillez remplir tous les champs requis");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("project_expenses")
+      .update({
+        nom_accessoire: expenseForm.nom_accessoire,
+        fournisseur: expenseForm.fournisseur,
+        prix: parseFloat(expenseForm.prix),
+        quantite: parseInt(expenseForm.quantite),
+        date_achat: expenseForm.date_achat || null,
+        date_paiement: expenseForm.date_paiement || null,
+        delai_paiement: expenseForm.delai_paiement,
+        statut_paiement: expenseForm.statut_paiement,
+      })
+      .eq("id", editingExpense.id);
+
+    if (error) {
+      toast.error("Erreur lors de la modification");
+      console.error(error);
+      return;
+    }
+
+    toast.success("Dépense modifiée avec succès");
+    setIsEditExpenseOpen(false);
+    loadExpenses();
+  };
+
   // Afficher toutes les dépenses fournisseurs (pas de filtre par date)
   const filteredExpenses = expenses;
 
@@ -197,6 +260,31 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   const currentBalance = bankBalance
     ? bankBalance.solde_depart - totalExpenses + totalPayments
     : 0;
+
+  // Calculer le prévisionnel fin de mois
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
+
+  // Paiements prévus pour ce mois
+  const expectedPaymentsThisMonth = payments.filter((payment) => {
+    const paymentDate = new Date(payment.date_paiement);
+    return paymentDate >= monthStart && paymentDate <= monthEnd;
+  });
+  const totalExpectedPayments = expectedPaymentsThisMonth.reduce((sum, pay) => sum + pay.montant, 0);
+
+  // Dépenses non payées à payer ce mois
+  const unpaidExpensesThisMonth = filteredExpenses.filter((exp) => {
+    if (exp.statut_paiement !== "non_paye" || !exp.date_paiement) return false;
+    const paymentDate = new Date(exp.date_paiement);
+    return paymentDate >= monthStart && paymentDate <= monthEnd;
+  });
+  const totalUnpaidExpensesThisMonth = unpaidExpensesThisMonth.reduce(
+    (sum, exp) => sum + exp.prix * exp.quantite,
+    0
+  );
+
+  const forecastEndOfMonth = currentBalance + totalExpectedPayments - totalUnpaidExpensesThisMonth;
 
   return (
     <div className="space-y-6">
@@ -225,28 +313,63 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         </CardHeader>
         <CardContent>
           {bankBalance ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Solde de départ</p>
-                <p className="text-2xl font-bold text-primary">
-                  {bankBalance.solde_depart.toFixed(2)} €
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Au {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}
-                </p>
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Solde de départ</p>
+                  <p className="text-2xl font-bold text-primary">
+                    {bankBalance.solde_depart.toFixed(2)} €
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Au {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Solde actuel</p>
+                  <p className={`text-2xl font-bold ${currentBalance >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    {currentBalance.toFixed(2)} €
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Variation</p>
+                  <p className={`text-2xl font-bold ${(currentBalance - bankBalance.solde_depart) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    {(currentBalance - bankBalance.solde_depart >= 0 ? '+' : '')}
+                    {(currentBalance - bankBalance.solde_depart).toFixed(2)} €
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Solde actuel</p>
-                <p className={`text-2xl font-bold ${currentBalance >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {currentBalance.toFixed(2)} €
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Variation</p>
-                <p className={`text-2xl font-bold ${(currentBalance - bankBalance.solde_depart) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                  {(currentBalance - bankBalance.solde_depart >= 0 ? '+' : '')}
-                  {(currentBalance - bankBalance.solde_depart).toFixed(2)} €
-                </p>
+              
+              {/* Prévisionnel fin de mois */}
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold mb-3 text-muted-foreground">
+                  Prévisionnel fin de mois ({format(monthEnd, "dd/MM/yyyy")})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground mb-1">Paiements à venir</p>
+                    <p className="text-lg font-semibold text-green-600">
+                      +{totalExpectedPayments.toFixed(2)} €
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {expectedPaymentsThisMonth.length} paiement(s)
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1">Dépenses à payer</p>
+                    <p className="text-lg font-semibold text-destructive">
+                      -{totalUnpaidExpensesThisMonth.toFixed(2)} €
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {unpaidExpensesThisMonth.length} dépense(s)
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1">Solde prévisionnel</p>
+                    <p className={`text-lg font-bold ${forecastEndOfMonth >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                      {forecastEndOfMonth.toFixed(2)} €
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
@@ -293,6 +416,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                         <th className="text-right py-2 px-2">Total</th>
                         <th className="text-center py-2 px-2">Statut</th>
                         <th className="text-center py-2 px-2">Facture</th>
+                        <th className="text-center py-2 px-2">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -342,6 +466,16 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                             ) : (
                               <span className="text-muted-foreground text-xs">-</span>
                             )}
+                          </td>
+                          <td className="py-2 px-2 text-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => openEditExpense(expense)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -422,6 +556,119 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                 Annuler
               </Button>
               <Button onClick={handleSaveBalance}>Enregistrer</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog pour modifier une dépense */}
+      <Dialog open={isEditExpenseOpen} onOpenChange={setIsEditExpenseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifier la dépense</DialogTitle>
+            <DialogDescription>
+              Modifiez les informations de cette dépense fournisseur
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit_nom">Nom de la dépense</Label>
+              <Input
+                id="edit_nom"
+                value={expenseForm.nom_accessoire}
+                onChange={(e) => setExpenseForm({ ...expenseForm, nom_accessoire: e.target.value })}
+                placeholder="Nom de l'article"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit_fournisseur">Fournisseur</Label>
+              <Input
+                id="edit_fournisseur"
+                value={expenseForm.fournisseur}
+                onChange={(e) => setExpenseForm({ ...expenseForm, fournisseur: e.target.value })}
+                placeholder="Fournisseur"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_prix">Prix unitaire (€)</Label>
+                <Input
+                  id="edit_prix"
+                  type="number"
+                  step="0.01"
+                  value={expenseForm.prix}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, prix: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_quantite">Quantité</Label>
+                <Input
+                  id="edit_quantite"
+                  type="number"
+                  value={expenseForm.quantite}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, quantite: e.target.value })}
+                  placeholder="1"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_date_achat">Date d'achat</Label>
+                <Input
+                  id="edit_date_achat"
+                  type="date"
+                  value={expenseForm.date_achat}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, date_achat: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_date_paiement">Date limite de paiement</Label>
+                <Input
+                  id="edit_date_paiement"
+                  type="date"
+                  value={expenseForm.date_paiement}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, date_paiement: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_delai">Délai de paiement</Label>
+                <Select
+                  value={expenseForm.delai_paiement}
+                  onValueChange={(value) => setExpenseForm({ ...expenseForm, delai_paiement: value })}
+                >
+                  <SelectTrigger id="edit_delai">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="commande">À la commande</SelectItem>
+                    <SelectItem value="30_jours">Sous 30 jours</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_statut">Statut de paiement</Label>
+                <Select
+                  value={expenseForm.statut_paiement}
+                  onValueChange={(value) => setExpenseForm({ ...expenseForm, statut_paiement: value })}
+                >
+                  <SelectTrigger id="edit_statut">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="non_paye">Non payé</SelectItem>
+                    <SelectItem value="paye">Payé</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsEditExpenseOpen(false)}>
+                Annuler
+              </Button>
+              <Button onClick={handleSaveExpense}>Enregistrer</Button>
             </div>
           </div>
         </DialogContent>
