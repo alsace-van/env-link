@@ -168,6 +168,47 @@ export type Database = {
         }
         Relationships: []
       }
+      administrative_documents: {
+        Row: {
+          file_name: string
+          file_size: number
+          file_url: string
+          id: string
+          mime_type: string
+          project_id: string
+          uploaded_at: string
+          user_id: string
+        }
+        Insert: {
+          file_name: string
+          file_size: number
+          file_url: string
+          id?: string
+          mime_type: string
+          project_id: string
+          uploaded_at?: string
+          user_id: string
+        }
+        Update: {
+          file_name?: string
+          file_size?: number
+          file_url?: string
+          id?: string
+          mime_type?: string
+          project_id?: string
+          uploaded_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "administrative_documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           created_at: string

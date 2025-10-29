@@ -28,6 +28,7 @@ import {
   ChevronDown,
   ChevronUp,
   Receipt,
+  ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -46,6 +47,7 @@ import { Layout3DView } from "@/components/Layout3DView";
 import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
+import { DocumentsUpload } from "@/components/DocumentsUpload";
 import logo from "@/assets/logo.png";
 
 interface Project {
@@ -283,6 +285,14 @@ const ProjectDetail = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button 
+                variant="default" 
+                size="sm"
+                onClick={() => navigate("/shop")}
+              >
+                <ShoppingBag className="h-4 w-4 mr-2" />
+                Boutique
+              </Button>
               {user && (
                 <>
                   <AdminMessagesNotification />
@@ -558,7 +568,7 @@ const ProjectDetail = () => {
                 <CardDescription>Certificats, factures et documents du projet</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground text-center py-12">Fonctionnalité à venir</p>
+                <DocumentsUpload projectId={project.id} />
               </CardContent>
             </Card>
           </TabsContent>
