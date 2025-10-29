@@ -170,29 +170,26 @@ export type Database = {
       accessory_tiered_pricing: {
         Row: {
           accessory_id: string
-          apply_to_all: boolean | null
+          article_position: number
           created_at: string
           discount_percent: number
           id: string
-          min_quantity: number
           updated_at: string
         }
         Insert: {
           accessory_id: string
-          apply_to_all?: boolean | null
+          article_position: number
           created_at?: string
           discount_percent: number
           id?: string
-          min_quantity: number
           updated_at?: string
         }
         Update: {
           accessory_id?: string
-          apply_to_all?: boolean | null
+          article_position?: number
           created_at?: string
           discount_percent?: number
           id?: string
-          min_quantity?: number
           updated_at?: string
         }
         Relationships: [
@@ -489,29 +486,26 @@ export type Database = {
       }
       product_tiered_pricing: {
         Row: {
-          apply_to_all: boolean | null
+          article_position: number
           created_at: string
           discount_percent: number
           id: string
-          min_quantity: number
           product_id: string
           updated_at: string
         }
         Insert: {
-          apply_to_all?: boolean | null
+          article_position: number
           created_at?: string
           discount_percent: number
           id?: string
-          min_quantity: number
           product_id: string
           updated_at?: string
         }
         Update: {
-          apply_to_all?: boolean | null
+          article_position?: number
           created_at?: string
           discount_percent?: number
           id?: string
-          min_quantity?: number
           product_id?: string
           updated_at?: string
         }

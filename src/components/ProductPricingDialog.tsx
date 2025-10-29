@@ -4,17 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Trash2, TrendingDown, Tag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface TieredPrice {
   id?: string;
-  min_quantity: number;
+  article_position: number;
   discount_percent: number;
-  apply_to_all?: boolean;
 }
 
 interface ProductPricingDialogProps {
@@ -73,9 +72,9 @@ export const ProductPricingDialog = ({
     // Charger les prix dégressifs
     const { data: tieredData } = await supabase
       .from("product_tiered_pricing")
-      .select("id, min_quantity, discount_percent, apply_to_all")
+      .select("id, article_position, discount_percent")
       .eq("product_id", productId)
-      .order("min_quantity");
+      .order("article_position");
 
     if (tieredData) {
       setTieredPrices(tieredData);
@@ -113,7 +112,7 @@ export const ProductPricingDialog = ({
 
     // Sauvegarder les nouveaux prix dégressifs
     const validTiers = tieredPrices.filter(
-      (t) => t.min_quantity > 0 && t.discount_percent > 0
+      (t) => t.article_position > 0 && t.discount_percent > 0
     );
 
     if (validTiers.length > 0) {
@@ -122,9 +121,8 @@ export const ProductPricingDialog = ({
         .insert(
           validTiers.map((t) => ({
             product_id: productId,
-            min_quantity: t.min_quantity,
+            article_position: t.article_position,
             discount_percent: t.discount_percent,
-            apply_to_all: t.apply_to_all ?? true,
           }))
         );
 
@@ -142,14 +140,17 @@ export const ProductPricingDialog = ({
   };
 
   const addTier = () => {
-    setTieredPrices([...tieredPrices, { min_quantity: 0, discount_percent: 0, apply_to_all: true }]);
+    const nextPosition = tieredPrices.length > 0 
+      ? Math.max(...tieredPrices.map(t => t.article_position)) + 1 
+      : 2;
+    setTieredPrices([...tieredPrices, { article_position: nextPosition, discount_percent: 0 }]);
   };
 
   const removeTier = (index: number) => {
     setTieredPrices(tieredPrices.filter((_, i) => i !== index));
   };
 
-  const updateTier = (index: number, field: keyof TieredPrice, value: number | boolean) => {
+  const updateTier = (index: number, field: keyof TieredPrice, value: number) => {
     const newTiers = [...tieredPrices];
     newTiers[index] = { ...newTiers[index], [field]: value };
     setTieredPrices(newTiers);
@@ -157,7 +158,7 @@ export const ProductPricingDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Tarification - {productName}</DialogTitle>
         </DialogHeader>
@@ -236,82 +237,74 @@ export const ProductPricingDialog = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TrendingDown className="h-5 w-5 text-primary" />
-                  <h3 className="text-lg font-semibold">Prix dégressifs</h3>
+                  <h3 className="text-lg font-semibold">Prix dégressifs par article</h3>
                 </div>
                 <Button type="button" onClick={addTier} size="sm" variant="outline">
                   <Plus className="h-4 w-4 mr-2" />
-                  Ajouter un palier
+                  Ajouter
                 </Button>
               </div>
 
               {tieredPrices.length === 0 ? (
                 <p className="text-sm text-muted-foreground pl-7">
-                  Aucun prix dégressif configuré
+                  Aucun prix dégressif configuré. Exemple: 5% sur le 2ème article, 10% sur le 3ème, etc.
                 </p>
               ) : (
-                <div className="space-y-3 pl-7">
-                  {tieredPrices.map((tier, index) => (
-                    <div
-                      key={index}
-                      className="space-y-3 p-3 border rounded-lg bg-card"
-                    >
-                      <div className="flex gap-3 items-end">
-                        <div className="flex-1 space-y-2">
-                          <Label className="text-xs">Quantité minimale</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={tier.min_quantity}
-                            onChange={(e) =>
-                              updateTier(index, "min_quantity", parseInt(e.target.value) || 0)
-                            }
-                            placeholder="10"
-                          />
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <Label className="text-xs">Réduction (%)</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            value={tier.discount_percent}
-                            onChange={(e) =>
-                              updateTier(index, "discount_percent", parseFloat(e.target.value) || 0)
-                            }
-                            placeholder="10"
-                          />
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <Label className="text-xs">Prix unitaire</Label>
-                          <div className="h-10 px-3 flex items-center bg-muted rounded-md font-medium">
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-32">Position</TableHead>
+                        <TableHead className="w-32">Réduction %</TableHead>
+                        <TableHead>Prix unitaire</TableHead>
+                        <TableHead className="w-16"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tieredPrices.map((tier, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={tier.article_position}
+                              onChange={(e) =>
+                                updateTier(index, "article_position", parseInt(e.target.value) || 1)
+                              }
+                              className="w-24"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={tier.discount_percent}
+                              onChange={(e) =>
+                                updateTier(index, "discount_percent", parseFloat(e.target.value) || 0)
+                              }
+                              className="w-24"
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">
                             {(basePrice * (1 - tier.discount_percent / 100)).toFixed(2)} €
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeTier(index)}
-                          className="text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="flex items-center gap-2 pl-2">
-                        <Checkbox
-                          id={`apply-all-${index}`}
-                          checked={tier.apply_to_all ?? true}
-                          onCheckedChange={(checked) =>
-                            updateTier(index, "apply_to_all", !!checked)
-                          }
-                        />
-                        <Label htmlFor={`apply-all-${index}`} className="text-xs text-muted-foreground cursor-pointer">
-                          Remise sur tous les articles (décochez pour appliquer uniquement à partir du {tier.min_quantity}ème)
-                        </Label>
-                      </div>
-                    </div>
-                  ))}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeTier(index)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </div>

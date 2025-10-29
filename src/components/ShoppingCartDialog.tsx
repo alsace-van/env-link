@@ -122,7 +122,7 @@ export const ShoppingCartDialog = ({
               <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-md">
                 <Tag className="h-4 w-4 text-blue-600" />
                 <span className="text-xs text-blue-700 dark:text-blue-400">
-                  Achetez {nextTier.min_quantity - item.quantity} de plus pour -{nextTier.discount_percent}%
+                  Achetez {nextTier.article_position - item.quantity} de plus pour -{nextTier.discount_percent}%
                 </span>
               </div>
             )}
