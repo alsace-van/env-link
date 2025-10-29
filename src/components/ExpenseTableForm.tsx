@@ -56,7 +56,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         id: crypto.randomUUID(),
         nom_accessoire: "",
         fournisseur: "",
-        date_achat: new Date().toISOString().split("T")[0],
+        date_achat: new Date().toISOString().slice(0, 16),
         date_paiement: "",
         statut_paiement: "non_paye",
         delai_paiement: "commande",
@@ -202,8 +202,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
               <TableRow>
                 <TableHead className="min-w-[200px]">Nom de la dépense</TableHead>
                 <TableHead className="min-w-[150px]">Fournisseur</TableHead>
-                <TableHead className="min-w-[140px]">Jour de la dépense</TableHead>
-                <TableHead className="min-w-[140px]">Date de paiement</TableHead>
+                <TableHead className="min-w-[180px]">Date et heure de la dépense</TableHead>
+                <TableHead className="min-w-[180px]">Date et heure de paiement</TableHead>
                 <TableHead className="min-w-[140px]">Statut de paiement</TableHead>
                 <TableHead className="min-w-[160px]">Délai de paiement</TableHead>
                 <TableHead className="min-w-[120px]">Montant TTC (€)</TableHead>
@@ -242,7 +242,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                   </TableCell>
                   <TableCell>
                     <Input
-                      type="date"
+                      type="datetime-local"
                       value={row.date_achat}
                       onChange={(e) =>
                         updateRow(row.id, "date_achat", e.target.value)
@@ -252,7 +252,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                   </TableCell>
                   <TableCell>
                     <Input
-                      type="date"
+                      type="datetime-local"
                       value={row.date_paiement}
                       onChange={(e) =>
                         updateRow(row.id, "date_paiement", e.target.value)

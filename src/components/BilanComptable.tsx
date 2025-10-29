@@ -193,13 +193,21 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   const openEditExpense = (expense: Expense) => {
     setEditingExpense(expense);
+    
+    // Format dates for datetime-local inputs
+    const formatDateForInput = (dateStr: string | undefined) => {
+      if (!dateStr) return "";
+      const date = new Date(dateStr);
+      return date.toISOString().slice(0, 16);
+    };
+    
     setExpenseForm({
       nom_accessoire: expense.nom_accessoire,
       fournisseur: expense.fournisseur || "",
       prix: expense.prix.toString(),
       quantite: expense.quantite.toString(),
-      date_achat: expense.date_achat || "",
-      date_paiement: expense.date_paiement || "",
+      date_achat: formatDateForInput(expense.date_achat),
+      date_paiement: formatDateForInput(expense.date_paiement),
       delai_paiement: expense.delai_paiement || "commande",
       statut_paiement: expense.statut_paiement,
     });
@@ -243,7 +251,6 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   const filteredExpenses = expenses;
 
   const now = new Date();
-  now.setHours(0, 0, 0, 0); // Début de la journée pour comparaison
 
   // Calculer le solde actuel : 
   // Solde de départ + Paiements déjà effectués - Dépenses déjà payées
@@ -255,9 +262,13 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     : [];
   
   const paidExpenses = filteredExpenses.reduce((sum, exp) => {
-    // Déduire uniquement les dépenses déjà payées
-    if (exp.statut_paiement === "paye") {
-      return sum + exp.prix * exp.quantite;
+    // Déduire uniquement les dépenses déjà payées ET dont la date d'achat est après le solde de départ
+    if (exp.statut_paiement === "paye" && exp.date_achat && bankBalance) {
+      const expenseDate = new Date(exp.date_achat);
+      const balanceDate = new Date(bankBalance.date_heure_depart);
+      if (expenseDate > balanceDate) {
+        return sum + exp.prix * exp.quantite;
+      }
     }
     return sum;
   }, 0);
@@ -418,7 +429,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-2 px-2">Date</th>
+                        <th className="text-left py-2 px-2">Date et Heure</th>
                         <th className="text-left py-2 px-2">Article</th>
                         <th className="text-left py-2 px-2">Fournisseur</th>
                         <th className="text-right py-2 px-2">Quantité</th>
@@ -432,9 +443,9 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                     <tbody>
                       {filteredExpenses.map((expense) => (
                         <tr key={expense.id} className="border-b hover:bg-muted/50">
-                          <td className="py-2 px-2">
+                           <td className="py-2 px-2">
                             {expense.date_achat
-                              ? format(new Date(expense.date_achat), "dd/MM/yyyy")
+                              ? format(new Date(expense.date_achat), "dd/MM/yyyy HH:mm")
                               : "-"}
                           </td>
                           <td className="py-2 px-2 font-medium">{expense.nom_accessoire}</td>
@@ -624,19 +635,19 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit_date_achat">Date d'achat</Label>
+                <Label htmlFor="edit_date_achat">Date et heure d'achat</Label>
                 <Input
                   id="edit_date_achat"
-                  type="date"
+                  type="datetime-local"
                   value={expenseForm.date_achat}
                   onChange={(e) => setExpenseForm({ ...expenseForm, date_achat: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit_date_paiement">Date limite de paiement</Label>
+                <Label htmlFor="edit_date_paiement">Date et heure limite de paiement</Label>
                 <Input
                   id="edit_date_paiement"
-                  type="date"
+                  type="datetime-local"
                   value={expenseForm.date_paiement}
                   onChange={(e) => setExpenseForm({ ...expenseForm, date_paiement: e.target.value })}
                 />
