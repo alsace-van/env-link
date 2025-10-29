@@ -316,7 +316,7 @@ const ProjectDetail = () => {
       <main className="container mx-auto px-4 py-8">
         <div className="flex gap-6">
           {/* Contenu principal */}
-          <div className={`flex-1 transition-all duration-300 ${isSidebarOpen ? "mr-0" : "mr-0"}`}>
+          <div className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? "mr-0" : "mr-0"}`}>
             <div className="mb-6">
               <Card className="w-fit">
                 <CardHeader className="pb-3">
