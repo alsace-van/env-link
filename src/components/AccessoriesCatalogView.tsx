@@ -462,6 +462,13 @@ const AccessoriesCatalogView = () => {
                           </div>
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
+                          <div 
+                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                            title={accessory.available_in_shop ? "Retirer de la boutique" : "Ajouter à la boutique"}
+                            onClick={() => handleToggleShopAvailability(accessory.id, accessory.available_in_shop || false)}
+                          >
+                            <Store className={`h-4 w-4 ${accessory.available_in_shop ? 'text-primary' : 'text-muted-foreground'}`} />
+                          </div>
                           <Button
                             variant="ghost"
                             size="icon"
