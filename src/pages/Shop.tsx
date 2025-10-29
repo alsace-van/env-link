@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye, Settings } from "lucide-react";
 import UserMenu from "@/components/UserMenu";
 import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
+import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 
@@ -28,6 +29,7 @@ const Shop = () => {
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedKitProduct, setSelectedKitProduct] = useState<ShopProduct | null>(null);
 
   useEffect(() => {
     loadUser();
@@ -275,22 +277,33 @@ const Shop = () => {
                       .filter(p => p.is_active)
                       .map((product) => (
                         <Card key={product.id}>
-                          <CardHeader>
-                            <CardTitle className="text-lg">{product.name}</CardTitle>
-                            <Badge variant={getTypeColor(product.type) as any}>
-                              {getTypeLabel(product.type)}
-                            </Badge>
-                            {product.description && (
-                              <CardDescription className="line-clamp-3">
-                                {product.description}
-                              </CardDescription>
-                            )}
-                          </CardHeader>
-                          <CardContent>
-                            <div className="text-2xl font-bold text-primary">
-                              {product.price.toFixed(2)} €
-                            </div>
-                          </CardContent>
+                           <CardHeader>
+                             <CardTitle className="text-lg">{product.name}</CardTitle>
+                             <Badge variant={getTypeColor(product.type) as any}>
+                               {getTypeLabel(product.type)}
+                             </Badge>
+                             {product.description && (
+                               <CardDescription className="line-clamp-3">
+                                 {product.description}
+                               </CardDescription>
+                             )}
+                           </CardHeader>
+                           <CardContent>
+                             <div className="flex items-end justify-between">
+                               <div className="text-2xl font-bold text-primary">
+                                 {product.price.toFixed(2)} €
+                               </div>
+                               {product.type === "custom_kit" && (
+                                 <Button
+                                   size="sm"
+                                   onClick={() => setSelectedKitProduct(product)}
+                                 >
+                                   <Settings className="h-4 w-4 mr-2" />
+                                   Configurer
+                                 </Button>
+                               )}
+                             </div>
+                           </CardContent>
                         </Card>
                       ))}
                   </div>
@@ -300,6 +313,16 @@ const Shop = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      {selectedKitProduct && (
+        <CustomKitConfigDialog
+          productId={selectedKitProduct.id}
+          productName={selectedKitProduct.name}
+          basePrice={selectedKitProduct.price}
+          open={!!selectedKitProduct}
+          onOpenChange={(open) => !open && setSelectedKitProduct(null)}
+        />
+      )}
     </div>
   );
 };
