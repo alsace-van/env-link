@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Plus, Trash2, TrendingDown, Tag, Package } from "lucide-react";
@@ -25,6 +26,7 @@ interface TieredPrice {
   id?: string;
   min_quantity: number;
   discount_percent: number;
+  apply_to_all?: boolean;
 }
 
 interface KitAccessoryPricingDialogProps {
@@ -89,7 +91,7 @@ export const KitAccessoryPricingDialog = ({
       for (const acc of accessoriesData) {
         const { data: tieredData } = await supabase
           .from("accessory_tiered_pricing")
-          .select("*")
+          .select("id, min_quantity, discount_percent, apply_to_all")
           .eq("accessory_id", acc.id)
           .order("min_quantity");
 
@@ -152,6 +154,7 @@ export const KitAccessoryPricingDialog = ({
             accessory_id: accessoryId,
             min_quantity: t.min_quantity,
             discount_percent: t.discount_percent,
+            apply_to_all: t.apply_to_all ?? true,
           }))
         );
 
@@ -181,7 +184,7 @@ export const KitAccessoryPricingDialog = ({
     const pricing = accessoryPricing[accessoryId];
     updateAccessoryPricing(accessoryId, "tieredPrices", [
       ...pricing.tieredPrices,
-      { min_quantity: 0, discount_percent: 0 },
+      { min_quantity: 0, discount_percent: 0, apply_to_all: true },
     ]);
   };
 
@@ -194,7 +197,7 @@ export const KitAccessoryPricingDialog = ({
     );
   };
 
-  const updateTier = (accessoryId: string, index: number, field: keyof TieredPrice, value: number) => {
+  const updateTier = (accessoryId: string, index: number, field: keyof TieredPrice, value: number | boolean) => {
     const pricing = accessoryPricing[accessoryId];
     const newTiers = [...pricing.tieredPrices];
     newTiers[index] = { ...newTiers[index], [field]: value };
@@ -358,61 +361,75 @@ export const KitAccessoryPricingDialog = ({
                             {pricing.tieredPrices.map((tier, index) => (
                               <div
                                 key={index}
-                                className="flex gap-3 items-end p-3 border rounded-lg bg-card"
+                                className="space-y-3 p-3 border rounded-lg bg-card"
                               >
-                                <div className="flex-1 space-y-2">
-                                  <Label className="text-xs">Quantité min.</Label>
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    value={tier.min_quantity}
-                                    onChange={(e) =>
-                                      updateTier(
-                                        accessory.id,
-                                        index,
-                                        "min_quantity",
-                                        parseInt(e.target.value) || 0
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                  <Label className="text-xs">Réduction (%)</Label>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    max="100"
-                                    step="0.01"
-                                    value={tier.discount_percent}
-                                    onChange={(e) =>
-                                      updateTier(
-                                        accessory.id,
-                                        index,
-                                        "discount_percent",
-                                        parseFloat(e.target.value) || 0
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <div className="flex-1 space-y-2">
-                                  <Label className="text-xs">Prix unitaire</Label>
-                                  <div className="h-10 px-3 flex items-center bg-muted rounded-md font-medium">
-                                    {(
-                                      (accessory.prix_vente_ttc || 0) *
-                                      (1 - tier.discount_percent / 100)
-                                    ).toFixed(2)}{" "}
-                                    €
+                                <div className="flex gap-3 items-end">
+                                  <div className="flex-1 space-y-2">
+                                    <Label className="text-xs">Quantité min.</Label>
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      value={tier.min_quantity}
+                                      onChange={(e) =>
+                                        updateTier(
+                                          accessory.id,
+                                          index,
+                                          "min_quantity",
+                                          parseInt(e.target.value) || 0
+                                        )
+                                      }
+                                    />
                                   </div>
+                                  <div className="flex-1 space-y-2">
+                                    <Label className="text-xs">Réduction (%)</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      step="0.01"
+                                      value={tier.discount_percent}
+                                      onChange={(e) =>
+                                        updateTier(
+                                          accessory.id,
+                                          index,
+                                          "discount_percent",
+                                          parseFloat(e.target.value) || 0
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                  <div className="flex-1 space-y-2">
+                                    <Label className="text-xs">Prix unitaire</Label>
+                                    <div className="h-10 px-3 flex items-center bg-muted rounded-md font-medium">
+                                      {(
+                                        (accessory.prix_vente_ttc || 0) *
+                                        (1 - tier.discount_percent / 100)
+                                      ).toFixed(2)}{" "}
+                                      €
+                                    </div>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removeTier(accessory.id, index)}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => removeTier(accessory.id, index)}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+                                <div className="flex items-center gap-2 pl-2">
+                                  <Checkbox
+                                    id={`apply-all-${accessory.id}-${index}`}
+                                    checked={tier.apply_to_all ?? true}
+                                    onCheckedChange={(checked) =>
+                                      updateTier(accessory.id, index, "apply_to_all", !!checked)
+                                    }
+                                  />
+                                  <Label htmlFor={`apply-all-${accessory.id}-${index}`} className="text-xs text-muted-foreground cursor-pointer">
+                                    Remise sur tous les articles (décochez pour appliquer uniquement à partir du {tier.min_quantity}ème)
+                                  </Label>
+                                </div>
                               </div>
                             ))}
                           </div>

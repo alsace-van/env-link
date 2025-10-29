@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface TieredPrice {
   min_quantity: number;
   discount_percent: number;
+  apply_to_all?: boolean;
 }
 
 export const useAccessoryTieredPricing = (accessoryId: string | undefined) => {
@@ -22,7 +23,7 @@ export const useAccessoryTieredPricing = (accessoryId: string | undefined) => {
     setLoading(true);
     const { data, error } = await supabase
       .from("accessory_tiered_pricing")
-      .select("min_quantity, discount_percent")
+      .select("min_quantity, discount_percent, apply_to_all")
       .eq("accessory_id", accessoryId)
       .order("min_quantity");
 
@@ -41,7 +42,17 @@ export const useAccessoryTieredPricing = (accessoryId: string | undefined) => {
       .find((tier) => quantity >= tier.min_quantity);
 
     if (applicableTier) {
-      return basePrice * (1 - applicableTier.discount_percent / 100);
+      if (applicableTier.apply_to_all ?? true) {
+        // Remise sur tous les articles
+        return basePrice * (1 - applicableTier.discount_percent / 100);
+      } else {
+        // Remise uniquement sur les articles au-delà du minimum
+        const fullPriceItems = applicableTier.min_quantity;
+        const discountedItems = quantity - fullPriceItems;
+        const fullPriceTotal = fullPriceItems * basePrice;
+        const discountedTotal = discountedItems * basePrice * (1 - applicableTier.discount_percent / 100);
+        return (fullPriceTotal + discountedTotal) / quantity;
+      }
     }
 
     return basePrice;

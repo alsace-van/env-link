@@ -170,6 +170,7 @@ export type Database = {
       accessory_tiered_pricing: {
         Row: {
           accessory_id: string
+          apply_to_all: boolean | null
           created_at: string
           discount_percent: number
           id: string
@@ -178,6 +179,7 @@ export type Database = {
         }
         Insert: {
           accessory_id: string
+          apply_to_all?: boolean | null
           created_at?: string
           discount_percent: number
           id?: string
@@ -186,6 +188,7 @@ export type Database = {
         }
         Update: {
           accessory_id?: string
+          apply_to_all?: boolean | null
           created_at?: string
           discount_percent?: number
           id?: string
@@ -486,6 +489,7 @@ export type Database = {
       }
       product_tiered_pricing: {
         Row: {
+          apply_to_all: boolean | null
           created_at: string
           discount_percent: number
           id: string
@@ -494,6 +498,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          apply_to_all?: boolean | null
           created_at?: string
           discount_percent: number
           id?: string
@@ -502,6 +507,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          apply_to_all?: boolean | null
           created_at?: string
           discount_percent?: number
           id?: string
