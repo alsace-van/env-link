@@ -30,6 +30,7 @@ interface ShopProduct {
   promo_price?: number;
   promo_start_date?: string;
   promo_end_date?: string;
+  hasOptions?: boolean;
 }
 
 const Shop = () => {
@@ -81,9 +82,40 @@ const Shop = () => {
       console.error("Erreur lors du chargement des produits:", error);
       toast.error("Erreur lors du chargement des produits");
     } else {
-      setProducts(data || []);
+      // Pour chaque produit simple, vérifier s'il a des options
+      const productsWithOptions = await Promise.all(
+        (data || []).map(async (product) => {
+          if (product.type === "simple") {
+            const hasOptions = await checkProductHasOptions(product.id);
+            return { ...product, hasOptions };
+          }
+          return product;
+        })
+      );
+      setProducts(productsWithOptions);
     }
     setLoading(false);
+  };
+
+  const checkProductHasOptions = async (productId: string) => {
+    // Récupérer l'accessoire du produit
+    const { data: productItems } = await supabase
+      .from("shop_product_items")
+      .select("accessory_id")
+      .eq("product_id", productId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!productItems) return false;
+
+    // Vérifier s'il y a des options
+    const { data: options } = await supabase
+      .from("accessory_options")
+      .select("id")
+      .eq("accessory_id", productItems.accessory_id)
+      .limit(1);
+
+    return (options && options.length > 0) || false;
   };
 
   const getEffectivePrice = (product: ShopProduct) => {
@@ -401,9 +433,16 @@ const Shop = () => {
                         <Card key={product.id}>
                            <CardHeader>
                              <CardTitle className="text-lg">{product.name}</CardTitle>
-                             <Badge variant={getTypeColor(product.type) as any}>
-                               {getTypeLabel(product.type)}
-                             </Badge>
+                             <div className="flex gap-2 flex-wrap">
+                               <Badge variant={getTypeColor(product.type) as any}>
+                                 {getTypeLabel(product.type)}
+                               </Badge>
+                               {product.hasOptions && (
+                                 <Badge variant="outline" className="text-xs">
+                                   Options disponibles
+                                 </Badge>
+                               )}
+                             </div>
                              {product.description && (
                                <CardDescription className="line-clamp-3">
                                  {product.description}
