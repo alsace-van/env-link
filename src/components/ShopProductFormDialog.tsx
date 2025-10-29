@@ -44,6 +44,7 @@ interface Accessory {
   nom: string;
   marque?: string;
   prix_reference?: number;
+  category_id?: string;
 }
 
 interface ProductFormDialogProps {
@@ -70,6 +71,7 @@ export const ShopProductFormDialog = ({
   const [accessories, setAccessories] = useState<Accessory[]>([]);
   const [comboboxOpen, setComboboxOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
   
   // Pour kits sur-mesure
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -90,7 +92,7 @@ export const ShopProductFormDialog = ({
   const loadAccessories = async () => {
     const { data, error } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_reference")
+      .select("id, nom, marque, prix_reference, category_id, categories(nom)")
       .eq("available_in_shop", true)
       .order("nom");
 
@@ -335,6 +337,8 @@ export const ShopProductFormDialog = ({
     setProductType("simple");
     setSelectedAccessories([]);
     setSelectedCategories([]);
+    setSelectedCategoryFilter("all");
+    setSearchValue("");
   };
 
   return (
@@ -376,91 +380,111 @@ export const ShopProductFormDialog = ({
           </div>
 
           {(productType === "simple" || productType === "composed") && (
-            <div>
-              <Label>
-                {productType === "simple" ? "Sélectionner l'accessoire" : "Accessoires du produit"}
-              </Label>
-              
-              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={comboboxOpen}
-                    className="w-full justify-between"
-                  >
-                    <span className="text-muted-foreground">Rechercher un accessoire...</span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="start">
-                  <Command>
-                    <CommandInput 
-                      placeholder="Rechercher un accessoire..." 
-                      value={searchValue}
-                      onValueChange={setSearchValue}
-                    />
-                    <CommandList>
-                      <CommandEmpty>Aucun accessoire trouvé.</CommandEmpty>
-                      <CommandGroup>
-                        {accessories
-                          .filter(acc => !selectedAccessories.find(s => s.id === acc.id))
-                          .map((acc) => (
-                            <CommandItem
-                              key={acc.id}
-                              value={`${acc.nom} ${acc.marque || ""}`}
-                              onSelect={() => {
-                                handleAddAccessory(acc.id);
-                                setComboboxOpen(false);
-                                setSearchValue("");
-                              }}
-                            >
-                              <div className="flex flex-col">
-                                <span className="font-medium">{acc.nom}</span>
-                                {acc.marque && <span className="text-xs text-muted-foreground">{acc.marque}</span>}
-                              </div>
-                            </CommandItem>
-                          ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="category-filter">Catégorie</Label>
+                <Select value={selectedCategoryFilter} onValueChange={setSelectedCategoryFilter}>
+                  <SelectTrigger id="category-filter">
+                    <SelectValue placeholder="Toutes les catégories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les catégories</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-              <div className="mt-3 space-y-2">
-                {selectedAccessories.map((selected) => {
-                  const acc = accessories.find(a => a.id === selected.id);
-                  if (!acc) return null;
+              <div>
+                <Label>
+                  {productType === "simple" ? "Sélectionner l'accessoire" : "Accessoires du produit"}
+                </Label>
+                
+                <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={comboboxOpen}
+                      className="w-full justify-between"
+                    >
+                      <span className="text-muted-foreground">Rechercher un accessoire...</span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start">
+                    <Command>
+                      <CommandInput 
+                        placeholder="Rechercher un accessoire..." 
+                        value={searchValue}
+                        onValueChange={setSearchValue}
+                      />
+                      <CommandList>
+                        <CommandEmpty>Aucun accessoire trouvé.</CommandEmpty>
+                        <CommandGroup>
+                          {accessories
+                            .filter(acc => !selectedAccessories.find(s => s.id === acc.id))
+                            .filter(acc => selectedCategoryFilter === "all" || acc.category_id === selectedCategoryFilter)
+                            .map((acc) => (
+                              <CommandItem
+                                key={acc.id}
+                                value={`${acc.nom} ${acc.marque || ""}`}
+                                onSelect={() => {
+                                  handleAddAccessory(acc.id);
+                                  setComboboxOpen(false);
+                                  setSearchValue("");
+                                }}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{acc.nom}</span>
+                                  {acc.marque && <span className="text-xs text-muted-foreground">{acc.marque}</span>}
+                                </div>
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
 
-                  return (
-                    <Card key={selected.id}>
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{acc.nom}</p>
-                            {acc.marque && <p className="text-xs text-muted-foreground">{acc.marque}</p>}
+                <div className="mt-3 space-y-2">
+                  {selectedAccessories.map((selected) => {
+                    const acc = accessories.find(a => a.id === selected.id);
+                    if (!acc) return null;
+
+                    return (
+                      <Card key={selected.id}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{acc.nom}</p>
+                              {acc.marque && <p className="text-xs text-muted-foreground">{acc.marque}</p>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min="1"
+                                value={selected.quantity}
+                                onChange={(e) => handleQuantityChange(selected.id, parseInt(e.target.value) || 1)}
+                                className="w-20"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleRemoveAccessory(selected.id)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              min="1"
-                              value={selected.quantity}
-                              onChange={(e) => handleQuantityChange(selected.id, parseInt(e.target.value) || 1)}
-                              className="w-20"
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveAccessory(selected.id)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
