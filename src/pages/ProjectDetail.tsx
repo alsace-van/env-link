@@ -538,6 +538,7 @@ const ProjectDetail = () => {
                   onClick={() => setIsSummaryOpen(!isSummaryOpen)}
                   className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
                   size="icon"
+                  title="Récapitulatif des dépenses"
                 >
                   <PanelRightOpen className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
                 </Button>
@@ -664,10 +665,11 @@ const ProjectDetail = () => {
           {/* Toggle Sidebar Button */}
           <Button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="fixed bottom-20 right-6 h-12 w-12 rounded-full shadow-lg z-40 bg-blue-600 hover:bg-blue-700 text-white"
+            className="fixed bottom-24 right-6 h-14 w-14 rounded-full shadow-lg z-40"
             size="icon"
+            title="Notes et Tâches"
           >
-            <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
+            <PanelRightOpen className={`h-6 w-6 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
           </Button>
         </div>
       </main>
