@@ -92,13 +92,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "accessories_catalog_category_id_fkey"
-            columns: ["category_id"]
-            isOneToOne: false
-            referencedRelation: "categories"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "accessories_catalog_notice_id_fkey"
             columns: ["notice_id"]
             isOneToOne: false
