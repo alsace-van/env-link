@@ -27,6 +27,7 @@ import {
   Edit,
   ChevronDown,
   ChevronUp,
+  Receipt,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -540,7 +541,7 @@ const ProjectDetail = () => {
                   size="icon"
                   title="Récapitulatif des dépenses"
                 >
-                  <PanelRightOpen className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
+                  <Receipt className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
                 </Button>
               </TabsContent>
 
