@@ -53,17 +53,23 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
           continue;
         }
 
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
+        // Get signed URL with 24 hour expiration for project photos
+        const { data: signedUrlData, error: urlError } = await supabase.storage
           .from("project-photos")
-          .getPublicUrl(fileName);
+          .createSignedUrl(fileName, 86400); // 24 hours
+
+        if (urlError || !signedUrlData) {
+          console.error("Error creating signed URL:", urlError);
+          toast.error(`Erreur lors de la création de l'URL pour ${file.name}`);
+          continue;
+        }
 
         // Save to database
         const { error: dbError } = await supabase
           .from("project_photos")
           .insert({
             project_id: projectId,
-            url: publicUrl,
+            url: signedUrlData.signedUrl,
             type: type,
             description: file.name,
           });

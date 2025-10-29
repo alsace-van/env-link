@@ -130,9 +130,19 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
         return;
       }
 
-      const { data: urlData } = supabase.storage.from("project-photos").getPublicUrl(filePath);
+      // Use signed URL with 24 hour expiration for project photos
+      const { data: signedUrlData, error: urlError } = await supabase.storage
+        .from("project-photos")
+        .createSignedUrl(filePath, 86400); // 24 hours
 
-      photoUrl = urlData.publicUrl;
+      if (urlError || !signedUrlData) {
+        toast.error("Erreur lors de la création de l'URL de la photo");
+        console.error(urlError);
+        setIsLoading(false);
+        return;
+      }
+
+      photoUrl = signedUrlData.signedUrl;
     }
 
     const projectData = {

@@ -137,11 +137,17 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
             return row;
           }
 
-          const { data: { publicUrl } } = supabase.storage
+          // Use signed URL with 1 hour expiration for sensitive invoice data
+          const { data: signedUrlData, error: urlError } = await supabase.storage
             .from('project-invoices')
-            .getPublicUrl(fileName);
+            .createSignedUrl(fileName, 3600); // 1 hour
 
-          return { ...row, facture_url: publicUrl };
+          if (urlError || !signedUrlData) {
+            console.error("Error creating signed URL:", urlError);
+            return row;
+          }
+
+          return { ...row, facture_url: signedUrlData.signedUrl };
         }
         return row;
       })
