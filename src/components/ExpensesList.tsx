@@ -26,6 +26,7 @@ interface Expense {
   fournisseur?: string;
   notes?: string;
   accessory_id?: string;
+  selectedOptions?: Array<{ nom: string }>;
 }
 
 interface ExpensesListProps {
@@ -66,17 +67,36 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       console.error(error);
     } else {
       const expensesData = (data || []) as Expense[];
-      setExpenses(expensesData);
+      
+      // Load selected options for each expense
+      const expensesWithOptions = await Promise.all(
+        expensesData.map(async (expense) => {
+          const { data: selectedOptions } = await supabase
+            .from("expense_selected_options")
+            .select(`
+              option_id,
+              accessory_options!inner(nom)
+            `)
+            .eq("expense_id", expense.id);
+          
+          return {
+            ...expense,
+            selectedOptions: selectedOptions?.map((opt: any) => ({ nom: opt.accessory_options.nom })) || []
+          };
+        })
+      );
+      
+      setExpenses(expensesWithOptions);
       
       // Extract unique categories, including empty ones as "Non catégorisé"
       const uniqueCategories = Array.from(new Set(
-        expensesData.map(e => e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé")
+        expensesWithOptions.map(e => e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé")
       ));
       setCategories(uniqueCategories);
 
       // Calculate total sales
       let total = 0;
-      expensesData.forEach((expense) => {
+      expensesWithOptions.forEach((expense) => {
         if (expense.prix_vente_ttc) {
           total += expense.prix_vente_ttc * expense.quantite;
         }
@@ -321,6 +341,17 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                       </div>
                     )}
                     
+                    {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                      <div className="col-span-2 text-xs">
+                        <span className="font-medium">Options: </span>
+                        {expense.selectedOptions.map((opt, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs mr-1">
+                            {opt.nom}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    
                     {expense.notes && (
                       <div className="col-span-2 text-xs text-muted-foreground italic">
                         {expense.notes}
@@ -472,6 +503,17 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                             {expense.fournisseur && (
                               <div className="text-xs text-muted-foreground">
                                 <span>Fournisseur: {expense.fournisseur}</span>
+                              </div>
+                            )}
+                            
+                            {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                              <div className="col-span-2 text-xs">
+                                <span className="font-medium">Options: </span>
+                                {expense.selectedOptions.map((opt, idx) => (
+                                  <Badge key={idx} variant="outline" className="text-xs mr-1">
+                                    {opt.nom}
+                                  </Badge>
+                                ))}
                               </div>
                             )}
                             
