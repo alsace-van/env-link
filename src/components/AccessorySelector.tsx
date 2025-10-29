@@ -68,7 +68,7 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
     // Charger le catalogue
     const { data: catalogData, error: catalogError } = await supabase
       .from("accessories_catalog")
-      .select("*, categories(nom)")
+      .select("*, categories!category_id(nom)")
       .order("nom");
 
     if (catalogError) {
