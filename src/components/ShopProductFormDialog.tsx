@@ -22,8 +22,22 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, X, Loader2 } from "lucide-react";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Plus, X, Loader2, Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface Accessory {
   id: string;
@@ -54,6 +68,8 @@ export const ShopProductFormDialog = ({
   // Pour produits simples et composés
   const [selectedAccessories, setSelectedAccessories] = useState<Array<{ id: string; quantity: number }>>([]);
   const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
   
   // Pour kits sur-mesure
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -406,20 +422,51 @@ export const ShopProductFormDialog = ({
                 {productType === "simple" ? "Sélectionner l'accessoire" : "Accessoires du produit"}
               </Label>
               
-              <Select onValueChange={handleAddAccessory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Ajouter un accessoire" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accessories
-                    .filter(acc => !selectedAccessories.find(s => s.id === acc.id))
-                    .map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id}>
-                        {acc.nom} {acc.marque && `(${acc.marque})`}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={comboboxOpen}
+                    className="w-full justify-between"
+                  >
+                    <span className="text-muted-foreground">Rechercher un accessoire...</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput 
+                      placeholder="Rechercher un accessoire..." 
+                      value={searchValue}
+                      onValueChange={setSearchValue}
+                    />
+                    <CommandList>
+                      <CommandEmpty>Aucun accessoire trouvé.</CommandEmpty>
+                      <CommandGroup>
+                        {accessories
+                          .filter(acc => !selectedAccessories.find(s => s.id === acc.id))
+                          .map((acc) => (
+                            <CommandItem
+                              key={acc.id}
+                              value={`${acc.nom} ${acc.marque || ""}`}
+                              onSelect={() => {
+                                handleAddAccessory(acc.id);
+                                setComboboxOpen(false);
+                                setSearchValue("");
+                              }}
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-medium">{acc.nom}</span>
+                                {acc.marque && <span className="text-xs text-muted-foreground">{acc.marque}</span>}
+                              </div>
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
 
               <div className="mt-3 space-y-2">
                 {selectedAccessories.map((selected) => {
