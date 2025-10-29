@@ -242,40 +242,45 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   // Afficher toutes les dépenses fournisseurs (pas de filtre par date)
   const filteredExpenses = expenses;
 
-  const filteredPayments = bankBalance
+  const now = new Date();
+  now.setHours(0, 0, 0, 0); // Début de la journée pour comparaison
+
+  // Calculer le solde actuel : 
+  // Solde de départ + Paiements déjà effectués - Dépenses déjà payées
+  const paidPayments = bankBalance
     ? payments.filter((payment) => {
-        return new Date(payment.date_paiement) >= new Date(bankBalance.date_heure_depart);
+        const paymentDate = new Date(payment.date_paiement);
+        return paymentDate >= new Date(bankBalance.date_heure_depart) && paymentDate <= now;
       })
     : [];
-
-  // Calculer le solde actuel : déduire uniquement les dépenses NON PAYÉES
-  const totalExpenses = filteredExpenses.reduce((sum, exp) => {
-    // Déduire seulement si non payé
-    if (exp.statut_paiement === "non_paye") {
+  
+  const paidExpenses = filteredExpenses.reduce((sum, exp) => {
+    // Déduire uniquement les dépenses déjà payées
+    if (exp.statut_paiement === "paye") {
       return sum + exp.prix * exp.quantite;
     }
     return sum;
   }, 0);
-  const totalPayments = filteredPayments.reduce((sum, pay) => sum + pay.montant, 0);
+
+  const totalPaidPayments = paidPayments.reduce((sum, pay) => sum + pay.montant, 0);
   const currentBalance = bankBalance
-    ? bankBalance.solde_depart - totalExpenses + totalPayments
+    ? bankBalance.solde_depart + totalPaidPayments - paidExpenses
     : 0;
 
   // Calculer le prévisionnel fin de mois
-  const now = new Date();
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
 
-  // Paiements prévus pour ce mois
+  // Paiements à venir ce mois (date future uniquement)
   const expectedPaymentsThisMonth = payments.filter((payment) => {
     const paymentDate = new Date(payment.date_paiement);
-    return paymentDate >= monthStart && paymentDate <= monthEnd;
+    return paymentDate > now && paymentDate >= monthStart && paymentDate <= monthEnd;
   });
   const totalExpectedPayments = expectedPaymentsThisMonth.reduce((sum, pay) => sum + pay.montant, 0);
 
-  // Dépenses non payées à payer ce mois
+  // Dépenses non payées dont la date limite est ce mois
   const unpaidExpensesThisMonth = filteredExpenses.filter((exp) => {
-    if (exp.statut_paiement !== "non_paye" || !exp.date_paiement) return false;
+    if (exp.statut_paiement === "paye" || !exp.date_paiement) return false;
     const paymentDate = new Date(exp.date_paiement);
     return paymentDate >= monthStart && paymentDate <= monthEnd;
   });
@@ -285,6 +290,11 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   );
 
   const forecastEndOfMonth = currentBalance + totalExpectedPayments - totalUnpaidExpensesThisMonth;
+
+  // Total des dépenses pour affichage dans le tableau
+  const totalExpenses = filteredExpenses.reduce((sum, exp) => {
+    return sum + exp.prix * exp.quantite;
+  }, 0);
 
   return (
     <div className="space-y-6">
@@ -398,7 +408,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
           <CardHeader>
             <CardTitle>Dépenses Fournisseurs</CardTitle>
             <CardDescription>
-              Toutes les dépenses fournisseurs (seules les non payées sont déduites du solde)
+              Toutes les dépenses fournisseurs (seules les dépenses payées sont déduites du solde actuel)
             </CardDescription>
           </CardHeader>
           <CardContent>
