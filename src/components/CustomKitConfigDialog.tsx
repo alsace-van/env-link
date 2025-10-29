@@ -22,8 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown, Plus, Trash2, Copy } from "lucide-react";
+import { ChevronDown, Plus, Trash2, Copy, Tag, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
+import { useAccessoryTieredPricing } from "@/hooks/useAccessoryTieredPricing";
 
 interface Category {
   id: string;
@@ -53,6 +54,10 @@ interface Accessory {
   longueur_mm?: number;
   largeur_mm?: number;
   hauteur_mm?: number;
+  promo_active?: boolean;
+  promo_price?: number;
+  promo_start_date?: string;
+  promo_end_date?: string;
 }
 
 interface CategoryInstance {
@@ -266,24 +271,41 @@ const CustomKitConfigDialog = ({
     );
   };
 
-  const calculateInstancePrice = (instance: CategoryInstance) => {
+  const calculateInstancePrice = (instance: CategoryInstance, usePricing = true) => {
     if (!instance.accessoryId) return 0;
 
     const accessories = accessoriesByCategory.get(instance.categoryId) || [];
     const accessory = accessories.find((a) => a.id === instance.accessoryId);
     if (!accessory) return 0;
 
-    let price = accessory.prix_vente_ttc || 0;
+    let basePrice = accessory.prix_vente_ttc || 0;
 
-    // Ajouter le prix des options sélectionnées
+    // Appliquer la promo si active
+    if (usePricing && accessory.promo_active && accessory.promo_price) {
+      const now = new Date();
+      const start = accessory.promo_start_date ? new Date(accessory.promo_start_date) : null;
+      const end = accessory.promo_end_date ? new Date(accessory.promo_end_date) : null;
+      
+      if ((!start || now >= start) && (!end || now <= end)) {
+        basePrice = accessory.promo_price;
+      }
+    }
+
+    // Calculer le prix avec options
+    let optionsPrice = 0;
     instance.selectedOptions.forEach((optionId) => {
       const option = accessory.options?.find((o) => o.id === optionId);
       if (option) {
-        price += option.prix_vente_ttc;
+        optionsPrice += option.prix_vente_ttc;
       }
     });
 
-    return price * instance.quantity;
+    return (basePrice + optionsPrice) * instance.quantity;
+  };
+
+  const getAccessoryPricing = (accessoryId: string, quantity: number) => {
+    const tieredPricing = useAccessoryTieredPricing(accessoryId);
+    return tieredPricing;
   };
 
   const calculateTotalPrice = () => {

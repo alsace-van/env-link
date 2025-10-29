@@ -12,6 +12,7 @@ import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
 import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
 import { ShoppingCartDialog } from "@/components/ShoppingCartDialog";
 import { ProductPricingDialog } from "@/components/ProductPricingDialog";
+import { KitAccessoryPricingDialog } from "@/components/KitAccessoryPricingDialog";
 import { useCart } from "@/hooks/useCart";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
@@ -39,6 +40,7 @@ const Shop = () => {
   const [selectedKitProduct, setSelectedKitProduct] = useState<ShopProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [pricingDialogProduct, setPricingDialogProduct] = useState<ShopProduct | null>(null);
+  const [kitPricingProduct, setKitPricingProduct] = useState<ShopProduct | null>(null);
   
   const cart = useCart(user?.id);
 
@@ -321,7 +323,13 @@ const Shop = () => {
                             variant="outline"
                             size="sm"
                             className="flex-1"
-                            onClick={() => setPricingDialogProduct(product)}
+                            onClick={() => {
+                              if (product.type === "custom_kit") {
+                                setKitPricingProduct(product);
+                              } else {
+                                setPricingDialogProduct(product);
+                              }
+                            }}
                           >
                             <Percent className="h-4 w-4 mr-2" />
                             Tarifs
@@ -474,6 +482,18 @@ const Shop = () => {
           productId={pricingDialogProduct.id}
           productName={pricingDialogProduct.name}
           basePrice={pricingDialogProduct.price}
+        />
+      )}
+
+      {kitPricingProduct && (
+        <KitAccessoryPricingDialog
+          open={!!kitPricingProduct}
+          onClose={() => {
+            setKitPricingProduct(null);
+            setRefreshKey(prev => prev + 1);
+          }}
+          productId={kitPricingProduct.id}
+          productName={kitPricingProduct.name}
         />
       )}
     </div>

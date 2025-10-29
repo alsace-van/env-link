@@ -35,6 +35,10 @@ export type Database = {
           poids_kg: number | null
           prix_reference: number | null
           prix_vente_ttc: number | null
+          promo_active: boolean | null
+          promo_end_date: string | null
+          promo_price: number | null
+          promo_start_date: string | null
           puissance_watts: number | null
           type_electrique: string | null
           url_produit: string | null
@@ -60,6 +64,10 @@ export type Database = {
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          promo_active?: boolean | null
+          promo_end_date?: string | null
+          promo_price?: number | null
+          promo_start_date?: string | null
           puissance_watts?: number | null
           type_electrique?: string | null
           url_produit?: string | null
@@ -85,6 +93,10 @@ export type Database = {
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          promo_active?: boolean | null
+          promo_end_date?: string | null
+          promo_price?: number | null
+          promo_start_date?: string | null
           puissance_watts?: number | null
           type_electrique?: string | null
           url_produit?: string | null
@@ -148,6 +160,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "accessory_options_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accessory_tiered_pricing: {
+        Row: {
+          accessory_id: string
+          created_at: string
+          discount_percent: number
+          id: string
+          min_quantity: number
+          updated_at: string
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string
+          discount_percent: number
+          id?: string
+          min_quantity: number
+          updated_at?: string
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string
+          discount_percent?: number
+          id?: string
+          min_quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessory_tiered_pricing_accessory_id_fkey"
             columns: ["accessory_id"]
             isOneToOne: false
             referencedRelation: "accessories_catalog"
@@ -1280,6 +1327,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_accessory_tiered_price: {
+        Args: {
+          p_accessory_id: string
+          p_base_price: number
+          p_quantity: number
+        }
+        Returns: number
+      }
       calculate_tiered_price: {
         Args: { p_base_price: number; p_product_id: string; p_quantity: number }
         Returns: number
