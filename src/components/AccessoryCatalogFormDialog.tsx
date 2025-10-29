@@ -38,6 +38,7 @@ interface AccessoryCatalogFormDialogProps {
     hauteur_mm?: number | null;
     puissance_watts?: number | null;
     intensite_amperes?: number | null;
+    couleur?: string | null;
   } | null;
 }
 
@@ -59,6 +60,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     hauteur_mm: "",
     puissance_watts: "",
     intensite_amperes: "",
+    couleur: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -106,6 +108,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
           puissance_watts: accessory.puissance_watts?.toString() ?? "",
           intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
+          couleur: accessory.couleur ?? "",
         });
       } else {
         // Mode création
@@ -126,6 +129,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: "",
           puissance_watts: "",
           intensite_amperes: "",
+          couleur: "",
         });
       }
     }
@@ -291,6 +295,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+          couleur: formData.couleur || null,
         })
         .eq("id", accessory.id);
 
@@ -321,6 +326,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+          couleur: formData.couleur || null,
           user_id: user.id,
         })
         .select()
@@ -716,6 +722,32 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 />
               </div>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="couleur">Couleur disponible</Label>
+            <Select
+              value={formData.couleur || "none"}
+              onValueChange={(value) => setFormData({ ...formData, couleur: value === "none" ? "" : value })}
+            >
+              <SelectTrigger id="couleur">
+                <SelectValue placeholder="Sélectionner une couleur" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Aucune</SelectItem>
+                <SelectItem value="noir">Noir</SelectItem>
+                <SelectItem value="blanc">Blanc</SelectItem>
+                <SelectItem value="gris">Gris</SelectItem>
+                <SelectItem value="rouge">Rouge</SelectItem>
+                <SelectItem value="bleu">Bleu</SelectItem>
+                <SelectItem value="vert">Vert</SelectItem>
+                <SelectItem value="jaune">Jaune</SelectItem>
+                <SelectItem value="orange">Orange</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Si une couleur est définie, elle sera proposée lors de la configuration du kit
+            </p>
           </div>
 
           <Separator />

@@ -44,6 +44,12 @@ interface Accessory {
   category_id: string;
   description?: string;
   options?: AccessoryOption[];
+  couleur?: string;
+  puissance_watts?: number;
+  poids_kg?: number;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
 }
 
 interface CategoryInstance {
@@ -149,7 +155,7 @@ const CustomKitConfigDialog = ({
     // Charger les accessoires disponibles pour chaque catégorie
     const { data: accessoriesData, error: accessoriesError } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, category_id, description")
+      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, puissance_watts, poids_kg, longueur_mm, largeur_mm, hauteur_mm")
       .in("category_id", categoryIds)
       .eq("available_in_shop", true);
 
@@ -386,6 +392,15 @@ const CustomKitConfigDialog = ({
                                                   {accessory.prix_vente_ttc?.toFixed(2)} €
                                                   {accessory.marque && ` - ${accessory.marque}`}
                                                 </span>
+                                                {(accessory.puissance_watts || accessory.poids_kg || accessory.longueur_mm) && (
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {accessory.puissance_watts && `${accessory.puissance_watts}W`}
+                                                    {accessory.puissance_watts && (accessory.poids_kg || accessory.longueur_mm) && ' • '}
+                                                    {accessory.poids_kg && `${accessory.poids_kg}kg`}
+                                                    {accessory.poids_kg && accessory.longueur_mm && ' • '}
+                                                    {accessory.longueur_mm && `${accessory.longueur_mm}×${accessory.largeur_mm}×${accessory.hauteur_mm}mm`}
+                                                  </span>
+                                                )}
                                               </div>
                                             </SelectItem>
                                           ))}
@@ -393,39 +408,54 @@ const CustomKitConfigDialog = ({
                                       </Select>
                                     </div>
 
-                                    {selectedAccessory && (
-                                      <>
-                                        <div className="grid grid-cols-2 gap-3">
-                                          <div className="space-y-2">
-                                            <Label className="text-sm">Quantité</Label>
-                                            <Input
-                                              type="number"
-                                              min="1"
-                                              value={instance.quantity}
-                                              onChange={(e) => updateInstanceQuantity(instance.id, parseInt(e.target.value))}
-                                              className="h-9"
-                                            />
-                                          </div>
+                                        {selectedAccessory && (
+                                          <>
+                                            <div className="grid grid-cols-2 gap-3">
+                                              <div className="space-y-2">
+                                                <Label className="text-sm">Quantité</Label>
+                                                <Input
+                                                  type="number"
+                                                  min="1"
+                                                  value={instance.quantity}
+                                                  onChange={(e) => updateInstanceQuantity(instance.id, parseInt(e.target.value))}
+                                                  className="h-9"
+                                                />
+                                              </div>
 
-                                          <div className="space-y-2">
-                                            <Label className="text-sm">Couleur</Label>
-                                            <Select
-                                              value={instance.color || ""}
-                                              onValueChange={(value) => updateInstanceColor(instance.id, value)}
-                                            >
-                                              <SelectTrigger className="h-9">
-                                                <SelectValue placeholder="Choisir..." />
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                {AVAILABLE_COLORS.map((color) => (
-                                                  <SelectItem key={color.value} value={color.value}>
-                                                    {color.label}
-                                                  </SelectItem>
-                                                ))}
-                                              </SelectContent>
-                                            </Select>
-                                          </div>
-                                        </div>
+                                              {selectedAccessory.couleur && (
+                                                <div className="space-y-2">
+                                                  <Label className="text-sm">Couleur</Label>
+                                                  <div className="flex gap-2 flex-wrap">
+                                                    {AVAILABLE_COLORS
+                                                      .filter(color => color.value === selectedAccessory.couleur)
+                                                      .map((color) => (
+                                                        <button
+                                                          key={color.value}
+                                                          type="button"
+                                                          onClick={() => updateInstanceColor(instance.id, color.value)}
+                                                          className={`w-8 h-8 rounded-full border-2 transition-all ${
+                                                            instance.color === color.value 
+                                                              ? 'border-primary ring-2 ring-primary ring-offset-2' 
+                                                              : 'border-muted hover:border-primary/50'
+                                                          }`}
+                                                          style={{ 
+                                                            backgroundColor: color.value === 'blanc' ? '#ffffff' :
+                                                                           color.value === 'noir' ? '#000000' :
+                                                                           color.value === 'gris' ? '#6b7280' :
+                                                                           color.value === 'rouge' ? '#ef4444' :
+                                                                           color.value === 'bleu' ? '#3b82f6' :
+                                                                           color.value === 'vert' ? '#22c55e' :
+                                                                           color.value === 'jaune' ? '#eab308' :
+                                                                           color.value === 'orange' ? '#f97316' :
+                                                                           '#6b7280'
+                                                          }}
+                                                          title={color.label}
+                                                        />
+                                                      ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
 
                                         {selectedAccessory.options && selectedAccessory.options.length > 0 && (
                                           <div className="space-y-2">

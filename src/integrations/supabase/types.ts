@@ -19,6 +19,7 @@ export type Database = {
           available_in_shop: boolean
           categorie: string | null
           category_id: string | null
+          couleur: string | null
           created_at: string
           description: string | null
           fournisseur: string | null
@@ -43,6 +44,7 @@ export type Database = {
           available_in_shop?: boolean
           categorie?: string | null
           category_id?: string | null
+          couleur?: string | null
           created_at?: string
           description?: string | null
           fournisseur?: string | null
@@ -67,6 +69,7 @@ export type Database = {
           available_in_shop?: boolean
           categorie?: string | null
           category_id?: string | null
+          couleur?: string | null
           created_at?: string
           description?: string | null
           fournisseur?: string | null
