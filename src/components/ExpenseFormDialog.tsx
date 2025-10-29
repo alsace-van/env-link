@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ExpenseFormDialogProps {
   isOpen: boolean;
@@ -76,6 +77,10 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   const [filteredAccessories, setFilteredAccessories] = useState<any[]>([]);
   const [showAccessoriesList, setShowAccessoriesList] = useState(false);
   const [selectedAccessoryId, setSelectedAccessoryId] = useState<string | null>(null);
+
+  // Options disponibles et sélectionnées
+  const [availableOptions, setAvailableOptions] = useState<Array<{ id: string; nom: string; prix: number }>>([]);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -204,7 +209,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     }
   };
 
-  const selectAccessoryFromCatalog = (accessory: any) => {
+  const selectAccessoryFromCatalog = async (accessory: any) => {
     setFormData({
       ...formData,
       nom_accessoire: accessory.nom,
@@ -224,6 +229,18 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     });
     setSelectedAccessoryId(accessory.id);
     setShowAccessoriesList(false);
+    
+    // Charger les options disponibles pour cet accessoire
+    const { data: options, error } = await supabase
+      .from("accessory_options")
+      .select("*")
+      .eq("accessory_id", accessory.id)
+      .order("created_at");
+
+    if (!error && options) {
+      setAvailableOptions(options.map(opt => ({ id: opt.id, nom: opt.nom, prix: parseFloat(opt.prix.toString()) })));
+    }
+    
     toast.success("Article du catalogue sélectionné et informations copiées");
   };
 
@@ -376,6 +393,20 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
         toast.error("Erreur lors de la modification");
         console.error(error);
       } else {
+        // Mettre à jour les options sélectionnées
+        // Supprimer les anciennes
+        await supabase
+          .from("expense_selected_options")
+          .delete()
+          .eq("expense_id", expense.id);
+
+        // Ajouter les nouvelles
+        if (selectedOptions.length > 0) {
+          await supabase
+            .from("expense_selected_options")
+            .insert(selectedOptions.map(optId => ({ expense_id: expense.id, option_id: optId })));
+        }
+
         toast.success("Dépense modifiée avec succès");
         onSuccess();
       }
@@ -411,7 +442,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
         }
       }
 
-      const { error } = await supabase
+      const { data: newExpense, error } = await supabase
         .from("project_expenses")
         .insert({
           project_id: projectId,
@@ -435,12 +466,21 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-        });
+        })
+        .select()
+        .single();
 
       if (error) {
         toast.error("Erreur lors de l'ajout de la dépense");
         console.error(error);
       } else {
+        // Ajouter les options sélectionnées
+        if (selectedOptions.length > 0 && newExpense) {
+          await supabase
+            .from("expense_selected_options")
+            .insert(selectedOptions.map(optId => ({ expense_id: newExpense.id, option_id: optId })));
+        }
+
         if (finalAccessoryId && !selectedAccessoryId) {
           toast.success("Dépense ajoutée et liée au catalogue");
         } else {
@@ -467,6 +507,9 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
         });
         setIsNewCategory(false);
         setShowAddToCatalog(false);
+        setSelectedAccessoryId(null);
+        setAvailableOptions([]);
+        setSelectedOptions([]);
         onSuccess();
       }
     }
@@ -704,6 +747,58 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
               </div>
             </div>
           </div>
+
+          {availableOptions.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Options disponibles</Label>
+                <p className="text-xs text-muted-foreground">
+                  Sélectionnez les options souhaitées. Le prix total sera automatiquement calculé.
+                </p>
+                <div className="space-y-2 border rounded-md p-3">
+                  {availableOptions.map((option) => (
+                    <div key={option.id} className="flex items-center justify-between p-2 hover:bg-accent rounded">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`option-${option.id}`}
+                          checked={selectedOptions.includes(option.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedOptions([...selectedOptions, option.id]);
+                            } else {
+                              setSelectedOptions(selectedOptions.filter(id => id !== option.id));
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor={`option-${option.id}`}
+                          className="text-sm font-medium cursor-pointer"
+                        >
+                          {option.nom}
+                        </label>
+                      </div>
+                      <span className="text-sm font-semibold">+{option.prix.toFixed(2)} €</span>
+                    </div>
+                  ))}
+                </div>
+                {selectedOptions.length > 0 && (
+                  <div className="flex justify-between items-center p-3 bg-primary/10 rounded-md">
+                    <span className="font-semibold">Prix total avec options:</span>
+                    <span className="text-lg font-bold">
+                      {(
+                        parseFloat(formData.prix_achat || "0") +
+                        selectedOptions.reduce((sum, optId) => {
+                          const opt = availableOptions.find(o => o.id === optId);
+                          return sum + (opt?.prix || 0);
+                        }, 0)
+                      ).toFixed(2)} €
+                    </span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           <Separator />
 

@@ -56,14 +56,13 @@ export const ShopProductFormDialog = ({
   const [accessories, setAccessories] = useState<Accessory[]>([]);
   
   // Pour kits sur-mesure
-  const [minItems, setMinItems] = useState("1");
-  const [maxItems, setMaxItems] = useState("");
-  const [basePrice, setBasePrice] = useState("");
-  const [availableAccessories, setAvailableAccessories] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<{ id: string; nom: string }[]>([]);
 
   useEffect(() => {
     if (open) {
       loadAccessories();
+      loadCategories();
       if (editProduct) {
         populateForm();
       }
@@ -83,6 +82,20 @@ export const ShopProductFormDialog = ({
     }
 
     setAccessories(data || []);
+  };
+
+  const loadCategories = async () => {
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id, nom")
+      .order("nom");
+
+    if (error) {
+      console.error("Erreur lors du chargement des catégories:", error);
+      return;
+    }
+
+    setCategories(data || []);
   };
 
   const populateForm = async () => {
@@ -123,8 +136,8 @@ export const ShopProductFormDialog = ({
       return;
     }
 
-    if (productType === "custom_kit" && availableAccessories.length === 0) {
-      toast.error("Un kit sur-mesure doit proposer au moins un accessoire");
+    if (productType === "custom_kit" && selectedCategories.length === 0) {
+      toast.error("Un kit sur-mesure doit proposer au moins une catégorie");
       return;
     }
 
@@ -170,31 +183,15 @@ export const ShopProductFormDialog = ({
 
         if (itemsError) throw itemsError;
       } else if (productType === "custom_kit") {
-        // Créer le kit sur-mesure
-        const { data: kit, error: kitError } = await supabase
+        // Créer le kit sur-mesure avec les catégories
+        const { error: kitError } = await supabase
           .from("shop_custom_kits")
           .insert({
             product_id: product.id,
-            min_items: parseInt(minItems),
-            max_items: maxItems ? parseInt(maxItems) : null,
-            base_price: parseFloat(basePrice || "0"),
-          })
-          .select()
-          .single();
+            allowed_category_ids: selectedCategories,
+          });
 
         if (kitError) throw kitError;
-
-        // Ajouter les accessoires disponibles
-        const kitItems = availableAccessories.map(accId => ({
-          kit_id: kit.id,
-          accessory_id: accId,
-        }));
-
-        const { error: kitItemsError } = await supabase
-          .from("shop_custom_kit_available_items")
-          .insert(kitItems);
-
-        if (kitItemsError) throw kitItemsError;
       }
 
       toast.success("Produit créé avec succès");
@@ -220,10 +217,7 @@ export const ShopProductFormDialog = ({
     setIsActive(true);
     setProductType("simple");
     setSelectedAccessories([]);
-    setAvailableAccessories([]);
-    setMinItems("1");
-    setMaxItems("");
-    setBasePrice("");
+    setSelectedCategories([]);
   };
 
   return (
@@ -298,66 +292,30 @@ export const ShopProductFormDialog = ({
           </div>
 
           {productType === "custom_kit" && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="minItems">Nombre min d'items *</Label>
-                  <Input
-                    id="minItems"
-                    type="number"
-                    value={minItems}
-                    onChange={(e) => setMinItems(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="maxItems">Nombre max d'items</Label>
-                  <Input
-                    id="maxItems"
-                    type="number"
-                    value={maxItems}
-                    onChange={(e) => setMaxItems(e.target.value)}
-                    placeholder="Illimité"
-                  />
-                </div>
+            <div>
+              <Label>Catégories d'accessoires disponibles dans le kit *</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Le client pourra composer son kit en choisissant des accessoires parmi ces catégories. 
+                Le prix sera calculé automatiquement.
+              </p>
+              <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
+                {categories.map((cat) => (
+                  <div key={cat.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      checked={selectedCategories.includes(cat.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedCategories([...selectedCategories, cat.id]);
+                        } else {
+                          setSelectedCategories(selectedCategories.filter(id => id !== cat.id));
+                        }
+                      }}
+                    />
+                    <span className="text-sm">{cat.nom}</span>
+                  </div>
+                ))}
               </div>
-
-              <div>
-                <Label htmlFor="basePrice">Prix de base (€)</Label>
-                <Input
-                  id="basePrice"
-                  type="number"
-                  step="0.01"
-                  value={basePrice}
-                  onChange={(e) => setBasePrice(e.target.value)}
-                  placeholder="0.00"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Prix avant ajout d'accessoires
-                </p>
-              </div>
-
-              <div>
-                <Label>Accessoires disponibles dans le kit</Label>
-                <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                  {accessories.map((acc) => (
-                    <div key={acc.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        checked={availableAccessories.includes(acc.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setAvailableAccessories([...availableAccessories, acc.id]);
-                          } else {
-                            setAvailableAccessories(availableAccessories.filter(id => id !== acc.id));
-                          }
-                        }}
-                      />
-                      <span className="text-sm">{acc.nom}</span>
-                      {acc.marque && <span className="text-xs text-muted-foreground">({acc.marque})</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
+            </div>
           )}
 
           {(productType === "simple" || productType === "composed") && (

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Plus, X } from "lucide-react";
 
 interface Category {
   id: string;
@@ -65,14 +66,23 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryParent, setNewCategoryParent] = useState<string | null>(null);
+  
+  // Options payantes
+  const [options, setOptions] = useState<Array<{ id?: string; nom: string; prix: string }>>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
-  // Charger les catégories quand le dialogue s'ouvre
+  // Charger les catégories et options quand le dialogue s'ouvre
   useEffect(() => {
     if (isOpen) {
       setCategoriesLoaded(false);
       loadCategories();
+      if (accessory) {
+        loadOptions(accessory.id);
+      } else {
+        setOptions([]);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, accessory?.id]);
 
   // Initialiser le formulaire une fois les catégories chargées
   useEffect(() => {
@@ -128,6 +138,34 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       setCategories(data);
       setCategoriesLoaded(true);
     }
+  };
+
+  const loadOptions = async (accessoryId: string) => {
+    setLoadingOptions(true);
+    const { data, error } = await supabase
+      .from("accessory_options")
+      .select("*")
+      .eq("accessory_id", accessoryId)
+      .order("created_at");
+
+    if (!error && data) {
+      setOptions(data.map(opt => ({ id: opt.id, nom: opt.nom, prix: opt.prix.toString() })));
+    }
+    setLoadingOptions(false);
+  };
+
+  const handleAddOption = () => {
+    setOptions([...options, { nom: "", prix: "" }]);
+  };
+
+  const handleRemoveOption = (index: number) => {
+    setOptions(options.filter((_, i) => i !== index));
+  };
+
+  const handleOptionChange = (index: number, field: "nom" | "prix", value: string) => {
+    const newOptions = [...options];
+    newOptions[index] = { ...newOptions[index], [field]: value };
+    setOptions(newOptions);
   };
 
   const handleCreateCategory = async () => {
@@ -230,6 +268,8 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       return;
     }
 
+    let savedAccessoryId = accessory?.id;
+
     if (accessory) {
       // Mode édition
       const { error } = await supabase
@@ -257,42 +297,98 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       if (error) {
         toast.error("Erreur lors de la modification");
         console.error(error);
-      } else {
-        toast.success("Accessoire modifié");
-        onSuccess();
-        onClose();
+        setIsSubmitting(false);
+        return;
       }
     } else {
       // Mode création
-      const { error } = await supabase.from("accessories_catalog").insert({
-        nom: formData.nom,
-        marque: formData.marque || null,
-        category_id: formData.category_id || null,
-        prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-        prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-        marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-        fournisseur: formData.fournisseur || null,
-        description: formData.description || null,
-        url_produit: formData.url_produit || null,
-        type_electrique: formData.type_electrique || null,
-        poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-        longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-        largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-        hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
-        puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
-        intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-        user_id: user.id,
-      });
+      const { data: newAccessory, error } = await supabase
+        .from("accessories_catalog")
+        .insert({
+          nom: formData.nom,
+          marque: formData.marque || null,
+          category_id: formData.category_id || null,
+          prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
+          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
+          fournisseur: formData.fournisseur || null,
+          description: formData.description || null,
+          url_produit: formData.url_produit || null,
+          type_electrique: formData.type_electrique || null,
+          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+          user_id: user.id,
+        })
+        .select()
+        .single();
 
       if (error) {
         toast.error("Erreur lors de l'ajout");
         console.error(error);
-      } else {
-        toast.success("Accessoire ajouté au catalogue");
-        onSuccess();
-        onClose();
+        setIsSubmitting(false);
+        return;
+      }
+      
+      savedAccessoryId = newAccessory.id;
+    }
+
+    // Gérer les options
+    if (savedAccessoryId) {
+      // Supprimer les options existantes qui ne sont plus dans la liste
+      const existingOptionIds = options.filter(opt => opt.id).map(opt => opt.id!);
+      if (accessory) {
+        const { error: deleteError } = await supabase
+          .from("accessory_options")
+          .delete()
+          .eq("accessory_id", savedAccessoryId)
+          .not("id", "in", `(${existingOptionIds.length > 0 ? existingOptionIds.join(",") : "'none'"})`);
+
+        if (deleteError) {
+          console.error("Erreur lors de la suppression des options:", deleteError);
+        }
+      }
+
+      // Ajouter ou mettre à jour les options
+      for (const option of options) {
+        if (option.nom && option.prix) {
+          if (option.id) {
+            // Mettre à jour l'option existante
+            const { error: updateError } = await supabase
+              .from("accessory_options")
+              .update({
+                nom: option.nom,
+                prix: parseFloat(option.prix),
+              })
+              .eq("id", option.id);
+
+            if (updateError) {
+              console.error("Erreur lors de la mise à jour d'une option:", updateError);
+            }
+          } else {
+            // Créer une nouvelle option
+            const { error: insertError } = await supabase
+              .from("accessory_options")
+              .insert({
+                accessory_id: savedAccessoryId,
+                nom: option.nom,
+                prix: parseFloat(option.prix),
+              });
+
+            if (insertError) {
+              console.error("Erreur lors de l'ajout d'une option:", insertError);
+            }
+          }
+        }
       }
     }
+
+    toast.success(accessory ? "Accessoire modifié" : "Accessoire ajouté au catalogue");
+    onSuccess();
+    onClose();
 
     setIsSubmitting(false);
   };
@@ -620,6 +716,67 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 />
               </div>
             </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-semibold">Options payantes</Label>
+              <Button type="button" onClick={handleAddOption} size="sm" variant="outline">
+                <Plus className="h-4 w-4 mr-1" />
+                Ajouter une option
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Ajoutez des options supplémentaires que les clients pourront sélectionner pour ce produit
+            </p>
+            {loadingOptions ? (
+              <p className="text-sm text-muted-foreground">Chargement...</p>
+            ) : options.length > 0 ? (
+              <div className="space-y-2">
+                {options.map((option, index) => (
+                  <div key={index} className="flex gap-2 items-end">
+                    <div className="flex-1 space-y-1">
+                      <Label htmlFor={`option-nom-${index}`} className="text-xs">
+                        Nom de l'option
+                      </Label>
+                      <Input
+                        id={`option-nom-${index}`}
+                        value={option.nom}
+                        onChange={(e) => handleOptionChange(index, "nom", e.target.value)}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        placeholder="Ex: Câble de 5m supplémentaire"
+                      />
+                    </div>
+                    <div className="w-32 space-y-1">
+                      <Label htmlFor={`option-prix-${index}`} className="text-xs">
+                        Prix (€)
+                      </Label>
+                      <Input
+                        id={`option-prix-${index}`}
+                        type="number"
+                        step="0.01"
+                        value={option.prix}
+                        onChange={(e) => handleOptionChange(index, "prix", e.target.value)}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveOption(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Aucune option ajoutée</p>
+            )}
           </div>
 
           <Separator />

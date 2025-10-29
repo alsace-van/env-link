@@ -111,6 +111,38 @@ export type Database = {
           },
         ]
       }
+      accessory_options: {
+        Row: {
+          accessory_id: string
+          created_at: string
+          id: string
+          nom: string
+          prix: number
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string
+          id?: string
+          nom: string
+          prix?: number
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string
+          id?: string
+          nom?: string
+          prix?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessory_options_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_actions_log: {
         Row: {
           action: string
@@ -240,6 +272,42 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_selected_options: {
+        Row: {
+          created_at: string
+          expense_id: string
+          id: string
+          option_id: string
+        }
+        Insert: {
+          created_at?: string
+          expense_id: string
+          id?: string
+          option_id: string
+        }
+        Update: {
+          created_at?: string
+          expense_id?: string
+          id?: string
+          option_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_selected_options_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "project_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_selected_options_option_id_fkey"
+            columns: ["option_id"]
+            isOneToOne: false
+            referencedRelation: "accessory_options"
             referencedColumns: ["id"]
           },
         ]
@@ -853,65 +921,23 @@ export type Database = {
           },
         ]
       }
-      shop_custom_kit_available_items: {
-        Row: {
-          accessory_id: string
-          created_at: string
-          id: string
-          kit_id: string
-        }
-        Insert: {
-          accessory_id: string
-          created_at?: string
-          id?: string
-          kit_id: string
-        }
-        Update: {
-          accessory_id?: string
-          created_at?: string
-          id?: string
-          kit_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "shop_custom_kit_available_items_accessory_id_fkey"
-            columns: ["accessory_id"]
-            isOneToOne: false
-            referencedRelation: "accessories_catalog"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shop_custom_kit_available_items_kit_id_fkey"
-            columns: ["kit_id"]
-            isOneToOne: false
-            referencedRelation: "shop_custom_kits"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       shop_custom_kits: {
         Row: {
-          base_price: number
+          allowed_category_ids: string[] | null
           created_at: string
           id: string
-          max_items: number | null
-          min_items: number
           product_id: string
         }
         Insert: {
-          base_price?: number
+          allowed_category_ids?: string[] | null
           created_at?: string
           id?: string
-          max_items?: number | null
-          min_items?: number
           product_id: string
         }
         Update: {
-          base_price?: number
+          allowed_category_ids?: string[] | null
           created_at?: string
           id?: string
-          max_items?: number | null
-          min_items?: number
           product_id?: string
         }
         Relationships: [
