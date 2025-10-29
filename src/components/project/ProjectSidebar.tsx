@@ -14,7 +14,7 @@ export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
   return (
     <Card className="h-full">
       <Tabs defaultValue="project" className="h-full flex flex-col">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
           <TabsTrigger value="project">
             <ClipboardList className="h-4 w-4 mr-2 text-blue-600" />
             Ce projet
@@ -25,7 +25,7 @@ export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="project" className="flex-1 p-4 space-y-4">
+        <TabsContent value="project" className="flex-1 p-4 space-y-4 mt-0 overflow-auto">
           <div>
             <h3 className="font-semibold mb-3">Tâches à faire</h3>
             <ProjectTodoList projectId={projectId} />
@@ -36,7 +36,7 @@ export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
           </div>
         </TabsContent>
 
-        <TabsContent value="global" className="flex-1 p-4 space-y-4">
+        <TabsContent value="global" className="flex-1 p-4 space-y-4 mt-0 overflow-auto">
           <div>
             <h3 className="font-semibold mb-3">Toutes les tâches</h3>
             <GlobalTodoList />
