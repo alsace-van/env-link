@@ -225,6 +225,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
   const handlePricingChange = (field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
     const newFormData = { ...formData, [field]: value };
+    const TVA = 1.20; // 20% TVA
 
     // Déterminer quels champs sont remplis (non vides et non zéro)
     const hasPrixReference = newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0;
@@ -236,17 +237,20 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       // Prix référence + Prix TTC remplis → calculer la marge
       const prixReference = parseFloat(newFormData.prix_reference);
       const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      newFormData.marge_pourcent = (((prixVenteTTC - prixReference) / prixReference) * 100).toFixed(2);
+      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
+      newFormData.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
     } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
       // Prix TTC + Marge remplis → calculer le prix référence
       const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
       const margePourcent = parseFloat(newFormData.marge_pourcent);
-      newFormData.prix_reference = (prixVenteTTC / (1 + margePourcent / 100)).toFixed(2);
+      newFormData.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
     } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
       // Prix référence + Marge remplis → calculer le prix TTC
       const prixReference = parseFloat(newFormData.prix_reference);
       const margePourcent = parseFloat(newFormData.marge_pourcent);
-      newFormData.prix_vente_ttc = (prixReference * (1 + margePourcent / 100)).toFixed(2);
+      const prixVenteHT = prixReference * (1 + margePourcent / 100);
+      newFormData.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2); // Ajouter la TVA
     }
 
     setFormData(newFormData);
