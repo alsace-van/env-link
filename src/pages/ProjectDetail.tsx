@@ -676,11 +676,13 @@ const ProjectDetail = () => {
           </div>
 
           {/* Sidebar droite */}
-          <div className={`transition-all duration-300 ${isSidebarOpen ? "w-[400px]" : "w-0"} overflow-hidden`}>
-            <div className="w-[400px] sticky top-20">
-              <ProjectSidebar projectId={project.id} />
+          {isSidebarOpen && (
+            <div className="w-[400px] transition-all duration-300">
+              <div className="sticky top-20">
+                <ProjectSidebar projectId={project.id} />
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </main>
