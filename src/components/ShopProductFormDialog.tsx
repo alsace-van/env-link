@@ -121,8 +121,13 @@ export const ShopProductFormDialog = ({
   };
 
   const handleSubmit = async () => {
-    if (!name || !price) {
+    if (!name) {
       toast.error("Veuillez remplir tous les champs obligatoires");
+      return;
+    }
+
+    if (productType !== "custom_kit" && !price) {
+      toast.error("Veuillez indiquer un prix");
       return;
     }
 
@@ -161,7 +166,7 @@ export const ShopProductFormDialog = ({
           name,
           description,
           type: productType,
-          price: parseFloat(price),
+          price: productType === "custom_kit" ? 0 : parseFloat(price),
           is_active: isActive,
         })
         .select()
@@ -279,17 +284,19 @@ export const ShopProductFormDialog = ({
             />
           </div>
 
-          <div>
-            <Label htmlFor="price">Prix TTC (€) *</Label>
-            <Input
-              id="price"
-              type="number"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="0.00"
-            />
-          </div>
+          {productType !== "custom_kit" && (
+            <div>
+              <Label htmlFor="price">Prix TTC (€) *</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+          )}
 
           {productType === "custom_kit" && (
             <div>
