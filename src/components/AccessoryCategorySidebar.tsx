@@ -220,7 +220,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
     const isEditing = editingCategory === category.id;
 
     return (
-      <div key={category.id} className="select-none">
+      <div key={category.id} className="select-none group">
         <div
           className={`p-2 rounded transition-colors hover:bg-accent/50 ${isSelected ? "bg-primary/10" : ""}`}
           style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}

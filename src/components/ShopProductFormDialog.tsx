@@ -65,6 +65,8 @@ export const ShopProductFormDialog = ({
       loadCategories();
       if (editProduct) {
         populateForm();
+      } else {
+        resetForm();
       }
     }
   }, [open, editProduct]);
@@ -99,7 +101,38 @@ export const ShopProductFormDialog = ({
   };
 
   const populateForm = async () => {
-    // TODO: Implémenter le chargement des données pour l'édition
+    if (!editProduct) return;
+
+    setName(editProduct.name);
+    setDescription(editProduct.description || "");
+    setPrice(editProduct.price?.toString() || "");
+    setIsActive(editProduct.is_active);
+    setProductType(editProduct.type);
+
+    // Charger les accessoires ou catégories selon le type
+    if (editProduct.type === "custom_kit") {
+      const { data, error } = await supabase
+        .from("shop_custom_kits")
+        .select("allowed_category_ids")
+        .eq("product_id", editProduct.id)
+        .single();
+
+      if (!error && data) {
+        setSelectedCategories(data.allowed_category_ids || []);
+      }
+    } else {
+      const { data, error } = await supabase
+        .from("shop_product_items")
+        .select("accessory_id, quantity")
+        .eq("product_id", editProduct.id);
+
+      if (!error && data) {
+        setSelectedAccessories(data.map(item => ({
+          id: item.accessory_id,
+          quantity: item.quantity
+        })));
+      }
+    }
   };
 
   const handleAddAccessory = (accessoryId: string) => {
@@ -158,53 +191,95 @@ export const ShopProductFormDialog = ({
         return;
       }
 
-      // Créer le produit
-      const { data: product, error: productError } = await supabase
-        .from("shop_products")
-        .insert({
-          user_id: user.id,
-          name,
-          description,
-          type: productType,
-          price: productType === "custom_kit" ? 0 : parseFloat(price),
-          is_active: isActive,
-        })
-        .select()
-        .single();
+      if (editProduct) {
+        // Mode édition
+        const { error: productError } = await supabase
+          .from("shop_products")
+          .update({
+            name,
+            description,
+            price: productType === "custom_kit" ? 0 : parseFloat(price),
+            is_active: isActive,
+          })
+          .eq("id", editProduct.id);
 
-      if (productError) throw productError;
+        if (productError) throw productError;
 
-      // Ajouter les items selon le type
-      if (productType === "simple" || productType === "composed") {
-        const items = selectedAccessories.map(acc => ({
-          product_id: product.id,
-          accessory_id: acc.id,
-          quantity: acc.quantity,
-        }));
+        // Supprimer les anciens items/kit
+        if (productType === "simple" || productType === "composed") {
+          await supabase.from("shop_product_items").delete().eq("product_id", editProduct.id);
+          
+          const items = selectedAccessories.map(acc => ({
+            product_id: editProduct.id,
+            accessory_id: acc.id,
+            quantity: acc.quantity,
+          }));
 
-        const { error: itemsError } = await supabase
-          .from("shop_product_items")
-          .insert(items);
+          const { error: itemsError } = await supabase
+            .from("shop_product_items")
+            .insert(items);
 
-        if (itemsError) throw itemsError;
-      } else if (productType === "custom_kit") {
-        // Créer le kit sur-mesure avec les catégories
-        const { error: kitError } = await supabase
-          .from("shop_custom_kits")
+          if (itemsError) throw itemsError;
+        } else if (productType === "custom_kit") {
+          const { error: kitError } = await supabase
+            .from("shop_custom_kits")
+            .update({ allowed_category_ids: selectedCategories })
+            .eq("product_id", editProduct.id);
+
+          if (kitError) throw kitError;
+        }
+
+        toast.success("Produit modifié avec succès");
+      } else {
+        // Mode création
+        const { data: product, error: productError } = await supabase
+          .from("shop_products")
           .insert({
+            user_id: user.id,
+            name,
+            description,
+            type: productType,
+            price: productType === "custom_kit" ? 0 : parseFloat(price),
+            is_active: isActive,
+          })
+          .select()
+          .single();
+
+        if (productError) throw productError;
+
+        // Ajouter les items selon le type
+        if (productType === "simple" || productType === "composed") {
+          const items = selectedAccessories.map(acc => ({
             product_id: product.id,
-            allowed_category_ids: selectedCategories,
-          });
+            accessory_id: acc.id,
+            quantity: acc.quantity,
+          }));
 
-        if (kitError) throw kitError;
+          const { error: itemsError } = await supabase
+            .from("shop_product_items")
+            .insert(items);
+
+          if (itemsError) throw itemsError;
+        } else if (productType === "custom_kit") {
+          // Créer le kit sur-mesure avec les catégories
+          const { error: kitError } = await supabase
+            .from("shop_custom_kits")
+            .insert({
+              product_id: product.id,
+              allowed_category_ids: selectedCategories,
+            });
+
+          if (kitError) throw kitError;
+        }
+
+        toast.success("Produit créé avec succès");
       }
-
-      toast.success("Produit créé avec succès");
+      
       handleClose();
       onSuccess?.();
     } catch (error) {
       console.error("Erreur:", error);
-      toast.error("Erreur lors de la création du produit");
+      toast.error(`Erreur lors de ${editProduct ? 'la modification' : 'la création'} du produit`);
     } finally {
       setLoading(false);
     }
@@ -237,9 +312,9 @@ export const ShopProductFormDialog = ({
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Créer un produit</DialogTitle>
+          <DialogTitle>{editProduct ? "Modifier le produit" : "Créer un produit"}</DialogTitle>
           <DialogDescription>
-            Ajoutez un nouveau produit à votre boutique
+            {editProduct ? "Modifiez les informations du produit" : "Ajoutez un nouveau produit à votre boutique"}
           </DialogDescription>
         </DialogHeader>
 
@@ -404,7 +479,7 @@ export const ShopProductFormDialog = ({
             </Button>
             <Button onClick={handleSubmit} disabled={loading}>
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Créer le produit
+              {editProduct ? "Modifier le produit" : "Créer le produit"}
             </Button>
           </div>
         </div>
