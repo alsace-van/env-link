@@ -16,11 +16,11 @@ export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
       <Tabs defaultValue="project" className="h-full flex flex-col">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="project">
-            <ClipboardList className="h-4 w-4 mr-2" />
+            <ClipboardList className="h-4 w-4 mr-2 text-blue-600" />
             Ce projet
           </TabsTrigger>
           <TabsTrigger value="global">
-            <FileText className="h-4 w-4 mr-2" />
+            <FileText className="h-4 w-4 mr-2 text-green-600" />
             Tous les projets
           </TabsTrigger>
         </TabsList>

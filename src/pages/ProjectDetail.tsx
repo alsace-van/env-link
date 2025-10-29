@@ -664,9 +664,8 @@ const ProjectDetail = () => {
           {/* Toggle Sidebar Button */}
           <Button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="fixed bottom-20 right-6 h-12 w-12 rounded-full shadow-lg z-40"
+            className="fixed bottom-20 right-6 h-12 w-12 rounded-full shadow-lg z-40 bg-blue-600 hover:bg-blue-700 text-white"
             size="icon"
-            variant="secondary"
           >
             <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
           </Button>
