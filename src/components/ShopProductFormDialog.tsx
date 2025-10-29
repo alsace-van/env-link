@@ -73,7 +73,6 @@ export const ShopProductFormDialog = ({
   const [searchValue, setSearchValue] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
   const [accessoryOptions, setAccessoryOptions] = useState<Array<{ id: string; nom: string; prix_vente_ttc: number }>>([]);
-  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   
   // Pour kits sur-mesure
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -170,32 +169,12 @@ export const ShopProductFormDialog = ({
     setAccessoryOptions(data || []);
   };
 
-  const calculateTotalPrice = () => {
-    if (productType !== "simple" || selectedAccessories.length === 0) return;
-    
-    const accessory = accessories.find(a => a.id === selectedAccessories[0].id);
-    if (!accessory || !accessory.prix_reference) return;
-    
-    let total = accessory.prix_reference;
-    
-    // Ajouter les prix des options sélectionnées
-    selectedOptions.forEach(optionId => {
-      const option = accessoryOptions.find(o => o.id === optionId);
-      if (option) {
-        total += option.prix_vente_ttc || 0;
-      }
-    });
-    
-    setPrice(total.toString());
-  };
-
   const handleAddAccessory = async (accessoryId: string) => {
     if (!selectedAccessories.find(a => a.id === accessoryId)) {
       setSelectedAccessories([...selectedAccessories, { id: accessoryId, quantity: 1 }]);
       
       // Pour un produit simple, remplir automatiquement le prix et charger les options
       if (productType === "simple") {
-        setSelectedOptions([]); // Réinitialiser les options sélectionnées
         await loadAccessoryOptions(accessoryId);
         
         const accessory = accessories.find(a => a.id === accessoryId);
@@ -213,24 +192,8 @@ export const ShopProductFormDialog = ({
     if (productType === "simple") {
       setPrice("");
       setAccessoryOptions([]);
-      setSelectedOptions([]);
     }
   };
-
-  const handleOptionToggle = (optionId: string) => {
-    if (selectedOptions.includes(optionId)) {
-      setSelectedOptions(selectedOptions.filter(id => id !== optionId));
-    } else {
-      setSelectedOptions([...selectedOptions, optionId]);
-    }
-  };
-
-  // Recalculer le prix quand les options changent
-  useEffect(() => {
-    if (productType === "simple" && selectedAccessories.length > 0 && accessoryOptions.length > 0) {
-      calculateTotalPrice();
-    }
-  }, [selectedOptions, accessoryOptions]);
 
   const handleQuantityChange = (accessoryId: string, quantity: number) => {
     setSelectedAccessories(
@@ -409,7 +372,6 @@ export const ShopProductFormDialog = ({
     setSelectedCategoryFilter("all");
     setSearchValue("");
     setAccessoryOptions([]);
-    setSelectedOptions([]);
   };
 
   return (
@@ -557,27 +519,18 @@ export const ShopProductFormDialog = ({
                   })}
                 </div>
 
-                {/* Options disponibles pour l'accessoire (produit simple uniquement) */}
+                {/* Affichage des options disponibles (information uniquement) */}
                 {productType === "simple" && accessoryOptions.length > 0 && (
                   <div className="mt-4">
-                    <Label className="mb-2 block">Options disponibles</Label>
-                    <div className="border rounded-md p-4 space-y-3">
+                    <Label className="mb-2 block">Options disponibles pour le client</Label>
+                    <div className="border rounded-md p-4 space-y-2 bg-muted/30">
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Le client pourra choisir ces options lors de l'achat
+                      </p>
                       {accessoryOptions.map((option) => (
-                        <div key={option.id} className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`option-${option.id}`}
-                              checked={selectedOptions.includes(option.id)}
-                              onCheckedChange={() => handleOptionToggle(option.id)}
-                            />
-                            <label
-                              htmlFor={`option-${option.id}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                            >
-                              {option.nom}
-                            </label>
-                          </div>
-                          <Badge variant="secondary">
+                        <div key={option.id} className="flex items-center justify-between text-sm">
+                          <span>{option.nom}</span>
+                          <Badge variant="outline">
                             +{option.prix_vente_ttc?.toFixed(2) || "0.00"} €
                           </Badge>
                         </div>
