@@ -92,15 +92,35 @@ export const ShoppingCartDialog = ({
                       </div>
 
                       {item.configuration && (
-                        <div className="text-sm text-muted-foreground">
-                          <p className="font-medium mb-1">Configuration:</p>
-                          <div className="space-y-1">
+                        <div className="text-sm space-y-2 p-2 rounded bg-muted/50">
+                          <p className="font-medium text-xs">Configuration:</p>
+                          <div className="space-y-2">
                             {item.configuration.items?.map((configItem: any, idx: number) => (
-                              <div key={idx} className="text-xs">
-                                • {configItem.accessoryName} x{configItem.quantity}
-                                {configItem.color && ` - ${configItem.color}`}
+                              <div key={idx} className="space-y-1 pb-2 border-b last:border-0 last:pb-0">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <p className="text-xs font-medium">
+                                      {configItem.accessoryName} x{configItem.quantity}
+                                    </p>
+                                    {configItem.color && (
+                                      <p className="text-xs text-muted-foreground">
+                                        Couleur: {configItem.color}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <span className="text-xs font-medium whitespace-nowrap ml-2">
+                                    {configItem.itemPrice?.toFixed(2)} €
+                                  </span>
+                                </div>
                                 {configItem.selectedOptions?.length > 0 && (
-                                  <span> (+ {configItem.selectedOptions.length} option{configItem.selectedOptions.length > 1 ? 's' : ''})</span>
+                                  <div className="ml-2 space-y-0.5">
+                                    {configItem.selectedOptions.map((opt: any, optIdx: number) => (
+                                      <div key={optIdx} className="flex justify-between text-xs text-muted-foreground">
+                                        <span>+ {opt.name}</span>
+                                        <span>+{opt.price?.toFixed(2)} €</span>
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
                               </div>
                             ))}
