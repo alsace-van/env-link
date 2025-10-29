@@ -238,7 +238,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       .order("created_at");
 
     if (!error && options) {
-      setAvailableOptions(options.map(opt => ({ id: opt.id, nom: opt.nom, prix: parseFloat(opt.prix.toString()) })));
+      setAvailableOptions(options.map(opt => ({ id: opt.id, nom: opt.nom, prix: parseFloat(opt.prix_vente_ttc.toString()) })));
     }
     
     toast.success("Article du catalogue sélectionné et informations copiées");

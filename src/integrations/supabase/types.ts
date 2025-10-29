@@ -119,22 +119,31 @@ export type Database = {
           accessory_id: string
           created_at: string
           id: string
+          marge_nette: number | null
+          marge_pourcent: number | null
           nom: string
-          prix: number
+          prix_reference: number | null
+          prix_vente_ttc: number | null
         }
         Insert: {
           accessory_id: string
           created_at?: string
           id?: string
+          marge_nette?: number | null
+          marge_pourcent?: number | null
           nom: string
-          prix?: number
+          prix_reference?: number | null
+          prix_vente_ttc?: number | null
         }
         Update: {
           accessory_id?: string
           created_at?: string
           id?: string
+          marge_nette?: number | null
+          marge_pourcent?: number | null
           nom?: string
-          prix?: number
+          prix_reference?: number | null
+          prix_vente_ttc?: number | null
         }
         Relationships: [
           {

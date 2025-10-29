@@ -33,7 +33,10 @@ interface Category {
 interface AccessoryOption {
   id: string;
   nom: string;
-  prix: number;
+  prix_vente_ttc: number;
+  prix_reference?: number;
+  marge_pourcent?: number;
+  marge_nette?: number;
 }
 
 interface Accessory {
@@ -274,7 +277,7 @@ const CustomKitConfigDialog = ({
     instance.selectedOptions.forEach((optionId) => {
       const option = accessory.options?.find((o) => o.id === optionId);
       if (option) {
-        price += option.prix;
+        price += option.prix_vente_ttc;
       }
     });
 
@@ -472,7 +475,7 @@ const CustomKitConfigDialog = ({
                                                     htmlFor={`${instance.id}-${option.id}`}
                                                     className="text-sm cursor-pointer flex-1"
                                                   >
-                                                    {option.nom} (+{option.prix.toFixed(2)} €)
+                                                    {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
                                                   </label>
                                                 </div>
                                               ))}

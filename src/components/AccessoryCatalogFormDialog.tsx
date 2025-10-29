@@ -71,7 +71,14 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   const [parentCategoryId, setParentCategoryId] = useState<string>("");
   
   // Options payantes
-  const [options, setOptions] = useState<Array<{ id?: string; nom: string; prix: string }>>([]);
+  const [options, setOptions] = useState<Array<{ 
+    id?: string; 
+    nom: string; 
+    prix_reference: string;
+    prix_vente_ttc: string;
+    marge_pourcent: string;
+    marge_nette: string;
+  }>>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   // Charger les catégories et options quand le dialogue s'ouvre
@@ -167,22 +174,74 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       .order("created_at");
 
     if (!error && data) {
-      setOptions(data.map(opt => ({ id: opt.id, nom: opt.nom, prix: opt.prix.toString() })));
+      setOptions(data.map(opt => ({ 
+        id: opt.id, 
+        nom: opt.nom, 
+        prix_reference: opt.prix_reference?.toString() ?? "",
+        prix_vente_ttc: opt.prix_vente_ttc?.toString() ?? "",
+        marge_pourcent: opt.marge_pourcent?.toString() ?? "",
+        marge_nette: opt.marge_nette?.toString() ?? "",
+      })));
     }
     setLoadingOptions(false);
   };
 
   const handleAddOption = () => {
-    setOptions([...options, { nom: "", prix: "" }]);
+    setOptions([...options, { 
+      nom: "", 
+      prix_reference: "",
+      prix_vente_ttc: "",
+      marge_pourcent: "",
+      marge_nette: "",
+    }]);
   };
 
   const handleRemoveOption = (index: number) => {
     setOptions(options.filter((_, i) => i !== index));
   };
 
-  const handleOptionChange = (index: number, field: "nom" | "prix", value: string) => {
+  const handleOptionChange = (index: number, field: "nom" | "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
     const newOptions = [...options];
     newOptions[index] = { ...newOptions[index], [field]: value };
+    setOptions(newOptions);
+  };
+
+  const handleOptionPricingChange = (index: number, field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
+    const newOptions = [...options];
+    const option = { ...newOptions[index], [field]: value };
+    const TVA = 1.20; // 20% TVA
+
+    // Déterminer quels champs sont remplis (non vides et non zéro)
+    const hasPrixReference = option.prix_reference && parseFloat(option.prix_reference) > 0;
+    const hasPrixVente = option.prix_vente_ttc && parseFloat(option.prix_vente_ttc) > 0;
+    const hasMarge = option.marge_pourcent && parseFloat(option.marge_pourcent) !== 0;
+
+    // Si on a 2 champs remplis, calculer le 3ème
+    if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
+      // Prix référence + Prix TTC remplis → calculer la marge
+      const prixReference = parseFloat(option.prix_reference);
+      const prixVenteTTC = parseFloat(option.prix_vente_ttc);
+      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
+      option.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
+      option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+    } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
+      // Prix TTC + Marge remplis → calculer le prix référence
+      const prixVenteTTC = parseFloat(option.prix_vente_ttc);
+      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
+      const margePourcent = parseFloat(option.marge_pourcent);
+      option.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
+      const prixReference = parseFloat(option.prix_reference);
+      option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+    } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
+      // Prix référence + Marge remplis → calculer le prix TTC
+      const prixReference = parseFloat(option.prix_reference);
+      const margePourcent = parseFloat(option.marge_pourcent);
+      const prixVenteHT = prixReference * (1 + margePourcent / 100);
+      option.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2); // Ajouter la TVA
+      option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+    }
+
+    newOptions[index] = option;
     setOptions(newOptions);
   };
 
@@ -378,14 +437,17 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
       // Ajouter ou mettre à jour les options
       for (const option of options) {
-        if (option.nom && option.prix) {
+        if (option.nom && option.prix_vente_ttc) {
           if (option.id) {
             // Mettre à jour l'option existante
             const { error: updateError } = await supabase
               .from("accessory_options")
               .update({
                 nom: option.nom,
-                prix: parseFloat(option.prix),
+                prix_reference: option.prix_reference ? parseFloat(option.prix_reference) : 0,
+                prix_vente_ttc: parseFloat(option.prix_vente_ttc),
+                marge_pourcent: option.marge_pourcent ? parseFloat(option.marge_pourcent) : 0,
+                marge_nette: option.marge_nette ? parseFloat(option.marge_nette) : 0,
               })
               .eq("id", option.id);
 
@@ -399,7 +461,10 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               .insert({
                 accessory_id: savedAccessoryId,
                 nom: option.nom,
-                prix: parseFloat(option.prix),
+                prix_reference: option.prix_reference ? parseFloat(option.prix_reference) : 0,
+                prix_vente_ttc: parseFloat(option.prix_vente_ttc),
+                marge_pourcent: option.marge_pourcent ? parseFloat(option.marge_pourcent) : 0,
+                marge_nette: option.marge_nette ? parseFloat(option.marge_nette) : 0,
               });
 
             if (insertError) {
@@ -804,43 +869,92 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             {loadingOptions ? (
               <p className="text-sm text-muted-foreground">Chargement...</p>
             ) : options.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-4">
                 {options.map((option, index) => (
-                  <div key={index} className="flex gap-2 items-end">
-                    <div className="flex-1 space-y-1">
-                      <Label htmlFor={`option-nom-${index}`} className="text-xs">
-                        Nom de l'option
-                      </Label>
-                      <Input
-                        id={`option-nom-${index}`}
-                        value={option.nom}
-                        onChange={(e) => handleOptionChange(index, "nom", e.target.value)}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        placeholder="Ex: Câble de 5m supplémentaire"
-                      />
+                  <div key={index} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex gap-2 items-start">
+                      <div className="flex-1 space-y-1">
+                        <Label htmlFor={`option-nom-${index}`} className="text-xs">
+                          Nom de l'option
+                        </Label>
+                        <Input
+                          id={`option-nom-${index}`}
+                          value={option.nom}
+                          onChange={(e) => handleOptionChange(index, "nom", e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="Ex: Câble de 5m supplémentaire"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveOption(index)}
+                        className="mt-5"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <div className="w-32 space-y-1">
-                      <Label htmlFor={`option-prix-${index}`} className="text-xs">
-                        Prix (€)
-                      </Label>
-                      <Input
-                        id={`option-prix-${index}`}
-                        type="number"
-                        step="0.01"
-                        value={option.prix}
-                        onChange={(e) => handleOptionChange(index, "prix", e.target.value)}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        placeholder="0.00"
-                      />
+                    
+                    <div className="grid grid-cols-4 gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor={`option-prix-ref-${index}`} className="text-xs">
+                          Prix achat HT (€)
+                        </Label>
+                        <Input
+                          id={`option-prix-ref-${index}`}
+                          type="number"
+                          step="0.01"
+                          value={option.prix_reference}
+                          onChange={(e) => handleOptionPricingChange(index, "prix_reference", e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`option-prix-vente-${index}`} className="text-xs">
+                          Prix vente TTC (€)
+                        </Label>
+                        <Input
+                          id={`option-prix-vente-${index}`}
+                          type="number"
+                          step="0.01"
+                          value={option.prix_vente_ttc}
+                          onChange={(e) => handleOptionPricingChange(index, "prix_vente_ttc", e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`option-marge-pct-${index}`} className="text-xs">
+                          Marge (%)
+                        </Label>
+                        <Input
+                          id={`option-marge-pct-${index}`}
+                          type="number"
+                          step="0.01"
+                          value={option.marge_pourcent}
+                          onChange={(e) => handleOptionPricingChange(index, "marge_pourcent", e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor={`option-marge-nette-${index}`} className="text-xs">
+                          Marge nette (€)
+                        </Label>
+                        <Input
+                          id={`option-marge-nette-${index}`}
+                          type="number"
+                          step="0.01"
+                          value={option.marge_nette}
+                          disabled
+                          onKeyDown={(e) => e.stopPropagation()}
+                          placeholder="0.00"
+                          className="bg-muted"
+                        />
+                      </div>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveOption(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
                   </div>
                 ))}
               </div>
