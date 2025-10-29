@@ -296,14 +296,14 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
             {filteredExpenses.map((expense) => (
               <Card key={expense.id} className="p-3">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-1">
+                  <div className="flex-1 space-y-1.5">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
                       <Badge variant="outline" className="text-xs">{expense.categorie}</Badge>
                       {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                     </div>
                     
-                    <div className="grid grid-cols-3 gap-x-4 text-xs text-muted-foreground">
+                    <div className="space-y-0.5 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
                         <div className="flex items-center gap-0.5">
@@ -343,6 +343,32 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                       {expense.date_achat && (
                         <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>
                       )}
+                      
+                      {expense.marge_pourcent !== undefined && (
+                        <div>Marge: {(() => {
+                          const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                          const totalAchat = expense.prix + optionsTotal;
+                          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+                          const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                          const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
+                          return marge.toFixed(2);
+                        })()} %</div>
+                      )}
+                      
+                      {expense.fournisseur && (
+                        <div>Fournisseur: {expense.fournisseur}</div>
+                      )}
+                      
+                      {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                        <div>
+                          <span className="font-medium">Options:</span>
+                          <ul className="ml-4 space-y-0.5">
+                            {expense.selectedOptions.map((opt, idx) => (
+                              <li key={idx}>• {opt.nom}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                     
                     {expense.notes && (
@@ -351,37 +377,12 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                   </div>
 
                   <div className="flex items-start gap-3">
-                    <div className="text-right space-y-0.5 min-w-[160px]">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Total achat</p>
-                        <p className="font-semibold text-sm">{(() => {
-                          const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                          return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
-                        })()} €</p>
-                      </div>
-                      {expense.marge_pourcent !== undefined && (
-                        <p className="text-xs text-muted-foreground">Marge: {(() => {
-                          const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                          const totalAchat = expense.prix + optionsTotal;
-                          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
-                          const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
-                          const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
-                          return marge.toFixed(2);
-                        })()} %</p>
-                      )}
-                      {expense.fournisseur && (
-                        <p className="text-xs text-muted-foreground">Fournisseur: {expense.fournisseur}</p>
-                      )}
-                      {expense.selectedOptions && expense.selectedOptions.length > 0 && (
-                        <div className="mt-1 pt-1 border-t">
-                          <p className="text-xs text-muted-foreground mb-0.5">Options:</p>
-                          <ul className="text-xs space-y-0.5">
-                            {expense.selectedOptions.map((opt, idx) => (
-                              <li key={idx}>• {opt.nom}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Total achat</p>
+                      <p className="font-semibold text-lg">{(() => {
+                        const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                        return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                      })()} €</p>
                     </div>
 
                     <div className="flex gap-1.5">
@@ -472,13 +473,13 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                     {groupedByCategory[category].map((expense) => (
                       <Card key={expense.id} className="p-3">
                         <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 space-y-1">
+                          <div className="flex-1 space-y-1.5">
                             <div className="flex items-center gap-2">
                               <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
                               {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
                             </div>
                             
-                            <div className="grid grid-cols-3 gap-x-4 text-xs text-muted-foreground">
+                            <div className="space-y-0.5 text-xs text-muted-foreground">
                               <div className="flex items-center gap-1">
                                 <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
                                 <div className="flex items-center gap-0.5">
@@ -518,6 +519,32 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                               {expense.date_achat && (
                                 <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>
                               )}
+                              
+                              {expense.marge_pourcent !== undefined && (
+                                <div>Marge: {(() => {
+                                  const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                                  const totalAchat = expense.prix + optionsTotal;
+                                  const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+                                  const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                                  const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
+                                  return marge.toFixed(2);
+                                })()} %</div>
+                              )}
+                              
+                              {expense.fournisseur && (
+                                <div>Fournisseur: {expense.fournisseur}</div>
+                              )}
+                              
+                              {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                                <div>
+                                  <span className="font-medium">Options:</span>
+                                  <ul className="ml-4 space-y-0.5">
+                                    {expense.selectedOptions.map((opt, idx) => (
+                                      <li key={idx}>• {opt.nom}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
                             
                             {expense.notes && (
@@ -526,37 +553,12 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                           </div>
 
                           <div className="flex items-start gap-3">
-                            <div className="text-right space-y-0.5 min-w-[160px]">
-                              <div>
-                                <p className="text-xs text-muted-foreground">Total achat</p>
-                                <p className="font-semibold text-sm">{(() => {
-                                  const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                                  return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
-                                })()} €</p>
-                              </div>
-                              {expense.marge_pourcent !== undefined && (
-                                <p className="text-xs text-muted-foreground">Marge: {(() => {
-                                  const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                                  const totalAchat = expense.prix + optionsTotal;
-                                  const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
-                                  const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
-                                  const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
-                                  return marge.toFixed(2);
-                                })()} %</p>
-                              )}
-                              {expense.fournisseur && (
-                                <p className="text-xs text-muted-foreground">Fournisseur: {expense.fournisseur}</p>
-                              )}
-                              {expense.selectedOptions && expense.selectedOptions.length > 0 && (
-                                <div className="mt-1 pt-1 border-t">
-                                  <p className="text-xs text-muted-foreground mb-0.5">Options:</p>
-                                  <ul className="text-xs space-y-0.5">
-                                    {expense.selectedOptions.map((opt, idx) => (
-                                      <li key={idx}>• {opt.nom}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">Total achat</p>
+                              <p className="font-semibold text-lg">{(() => {
+                                const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
+                                return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                              })()} €</p>
                             </div>
 
                             <div className="flex gap-1.5">
