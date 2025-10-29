@@ -170,7 +170,16 @@ export const ShopProductFormDialog = ({
   };
 
   const handleSubmit = async () => {
-    if (!name) {
+    // Pour les produits simples, utiliser le nom de l'accessoire
+    let productName = name;
+    if (productType === "simple" && selectedAccessories.length === 1) {
+      const selectedAcc = accessories.find(a => a.id === selectedAccessories[0].id);
+      if (selectedAcc) {
+        productName = selectedAcc.nom;
+      }
+    }
+
+    if (!productName && productType !== "simple") {
       toast.error("Veuillez remplir tous les champs obligatoires");
       return;
     }
@@ -212,7 +221,7 @@ export const ShopProductFormDialog = ({
         const { error: productError } = await supabase
           .from("shop_products")
           .update({
-            name,
+            name: productName,
             description,
             price: productType === "custom_kit" ? 0 : parseFloat(price),
             is_active: isActive,
@@ -252,7 +261,7 @@ export const ShopProductFormDialog = ({
           .from("shop_products")
           .insert({
             user_id: user.id,
-            name,
+            name: productName,
             description,
             type: productType,
             price: productType === "custom_kit" ? 0 : parseFloat(price),
@@ -354,15 +363,17 @@ export const ShopProductFormDialog = ({
             </p>
           </div>
 
-          <div>
-            <Label htmlFor="name">Nom du produit *</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Kit électrique complet"
-            />
-          </div>
+          {productType !== "simple" && (
+            <div>
+              <Label htmlFor="name">Nom du produit *</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex: Kit électrique complet"
+              />
+            </div>
+          )}
 
           <div>
             <Label htmlFor="description">Description</Label>
