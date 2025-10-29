@@ -13,6 +13,7 @@ import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
 import { ShoppingCartDialog } from "@/components/ShoppingCartDialog";
 import { ProductPricingDialog } from "@/components/ProductPricingDialog";
 import { KitAccessoryPricingDialog } from "@/components/KitAccessoryPricingDialog";
+import { SimpleProductDialog } from "@/components/SimpleProductDialog";
 import { useCart } from "@/hooks/useCart";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
@@ -38,6 +39,7 @@ const Shop = () => {
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedKitProduct, setSelectedKitProduct] = useState<ShopProduct | null>(null);
+  const [selectedSimpleProduct, setSelectedSimpleProduct] = useState<ShopProduct | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [pricingDialogProduct, setPricingDialogProduct] = useState<ShopProduct | null>(null);
   const [kitPricingProduct, setKitPricingProduct] = useState<ShopProduct | null>(null);
@@ -169,6 +171,21 @@ const Shop = () => {
     const success = await cart.addToCart(productId, price, 1);
     if (success) {
       cart.refresh();
+    }
+  };
+
+  const handleAddSimpleProductToCart = async (totalPrice: number, selectedOptions: string[]) => {
+    if (!selectedSimpleProduct) return;
+    const configuration = selectedOptions.length > 0 ? { options: selectedOptions } : undefined;
+    const success = await cart.addToCart(
+      selectedSimpleProduct.id,
+      totalPrice,
+      1,
+      configuration
+    );
+    if (success) {
+      cart.refresh();
+      setSelectedSimpleProduct(null);
     }
   };
 
@@ -429,6 +446,14 @@ const Shop = () => {
                                     <Settings className="h-4 w-4 mr-2" />
                                     Configurer
                                   </Button>
+                                ) : product.type === "simple" ? (
+                                  <Button
+                                    className="w-full"
+                                    onClick={() => setSelectedSimpleProduct(product)}
+                                  >
+                                    <ShoppingCart className="h-4 w-4 mr-2" />
+                                    Ajouter au panier
+                                  </Button>
                                 ) : (
                                   <Button
                                     className="w-full"
@@ -458,6 +483,17 @@ const Shop = () => {
           open={!!selectedKitProduct}
           onOpenChange={(open) => !open && setSelectedKitProduct(null)}
           onAddToCart={handleAddKitToCart}
+        />
+      )}
+
+      {selectedSimpleProduct && (
+        <SimpleProductDialog
+          open={!!selectedSimpleProduct}
+          onOpenChange={(open) => !open && setSelectedSimpleProduct(null)}
+          productId={selectedSimpleProduct.id}
+          productName={selectedSimpleProduct.name}
+          basePrice={getEffectivePrice(selectedSimpleProduct)}
+          onAddToCart={handleAddSimpleProductToCart}
         />
       )}
 

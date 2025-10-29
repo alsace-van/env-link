@@ -43,7 +43,7 @@ interface Accessory {
   id: string;
   nom: string;
   marque?: string;
-  prix_reference?: number;
+  prix_vente_ttc?: number;
   category_id?: string;
 }
 
@@ -93,7 +93,7 @@ export const ShopProductFormDialog = ({
   const loadAccessories = async () => {
     const { data, error } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_reference, category_id, categories(nom)")
+      .select("id, nom, marque, prix_vente_ttc, category_id, categories(nom)")
       .eq("available_in_shop", true)
       .order("nom");
 
@@ -178,8 +178,8 @@ export const ShopProductFormDialog = ({
         await loadAccessoryOptions(accessoryId);
         
         const accessory = accessories.find(a => a.id === accessoryId);
-        if (accessory && accessory.prix_reference) {
-          setPrice(accessory.prix_reference.toString());
+        if (accessory && accessory.prix_vente_ttc) {
+          setPrice(accessory.prix_vente_ttc.toString());
         }
       }
     }
