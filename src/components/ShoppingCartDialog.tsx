@@ -108,41 +108,50 @@ export const ShoppingCartDialog = ({
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              onUpdateQuantity(item.id, parseInt(e.target.value) || 1)
-                            }
-                            className="w-16 h-7 text-center"
-                            min="1"
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Prix unitaire:</span>
+                          <span className="text-sm font-medium">{item.price_at_addition.toFixed(2)} €</span>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm text-muted-foreground">
-                            {item.price_at_addition.toFixed(2)} € × {item.quantity}
-                          </p>
-                          <p className="font-semibold">
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Quantité:</span>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <Input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                onUpdateQuantity(item.id, parseInt(e.target.value) || 1)
+                              }
+                              className="w-16 h-7 text-center"
+                              min="1"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Sous-total:</span>
+                          <span className="text-lg font-bold text-primary">
                             {(item.price_at_addition * item.quantity).toFixed(2)} €
-                          </p>
+                          </span>
                         </div>
                       </div>
                     </div>
