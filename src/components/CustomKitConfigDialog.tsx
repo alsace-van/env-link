@@ -101,6 +101,7 @@ const CustomKitConfigDialog = ({
   const [allowedCategories, setAllowedCategories] = useState<Category[]>([]);
   const [accessoriesByCategory, setAccessoriesByCategory] = useState<Map<string, Accessory[]>>(new Map());
   const [categoryInstances, setCategoryInstances] = useState<CategoryInstance[]>([]);
+  const [accessoryTieredPricing, setAccessoryTieredPricing] = useState<Map<string, any[]>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -165,7 +166,7 @@ const CustomKitConfigDialog = ({
     // Charger les accessoires disponibles pour chaque catégorie
     const { data: accessoriesData, error: accessoriesError } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, puissance_watts, poids_kg, longueur_mm, largeur_mm, hauteur_mm")
+      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, puissance_watts, poids_kg, longueur_mm, largeur_mm, hauteur_mm, promo_active, promo_price, promo_start_date, promo_end_date")
       .in("category_id", categoryIds)
       .eq("available_in_shop", true);
 
@@ -206,6 +207,23 @@ const CustomKitConfigDialog = ({
     });
 
     setAccessoriesByCategory(accessoriesMap);
+
+    // Charger les prix dégressifs pour tous les accessoires
+    const { data: tieredPricingData } = await supabase
+      .from("accessory_tiered_pricing")
+      .select("accessory_id, article_position, discount_percent")
+      .in("accessory_id", accessoryIds)
+      .order("article_position");
+
+    const tieredPricingMap = new Map<string, any[]>();
+    (tieredPricingData || []).forEach((tier) => {
+      if (!tieredPricingMap.has(tier.accessory_id)) {
+        tieredPricingMap.set(tier.accessory_id, []);
+      }
+      tieredPricingMap.get(tier.accessory_id)!.push(tier);
+    });
+
+    setAccessoryTieredPricing(tieredPricingMap);
     setLoading(false);
   };
 
@@ -299,6 +317,24 @@ const CustomKitConfigDialog = ({
         optionsPrice += option.prix_vente_ttc;
       }
     });
+
+    // Appliquer les prix dégressifs si configurés
+    const tiers = accessoryTieredPricing.get(instance.accessoryId!) || [];
+    if (usePricing && tiers.length > 0) {
+      let totalPrice = 0;
+      for (let position = 1; position <= instance.quantity; position++) {
+        const applicableTier = [...tiers]
+          .reverse()
+          .find((tier) => position >= tier.article_position);
+        
+        let itemPrice = basePrice;
+        if (applicableTier) {
+          itemPrice = basePrice * (1 - applicableTier.discount_percent / 100);
+        }
+        totalPrice += itemPrice + optionsPrice;
+      }
+      return totalPrice;
+    }
 
     return (basePrice + optionsPrice) * instance.quantity;
   };
@@ -554,6 +590,55 @@ const CustomKitConfigDialog = ({
                                             </div>
                                           </div>
                                         )}
+
+                                        {/* Affichage des remises actives */}
+                                        {selectedAccessory && instance.accessoryId && (() => {
+                                          const tiers = accessoryTieredPricing.get(instance.accessoryId!) || [];
+                                          const applicableTier = [...tiers]
+                                            .reverse()
+                                            .find((tier) => instance.quantity >= tier.article_position);
+                                          const nextTier = tiers.find((tier) => tier.article_position > instance.quantity);
+
+                                          return (
+                                            <div className="space-y-2">
+                                              {applicableTier && (
+                                                <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/20 rounded-md">
+                                                  <TrendingDown className="h-4 w-4 text-green-600" />
+                                                  <span className="text-xs font-medium text-green-700 dark:text-green-400">
+                                                    Prix dégressif: -{applicableTier.discount_percent}% à partir de l'article {applicableTier.article_position}
+                                                  </span>
+                                                </div>
+                                              )}
+
+                                              {nextTier && (
+                                                <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                                                  <Tag className="h-4 w-4 text-blue-600" />
+                                                  <span className="text-xs text-blue-700 dark:text-blue-400">
+                                                    Achetez {nextTier.article_position - instance.quantity} de plus pour -{nextTier.discount_percent}%
+                                                  </span>
+                                                </div>
+                                              )}
+
+                                              {selectedAccessory.promo_active && selectedAccessory.promo_price && (() => {
+                                                const now = new Date();
+                                                const start = selectedAccessory.promo_start_date ? new Date(selectedAccessory.promo_start_date) : null;
+                                                const end = selectedAccessory.promo_end_date ? new Date(selectedAccessory.promo_end_date) : null;
+                                                
+                                                if ((!start || now >= start) && (!end || now <= end)) {
+                                                  return (
+                                                    <div className="flex items-center gap-2 p-2 bg-orange-500/10 border border-orange-500/20 rounded-md">
+                                                      <Tag className="h-4 w-4 text-orange-600" />
+                                                      <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
+                                                        PROMO: {selectedAccessory.promo_price.toFixed(2)} € (au lieu de {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €)
+                                                      </span>
+                                                    </div>
+                                                  );
+                                                }
+                                                return null;
+                                              })()}
+                                            </div>
+                                          );
+                                        })()}
 
                                         <div className="flex justify-between items-center pt-1.5 border-t">
                                           <span className="text-xs text-muted-foreground">Prix de cet article</span>

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, Plus, Minus, ShoppingBag, TrendingDown, Tag } from "lucide-react";
 import { CartItem } from "@/hooks/useCart";
 import { useTieredPricing } from "@/hooks/useTieredPricing";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ShoppingCartDialogProps {
   open: boolean;
@@ -49,6 +50,51 @@ export const ShoppingCartDialog = ({
     const nextTier = tieredPricing.getNextTier(item.quantity);
     const unitPrice = tieredPricing.calculatePrice(item.price_at_addition, item.quantity);
 
+    // State pour les prix dégressifs des accessoires dans les kits
+    const [accessoryTieredPricing, setAccessoryTieredPricing] = useState<Map<string, any[]>>(new Map());
+
+    useEffect(() => {
+      if (item.configuration?.items) {
+        loadAccessoryTieredPricing();
+      }
+    }, [item.configuration]);
+
+    const loadAccessoryTieredPricing = async () => {
+      if (!item.configuration?.items) return;
+
+      const accessoryIds = item.configuration.items
+        .map((configItem: any) => configItem.accessoryId)
+        .filter(Boolean);
+
+      if (accessoryIds.length === 0) return;
+
+      const { data } = await supabase
+        .from("accessory_tiered_pricing")
+        .select("accessory_id, article_position, discount_percent")
+        .in("accessory_id", accessoryIds);
+
+      const tieredMap = new Map<string, any[]>();
+      (data || []).forEach((tier) => {
+        if (!tieredMap.has(tier.accessory_id)) {
+          tieredMap.set(tier.accessory_id, []);
+        }
+        tieredMap.get(tier.accessory_id)!.push(tier);
+      });
+
+      setAccessoryTieredPricing(tieredMap);
+    };
+
+    const getAccessoryDiscountInfo = (accessoryId: string, quantity: number) => {
+      const tiers = accessoryTieredPricing.get(accessoryId) || [];
+      if (tiers.length === 0) return null;
+
+      const applicableTier = [...tiers]
+        .reverse()
+        .find((tier) => quantity >= tier.article_position);
+
+      return applicableTier;
+    };
+
     return (
       <div className="flex gap-4 p-4 rounded-lg border bg-card">
         <div className="flex-1 space-y-2">
@@ -75,35 +121,47 @@ export const ShoppingCartDialog = ({
             <div className="text-sm space-y-2 p-2 rounded bg-muted/50">
               <p className="font-medium text-xs">Configuration:</p>
               <div className="space-y-2">
-                {item.configuration.items?.map((configItem: any, idx: number) => (
-                  <div key={idx} className="space-y-1 pb-2 border-b last:border-0 last:pb-0">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <p className="text-xs font-medium">
-                          {configItem.accessoryName} x{configItem.quantity}
-                        </p>
-                        {configItem.color && (
-                          <p className="text-xs text-muted-foreground">
-                            Couleur: {configItem.color}
+                {item.configuration.items?.map((configItem: any, idx: number) => {
+                  const discountInfo = getAccessoryDiscountInfo(configItem.accessoryId, configItem.quantity);
+                  
+                  return (
+                    <div key={idx} className="space-y-1 pb-2 border-b last:border-0 last:pb-0">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="text-xs font-medium">
+                            {configItem.accessoryName} x{configItem.quantity}
                           </p>
-                        )}
+                          {configItem.color && (
+                            <p className="text-xs text-muted-foreground">
+                              Couleur: {configItem.color}
+                            </p>
+                          )}
+                          {discountInfo && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <TrendingDown className="h-3 w-3 text-green-600" />
+                              <span className="text-xs text-green-700 dark:text-green-400">
+                                -{discountInfo.discount_percent}% à partir du {discountInfo.article_position}ème
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-xs font-medium whitespace-nowrap ml-2">
+                          {configItem.itemPrice?.toFixed(2)} €
+                        </span>
                       </div>
-                      <span className="text-xs font-medium whitespace-nowrap ml-2">
-                        {configItem.itemPrice?.toFixed(2)} €
-                      </span>
+                      {configItem.selectedOptions?.length > 0 && (
+                        <div className="ml-2 space-y-0.5">
+                          {configItem.selectedOptions.map((opt: any, optIdx: number) => (
+                            <div key={optIdx} className="flex justify-between text-xs text-muted-foreground">
+                              <span>+ {opt.name}</span>
+                              <span>+{opt.price?.toFixed(2)} €</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    {configItem.selectedOptions?.length > 0 && (
-                      <div className="ml-2 space-y-0.5">
-                        {configItem.selectedOptions.map((opt: any, optIdx: number) => (
-                          <div key={optIdx} className="flex justify-between text-xs text-muted-foreground">
-                            <span>+ {opt.name}</span>
-                            <span>+{opt.price?.toFixed(2)} €</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
