@@ -17,6 +17,7 @@ import {
   ArrowUp,
   ArrowDown,
   Save,
+  X,
 } from "lucide-react";
 import * as THREE from "three";
 import { toast } from "sonner";
@@ -1096,6 +1097,18 @@ export const Layout3DView = ({
     }
   }, [moveMode]);
 
+  // Gérer la touche Échap pour sortir du plein écran
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen]);
+
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
       if (measureMode) {
@@ -1230,6 +1243,17 @@ export const Layout3DView = ({
       )}
 
       <div className={isFullscreen ? "fixed inset-0 z-50 bg-background" : ""}>
+        {isFullscreen && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsFullscreen(false)}
+            className="absolute top-4 right-4 z-50 h-10 w-10 rounded-full bg-background/80 hover:bg-background shadow-lg"
+            title="Sortir du plein écran (Échap)"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        )}
         <div className={isFullscreen ? "h-screen" : "h-[600px]"}>
           <Canvas
             key={cameraKey}
