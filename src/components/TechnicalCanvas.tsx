@@ -51,6 +51,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
   const [textInputPosition, setTextInputPosition] = useState({ x: 0, y: 0 });
   const [editingTextItem, setEditingTextItem] = useState<any | null>(null);
   const [schemaId, setSchemaId] = useState<string | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 1200, height: 800 });
 
   // Refs pour éviter la réinitialisation du canvas
   const activeToolRef = useRef(activeTool);
@@ -83,6 +84,24 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isEditingText]);
 
+  // Ajuster la taille du canvas à la taille de l'écran
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.clientWidth;
+        const containerHeight = Math.min(window.innerHeight - 300, containerWidth * 0.6); // Ratio 16:10 max
+        setCanvasSize({
+          width: Math.max(800, containerWidth - 32), // Min 800px, -32px pour le padding
+          height: Math.max(500, containerHeight)
+        });
+      }
+    };
+
+    updateCanvasSize();
+    window.addEventListener('resize', updateCanvasSize);
+    return () => window.removeEventListener('resize', updateCanvasSize);
+  }, []);
+
   useEffect(() => {
     if (!canvasRef.current) return;
 
@@ -92,7 +111,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
     paperScopeRef.current = scope;
 
     // Redimensionner le view pour correspondre au canvas
-    scope.view.viewSize = new scope.Size(canvasRef.current.width, canvasRef.current.height);
+    scope.view.viewSize = new scope.Size(canvasSize.width, canvasSize.height);
 
     console.log("Paper.js initialized", scope.project, "Schema:", schemaNumber);
 
@@ -504,7 +523,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
     return () => {
       tool.remove();
     };
-  }, [projectId, schemaNumber]);
+  }, [projectId, schemaNumber, canvasSize]); // Ajouter canvasSize pour recréer le canvas quand la taille change
 
   const handleTextSubmit = () => {
     if (!textInputRef.current || !paperScopeRef.current) return;
@@ -866,7 +885,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
             autoFocus
           />
         )}
-        <canvas ref={canvasRef} width={1200} height={800} style={{ display: "block" }} />
+        <canvas ref={canvasRef} width={canvasSize.width} height={canvasSize.height} className="w-full" style={{ display: "block" }} />
       </div>
     </div>
   );
