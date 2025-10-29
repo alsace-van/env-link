@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList, ChevronDown, ChevronRight, Store } from "lucide-react";
+import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList, ChevronDown, ChevronRight, Store, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import {
   AlertDialog,
@@ -29,6 +30,15 @@ interface Category {
   user_id: string;
 }
 
+interface AccessoryOption {
+  id: string;
+  nom: string;
+  prix_reference?: number;
+  prix_vente_ttc?: number;
+  marge_pourcent?: number;
+  marge_nette?: number;
+}
+
 interface Accessory {
   id: string;
   nom: string;
@@ -49,6 +59,7 @@ interface Accessory {
   intensite_amperes?: number;
   available_in_shop?: boolean;
   categories?: Category;
+  accessory_options?: AccessoryOption[];
 }
 
 const AccessoriesCatalogView = () => {
@@ -69,6 +80,7 @@ const AccessoriesCatalogView = () => {
   });
   const [expandedMainCategories, setExpandedMainCategories] = useState<Set<string>>(new Set());
   const [expandedSubCategories, setExpandedSubCategories] = useState<Set<string>>(new Set());
+  const [expandedOptions, setExpandedOptions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadAccessories();
@@ -183,7 +195,7 @@ const AccessoriesCatalogView = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("accessories_catalog")
-      .select("*, categories!accessories_catalog_category_id_fkey(*)")
+      .select("*, categories!accessories_catalog_category_id_fkey(*), accessory_options(*)")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -403,7 +415,15 @@ const AccessoriesCatalogView = () => {
                       <div className="flex items-center gap-4">
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
                           <div className="md:col-span-2">
-                            <div className="font-semibold">{accessory.nom}</div>
+                            <div className="font-semibold flex items-center gap-2">
+                              {accessory.nom}
+                              {accessory.accessory_options && accessory.accessory_options.length > 0 && (
+                                <Badge variant="outline" className="text-xs">
+                                  <Package className="h-3 w-3 mr-1" />
+                                  {accessory.accessory_options.length}
+                                </Badge>
+                              )}
+                            </div>
                             {accessory.marque && (
                               <div className="text-sm text-muted-foreground">{accessory.marque}</div>
                             )}
@@ -472,6 +492,64 @@ const AccessoriesCatalogView = () => {
                           </Button>
                         </div>
                       </div>
+                      
+                      {/* Options collapsible */}
+                      {accessory.accessory_options && accessory.accessory_options.length > 0 && (
+                        <Collapsible
+                          open={expandedOptions.has(accessory.id)}
+                          onOpenChange={() => {
+                            setExpandedOptions(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(accessory.id)) {
+                                newSet.delete(accessory.id);
+                              } else {
+                                newSet.add(accessory.id);
+                              }
+                              return newSet;
+                            });
+                          }}
+                          className="mt-3"
+                        >
+                          <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                            {expandedOptions.has(accessory.id) ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                            <Package className="h-4 w-4" />
+                            Voir les options ({accessory.accessory_options.length})
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2">
+                            <div className="bg-muted/30 rounded-md p-3 space-y-2">
+                              {accessory.accessory_options.map((option) => (
+                                <div key={option.id} className="flex items-center justify-between text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                                  <span className="font-medium">{option.nom}</span>
+                                  <div className="flex gap-4 text-xs">
+                                    {option.prix_reference !== null && option.prix_reference !== undefined && (
+                                      <span>
+                                        <span className="text-muted-foreground">Achat: </span>
+                                        {option.prix_reference.toFixed(2)} €
+                                      </span>
+                                    )}
+                                    {option.marge_pourcent !== null && option.marge_pourcent !== undefined && (
+                                      <span>
+                                        <span className="text-muted-foreground">Marge: </span>
+                                        {option.marge_pourcent.toFixed(1)} %
+                                      </span>
+                                    )}
+                                    {option.prix_vente_ttc !== null && option.prix_vente_ttc !== undefined && (
+                                      <span>
+                                        <span className="text-muted-foreground">Vente: </span>
+                                        {option.prix_vente_ttc.toFixed(2)} €
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      )}
                     </CardContent>
                   </Card>
                               ))}
@@ -533,8 +611,14 @@ const AccessoriesCatalogView = () => {
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <CardTitle className="text-lg mb-2">
+                          <CardTitle className="text-lg mb-2 flex items-center gap-2">
                             {accessory.nom}
+                            {accessory.accessory_options && accessory.accessory_options.length > 0 && (
+                              <Badge variant="outline" className="text-xs">
+                                <Package className="h-3 w-3 mr-1" />
+                                {accessory.accessory_options.length}
+                              </Badge>
+                            )}
                           </CardTitle>
                           {accessory.marque && (
                             <p className="text-sm text-muted-foreground mb-2">
@@ -633,6 +717,55 @@ const AccessoriesCatalogView = () => {
                               Voir le produit
                             </a>
                           </div>
+                        )}
+                        
+                        {/* Options collapsible */}
+                        {accessory.accessory_options && accessory.accessory_options.length > 0 && (
+                          <Collapsible
+                            open={expandedOptions.has(accessory.id)}
+                            onOpenChange={() => {
+                              setExpandedOptions(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(accessory.id)) {
+                                  newSet.delete(accessory.id);
+                                } else {
+                                  newSet.add(accessory.id);
+                                }
+                                return newSet;
+                              });
+                            }}
+                            className="pt-3 border-t"
+                          >
+                            <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
+                              {expandedOptions.has(accessory.id) ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                              <Package className="h-4 w-4" />
+                              Options ({accessory.accessory_options.length})
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="mt-2">
+                              <div className="bg-muted/30 rounded-md p-2 space-y-1.5">
+                                {accessory.accessory_options.map((option) => (
+                                  <div key={option.id} className="text-xs space-y-0.5 border-b border-border/50 pb-1.5 last:border-0 last:pb-0">
+                                    <div className="font-medium">{option.nom}</div>
+                                    <div className="flex gap-3 text-muted-foreground">
+                                      {option.prix_reference !== null && option.prix_reference !== undefined && (
+                                        <span>Achat: {option.prix_reference.toFixed(2)} €</span>
+                                      )}
+                                      {option.marge_pourcent !== null && option.marge_pourcent !== undefined && (
+                                        <span>Marge: {option.marge_pourcent.toFixed(1)} %</span>
+                                      )}
+                                      {option.prix_vente_ttc !== null && option.prix_vente_ttc !== undefined && (
+                                        <span>Vente: {option.prix_vente_ttc.toFixed(2)} €</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
                         )}
                       </div>
                     </CardContent>
