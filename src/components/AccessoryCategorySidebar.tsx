@@ -36,6 +36,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParentId, setNewCategoryParentId] = useState<string | null>(null);
   const [newSubCategoryName, setNewSubCategoryName] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showAddRoot, setShowAddRoot] = useState(false);
@@ -72,7 +73,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
 
     const { error } = await supabase.from("categories").insert({
       nom: newCategoryName.trim(),
-      parent_id: null,
+      parent_id: newCategoryParentId,
       user_id: user.id,
     });
 
@@ -82,8 +83,13 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
     } else {
       toast.success("Catégorie ajoutée");
       setNewCategoryName("");
+      setNewCategoryParentId(null);
       setShowAddRoot(false);
       loadCategories();
+      // Si on a ajouté une sous-catégorie, expand le parent
+      if (newCategoryParentId) {
+        setExpandedCategories((prev) => new Set(prev).add(newCategoryParentId));
+      }
     }
   };
 
@@ -430,9 +436,9 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
       <CardContent className="p-0 flex flex-col h-[calc(100%-5rem)]">
         <div className="px-4 pb-3 border-b">
           {showAddRoot ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2">
               <Input
-                placeholder="Nouvelle catégorie"
+                placeholder="Nom de la catégorie"
                 value={newCategoryName}
                 onChange={(e) => {
                   e.stopPropagation();
@@ -447,6 +453,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                     e.preventDefault();
                     setShowAddRoot(false);
                     setNewCategoryName("");
+                    setNewCategoryParentId(null);
                   }
                 }}
                 onClick={(e) => e.stopPropagation()}
@@ -454,21 +461,43 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
                 autoFocus
                 autoComplete="off"
               />
-              <Button size="sm" onClick={handleAddRootCategory} className="h-8 w-8 p-0" title="Ajouter">
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setShowAddRoot(false);
-                  setNewCategoryName("");
-                }}
-                className="h-8 w-8 p-0"
-                title="Annuler"
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Parent:</span>
+                <Select
+                  value={newCategoryParentId || "root"}
+                  onValueChange={(value) => setNewCategoryParentId(value === "root" ? null : value)}
+                >
+                  <SelectTrigger className="h-8 text-sm flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="root">Racine</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={handleAddRootCategory} className="h-8 flex-1" title="Ajouter">
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setShowAddRoot(false);
+                    setNewCategoryName("");
+                    setNewCategoryParentId(null);
+                  }}
+                  className="h-8 flex-1"
+                  title="Annuler"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ) : (
             <Button variant="outline" size="sm" onClick={() => setShowAddRoot(true)} className="w-full">
