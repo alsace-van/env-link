@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import ProjectsList from "@/components/ProjectsList";
 import ProjectForm from "@/components/ProjectForm";
 import UserMenu from "@/components/UserMenu";
+import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import logo from "@/assets/logo.png";
 
 const Dashboard = () => {
@@ -74,7 +75,12 @@ const Dashboard = () => {
             />
           </div>
           <div className="flex items-center gap-2">
-            {user && <UserMenu user={user} />}
+            {user && (
+              <>
+                <AdminMessagesNotification />
+                <UserMenu user={user} />
+              </>
+            )}
           </div>
         </div>
       </header>
