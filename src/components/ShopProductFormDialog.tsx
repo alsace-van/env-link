@@ -375,70 +375,6 @@ export const ShopProductFormDialog = ({
             </p>
           </div>
 
-          {productType !== "simple" && (
-            <div>
-              <Label htmlFor="name">Nom du produit *</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ex: Kit électrique complet"
-              />
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Description du produit..."
-              rows={3}
-            />
-          </div>
-
-          {productType !== "custom_kit" && (
-            <div>
-              <Label htmlFor="price">Prix TTC (€) *</Label>
-              <Input
-                id="price"
-                type="number"
-                step="0.01"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="0.00"
-              />
-            </div>
-          )}
-
-          {productType === "custom_kit" && (
-            <div>
-              <Label>Catégories d'accessoires disponibles dans le kit *</Label>
-              <p className="text-xs text-muted-foreground mb-2">
-                Le client pourra composer son kit en choisissant des accessoires parmi ces catégories. 
-                Le prix sera calculé automatiquement.
-              </p>
-              <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                {categories.map((cat) => (
-                  <div key={cat.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      checked={selectedCategories.includes(cat.id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedCategories([...selectedCategories, cat.id]);
-                        } else {
-                          setSelectedCategories(selectedCategories.filter(id => id !== cat.id));
-                        }
-                      }}
-                    />
-                    <span className="text-sm">{cat.nom}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {(productType === "simple" || productType === "composed") && (
             <div>
               <Label>
@@ -525,6 +461,70 @@ export const ShopProductFormDialog = ({
                     </Card>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {productType !== "simple" && (
+            <div>
+              <Label htmlFor="name">Nom du produit *</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex: Kit électrique complet"
+              />
+            </div>
+          )}
+
+          <div>
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Description du produit..."
+              rows={3}
+            />
+          </div>
+
+          {productType !== "custom_kit" && (
+            <div>
+              <Label htmlFor="price">Prix TTC (€) *</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+          )}
+
+          {productType === "custom_kit" && (
+            <div>
+              <Label>Catégories d'accessoires disponibles dans le kit *</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Le client pourra composer son kit en choisissant des accessoires parmi ces catégories. 
+                Le prix sera calculé automatiquement.
+              </p>
+              <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
+                {categories.map((cat) => (
+                  <div key={cat.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      checked={selectedCategories.includes(cat.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedCategories([...selectedCategories, cat.id]);
+                        } else {
+                          setSelectedCategories(selectedCategories.filter(id => id !== cat.id));
+                        }
+                      }}
+                    />
+                    <span className="text-sm">{cat.nom}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
