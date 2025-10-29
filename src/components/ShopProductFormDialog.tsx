@@ -179,9 +179,25 @@ export const ShopProductFormDialog = ({
       }
     }
 
-    if (!productName && productType !== "simple") {
-      toast.error("Veuillez remplir tous les champs obligatoires");
-      return;
+    // Validation du nom du produit
+    if (productType === "simple") {
+      // Pour un produit simple, vérifier qu'un accessoire est sélectionné
+      if (selectedAccessories.length !== 1) {
+        toast.error("Un produit simple doit contenir exactement un accessoire");
+        return;
+      }
+      // Vérifier que le nom peut être récupéré
+      const selectedAcc = accessories.find(a => a.id === selectedAccessories[0].id);
+      if (!selectedAcc) {
+        toast.error("Erreur lors de la récupération de l'accessoire");
+        return;
+      }
+    } else {
+      // Pour les autres types, le nom est obligatoire
+      if (!productName) {
+        toast.error("Veuillez remplir tous les champs obligatoires");
+        return;
+      }
     }
 
     if (productType !== "custom_kit" && !price) {
@@ -189,10 +205,6 @@ export const ShopProductFormDialog = ({
       return;
     }
 
-    if (productType === "simple" && selectedAccessories.length !== 1) {
-      toast.error("Un produit simple doit contenir exactement un accessoire");
-      return;
-    }
 
     if (productType === "composed" && selectedAccessories.length === 0) {
       toast.error("Un produit composé doit contenir au moins un accessoire");
