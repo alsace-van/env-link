@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye, Settings } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye, Settings, ShoppingBag } from "lucide-react";
 import UserMenu from "@/components/UserMenu";
 import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
 import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
+import { ShoppingCartDialog } from "@/components/ShoppingCartDialog";
+import { useCart } from "@/hooks/useCart";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 
@@ -30,6 +32,9 @@ const Shop = () => {
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedKitProduct, setSelectedKitProduct] = useState<ShopProduct | null>(null);
+  const [cartOpen, setCartOpen] = useState(false);
+  
+  const cart = useCart(user?.id);
 
   useEffect(() => {
     loadUser();
@@ -129,6 +134,31 @@ const Shop = () => {
     }
   };
 
+  const handleAddToCart = async (productId: string, price: number) => {
+    const success = await cart.addToCart(productId, price, 1);
+    if (success) {
+      cart.refresh();
+    }
+  };
+
+  const handleAddKitToCart = async (configuration: any, totalPrice: number) => {
+    if (!selectedKitProduct) return;
+    const success = await cart.addToCart(
+      selectedKitProduct.id,
+      totalPrice,
+      1,
+      configuration
+    );
+    if (success) {
+      cart.refresh();
+    }
+  };
+
+  const handleCheckout = () => {
+    toast.info("Fonctionnalité de paiement à venir");
+    // TODO: Intégrer Stripe
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-background">
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
@@ -151,6 +181,23 @@ const Shop = () => {
             </div>
             {user && (
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCartOpen(true)}
+                  className="relative"
+                >
+                  <ShoppingBag className="h-4 w-4 mr-2" />
+                  Panier
+                  {cart.getTotalItems() > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                    >
+                      {cart.getTotalItems()}
+                    </Badge>
+                  )}
+                </Button>
                 <UserMenu user={user} />
               </div>
             )}
@@ -299,21 +346,31 @@ const Shop = () => {
                              )}
                            </CardHeader>
                            <CardContent>
-                             <div className="flex items-end justify-between">
-                               <div className="text-2xl font-bold text-primary">
-                                 {product.price.toFixed(2)} €
-                               </div>
-                               {product.type === "custom_kit" && (
-                                 <Button
-                                   size="sm"
-                                   onClick={() => setSelectedKitProduct(product)}
-                                 >
-                                   <Settings className="h-4 w-4 mr-2" />
-                                   Configurer
-                                 </Button>
-                               )}
-                             </div>
-                           </CardContent>
+                              <div className="space-y-2">
+                                <div className="flex items-end justify-between">
+                                  <div className="text-2xl font-bold text-primary">
+                                    {product.price.toFixed(2)} €
+                                  </div>
+                                </div>
+                                {product.type === "custom_kit" ? (
+                                  <Button
+                                    className="w-full"
+                                    onClick={() => setSelectedKitProduct(product)}
+                                  >
+                                    <Settings className="h-4 w-4 mr-2" />
+                                    Configurer
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    className="w-full"
+                                    onClick={() => handleAddToCart(product.id, product.price)}
+                                  >
+                                    <ShoppingCart className="h-4 w-4 mr-2" />
+                                    Ajouter au panier
+                                  </Button>
+                                )}
+                              </div>
+                            </CardContent>
                         </Card>
                       ))}
                   </div>
@@ -331,8 +388,20 @@ const Shop = () => {
           basePrice={selectedKitProduct.price}
           open={!!selectedKitProduct}
           onOpenChange={(open) => !open && setSelectedKitProduct(null)}
+          onAddToCart={handleAddKitToCart}
         />
       )}
+
+      <ShoppingCartDialog
+        open={cartOpen}
+        onOpenChange={setCartOpen}
+        cartItems={cart.cartItems}
+        totalPrice={cart.getTotalPrice()}
+        onUpdateQuantity={cart.updateQuantity}
+        onRemoveItem={cart.removeFromCart}
+        onClearCart={cart.clearCart}
+        onCheckout={handleCheckout}
+      />
     </div>
   );
 };

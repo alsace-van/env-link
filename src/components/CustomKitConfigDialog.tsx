@@ -71,6 +71,7 @@ interface CustomKitConfigDialogProps {
   basePrice: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAddToCart?: (configuration: any, totalPrice: number) => void;
 }
 
 const AVAILABLE_COLORS = [
@@ -90,6 +91,7 @@ const CustomKitConfigDialog = ({
   basePrice,
   open,
   onOpenChange,
+  onAddToCart,
 }: CustomKitConfigDialogProps) => {
   const [allowedCategories, setAllowedCategories] = useState<Category[]>([]);
   const [accessoriesByCategory, setAccessoriesByCategory] = useState<Map<string, Accessory[]>>(new Map());
@@ -303,8 +305,38 @@ const CustomKitConfigDialog = ({
       toast.error("Configurez au moins un accessoire dans le kit");
       return;
     }
-    // TODO: Implémenter l'ajout au panier
-    toast.success("Fonctionnalité panier à venir");
+
+    // Préparer la configuration pour le panier
+    const configuration = {
+      items: configuredInstances.map(inst => {
+        const accessory = getAccessoryById(inst.categoryId, inst.accessoryId!);
+        const selectedOptionsDetails = inst.selectedOptions.map(optId => {
+          const option = accessory?.options?.find(o => o.id === optId);
+          return {
+            id: optId,
+            name: option?.nom,
+            price: option?.prix_vente_ttc
+          };
+        });
+
+        return {
+          categoryName: inst.categoryName,
+          accessoryId: inst.accessoryId,
+          accessoryName: accessory?.nom,
+          quantity: inst.quantity,
+          color: inst.color,
+          selectedOptions: selectedOptionsDetails,
+          itemPrice: calculateInstancePrice(inst)
+        };
+      })
+    };
+
+    const totalPrice = calculateTotalPrice();
+
+    if (onAddToCart) {
+      onAddToCart(configuration, totalPrice);
+    }
+    
     onOpenChange(false);
   };
 
