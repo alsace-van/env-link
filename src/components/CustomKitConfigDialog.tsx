@@ -12,11 +12,33 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ChevronDown, Plus, Trash2, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 interface Category {
   id: string;
   nom: string;
+}
+
+interface AccessoryOption {
+  id: string;
+  nom: string;
+  prix: number;
 }
 
 interface Accessory {
@@ -25,6 +47,17 @@ interface Accessory {
   marque?: string;
   prix_vente_ttc?: number;
   category_id: string;
+  description?: string;
+  options?: AccessoryOption[];
+}
+
+interface SelectedAccessoryItem {
+  id: string;
+  accessoryId: string;
+  categoryId: string;
+  quantity: number;
+  color?: string;
+  selectedOptions: string[];
 }
 
 interface CustomKitConfigDialogProps {
@@ -35,6 +68,17 @@ interface CustomKitConfigDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const AVAILABLE_COLORS = [
+  { value: "noir", label: "Noir" },
+  { value: "blanc", label: "Blanc" },
+  { value: "gris", label: "Gris" },
+  { value: "rouge", label: "Rouge" },
+  { value: "bleu", label: "Bleu" },
+  { value: "vert", label: "Vert" },
+  { value: "jaune", label: "Jaune" },
+  { value: "orange", label: "Orange" },
+];
+
 const CustomKitConfigDialog = ({
   productId,
   productName,
@@ -44,12 +88,17 @@ const CustomKitConfigDialog = ({
 }: CustomKitConfigDialogProps) => {
   const [allowedCategories, setAllowedCategories] = useState<Category[]>([]);
   const [accessoriesByCategory, setAccessoriesByCategory] = useState<Map<string, Accessory[]>>(new Map());
-  const [selectedAccessories, setSelectedAccessories] = useState<Map<string, string>>(new Map());
+  const [selectedItems, setSelectedItems] = useState<SelectedAccessoryItem[]>([]);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (open) {
       loadKitConfiguration();
+    } else {
+      // Reset when closing
+      setSelectedItems([]);
+      setExpandedCategories(new Set());
     }
   }, [open, productId]);
 
@@ -96,7 +145,7 @@ const CustomKitConfigDialog = ({
     // Charger les accessoires disponibles pour chaque catégorie
     const { data: accessoriesData, error: accessoriesError } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, category_id")
+      .select("id, nom, marque, prix_vente_ttc, category_id, description")
       .in("category_id", categoryIds)
       .eq("available_in_shop", true);
 
@@ -107,64 +156,157 @@ const CustomKitConfigDialog = ({
       return;
     }
 
-    // Regrouper les accessoires par catégorie
+    // Charger les options pour tous les accessoires
+    const accessoryIds = (accessoriesData || []).map(a => a.id);
+    const { data: optionsData } = await supabase
+      .from("accessory_options")
+      .select("*")
+      .in("accessory_id", accessoryIds);
+
+    // Regrouper les options par accessoire
+    const optionsByAccessory = new Map<string, AccessoryOption[]>();
+    (optionsData || []).forEach((option) => {
+      if (!optionsByAccessory.has(option.accessory_id)) {
+        optionsByAccessory.set(option.accessory_id, []);
+      }
+      optionsByAccessory.get(option.accessory_id)!.push(option);
+    });
+
+    // Regrouper les accessoires par catégorie avec leurs options
     const accessoriesMap = new Map<string, Accessory[]>();
     (accessoriesData || []).forEach((accessory) => {
       const categoryId = accessory.category_id;
       if (!accessoriesMap.has(categoryId)) {
         accessoriesMap.set(categoryId, []);
       }
-      accessoriesMap.get(categoryId)!.push(accessory);
+      accessoriesMap.get(categoryId)!.push({
+        ...accessory,
+        options: optionsByAccessory.get(accessory.id) || [],
+      });
     });
 
     setAccessoriesByCategory(accessoriesMap);
+    
+    // Ouvrir toutes les catégories par défaut
+    setExpandedCategories(new Set(categoryIds));
     setLoading(false);
   };
 
-  const handleSelectAccessory = (categoryId: string, accessoryId: string) => {
-    setSelectedAccessories((prev) => {
-      const newMap = new Map(prev);
-      if (newMap.get(categoryId) === accessoryId) {
-        newMap.delete(categoryId);
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId);
       } else {
-        newMap.set(categoryId, accessoryId);
+        newSet.add(categoryId);
       }
-      return newMap;
+      return newSet;
     });
+  };
+
+  const addAccessoryToKit = (categoryId: string, accessoryId: string) => {
+    const newItem: SelectedAccessoryItem = {
+      id: `${Date.now()}-${Math.random()}`,
+      accessoryId,
+      categoryId,
+      quantity: 1,
+      selectedOptions: [],
+    };
+    setSelectedItems((prev) => [...prev, newItem]);
+  };
+
+  const duplicateItem = (itemId: string) => {
+    const item = selectedItems.find((i) => i.id === itemId);
+    if (item) {
+      const newItem: SelectedAccessoryItem = {
+        ...item,
+        id: `${Date.now()}-${Math.random()}`,
+      };
+      setSelectedItems((prev) => [...prev, newItem]);
+    }
+  };
+
+  const removeItem = (itemId: string) => {
+    setSelectedItems((prev) => prev.filter((item) => item.id !== itemId));
+  };
+
+  const updateItemQuantity = (itemId: string, quantity: number) => {
+    if (quantity < 1) return;
+    setSelectedItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, quantity } : item))
+    );
+  };
+
+  const updateItemColor = (itemId: string, color: string) => {
+    setSelectedItems((prev) =>
+      prev.map((item) => (item.id === itemId ? { ...item, color } : item))
+    );
+  };
+
+  const toggleOption = (itemId: string, optionId: string) => {
+    setSelectedItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const selectedOptions = item.selectedOptions.includes(optionId)
+          ? item.selectedOptions.filter((id) => id !== optionId)
+          : [...item.selectedOptions, optionId];
+        return { ...item, selectedOptions };
+      })
+    );
+  };
+
+  const calculateItemPrice = (item: SelectedAccessoryItem) => {
+    const accessories = accessoriesByCategory.get(item.categoryId) || [];
+    const accessory = accessories.find((a) => a.id === item.accessoryId);
+    if (!accessory) return 0;
+
+    let price = accessory.prix_vente_ttc || 0;
+
+    // Ajouter le prix des options sélectionnées
+    item.selectedOptions.forEach((optionId) => {
+      const option = accessory.options?.find((o) => o.id === optionId);
+      if (option) {
+        price += option.prix;
+      }
+    });
+
+    return price * item.quantity;
   };
 
   const calculateTotalPrice = () => {
     let total = basePrice;
-    selectedAccessories.forEach((accessoryId) => {
-      // Trouver l'accessoire dans toutes les catégories
-      for (const accessories of accessoriesByCategory.values()) {
-        const accessory = accessories.find((a) => a.id === accessoryId);
-        if (accessory && accessory.prix_vente_ttc) {
-          total += accessory.prix_vente_ttc;
-          break;
-        }
-      }
+    selectedItems.forEach((item) => {
+      total += calculateItemPrice(item);
     });
     return total;
   };
 
+  const getAccessoryById = (categoryId: string, accessoryId: string) => {
+    const accessories = accessoriesByCategory.get(categoryId) || [];
+    return accessories.find((a) => a.id === accessoryId);
+  };
+
+  const getCategoryItemsCount = (categoryId: string) => {
+    return selectedItems.filter((item) => item.categoryId === categoryId).length;
+  };
+
   const handleAddToCart = () => {
+    if (selectedItems.length === 0) {
+      toast.error("Ajoutez au moins un accessoire au kit");
+      return;
+    }
     // TODO: Implémenter l'ajout au panier
     toast.success("Fonctionnalité panier à venir");
     onOpenChange(false);
   };
 
-  const allCategoriesSelected = allowedCategories.every((category) =>
-    selectedAccessories.has(category.id)
-  );
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
+      <DialogContent className="max-w-5xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle>{productName}</DialogTitle>
           <DialogDescription>
-            Configurez votre kit en sélectionnant un accessoire par catégorie
+            Configurez votre kit en ajoutant des accessoires depuis les catégories disponibles
           </DialogDescription>
         </DialogHeader>
 
@@ -173,89 +315,261 @@ const CustomKitConfigDialog = ({
             <p className="text-muted-foreground">Chargement de la configuration...</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            <ScrollArea className="h-[50vh]">
-              <div className="space-y-6 pr-4">
-                {allowedCategories.map((category) => {
-                  const accessories = accessoriesByCategory.get(category.id) || [];
-                  const selectedId = selectedAccessories.get(category.id);
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Colonne de gauche - Sélection des accessoires */}
+            <div className="lg:col-span-2">
+              <ScrollArea className="h-[60vh] pr-4">
+                <div className="space-y-3">
+                  {allowedCategories.map((category) => {
+                    const accessories = accessoriesByCategory.get(category.id) || [];
+                    const isExpanded = expandedCategories.has(category.id);
+                    const itemsCount = getCategoryItemsCount(category.id);
 
-                  return (
-                    <div key={category.id}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <h3 className="font-semibold">{category.nom}</h3>
-                        {selectedId && (
-                          <Badge variant="secondary">1 sélectionné</Badge>
-                        )}
-                      </div>
+                    return (
+                      <Collapsible
+                        key={category.id}
+                        open={isExpanded}
+                        onOpenChange={() => toggleCategory(category.id)}
+                      >
+                        <Card>
+                          <CollapsibleTrigger asChild>
+                            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <ChevronDown
+                                    className={`h-5 w-5 transition-transform ${
+                                      isExpanded ? "" : "-rotate-90"
+                                    }`}
+                                  />
+                                  <CardTitle className="text-base">{category.nom}</CardTitle>
+                                  <Badge variant="secondary">{accessories.length} accessoires</Badge>
+                                  {itemsCount > 0 && (
+                                    <Badge variant="default">{itemsCount} ajouté(s)</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </CardHeader>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <CardContent className="p-4 pt-0">
+                              {accessories.length === 0 ? (
+                                <p className="text-sm text-muted-foreground italic">
+                                  Aucun accessoire disponible dans cette catégorie
+                                </p>
+                              ) : (
+                                <div className="space-y-2">
+                                  {accessories.map((accessory) => (
+                                    <Card
+                                      key={accessory.id}
+                                      className="hover:border-primary/50 transition-colors"
+                                    >
+                                      <CardContent className="p-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-medium text-sm">{accessory.nom}</div>
+                                            {accessory.marque && (
+                                              <div className="text-xs text-muted-foreground">
+                                                {accessory.marque}
+                                              </div>
+                                            )}
+                                            {accessory.description && (
+                                              <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                                                {accessory.description}
+                                              </p>
+                                            )}
+                                            {accessory.options && accessory.options.length > 0 && (
+                                              <Badge variant="outline" className="mt-1 text-xs">
+                                                {accessory.options.length} option(s)
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <div className="flex flex-col items-end gap-2">
+                                            <div className="text-sm font-semibold whitespace-nowrap">
+                                              {accessory.prix_vente_ttc?.toFixed(2) || "0.00"} €
+                                            </div>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => addAccessoryToKit(category.id, accessory.id)}
+                                            >
+                                              <Plus className="h-3 w-3 mr-1" />
+                                              Ajouter
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              )}
+                            </CardContent>
+                          </CollapsibleContent>
+                        </Card>
+                      </Collapsible>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
 
-                      {accessories.length === 0 ? (
-                        <p className="text-sm text-muted-foreground italic">
-                          Aucun accessoire disponible dans cette catégorie
-                        </p>
-                      ) : (
-                        <div className="grid gap-2 md:grid-cols-2">
-                          {accessories.map((accessory) => {
-                            const isSelected = selectedId === accessory.id;
-                            return (
-                              <Card
-                                key={accessory.id}
-                                className={`cursor-pointer transition-all ${
-                                  isSelected
-                                    ? "border-primary bg-primary/5"
-                                    : "hover:border-primary/50"
-                                }`}
-                                onClick={() =>
-                                  handleSelectAccessory(category.id, accessory.id)
-                                }
-                              >
-                                <CardHeader className="p-4">
-                                  <CardTitle className="text-sm flex items-start justify-between">
-                                    <div>
-                                      <div>{accessory.nom}</div>
+            {/* Colonne de droite - Récapitulatif */}
+            <div className="lg:col-span-1">
+              <Card className="sticky top-0">
+                <CardHeader>
+                  <CardTitle className="text-base">Votre configuration</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 pt-0">
+                  <ScrollArea className="h-[50vh]">
+                    {selectedItems.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        Aucun accessoire ajouté
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {selectedItems.map((item) => {
+                          const accessory = getAccessoryById(item.categoryId, item.accessoryId);
+                          if (!accessory) return null;
+
+                          return (
+                            <Card key={item.id} className="border-primary/20">
+                              <CardContent className="p-3">
+                                <div className="space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-sm">{accessory.nom}</div>
                                       {accessory.marque && (
-                                        <div className="text-xs text-muted-foreground font-normal mt-1">
+                                        <div className="text-xs text-muted-foreground">
                                           {accessory.marque}
                                         </div>
                                       )}
                                     </div>
-                                    {accessory.prix_vente_ttc && (
-                                      <div className="text-sm font-semibold">
-                                        {accessory.prix_vente_ttc.toFixed(2)} €
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6"
+                                        onClick={() => duplicateItem(item.id)}
+                                        title="Dupliquer"
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-6 w-6 text-destructive"
+                                        onClick={() => removeItem(item.id)}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <Label className="text-xs min-w-[60px]">Quantité:</Label>
+                                      <Input
+                                        type="number"
+                                        min="1"
+                                        value={item.quantity}
+                                        onChange={(e) =>
+                                          updateItemQuantity(item.id, parseInt(e.target.value) || 1)
+                                        }
+                                        className="h-7 w-20 text-xs"
+                                      />
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <Label className="text-xs min-w-[60px]">Couleur:</Label>
+                                      <Select
+                                        value={item.color}
+                                        onValueChange={(value) => updateItemColor(item.id, value)}
+                                      >
+                                        <SelectTrigger className="h-7 text-xs flex-1">
+                                          <SelectValue placeholder="Choisir" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-card z-50">
+                                          {AVAILABLE_COLORS.map((color) => (
+                                            <SelectItem key={color.value} value={color.value}>
+                                              {color.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    {accessory.options && accessory.options.length > 0 && (
+                                      <div className="space-y-1">
+                                        <Label className="text-xs">Options:</Label>
+                                        {accessory.options.map((option) => (
+                                          <div
+                                            key={option.id}
+                                            className="flex items-center gap-2 text-xs"
+                                          >
+                                            <Checkbox
+                                              id={`${item.id}-${option.id}`}
+                                              checked={item.selectedOptions.includes(option.id)}
+                                              onCheckedChange={() =>
+                                                toggleOption(item.id, option.id)
+                                              }
+                                            />
+                                            <label
+                                              htmlFor={`${item.id}-${option.id}`}
+                                              className="flex-1 cursor-pointer"
+                                            >
+                                              {option.nom}
+                                            </label>
+                                            <span className="text-muted-foreground">
+                                              +{option.prix.toFixed(2)} €
+                                            </span>
+                                          </div>
+                                        ))}
                                       </div>
                                     )}
-                                  </CardTitle>
-                                </CardHeader>
-                              </Card>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <Separator className="mt-4" />
+
+                                    <Separator />
+                                    <div className="flex justify-between text-xs font-semibold">
+                                      <span>Sous-total:</span>
+                                      <span>{calculateItemPrice(item).toFixed(2)} €</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+
+                  <div className="space-y-3 pt-4 border-t mt-4">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span>Prix de base:</span>
+                        <span>{basePrice.toFixed(2)} €</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Accessoires:</span>
+                        <span>
+                          {selectedItems.reduce((sum, item) => sum + calculateItemPrice(item), 0).toFixed(2)} €
+                        </span>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+                    <Separator />
+                    <div className="flex justify-between text-lg font-bold">
+                      <span>Total:</span>
+                      <span className="text-primary">{calculateTotalPrice().toFixed(2)} €</span>
+                    </div>
 
-            <div className="space-y-4 pt-4 border-t">
-              <div className="flex items-center justify-between text-lg font-semibold">
-                <span>Total:</span>
-                <span className="text-2xl text-primary">
-                  {calculateTotalPrice().toFixed(2)} €
-                </span>
-              </div>
-
-              <Button
-                className="w-full"
-                size="lg"
-                disabled={!allCategoriesSelected}
-                onClick={handleAddToCart}
-              >
-                {allCategoriesSelected
-                  ? "Ajouter au panier"
-                  : "Sélectionnez un accessoire par catégorie"}
-              </Button>
+                    <Button
+                      className="w-full"
+                      size="lg"
+                      onClick={handleAddToCart}
+                    >
+                      Ajouter au panier
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         )}
