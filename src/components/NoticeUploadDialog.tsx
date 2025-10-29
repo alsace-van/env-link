@@ -125,17 +125,8 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
       return null;
     }
 
-    // Use signed URL with 7 day expiration for notice documentation
-    const { data: signedUrlData, error: urlError } = await supabase.storage
-      .from("notice-files")
-      .createSignedUrl(fileName, 604800); // 7 days
-
-    if (urlError || !signedUrlData) {
-      toast.error("Erreur lors de la création de l'URL du fichier");
-      return null;
-    }
-
-    return signedUrlData.signedUrl;
+    // Return the file path instead of a signed URL
+    return fileName;
   };
 
   const handleSubmit = async () => {

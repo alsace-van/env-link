@@ -98,8 +98,33 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     }
   };
 
-  const handleDownload = async (url: string, titre: string) => {
+  const getSignedUrl = async (filePath: string): Promise<string | null> => {
+    // Check if it's already a full URL (for backwards compatibility)
+    if (filePath.startsWith('http')) {
+      return filePath;
+    }
+
+    // Generate a signed URL valid for 1 hour
+    const { data, error } = await supabase.storage
+      .from("notice-files")
+      .createSignedUrl(filePath, 3600); // 1 hour
+
+    if (error || !data) {
+      console.error("Error creating signed URL:", error);
+      return null;
+    }
+
+    return data.signedUrl;
+  };
+
+  const handleDownload = async (filePath: string, titre: string) => {
     try {
+      const url = await getSignedUrl(filePath);
+      if (!url) {
+        toast.error("Erreur lors de l'accès au fichier");
+        return;
+      }
+
       const response = await fetch(url);
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
@@ -114,6 +139,20 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     } catch (error) {
       console.error(error);
       toast.error("Erreur lors du téléchargement");
+    }
+  };
+
+  const handleOpenNotice = async (filePath: string) => {
+    try {
+      const url = await getSignedUrl(filePath);
+      if (!url) {
+        toast.error("Erreur lors de l'accès au fichier");
+        return;
+      }
+      window.open(url, "_blank");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erreur lors de l'ouverture de la notice");
     }
   };
 
@@ -186,7 +225,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.open(notice.url_notice, "_blank")}
+                    onClick={() => handleOpenNotice(notice.url_notice)}
                     title="Ouvrir dans un nouvel onglet"
                   >
                     <ExternalLink className="h-4 w-4" />
