@@ -72,6 +72,8 @@ export const ShopProductFormDialog = ({
   const [comboboxOpen, setComboboxOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
+  const [accessoryOptions, setAccessoryOptions] = useState<Array<{ id: string; nom: string; prix_vente_ttc: number }>>([]);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   
   // Pour kits sur-mesure
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -153,12 +155,49 @@ export const ShopProductFormDialog = ({
     }
   };
 
-  const handleAddAccessory = (accessoryId: string) => {
+  const loadAccessoryOptions = async (accessoryId: string) => {
+    const { data, error } = await supabase
+      .from("accessory_options")
+      .select("id, nom, prix_vente_ttc")
+      .eq("accessory_id", accessoryId)
+      .order("nom");
+
+    if (error) {
+      console.error("Erreur lors du chargement des options:", error);
+      return;
+    }
+
+    setAccessoryOptions(data || []);
+  };
+
+  const calculateTotalPrice = () => {
+    if (productType !== "simple" || selectedAccessories.length === 0) return;
+    
+    const accessory = accessories.find(a => a.id === selectedAccessories[0].id);
+    if (!accessory || !accessory.prix_reference) return;
+    
+    let total = accessory.prix_reference;
+    
+    // Ajouter les prix des options sélectionnées
+    selectedOptions.forEach(optionId => {
+      const option = accessoryOptions.find(o => o.id === optionId);
+      if (option) {
+        total += option.prix_vente_ttc || 0;
+      }
+    });
+    
+    setPrice(total.toString());
+  };
+
+  const handleAddAccessory = async (accessoryId: string) => {
     if (!selectedAccessories.find(a => a.id === accessoryId)) {
       setSelectedAccessories([...selectedAccessories, { id: accessoryId, quantity: 1 }]);
       
-      // Pour un produit simple, remplir automatiquement le prix
+      // Pour un produit simple, remplir automatiquement le prix et charger les options
       if (productType === "simple") {
+        setSelectedOptions([]); // Réinitialiser les options sélectionnées
+        await loadAccessoryOptions(accessoryId);
+        
         const accessory = accessories.find(a => a.id === accessoryId);
         if (accessory && accessory.prix_reference) {
           setPrice(accessory.prix_reference.toString());
@@ -170,11 +209,28 @@ export const ShopProductFormDialog = ({
   const handleRemoveAccessory = (accessoryId: string) => {
     setSelectedAccessories(selectedAccessories.filter(a => a.id !== accessoryId));
     
-    // Pour un produit simple, vider le prix
+    // Pour un produit simple, vider le prix et les options
     if (productType === "simple") {
       setPrice("");
+      setAccessoryOptions([]);
+      setSelectedOptions([]);
     }
   };
+
+  const handleOptionToggle = (optionId: string) => {
+    if (selectedOptions.includes(optionId)) {
+      setSelectedOptions(selectedOptions.filter(id => id !== optionId));
+    } else {
+      setSelectedOptions([...selectedOptions, optionId]);
+    }
+  };
+
+  // Recalculer le prix quand les options changent
+  useEffect(() => {
+    if (productType === "simple" && selectedAccessories.length > 0 && accessoryOptions.length > 0) {
+      calculateTotalPrice();
+    }
+  }, [selectedOptions, accessoryOptions]);
 
   const handleQuantityChange = (accessoryId: string, quantity: number) => {
     setSelectedAccessories(
@@ -352,6 +408,8 @@ export const ShopProductFormDialog = ({
     setSelectedCategories([]);
     setSelectedCategoryFilter("all");
     setSearchValue("");
+    setAccessoryOptions([]);
+    setSelectedOptions([]);
   };
 
   return (
@@ -498,6 +556,35 @@ export const ShopProductFormDialog = ({
                     );
                   })}
                 </div>
+
+                {/* Options disponibles pour l'accessoire (produit simple uniquement) */}
+                {productType === "simple" && accessoryOptions.length > 0 && (
+                  <div className="mt-4">
+                    <Label className="mb-2 block">Options disponibles</Label>
+                    <div className="border rounded-md p-4 space-y-3">
+                      {accessoryOptions.map((option) => (
+                        <div key={option.id} className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`option-${option.id}`}
+                              checked={selectedOptions.includes(option.id)}
+                              onCheckedChange={() => handleOptionToggle(option.id)}
+                            />
+                            <label
+                              htmlFor={`option-${option.id}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {option.nom}
+                            </label>
+                          </div>
+                          <Badge variant="secondary">
+                            +{option.prix_vente_ttc?.toFixed(2) || "0.00"} €
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
