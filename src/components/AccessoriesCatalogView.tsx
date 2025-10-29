@@ -73,21 +73,7 @@ const AccessoriesCatalogView = () => {
   useEffect(() => {
     loadAccessories();
     loadCategories();
-    // Expand all categories by default on first load
-    const mainCats = new Set<string>();
-    const subCats = new Set<string>();
-    categories.forEach(cat => {
-      if (!cat.parent_id) {
-        mainCats.add(cat.nom);
-      } else {
-        const parent = categories.find(c => c.id === cat.parent_id);
-        if (parent) {
-          subCats.add(`${parent.nom}-${cat.nom}`);
-        }
-      }
-    });
-    setExpandedMainCategories(mainCats);
-    setExpandedSubCategories(subCats);
+    // Les catégories restent fermées par défaut
   }, []);
 
   useEffect(() => {

@@ -34,7 +34,7 @@ interface AccessoryCategorySidebarProps {
 const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: AccessoryCategorySidebarProps) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newSubCategoryName, setNewSubCategoryName] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);

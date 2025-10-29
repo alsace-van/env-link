@@ -86,7 +86,7 @@ const ProjectDetail = () => {
   const [photoRefresh, setPhotoRefresh] = useState(0);
   const [expenseRefresh, setExpenseRefresh] = useState(0);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
   const [layout3DKey, setLayout3DKey] = useState(0);
