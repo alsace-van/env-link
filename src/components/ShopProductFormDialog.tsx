@@ -156,11 +156,24 @@ export const ShopProductFormDialog = ({
   const handleAddAccessory = (accessoryId: string) => {
     if (!selectedAccessories.find(a => a.id === accessoryId)) {
       setSelectedAccessories([...selectedAccessories, { id: accessoryId, quantity: 1 }]);
+      
+      // Pour un produit simple, remplir automatiquement le prix
+      if (productType === "simple") {
+        const accessory = accessories.find(a => a.id === accessoryId);
+        if (accessory && accessory.prix_reference) {
+          setPrice(accessory.prix_reference.toString());
+        }
+      }
     }
   };
 
   const handleRemoveAccessory = (accessoryId: string) => {
     setSelectedAccessories(selectedAccessories.filter(a => a.id !== accessoryId));
+    
+    // Pour un produit simple, vider le prix
+    if (productType === "simple") {
+      setPrice("");
+    }
   };
 
   const handleQuantityChange = (accessoryId: string, quantity: number) => {
