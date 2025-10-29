@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       accessories_catalog: {
         Row: {
+          available_in_shop: boolean
           categorie: string | null
           category_id: string | null
           created_at: string
@@ -39,6 +40,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          available_in_shop?: boolean
           categorie?: string | null
           category_id?: string | null
           created_at?: string
@@ -62,6 +64,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          available_in_shop?: boolean
           categorie?: string | null
           category_id?: string | null
           created_at?: string
@@ -849,6 +852,155 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      shop_custom_kit_available_items: {
+        Row: {
+          accessory_id: string
+          created_at: string
+          id: string
+          kit_id: string
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string
+          id?: string
+          kit_id: string
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string
+          id?: string
+          kit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_custom_kit_available_items_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_custom_kit_available_items_kit_id_fkey"
+            columns: ["kit_id"]
+            isOneToOne: false
+            referencedRelation: "shop_custom_kits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_custom_kits: {
+        Row: {
+          base_price: number
+          created_at: string
+          id: string
+          max_items: number | null
+          min_items: number
+          product_id: string
+        }
+        Insert: {
+          base_price?: number
+          created_at?: string
+          id?: string
+          max_items?: number | null
+          min_items?: number
+          product_id: string
+        }
+        Update: {
+          base_price?: number
+          created_at?: string
+          id?: string
+          max_items?: number | null
+          min_items?: number
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_custom_kits_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "shop_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_product_items: {
+        Row: {
+          accessory_id: string
+          created_at: string
+          id: string
+          product_id: string
+          quantity: number
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity?: number
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_product_items_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_product_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "shop_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_products: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean
+          name: string
+          price: number
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name: string
+          price?: number
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          name?: string
+          price?: number
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       technical_schemas: {
         Row: {

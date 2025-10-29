@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList, ChevronDown, ChevronRight } from "lucide-react";
+import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList, ChevronDown, ChevronRight, Store } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
 import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import {
   AlertDialog,
@@ -46,6 +47,7 @@ interface Accessory {
   hauteur_mm?: number;
   puissance_watts?: number;
   intensite_amperes?: number;
+  available_in_shop?: boolean;
   categories?: Category;
 }
 
@@ -227,6 +229,21 @@ const AccessoriesCatalogView = () => {
   const handleEdit = (accessory: Accessory) => {
     setSelectedAccessory(accessory);
     setIsFormOpen(true);
+  };
+
+  const handleToggleShopAvailability = async (accessoryId: string, currentValue: boolean) => {
+    const { error } = await supabase
+      .from("accessories_catalog")
+      .update({ available_in_shop: !currentValue })
+      .eq("id", accessoryId);
+
+    if (error) {
+      console.error("Erreur:", error);
+      toast.error("Erreur lors de la mise à jour");
+    } else {
+      toast.success(currentValue ? "Retiré de la boutique" : "Ajouté à la boutique");
+      loadAccessories();
+    }
   };
 
   const handleAdd = () => {
@@ -538,6 +555,13 @@ const AccessoriesCatalogView = () => {
                           )}
                         </div>
                         <div className="flex gap-1">
+                          <div 
+                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                            title={accessory.available_in_shop ? "Retirer de la boutique" : "Ajouter à la boutique"}
+                            onClick={() => handleToggleShopAvailability(accessory.id, accessory.available_in_shop || false)}
+                          >
+                            <Store className={`h-4 w-4 ${accessory.available_in_shop ? 'text-primary' : 'text-muted-foreground'}`} />
+                          </div>
                           <Button
                             variant="ghost"
                             size="icon"

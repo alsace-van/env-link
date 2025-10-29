@@ -5,6 +5,8 @@ import ProjectsList from "@/components/ProjectsList";
 import ProjectForm from "@/components/ProjectForm";
 import UserMenu from "@/components/UserMenu";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
+import { Button } from "@/components/ui/button";
+import { ShoppingBag } from "lucide-react";
 import logo from "@/assets/logo.png";
 
 const Dashboard = () => {
@@ -75,6 +77,14 @@ const Dashboard = () => {
             />
           </div>
           <div className="flex items-center gap-2">
+            <Button 
+              variant="default" 
+              size="sm"
+              onClick={() => navigate("/shop")}
+            >
+              <ShoppingBag className="h-4 w-4 mr-2" />
+              Boutique
+            </Button>
             {user && (
               <>
                 <AdminMessagesNotification />
