@@ -297,6 +297,15 @@ const ProjectDetail = () => {
                 <>
                   <AdminMessagesNotification />
                   <UserMenu user={user} />
+                  <Button
+                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                    className="h-10 w-10 rounded-full"
+                    size="icon"
+                    variant="outline"
+                    title="Notes et Tâches"
+                  >
+                    <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
+                  </Button>
                 </>
               )}
             </div>
@@ -673,15 +682,6 @@ const ProjectDetail = () => {
             </div>
           </div>
 
-          {/* Toggle Sidebar Button */}
-          <Button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="fixed bottom-24 right-6 h-14 w-14 rounded-full shadow-lg z-40"
-            size="icon"
-            title="Notes et Tâches"
-          >
-            <PanelRightOpen className={`h-6 w-6 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
-          </Button>
         </div>
       </main>
 
