@@ -425,13 +425,28 @@ const CustomKitConfigDialog = ({
                                                 />
                                               </div>
 
-                                              {selectedAccessory.couleur && (
-                                                <div className="space-y-2">
-                                                  <Label className="text-sm">Couleur</Label>
-                                                  <div className="flex gap-2 flex-wrap">
-                                                    {AVAILABLE_COLORS
-                                                      .filter(color => color.value === selectedAccessory.couleur)
-                                                      .map((color) => (
+                                              {selectedAccessory.couleur && (() => {
+                                                // Parse les couleurs depuis le JSON
+                                                let availableColors: string[] = [];
+                                                try {
+                                                  const parsed = JSON.parse(selectedAccessory.couleur);
+                                                  availableColors = Array.isArray(parsed) ? parsed : [selectedAccessory.couleur];
+                                                } catch {
+                                                  availableColors = [selectedAccessory.couleur];
+                                                }
+
+                                                // Filtrer les couleurs disponibles (insensible à la casse)
+                                                const filteredColors = AVAILABLE_COLORS.filter(color => 
+                                                  availableColors.some(ac => ac.toLowerCase() === color.value.toLowerCase())
+                                                );
+
+                                                if (filteredColors.length === 0) return null;
+
+                                                return (
+                                                  <div className="space-y-2">
+                                                    <Label className="text-sm">Couleur</Label>
+                                                    <div className="flex gap-2 flex-wrap">
+                                                      {filteredColors.map((color) => (
                                                         <button
                                                           key={color.value}
                                                           type="button"
@@ -455,9 +470,10 @@ const CustomKitConfigDialog = ({
                                                           title={color.label}
                                                         />
                                                       ))}
+                                                    </div>
                                                   </div>
-                                                </div>
-                                              )}
+                                                );
+                                              })()}
                                             </div>
 
                                         {selectedAccessory.options && selectedAccessory.options.length > 0 && (
