@@ -605,9 +605,15 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                       if (value === "__create__") {
                         setIsCreatingCategory(true);
                       } else {
-                        setParentCategoryId(value === "none" ? "" : value);
-                        // Réinitialiser la sous-catégorie quand on change de catégorie principale
-                        setFormData({ ...formData, category_id: "" });
+                        const newParentId = value === "none" ? "" : value;
+                        setParentCategoryId(newParentId);
+                        // Si la catégorie n'a pas de sous-catégories, on l'assigne directement
+                        const hasSubcategories = newParentId && categories.some(cat => cat.parent_id === newParentId);
+                        if (newParentId && !hasSubcategories) {
+                          setFormData({ ...formData, category_id: newParentId });
+                        } else {
+                          setFormData({ ...formData, category_id: "" });
+                        }
                       }
                     }}
                   >
@@ -628,13 +634,13 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   </Select>
                 </div>
 
-                {parentCategoryId && (
+                {parentCategoryId && categories.some(cat => cat.parent_id === parentCategoryId) && (
                   <div className="space-y-2">
                     <Label htmlFor="subcategory_id">Sous-catégorie</Label>
                     <Select
                       value={formData.category_id || "none"}
                       onValueChange={(value) => {
-                        setFormData({ ...formData, category_id: value === "none" ? "" : value });
+                        setFormData({ ...formData, category_id: value === "none" ? parentCategoryId : value });
                       }}
                     >
                       <SelectTrigger id="subcategory_id">
