@@ -60,8 +60,8 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     hauteur_mm: "",
     puissance_watts: "",
     intensite_amperes: "",
-    couleur: "",
   });
+  const [couleurs, setCouleurs] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
@@ -116,8 +116,22 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
           puissance_watts: accessory.puissance_watts?.toString() ?? "",
           intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
-          couleur: accessory.couleur ?? "",
         });
+        
+        // Charger les couleurs depuis le JSON
+        if (accessory.couleur) {
+          try {
+            const parsedCouleurs = typeof accessory.couleur === 'string' 
+              ? JSON.parse(accessory.couleur)
+              : accessory.couleur;
+            setCouleurs(Array.isArray(parsedCouleurs) ? parsedCouleurs : [accessory.couleur]);
+          } catch {
+            // Si ce n'est pas du JSON, c'est une ancienne valeur simple
+            setCouleurs([accessory.couleur]);
+          }
+        } else {
+          setCouleurs([]);
+        }
         
         // Initialiser la catégorie parente si l'accessoire a une catégorie
         if (accessory.category_id) {
@@ -149,8 +163,8 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: "",
           puissance_watts: "",
           intensite_amperes: "",
-          couleur: "",
         });
+        setCouleurs([]);
         setParentCategoryId("");
       }
     }
@@ -243,6 +257,20 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
     newOptions[index] = option;
     setOptions(newOptions);
+  };
+
+  const handleAddCouleur = () => {
+    setCouleurs([...couleurs, ""]);
+  };
+
+  const handleRemoveCouleur = (index: number) => {
+    setCouleurs(couleurs.filter((_, i) => i !== index));
+  };
+
+  const handleCouleurChange = (index: number, value: string) => {
+    const newCouleurs = [...couleurs];
+    newCouleurs[index] = value;
+    setCouleurs(newCouleurs);
   };
 
   const handleCreateCategory = async () => {
@@ -372,7 +400,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-          couleur: formData.couleur || null,
+          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter(c => c.trim())) : null,
         })
         .eq("id", accessory.id);
 
@@ -403,7 +431,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-          couleur: formData.couleur || null,
+          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter(c => c.trim())) : null,
           user_id: user.id,
         })
         .select()
@@ -834,29 +862,56 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="couleur">Couleur disponible</Label>
-            <Select
-              value={formData.couleur || "none"}
-              onValueChange={(value) => setFormData({ ...formData, couleur: value === "none" ? "" : value })}
-            >
-              <SelectTrigger id="couleur">
-                <SelectValue placeholder="Sélectionner une couleur" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Aucune</SelectItem>
-                <SelectItem value="noir">Noir</SelectItem>
-                <SelectItem value="blanc">Blanc</SelectItem>
-                <SelectItem value="gris">Gris</SelectItem>
-                <SelectItem value="rouge">Rouge</SelectItem>
-                <SelectItem value="bleu">Bleu</SelectItem>
-                <SelectItem value="vert">Vert</SelectItem>
-                <SelectItem value="jaune">Jaune</SelectItem>
-                <SelectItem value="orange">Orange</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between">
+              <Label>Couleurs disponibles</Label>
+              <Button type="button" onClick={handleAddCouleur} size="sm" variant="outline">
+                <Plus className="h-4 w-4 mr-1" />
+                Ajouter une couleur
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Si une couleur est définie, elle sera proposée lors de la configuration du kit
+              Si des couleurs sont définies, elles seront proposées lors de la configuration du kit
             </p>
+            {couleurs.length > 0 ? (
+              <div className="space-y-2">
+                {couleurs.map((couleur, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Select
+                      value={couleur || "none"}
+                      onValueChange={(value) => handleCouleurChange(index, value === "none" ? "" : value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner une couleur" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Aucune</SelectItem>
+                        <SelectItem value="Noir">Noir</SelectItem>
+                        <SelectItem value="Blanc">Blanc</SelectItem>
+                        <SelectItem value="Gris">Gris</SelectItem>
+                        <SelectItem value="Rouge">Rouge</SelectItem>
+                        <SelectItem value="Bleu">Bleu</SelectItem>
+                        <SelectItem value="Vert">Vert</SelectItem>
+                        <SelectItem value="Jaune">Jaune</SelectItem>
+                        <SelectItem value="Orange">Orange</SelectItem>
+                        <SelectItem value="Marron">Marron</SelectItem>
+                        <SelectItem value="Beige">Beige</SelectItem>
+                        <SelectItem value="Violet">Violet</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveCouleur(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Aucune couleur ajoutée</p>
+            )}
           </div>
 
           <Separator />
