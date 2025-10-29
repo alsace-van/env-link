@@ -106,7 +106,7 @@ export const SimpleProductDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{productName}</DialogTitle>
           <DialogDescription>
@@ -131,21 +131,22 @@ export const SimpleProductDialog = ({
               <Label className="mb-3 block">Options disponibles</Label>
               <div className="border rounded-md p-4 space-y-3">
                 {options.map((option) => (
-                  <div key={option.id} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
+                  <div key={option.id} className="flex items-start justify-between gap-4">
+                    <div className="flex items-start space-x-2 flex-1">
                       <Checkbox
                         id={`option-${option.id}`}
                         checked={selectedOptions.includes(option.id)}
                         onCheckedChange={() => handleOptionToggle(option.id)}
+                        className="mt-0.5"
                       />
                       <label
                         htmlFor={`option-${option.id}`}
-                        className="text-sm font-medium leading-none cursor-pointer"
+                        className="text-sm font-medium leading-tight cursor-pointer"
                       >
                         {option.nom}
                       </label>
                     </div>
-                    <Badge variant="secondary">
+                    <Badge variant="secondary" className="shrink-0">
                       +{option.prix_vente_ttc.toFixed(2)} €
                     </Badge>
                   </div>
