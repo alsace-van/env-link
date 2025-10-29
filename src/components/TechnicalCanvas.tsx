@@ -161,10 +161,10 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         item.segments.forEach((segment: any, index: number) => {
           const handle = new scope.Path.Circle({
             center: segment.point,
-            radius: 5,
+            radius: 8, // Augmenté de 5 à 8 pour une meilleure prise
             fillColor: item.strokeColor,
             strokeColor: "white",
-            strokeWidth: 2,
+            strokeWidth: 3, // Augmenté pour plus de visibilité
           });
           handle.data.isHandle = true;
           handle.data.segmentIndex = index;
@@ -180,10 +180,10 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         corners.forEach((corner: any, index: number) => {
           const handle = new scope.Path.Circle({
             center: corner,
-            radius: 6,
+            radius: 10, // Augmenté de 6 à 10 pour une meilleure prise
             fillColor: "#2196F3",
             strokeColor: "white",
-            strokeWidth: 2,
+            strokeWidth: 3, // Augmenté pour plus de visibilité
           });
           handle.data.isHandle = true;
           handle.data.cornerIndex = index;
@@ -278,8 +278,11 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
     tool.onMouseDown = (event: any) => {
       console.log("Mouse down", activeToolRef.current, event.point);
 
-      // Vérifier si on clique sur une poignée
-      const hitHandle = handles.find((h) => h.contains(event.point));
+      // Vérifier si on clique sur une poignée avec une tolérance élargie
+      const hitHandle = handles.find((h) => {
+        const distance = h.position.getDistance(event.point);
+        return distance <= 15; // Tolérance de 15 pixels pour faciliter la saisie
+      });
       if (hitHandle) {
         draggedHandle = hitHandle;
         return;
