@@ -503,161 +503,163 @@ const CustomKitConfigDialog = ({
                                       </Select>
                                     </div>
 
-                                    {selectedAccessory?.image_url && (
-                                      <div className="rounded-md overflow-hidden border bg-muted/50 h-32">
-                                        <img
-                                          src={selectedAccessory.image_url}
-                                          alt={selectedAccessory.nom}
-                                          className="w-full h-full object-contain"
-                                        />
-                                      </div>
-                                    )}
-
-                                        {selectedAccessory && (
-                                          <>
-                                            <div className="grid grid-cols-2 gap-2">
-                                              <div className="space-y-1">
-                                                <Label className="text-xs">Quantité</Label>
-                                                <Input
-                                                  type="number"
-                                                  min="1"
-                                                  value={instance.quantity}
-                                                  onChange={(e) => updateInstanceQuantity(instance.id, parseInt(e.target.value))}
-                                                  className="h-8 text-sm"
-                                                />
-                                              </div>
-
-                                              {selectedAccessory.couleur && (() => {
-                                                // Parse les couleurs depuis le JSON
-                                                let availableColors: string[] = [];
-                                                try {
-                                                  const parsed = JSON.parse(selectedAccessory.couleur);
-                                                  availableColors = Array.isArray(parsed) ? parsed : [selectedAccessory.couleur];
-                                                } catch {
-                                                  availableColors = [selectedAccessory.couleur];
-                                                }
-
-                                                // Filtrer les couleurs disponibles (insensible à la casse)
-                                                const filteredColors = AVAILABLE_COLORS.filter(color => 
-                                                  availableColors.some(ac => ac.toLowerCase() === color.value.toLowerCase())
-                                                );
-
-                                                if (filteredColors.length === 0) return null;
-
-                                                return (
-                                                  <div className="space-y-1">
-                                                    <Label className="text-xs">Couleur</Label>
-                                                    <div className="flex gap-1.5 flex-wrap">
-                                                      {filteredColors.map((color) => (
-                                                        <button
-                                                          key={color.value}
-                                                          type="button"
-                                                          onClick={() => updateInstanceColor(instance.id, color.value)}
-                                                          className={`w-7 h-7 rounded-full border-2 transition-all ${
-                                                            instance.color === color.value 
-                                                              ? 'border-primary ring-2 ring-primary ring-offset-2' 
-                                                              : 'border-muted hover:border-primary/50'
-                                                          }`}
-                                                          style={{ 
-                                                            backgroundColor: color.value === 'blanc' ? '#ffffff' :
-                                                                           color.value === 'noir' ? '#000000' :
-                                                                           color.value === 'gris' ? '#6b7280' :
-                                                                           color.value === 'rouge' ? '#ef4444' :
-                                                                           color.value === 'bleu' ? '#3b82f6' :
-                                                                           color.value === 'vert' ? '#22c55e' :
-                                                                           color.value === 'jaune' ? '#eab308' :
-                                                                           color.value === 'orange' ? '#f97316' :
-                                                                           '#6b7280'
-                                                          }}
-                                                          title={color.label}
-                                                        />
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })()}
-                                            </div>
-
-                                        {selectedAccessory.options && selectedAccessory.options.length > 0 && (
-                                          <div className="space-y-1.5">
-                                            <Label className="text-xs">Options disponibles</Label>
-                                            <div className="space-y-1">
-                                              {selectedAccessory.options.map((option) => (
-                                                <div key={option.id} className="flex items-center space-x-2">
-                                                  <Checkbox
-                                                    id={`${instance.id}-${option.id}`}
-                                                    checked={instance.selectedOptions.includes(option.id)}
-                                                    onCheckedChange={() => toggleInstanceOption(instance.id, option.id)}
-                                                    className="h-4 w-4"
-                                                  />
-                                                  <label
-                                                    htmlFor={`${instance.id}-${option.id}`}
-                                                    className="text-xs cursor-pointer flex-1"
-                                                  >
-                                                    {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
-                                                  </label>
-                                                </div>
-                                              ))}
-                                            </div>
+                                    {selectedAccessory && (
+                                      <div className={`grid gap-3 ${selectedAccessory.image_url ? 'grid-cols-[200px,1fr]' : 'grid-cols-1'}`}>
+                                        {selectedAccessory.image_url && (
+                                          <div className="rounded-md overflow-hidden border bg-muted/50 h-48">
+                                            <img
+                                              src={selectedAccessory.image_url}
+                                              alt={selectedAccessory.nom}
+                                              className="w-full h-full object-contain"
+                                            />
                                           </div>
                                         )}
 
-                                        {/* Affichage des remises actives */}
-                                        {selectedAccessory && instance.accessoryId && (() => {
-                                          const tiers = accessoryTieredPricing.get(instance.accessoryId!) || [];
-                                          const applicableTier = [...tiers]
-                                            .reverse()
-                                            .find((tier) => instance.quantity >= tier.article_position);
-                                          const nextTier = tiers.find((tier) => tier.article_position > instance.quantity);
-
-                                          return (
-                                            <div className="space-y-2">
-                                              {applicableTier && (
-                                                <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/20 rounded-md">
-                                                  <TrendingDown className="h-4 w-4 text-green-600" />
-                                                  <span className="text-xs font-medium text-green-700 dark:text-green-400">
-                                                    Prix dégressif: -{applicableTier.discount_percent}% à partir de l'article {applicableTier.article_position}
-                                                  </span>
-                                                </div>
-                                              )}
-
-                                              {nextTier && (
-                                                <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-md">
-                                                  <Tag className="h-4 w-4 text-blue-600" />
-                                                  <span className="text-xs text-blue-700 dark:text-blue-400">
-                                                    Achetez {nextTier.article_position - instance.quantity} de plus pour -{nextTier.discount_percent}%
-                                                  </span>
-                                                </div>
-                                              )}
-
-                                              {selectedAccessory.promo_active && selectedAccessory.promo_price && (() => {
-                                                const now = new Date();
-                                                const start = selectedAccessory.promo_start_date ? new Date(selectedAccessory.promo_start_date) : null;
-                                                const end = selectedAccessory.promo_end_date ? new Date(selectedAccessory.promo_end_date) : null;
-                                                
-                                                if ((!start || now >= start) && (!end || now <= end)) {
-                                                  return (
-                                                    <div className="flex items-center gap-2 p-2 bg-orange-500/10 border border-orange-500/20 rounded-md">
-                                                      <Tag className="h-4 w-4 text-orange-600" />
-                                                      <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
-                                                        PROMO: {selectedAccessory.promo_price.toFixed(2)} € (au lieu de {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €)
-                                                      </span>
-                                                    </div>
-                                                  );
-                                                }
-                                                return null;
-                                              })()}
+                                        <div className="space-y-2">
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                              <Label className="text-xs">Quantité</Label>
+                                              <Input
+                                                type="number"
+                                                min="1"
+                                                value={instance.quantity}
+                                                onChange={(e) => updateInstanceQuantity(instance.id, parseInt(e.target.value))}
+                                                className="h-8 text-sm"
+                                              />
                                             </div>
-                                          );
-                                        })()}
 
-                                        <div className="flex justify-between items-center pt-1.5 border-t">
-                                          <span className="text-xs text-muted-foreground">Prix de cet article</span>
-                                          <span className="font-semibold text-sm">
-                                            {calculateInstancePrice(instance).toFixed(2)} €
-                                          </span>
+                                            {selectedAccessory.couleur && (() => {
+                                              // Parse les couleurs depuis le JSON
+                                              let availableColors: string[] = [];
+                                              try {
+                                                const parsed = JSON.parse(selectedAccessory.couleur);
+                                                availableColors = Array.isArray(parsed) ? parsed : [selectedAccessory.couleur];
+                                              } catch {
+                                                availableColors = [selectedAccessory.couleur];
+                                              }
+
+                                              // Filtrer les couleurs disponibles (insensible à la casse)
+                                              const filteredColors = AVAILABLE_COLORS.filter(color => 
+                                                availableColors.some(ac => ac.toLowerCase() === color.value.toLowerCase())
+                                              );
+
+                                              if (filteredColors.length === 0) return null;
+
+                                              return (
+                                                <div className="space-y-1">
+                                                  <Label className="text-xs">Couleur</Label>
+                                                  <div className="flex gap-1.5 flex-wrap">
+                                                    {filteredColors.map((color) => (
+                                                      <button
+                                                        key={color.value}
+                                                        type="button"
+                                                        onClick={() => updateInstanceColor(instance.id, color.value)}
+                                                        className={`w-7 h-7 rounded-full border-2 transition-all ${
+                                                          instance.color === color.value 
+                                                            ? 'border-primary ring-2 ring-primary ring-offset-2' 
+                                                            : 'border-muted hover:border-primary/50'
+                                                        }`}
+                                                        style={{ 
+                                                          backgroundColor: color.value === 'blanc' ? '#ffffff' :
+                                                                         color.value === 'noir' ? '#000000' :
+                                                                         color.value === 'gris' ? '#6b7280' :
+                                                                         color.value === 'rouge' ? '#ef4444' :
+                                                                         color.value === 'bleu' ? '#3b82f6' :
+                                                                         color.value === 'vert' ? '#22c55e' :
+                                                                         color.value === 'jaune' ? '#eab308' :
+                                                                         color.value === 'orange' ? '#f97316' :
+                                                                         '#6b7280'
+                                                        }}
+                                                        title={color.label}
+                                                      />
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+
+                                          {selectedAccessory.options && selectedAccessory.options.length > 0 && (
+                                            <div className="space-y-1.5">
+                                              <Label className="text-xs">Options disponibles</Label>
+                                              <div className="space-y-1">
+                                                {selectedAccessory.options.map((option) => (
+                                                  <div key={option.id} className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                      id={`${instance.id}-${option.id}`}
+                                                      checked={instance.selectedOptions.includes(option.id)}
+                                                      onCheckedChange={() => toggleInstanceOption(instance.id, option.id)}
+                                                      className="h-4 w-4"
+                                                    />
+                                                    <label
+                                                      htmlFor={`${instance.id}-${option.id}`}
+                                                      className="text-xs cursor-pointer flex-1"
+                                                    >
+                                                      {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
+                                                    </label>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+
+                                          {/* Affichage des remises actives */}
+                                          {instance.accessoryId && (() => {
+                                            const tiers = accessoryTieredPricing.get(instance.accessoryId!) || [];
+                                            const applicableTier = [...tiers]
+                                              .reverse()
+                                              .find((tier) => instance.quantity >= tier.article_position);
+                                            const nextTier = tiers.find((tier) => tier.article_position > instance.quantity);
+
+                                            return (
+                                              <div className="space-y-2">
+                                                {applicableTier && (
+                                                  <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/20 rounded-md">
+                                                    <TrendingDown className="h-4 w-4 text-green-600" />
+                                                    <span className="text-xs font-medium text-green-700 dark:text-green-400">
+                                                      Prix dégressif: -{applicableTier.discount_percent}% à partir de l'article {applicableTier.article_position}
+                                                    </span>
+                                                  </div>
+                                                )}
+
+                                                {nextTier && (
+                                                  <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-md">
+                                                    <Tag className="h-4 w-4 text-blue-600" />
+                                                    <span className="text-xs text-blue-700 dark:text-blue-400">
+                                                      Achetez {nextTier.article_position - instance.quantity} de plus pour -{nextTier.discount_percent}%
+                                                    </span>
+                                                  </div>
+                                                )}
+
+                                                {selectedAccessory.promo_active && selectedAccessory.promo_price && (() => {
+                                                  const now = new Date();
+                                                  const start = selectedAccessory.promo_start_date ? new Date(selectedAccessory.promo_start_date) : null;
+                                                  const end = selectedAccessory.promo_end_date ? new Date(selectedAccessory.promo_end_date) : null;
+                                                  
+                                                  if ((!start || now >= start) && (!end || now <= end)) {
+                                                    return (
+                                                      <div className="flex items-center gap-2 p-2 bg-orange-500/10 border border-orange-500/20 rounded-md">
+                                                        <Tag className="h-4 w-4 text-orange-600" />
+                                                        <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
+                                                          PROMO: {selectedAccessory.promo_price.toFixed(2)} € (au lieu de {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €)
+                                                        </span>
+                                                      </div>
+                                                    );
+                                                  }
+                                                  return null;
+                                                })()}
+                                              </div>
+                                            );
+                                          })()}
+
+                                          <div className="flex justify-between items-center pt-1.5 border-t">
+                                            <span className="text-xs text-muted-foreground">Prix de cet article</span>
+                                            <span className="font-semibold text-sm">
+                                              {calculateInstancePrice(instance).toFixed(2)} €
+                                            </span>
+                                          </div>
                                         </div>
-                                      </>
+                                      </div>
                                     )}
                                   </div>
                                 </CardContent>

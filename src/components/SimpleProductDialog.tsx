@@ -133,75 +133,79 @@ export const SimpleProductDialog = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          {accessory?.image_url && (
-            <div className="rounded-md overflow-hidden border bg-muted/50 h-48">
-              <img
-                src={accessory.image_url}
-                alt={accessory.nom}
-                className="w-full h-full object-contain"
-              />
-            </div>
-          )}
+          <div className={`grid gap-4 ${accessory?.image_url ? 'grid-cols-[200px,1fr]' : 'grid-cols-1'}`}>
+            {accessory?.image_url && (
+              <div className="rounded-md overflow-hidden border bg-muted/50 h-48">
+                <img
+                  src={accessory.image_url}
+                  alt={accessory.nom}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            )}
 
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-medium">Prix de base</span>
-              <span className="text-lg font-bold">{basePrice.toFixed(2)} €</span>
-            </div>
-          </div>
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-sm font-medium">Prix de base</span>
+                  <span className="text-lg font-bold">{basePrice.toFixed(2)} €</span>
+                </div>
+              </div>
 
-          {loading ? (
-            <div className="text-center py-4 text-muted-foreground">
-              Chargement des options...
-            </div>
-          ) : options.length > 0 ? (
-            <div>
-              <Label className="mb-3 block">Options disponibles</Label>
-              <div className="border rounded-md p-4 space-y-3">
-                {options.map((option) => (
-                  <div key={option.id} className="flex items-start justify-between gap-4">
-                    <div className="flex items-start space-x-2 flex-1">
-                      <Checkbox
-                        id={`option-${option.id}`}
-                        checked={selectedOptions.includes(option.id)}
-                        onCheckedChange={() => handleOptionToggle(option.id)}
-                        className="mt-0.5"
-                      />
-                      <label
-                        htmlFor={`option-${option.id}`}
-                        className="text-sm font-medium leading-tight cursor-pointer"
-                      >
-                        {option.nom}
-                      </label>
-                    </div>
-                    <Badge variant="secondary" className="shrink-0">
-                      +{option.prix_vente_ttc.toFixed(2)} €
-                    </Badge>
+              {loading ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  Chargement des options...
+                </div>
+              ) : options.length > 0 ? (
+                <div>
+                  <Label className="mb-3 block">Options disponibles</Label>
+                  <div className="border rounded-md p-4 space-y-3">
+                    {options.map((option) => (
+                      <div key={option.id} className="flex items-start justify-between gap-4">
+                        <div className="flex items-start space-x-2 flex-1">
+                          <Checkbox
+                            id={`option-${option.id}`}
+                            checked={selectedOptions.includes(option.id)}
+                            onCheckedChange={() => handleOptionToggle(option.id)}
+                            className="mt-0.5"
+                          />
+                          <label
+                            htmlFor={`option-${option.id}`}
+                            className="text-sm font-medium leading-tight cursor-pointer"
+                          >
+                            {option.nom}
+                          </label>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0">
+                          +{option.prix_vente_ttc.toFixed(2)} €
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-muted-foreground text-sm">
+                  Aucune option disponible pour ce produit
+                </div>
+              )}
+
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-lg font-semibold">Prix total</span>
+                  <span className="text-2xl font-bold text-primary">
+                    {calculateTotalPrice().toFixed(2)} €
+                  </span>
+                </div>
+                <Button 
+                  className="w-full" 
+                  onClick={handleAddToCart}
+                  disabled={loading}
+                >
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  Ajouter au panier
+                </Button>
               </div>
             </div>
-          ) : (
-            <div className="text-center py-4 text-muted-foreground text-sm">
-              Aucune option disponible pour ce produit
-            </div>
-          )}
-
-          <div className="border-t pt-4">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-lg font-semibold">Prix total</span>
-              <span className="text-2xl font-bold text-primary">
-                {calculateTotalPrice().toFixed(2)} €
-              </span>
-            </div>
-            <Button 
-              className="w-full" 
-              onClick={handleAddToCart}
-              disabled={loading}
-            >
-              <ShoppingCart className="h-4 w-4 mr-2" />
-              Ajouter au panier
-            </Button>
           </div>
         </div>
       </DialogContent>
