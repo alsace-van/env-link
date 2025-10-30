@@ -34,6 +34,8 @@ interface ShopProduct {
   promo_start_date?: string;
   promo_end_date?: string;
   hasOptions?: boolean;
+  image_url?: string;
+  accessory_image?: string;
 }
 
 const Shop = () => {
@@ -93,14 +95,24 @@ const Shop = () => {
       console.error("Erreur lors du chargement des produits:", error);
       toast.error("Erreur lors du chargement des produits");
     } else {
-      // Pour chaque produit simple, vérifier s'il a des options
+      // Pour chaque produit, récupérer l'image de l'accessoire et vérifier s'il a des options
       const productsWithOptions = await Promise.all(
         (data || []).map(async (product) => {
+          // Récupérer l'image de l'accessoire associé
+          const { data: productItems } = await supabase
+            .from("shop_product_items")
+            .select("accessories_catalog(image_url)")
+            .eq("product_id", product.id)
+            .limit(1)
+            .maybeSingle();
+
+          const accessoryImage = productItems?.accessories_catalog?.image_url || null;
+
           if (product.type === "simple") {
             const hasOptions = await checkProductHasOptions(product.id);
-            return { ...product, hasOptions };
+            return { ...product, hasOptions, accessory_image: accessoryImage };
           }
-          return product;
+          return { ...product, accessory_image: accessoryImage };
         }),
       );
       setProducts(productsWithOptions);
@@ -596,6 +608,15 @@ const Shop = () => {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {products.map((product) => (
                     <Card key={product.id}>
+                      {(product.accessory_image || product.image_url) && (
+                        <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
+                          <img
+                            src={product.accessory_image || product.image_url}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      )}
                       <CardHeader>
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
@@ -686,6 +707,15 @@ const Shop = () => {
                       .filter((p) => p.is_active)
                       .map((product) => (
                         <Card key={product.id}>
+                          {(product.accessory_image || product.image_url) && (
+                            <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
+                              <img
+                                src={product.accessory_image || product.image_url}
+                                alt={product.name}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                          )}
                           <CardHeader>
                             <CardTitle className="text-lg">{product.name}</CardTitle>
                             <div className="flex gap-2 flex-wrap">
