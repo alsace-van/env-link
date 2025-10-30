@@ -29,6 +29,7 @@ interface Accessory {
   hauteur_mm?: number;
   puissance_watts?: number;
   intensite_amperes?: number;
+  image_url?: string | null;
 }
 
 interface AccessorySelectorProps {
@@ -132,8 +133,15 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
     return (
       <div
         key={accessory.id}
-        className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
       >
+        {accessory.image_url && (
+          <img 
+            src={accessory.image_url} 
+            alt={name}
+            className="w-12 h-12 object-contain rounded border flex-shrink-0"
+          />
+        )}
         <div className="flex-1 min-w-0">
           <div className="font-medium truncate">{name}</div>
           <div className="flex flex-wrap gap-1 mt-1">
@@ -160,7 +168,7 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
             </div>
           )}
         </div>
-        <div className="flex gap-2 ml-2">
+        <div className="flex gap-2 flex-shrink-0">
           {source === "catalog" && (
             <Button
               size="sm"

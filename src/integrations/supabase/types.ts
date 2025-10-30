@@ -25,6 +25,7 @@ export type Database = {
           fournisseur: string | null
           hauteur_mm: number | null
           id: string
+          image_url: string | null
           intensite_amperes: number | null
           largeur_mm: number | null
           longueur_mm: number | null
@@ -54,6 +55,7 @@ export type Database = {
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          image_url?: string | null
           intensite_amperes?: number | null
           largeur_mm?: number | null
           longueur_mm?: number | null
@@ -83,6 +85,7 @@ export type Database = {
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          image_url?: string | null
           intensite_amperes?: number | null
           largeur_mm?: number | null
           longueur_mm?: number | null

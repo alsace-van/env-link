@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, X } from "lucide-react";
+import { Plus, X, ImagePlus, Trash2 } from "lucide-react";
 
 interface Category {
   id: string;
@@ -39,6 +39,7 @@ interface AccessoryCatalogFormDialogProps {
     puissance_watts?: number | null;
     intensite_amperes?: number | null;
     couleur?: string | null;
+    image_url?: string | null;
   } | null;
 }
 
@@ -69,6 +70,8 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryParent, setNewCategoryParent] = useState<string | null>(null);
   const [parentCategoryId, setParentCategoryId] = useState<string>("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   
   // Options payantes
   const [options, setOptions] = useState<Array<{ 
@@ -166,6 +169,15 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         });
         setCouleurs([]);
         setParentCategoryId("");
+        setImagePreview(null);
+        setImageFile(null);
+      }
+      
+      // Charger l'image si elle existe
+      if (accessory?.image_url) {
+        setImagePreview(accessory.image_url);
+      } else {
+        setImagePreview(null);
       }
     }
   }, [isOpen, categoriesLoaded, accessory?.id, categories]);
@@ -273,6 +285,27 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     setCouleurs(newCouleurs);
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("L'image ne doit pas dépasser 5 MB");
+        return;
+      }
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) {
       toast.error("Veuillez entrer un nom de catégorie");
@@ -378,6 +411,37 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     }
 
     let savedAccessoryId = accessory?.id;
+    let imageUrl = accessory?.image_url || null;
+
+    // Upload de l'image si nécessaire
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop();
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("accessory-images")
+        .upload(fileName, imageFile);
+
+      if (uploadError) {
+        toast.error("Erreur lors de l'upload de l'image");
+        console.error(uploadError);
+        setIsSubmitting(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("accessory-images")
+        .getPublicUrl(fileName);
+
+      imageUrl = urlData.publicUrl;
+    } else if (imagePreview === null && accessory?.image_url) {
+      // Supprimer l'ancienne image
+      const oldPath = accessory.image_url.split("/accessory-images/")[1];
+      if (oldPath) {
+        await supabase.storage.from("accessory-images").remove([oldPath]);
+      }
+      imageUrl = null;
+    }
 
     if (accessory) {
       // Mode édition
@@ -401,6 +465,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter(c => c.trim())) : null,
+          image_url: imageUrl,
         })
         .eq("id", accessory.id);
 
@@ -432,6 +497,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter(c => c.trim())) : null,
+          image_url: imageUrl,
           user_id: user.id,
         })
         .select()
@@ -687,6 +753,44 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                     </Select>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Image de l'accessoire (optionnelle)</Label>
+            {imagePreview ? (
+              <div className="relative">
+                <img
+                  src={imagePreview}
+                  alt="Aperçu"
+                  className="w-full h-48 object-contain rounded-lg border"
+                />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="absolute top-2 right-2"
+                  onClick={handleRemoveImage}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                  id="image-upload"
+                />
+                <Label htmlFor="image-upload" className="cursor-pointer">
+                  <ImagePlus className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    Cliquez pour ajouter une image (max 5 MB)
+                  </p>
+                </Label>
               </div>
             )}
           </div>

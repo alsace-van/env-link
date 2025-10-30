@@ -58,6 +58,7 @@ interface Accessory {
   puissance_watts?: number;
   intensite_amperes?: number;
   available_in_shop?: boolean;
+  image_url?: string | null;
   categories?: Category;
   accessory_options?: AccessoryOption[];
 }
@@ -411,8 +412,15 @@ const AccessoriesCatalogView = () => {
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
                   >
-                    <CardContent className="p-4">
+                     <CardContent className="p-4">
                       <div className="flex items-center gap-4">
+                        {accessory.image_url && (
+                          <img 
+                            src={accessory.image_url} 
+                            alt={accessory.nom}
+                            className="w-16 h-16 object-contain rounded border"
+                          />
+                        )}
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
                           <div className="md:col-span-2">
                             <div className="font-semibold flex items-center gap-2">
@@ -606,8 +614,17 @@ const AccessoriesCatalogView = () => {
                     key={accessory.id}
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
-                    className="cursor-move"
+                    className="cursor-move overflow-hidden"
                   >
+                    {accessory.image_url && (
+                      <div className="w-full h-48 bg-muted">
+                        <img 
+                          src={accessory.image_url} 
+                          alt={accessory.nom}
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    )}
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
