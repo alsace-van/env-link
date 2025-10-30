@@ -171,6 +171,17 @@ const CustomKitConfigDialog = ({
       .in("category_id", categoryIds)
       .eq("available_in_shop", true);
 
+    // 🔍 LOGS DE DIAGNOSTIC
+    console.log("=== DIAGNOSTIC KIT CONFIGURATION ===");
+    console.log("1. Category IDs configurés:", categoryIds);
+    console.log("2. Nombre d'accessoires trouvés:", accessoriesData?.length || 0);
+    console.log("3. Accessoires:", accessoriesData);
+    if (accessoriesData?.length === 0) {
+      console.warn("⚠️ AUCUN ACCESSOIRE TROUVÉ !");
+      console.warn("Vérifiez que les accessoires ont 'available_in_shop = true'");
+    }
+    console.log("====================================");
+
     if (accessoriesError) {
       console.error("Erreur lors du chargement des accessoires:", accessoriesError);
       toast.error("Erreur lors du chargement des accessoires");
@@ -480,15 +491,15 @@ const CustomKitConfigDialog = ({
                                         </SelectTrigger>
                                         <SelectContent className="max-w-[400px]">
                                           {categoryAccessories.map((accessory) => (
-                                            <SelectItem key={accessory.id} value={accessory.id}>
-                                              <div className="flex flex-col gap-0.5 py-1">
-                                                <span className="font-medium break-words">{accessory.nom}</span>
-                                                <span className="text-xs text-muted-foreground break-words">
+                                            <SelectItem key={accessory.id} value={accessory.id} className="whitespace-normal">
+                                              <div className="flex flex-col gap-0.5 py-1 w-full max-w-full">
+                                                <span className="font-medium break-words whitespace-normal block">{accessory.nom}</span>
+                                                <span className="text-xs text-muted-foreground break-words whitespace-normal block">
                                                   {accessory.prix_vente_ttc?.toFixed(2)} €
                                                   {accessory.marque && ` - ${accessory.marque}`}
                                                 </span>
                                                 {(accessory.puissance_watts || accessory.poids_kg || accessory.longueur_mm) && (
-                                                  <span className="text-xs text-muted-foreground break-words">
+                                                  <span className="text-xs text-muted-foreground break-words whitespace-normal block">
                                                     {accessory.puissance_watts && `${accessory.puissance_watts}W`}
                                                     {accessory.puissance_watts && (accessory.poids_kg || accessory.longueur_mm) && ' • '}
                                                     {accessory.poids_kg && `${accessory.poids_kg}kg`}
