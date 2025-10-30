@@ -44,7 +44,7 @@ const Shop = () => {
   const [cartOpen, setCartOpen] = useState(false);
   const [pricingDialogProduct, setPricingDialogProduct] = useState<ShopProduct | null>(null);
   const [kitPricingProduct, setKitPricingProduct] = useState<ShopProduct | null>(null);
-  
+
   const cart = useCart(user?.id);
 
   useEffect(() => {
@@ -66,17 +66,17 @@ const Shop = () => {
 
   const loadProducts = async () => {
     setLoading(true);
-    
+
     // Si un utilisateur est connecté, charger ses produits
     // Sinon, charger tous les produits actifs pour le catalogue public
     let query = supabase.from("shop_products").select("*");
-    
+
     if (user) {
       query = query.eq("user_id", user.id);
     } else {
       query = query.eq("is_active", true);
     }
-    
+
     const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
@@ -91,7 +91,7 @@ const Shop = () => {
             return { ...product, hasOptions };
           }
           return product;
-        })
+        }),
       );
       setProducts(productsWithOptions);
     }
@@ -124,7 +124,7 @@ const Shop = () => {
       const now = new Date();
       const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
       const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
-      
+
       if ((!start || now >= start) && (!end || now <= end)) {
         return product.promo_price;
       }
@@ -134,43 +134,37 @@ const Shop = () => {
 
   const isOnPromo = (product: ShopProduct) => {
     if (!product.promo_active || !product.promo_price) return false;
-    
+
     const now = new Date();
     const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
     const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
-    
+
     return (!start || now >= start) && (!end || now <= end);
   };
 
   const handleDelete = async (productId: string) => {
     if (!confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) return;
 
-    const { error } = await supabase
-      .from("shop_products")
-      .delete()
-      .eq("id", productId);
+    const { error } = await supabase.from("shop_products").delete().eq("id", productId);
 
     if (error) {
       console.error("Erreur lors de la suppression:", error);
       toast.error("Erreur lors de la suppression");
     } else {
       toast.success("Produit supprimé");
-      setRefreshKey(prev => prev + 1);
+      setRefreshKey((prev) => prev + 1);
     }
   };
 
   const handleToggleActive = async (productId: string, currentStatus: boolean) => {
-    const { error } = await supabase
-      .from("shop_products")
-      .update({ is_active: !currentStatus })
-      .eq("id", productId);
+    const { error } = await supabase.from("shop_products").update({ is_active: !currentStatus }).eq("id", productId);
 
     if (error) {
       console.error("Erreur:", error);
       toast.error("Erreur lors de la mise à jour");
     } else {
       toast.success(currentStatus ? "Produit masqué" : "Produit activé");
-      setRefreshKey(prev => prev + 1);
+      setRefreshKey((prev) => prev + 1);
     }
   };
 
@@ -207,15 +201,22 @@ const Shop = () => {
     }
   };
 
-  const handleAddSimpleProductToCart = async (totalPrice: number, selectedOptions: string[]) => {
+  const handleAddSimpleProductToCart = async (
+    totalPrice: number,
+    selectedOptions: string[],
+    optionsDetails?: any[],
+  ) => {
     if (!selectedSimpleProduct) return;
-    const configuration = selectedOptions.length > 0 ? { options: selectedOptions } : undefined;
-    const success = await cart.addToCart(
-      selectedSimpleProduct.id,
-      totalPrice,
-      1,
-      configuration
-    );
+
+    // Si on a les détails des options, on les stocke
+    const configuration =
+      selectedOptions.length > 0
+        ? {
+            selectedOptions: optionsDetails || selectedOptions.map((id) => ({ id, name: "Option", price: 0 })),
+          }
+        : undefined;
+
+    const success = await cart.addToCart(selectedSimpleProduct.id, totalPrice, 1, configuration);
     if (success) {
       cart.refresh();
       setSelectedSimpleProduct(null);
@@ -224,12 +225,7 @@ const Shop = () => {
 
   const handleAddKitToCart = async (configuration: any, totalPrice: number) => {
     if (!selectedKitProduct) return;
-    const success = await cart.addToCart(
-      selectedKitProduct.id,
-      totalPrice,
-      1,
-      configuration
-    );
+    const success = await cart.addToCart(selectedKitProduct.id, totalPrice, 1, configuration);
     if (success) {
       cart.refresh();
     }
@@ -249,11 +245,7 @@ const Shop = () => {
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
             </Button>
-            <img
-              src={logo}
-              alt="Alsace Van Création"
-              className="h-20 w-auto object-contain"
-            />
+            <img src={logo} alt="Alsace Van Création" className="h-20 w-auto object-contain" />
             <div className="flex-1">
               <h1 className="text-xl font-bold">Boutique</h1>
               <p className="text-sm text-muted-foreground">
@@ -263,12 +255,7 @@ const Shop = () => {
             <div className="flex items-center gap-2">
               {user ? (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCartOpen(true)}
-                    className="relative"
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setCartOpen(true)} className="relative">
                     <ShoppingBag className="h-4 w-4 mr-2" />
                     Panier
                     {cart.getTotalItems() > 0 && (
@@ -283,9 +270,7 @@ const Shop = () => {
                   <UserMenu user={user} />
                 </>
               ) : (
-                <Button onClick={() => navigate("/auth")}>
-                  Se connecter
-                </Button>
+                <Button onClick={() => navigate("/auth")}>Se connecter</Button>
               )}
             </div>
           </div>
@@ -308,11 +293,7 @@ const Shop = () => {
               </TabsTrigger>
             </TabsList>
 
-            {user && (
-              <ShopProductFormDialog
-                onSuccess={() => setRefreshKey(prev => prev + 1)}
-              />
-            )}
+            {user && <ShopProductFormDialog onSuccess={() => setRefreshKey((prev) => prev + 1)} />}
           </div>
 
           {user && (
@@ -325,12 +306,10 @@ const Shop = () => {
                 <Card>
                   <CardContent className="py-12 text-center">
                     <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground mb-4">
-                      Vous n'avez pas encore créé de produits
-                    </p>
+                    <p className="text-muted-foreground mb-4">Vous n'avez pas encore créé de produits</p>
                     <ShopProductFormDialog
                       trigger={<Button>Créer votre premier produit</Button>}
-                      onSuccess={() => setRefreshKey(prev => prev + 1)}
+                      onSuccess={() => setRefreshKey((prev) => prev + 1)}
                     />
                   </CardContent>
                 </Card>
@@ -343,30 +322,22 @@ const Shop = () => {
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
                               <CardTitle className="text-lg">{product.name}</CardTitle>
-                              {!product.is_active && (
-                                <Badge variant="secondary">Inactif</Badge>
-                              )}
+                              {!product.is_active && <Badge variant="secondary">Inactif</Badge>}
                             </div>
                             <div className="flex gap-2 mb-2">
-                              <Badge variant={getTypeColor(product.type) as any}>
-                                {getTypeLabel(product.type)}
-                              </Badge>
+                              <Badge variant={getTypeColor(product.type) as any}>{getTypeLabel(product.type)}</Badge>
                             </div>
                           </div>
                         </div>
                         {product.description && (
-                          <CardDescription className="line-clamp-2">
-                            {product.description}
-                          </CardDescription>
+                          <CardDescription className="line-clamp-2">{product.description}</CardDescription>
                         )}
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
                           <div className="flex justify-between items-center">
                             <span className="text-sm text-muted-foreground">Prix:</span>
-                            <span className="text-lg font-semibold">
-                              {product.price.toFixed(2)} €
-                            </span>
+                            <span className="text-lg font-semibold">{product.price.toFixed(2)} €</span>
                           </div>
 
                           <div className="flex gap-2">
@@ -378,7 +349,7 @@ const Shop = () => {
                                 </Button>
                               }
                               editProduct={product}
-                              onSuccess={() => setRefreshKey(prev => prev + 1)}
+                              onSuccess={() => setRefreshKey((prev) => prev + 1)}
                             />
                             <Button
                               variant="outline"
@@ -406,11 +377,7 @@ const Shop = () => {
                               <Eye className="h-4 w-4 mr-2" />
                               {product.is_active ? "Masquer" : "Activer"}
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDelete(product.id)}
-                            >
+                            <Button variant="outline" size="sm" onClick={() => handleDelete(product.id)}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -427,96 +394,86 @@ const Shop = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Catalogue public</CardTitle>
-                <CardDescription>
-                  Les produits actifs visibles par vos clients
-                </CardDescription>
+                <CardDescription>Les produits actifs visibles par vos clients</CardDescription>
               </CardHeader>
               <CardContent>
-                {products.filter(p => p.is_active).length === 0 ? (
+                {products.filter((p) => p.is_active).length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="text-muted-foreground">
-                      Aucun produit actif dans votre boutique
-                    </p>
+                    <p className="text-muted-foreground">Aucun produit actif dans votre boutique</p>
                   </div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {products
-                      .filter(p => p.is_active)
+                      .filter((p) => p.is_active)
                       .map((product) => (
                         <Card key={product.id}>
-                           <CardHeader>
-                             <CardTitle className="text-lg">{product.name}</CardTitle>
-                             <div className="flex gap-2 flex-wrap">
-                               <Badge variant={getTypeColor(product.type) as any}>
-                                 {getTypeLabel(product.type)}
-                               </Badge>
-                               {product.hasOptions && (
-                                 <Badge variant="outline" className="text-xs">
-                                   Options disponibles
-                                 </Badge>
-                               )}
-                             </div>
-                             {product.description && (
-                               <CardDescription className="line-clamp-3">
-                                 {product.description}
-                               </CardDescription>
-                             )}
-                           </CardHeader>
-                           <CardContent>
-                              <div className="space-y-2">
-                                <div className="flex items-end justify-between">
-                                  <div>
-                                    {isOnPromo(product) ? (
-                                      <>
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <Badge variant="destructive" className="text-xs">PROMO</Badge>
-                                        </div>
-                                        <div className="flex items-baseline gap-2">
-                                          <span className="text-2xl font-bold text-primary">
-                                            {getEffectivePrice(product).toFixed(2)} €
-                                          </span>
-                                          <span className="text-lg text-muted-foreground line-through">
-                                            {product.price.toFixed(2)} €
-                                          </span>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                          Économisez {((product.price - getEffectivePrice(product)) / product.price * 100).toFixed(0)}%
-                                        </p>
-                                      </>
-                                    ) : (
-                                      <div className="text-2xl font-bold text-primary">
-                                        {product.price.toFixed(2)} €
+                          <CardHeader>
+                            <CardTitle className="text-lg">{product.name}</CardTitle>
+                            <div className="flex gap-2 flex-wrap">
+                              <Badge variant={getTypeColor(product.type) as any}>{getTypeLabel(product.type)}</Badge>
+                              {product.hasOptions && (
+                                <Badge variant="outline" className="text-xs">
+                                  Options disponibles
+                                </Badge>
+                              )}
+                            </div>
+                            {product.description && (
+                              <CardDescription className="line-clamp-3">{product.description}</CardDescription>
+                            )}
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              <div className="flex items-end justify-between">
+                                <div>
+                                  {isOnPromo(product) ? (
+                                    <>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <Badge variant="destructive" className="text-xs">
+                                          PROMO
+                                        </Badge>
                                       </div>
-                                    )}
-                                  </div>
+                                      <div className="flex items-baseline gap-2">
+                                        <span className="text-2xl font-bold text-primary">
+                                          {getEffectivePrice(product).toFixed(2)} €
+                                        </span>
+                                        <span className="text-lg text-muted-foreground line-through">
+                                          {product.price.toFixed(2)} €
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Économisez{" "}
+                                        {(((product.price - getEffectivePrice(product)) / product.price) * 100).toFixed(
+                                          0,
+                                        )}
+                                        %
+                                      </p>
+                                    </>
+                                  ) : (
+                                    <div className="text-2xl font-bold text-primary">{product.price.toFixed(2)} €</div>
+                                  )}
                                 </div>
-                                {product.type === "custom_kit" ? (
-                                  <Button
-                                    className="w-full"
-                                    onClick={() => setSelectedKitProduct(product)}
-                                  >
-                                    <Settings className="h-4 w-4 mr-2" />
-                                    Configurer
-                                  </Button>
-                                ) : product.type === "simple" ? (
-                                  <Button
-                                    className="w-full"
-                                    onClick={() => setSelectedSimpleProduct(product)}
-                                  >
-                                    <ShoppingCart className="h-4 w-4 mr-2" />
-                                    Ajouter au panier
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    className="w-full"
-                                    onClick={() => handleAddToCart(product.id, getEffectivePrice(product))}
-                                  >
-                                    <ShoppingCart className="h-4 w-4 mr-2" />
-                                    Ajouter au panier
-                                  </Button>
-                                )}
                               </div>
-                            </CardContent>
+                              {product.type === "custom_kit" ? (
+                                <Button className="w-full" onClick={() => setSelectedKitProduct(product)}>
+                                  <Settings className="h-4 w-4 mr-2" />
+                                  Configurer
+                                </Button>
+                              ) : product.type === "simple" ? (
+                                <Button className="w-full" onClick={() => setSelectedSimpleProduct(product)}>
+                                  <ShoppingCart className="h-4 w-4 mr-2" />
+                                  Ajouter au panier
+                                </Button>
+                              ) : (
+                                <Button
+                                  className="w-full"
+                                  onClick={() => handleAddToCart(product.id, getEffectivePrice(product))}
+                                >
+                                  <ShoppingCart className="h-4 w-4 mr-2" />
+                                  Ajouter au panier
+                                </Button>
+                              )}
+                            </div>
+                          </CardContent>
                         </Card>
                       ))}
                   </div>
@@ -565,7 +522,7 @@ const Shop = () => {
           open={!!pricingDialogProduct}
           onClose={() => {
             setPricingDialogProduct(null);
-            setRefreshKey(prev => prev + 1);
+            setRefreshKey((prev) => prev + 1);
           }}
           productId={pricingDialogProduct.id}
           productName={pricingDialogProduct.name}
@@ -578,7 +535,7 @@ const Shop = () => {
           open={!!kitPricingProduct}
           onClose={() => {
             setKitPricingProduct(null);
-            setRefreshKey(prev => prev + 1);
+            setRefreshKey((prev) => prev + 1);
           }}
           productId={kitPricingProduct.id}
           productName={kitPricingProduct.name}
