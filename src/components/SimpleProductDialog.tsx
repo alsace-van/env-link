@@ -46,6 +46,7 @@ export const SimpleProductDialog = ({
   const [accessory, setAccessory] = useState<Accessory | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [imageZoomed, setImageZoomed] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -145,13 +146,44 @@ export const SimpleProductDialog = ({
         <div className="grid grid-cols-[280px,1fr] gap-6">
           {/* Colonne gauche : Image */}
           {accessory?.image_url ? (
-            <div className="rounded-md overflow-hidden border bg-muted/50">
-              <img
-                src={accessory.image_url}
-                alt={accessory.nom}
-                className="w-full h-auto object-contain"
-              />
-            </div>
+            <>
+              <div 
+                className="rounded-md overflow-hidden border bg-muted/50 cursor-pointer hover:border-primary transition-colors group relative"
+                onClick={() => setImageZoomed(true)}
+              >
+                <img
+                  src={accessory.image_url}
+                  alt={accessory.nom}
+                  className="w-full h-auto object-contain group-hover:scale-105 transition-transform"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8"/>
+                      <path d="m21 21-4.35-4.35"/>
+                      <line x1="11" y1="8" x2="11" y2="14"/>
+                      <line x1="8" y1="11" x2="14" y2="11"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dialog pour l'image agrandie */}
+              <Dialog open={imageZoomed} onOpenChange={setImageZoomed}>
+                <DialogContent className="max-w-5xl p-2">
+                  <DialogHeader>
+                    <DialogTitle>{accessory.nom}</DialogTitle>
+                  </DialogHeader>
+                  <div className="relative bg-muted/30 rounded-md overflow-hidden">
+                    <img
+                      src={accessory.image_url}
+                      alt={accessory.nom}
+                      className="w-full h-auto object-contain max-h-[80vh]"
+                    />
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </>
           ) : (
             <div className="rounded-md border bg-muted/50 flex items-center justify-center h-64">
               <p className="text-sm text-muted-foreground">Aucune image</p>
