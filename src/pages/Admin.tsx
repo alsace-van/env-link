@@ -28,6 +28,7 @@ import { CreateUserDialog } from "@/components/admin/CreateUserDialog";
 import { SendMessageDialog } from "@/components/admin/SendMessageDialog";
 import { AdminActionsLog } from "@/components/admin/AdminActionsLog";
 import { LoginHistoryCard } from "@/components/admin/LoginHistoryCard";
+import { ShopWelcomeConfigDialog } from "@/components/admin/ShopWelcomeConfigDialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface UserData {
@@ -169,6 +170,7 @@ const Admin = () => {
             <div className="flex gap-2">
               <CreateUserDialog onUserCreated={loadUsers} />
               <SendMessageDialog />
+              <ShopWelcomeConfigDialog />
             </div>
           </div>
 

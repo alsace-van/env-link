@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,35 @@ const AuthPage = () => {
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [shopConfig, setShopConfig] = useState({
+    title: "Boutique en ligne",
+    description: "Découvrez notre catalogue de produits et accessoires pour l'aménagement de votre fourgon",
+    button_text: "Accéder à la boutique",
+    image_url: null as string | null,
+  });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    loadShopConfig();
+  }, []);
+
+  const loadShopConfig = async () => {
+    // Charger la configuration publique (premier utilisateur trouvé)
+    const { data } = await supabase
+      .from("shop_welcome_config")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
+
+    if (data) {
+      setShopConfig({
+        title: data.title,
+        description: data.description,
+        button_text: data.button_text,
+        image_url: data.image_url,
+      });
+    }
+  };
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -101,16 +129,26 @@ const AuthPage = () => {
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 group-hover:from-primary/30 group-hover:via-primary/20 group-hover:to-primary/10 transition-all duration-300" />
           
           <CardContent className="relative flex-1 flex flex-col items-center justify-center p-8 text-center space-y-6">
-            <div className="bg-primary/10 p-6 rounded-2xl group-hover:scale-110 transition-transform duration-300">
-              <ShoppingBag className="h-16 w-16 text-primary" />
-            </div>
+            {shopConfig.image_url ? (
+              <div className="w-full h-48 rounded-xl overflow-hidden group-hover:scale-105 transition-transform duration-300">
+                <img 
+                  src={shopConfig.image_url} 
+                  alt="Boutique" 
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ) : (
+              <div className="bg-primary/10 p-6 rounded-2xl group-hover:scale-110 transition-transform duration-300">
+                <ShoppingBag className="h-16 w-16 text-primary" />
+              </div>
+            )}
             
             <div className="space-y-3">
               <h2 className="text-3xl font-bold tracking-tight">
-                Boutique en ligne
+                {shopConfig.title}
               </h2>
               <p className="text-muted-foreground text-lg max-w-md">
-                Découvrez notre catalogue de produits et accessoires pour l'aménagement de votre fourgon
+                {shopConfig.description}
               </p>
             </div>
 
@@ -122,7 +160,7 @@ const AuthPage = () => {
                 navigate("/shop");
               }}
             >
-              Accéder à la boutique
+              {shopConfig.button_text}
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
 
