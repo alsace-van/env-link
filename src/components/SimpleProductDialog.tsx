@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
@@ -50,7 +56,7 @@ export const SimpleProductDialog = ({
 
   const loadOptions = async () => {
     setLoading(true);
-
+    
     // Récupérer l'accessoire du produit simple
     const { data: productItems, error: itemsError } = await supabase
       .from("shop_product_items")
@@ -88,13 +94,13 @@ export const SimpleProductDialog = ({
     } else {
       setOptions(optionsData || []);
     }
-
+    
     setLoading(false);
   };
 
   const handleOptionToggle = (optionId: string) => {
     if (selectedOptions.includes(optionId)) {
-      setSelectedOptions(selectedOptions.filter((id) => id !== optionId));
+      setSelectedOptions(selectedOptions.filter(id => id !== optionId));
     } else {
       setSelectedOptions([...selectedOptions, optionId]);
     }
@@ -102,8 +108,8 @@ export const SimpleProductDialog = ({
 
   const calculateTotalPrice = () => {
     let total = basePrice;
-    selectedOptions.forEach((optionId) => {
-      const option = options.find((o) => o.id === optionId);
+    selectedOptions.forEach(optionId => {
+      const option = options.find(o => o.id === optionId);
       if (option) {
         total += option.prix_vente_ttc;
       }
@@ -113,32 +119,38 @@ export const SimpleProductDialog = ({
 
   const handleAddToCart = () => {
     // Récupérer les détails complets des options sélectionnées
-    const optionsDetails = selectedOptions.map((optionId) => {
-      const option = options.find((o) => o.id === optionId);
+    const optionsDetails = selectedOptions.map(optionId => {
+      const option = options.find(o => o.id === optionId);
       return {
         id: option?.id || optionId,
         name: option?.nom || "Option",
-        price: option?.prix_vente_ttc || 0,
+        price: option?.prix_vente_ttc || 0
       };
     });
-
+    
     onAddToCart(calculateTotalPrice(), selectedOptions, optionsDetails);
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>{productName}</DialogTitle>
-          <DialogDescription>Sélectionnez les options que vous souhaitez ajouter</DialogDescription>
+          <DialogDescription>
+            Sélectionnez les options que vous souhaitez ajouter
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className={`grid gap-4 ${accessory?.image_url ? "grid-cols-[200px,1fr]" : "grid-cols-1"}`}>
+          <div className={`grid gap-4 ${accessory?.image_url ? 'grid-cols-[240px,1fr]' : 'grid-cols-1'}`}>
             {accessory?.image_url && (
               <div className="rounded-md overflow-hidden border bg-muted/50 h-48">
-                <img src={accessory.image_url} alt={accessory.nom} className="w-full h-full object-contain" />
+                <img
+                  src={accessory.image_url}
+                  alt={accessory.nom}
+                  className="w-full h-full object-contain"
+                />
               </div>
             )}
 
@@ -151,16 +163,15 @@ export const SimpleProductDialog = ({
               </div>
 
               {loading ? (
-                <div className="text-center py-4 text-muted-foreground">Chargement des options...</div>
+                <div className="text-center py-4 text-muted-foreground">
+                  Chargement des options...
+                </div>
               ) : options.length > 0 ? (
                 <div>
                   <Label className="mb-3 block">Options disponibles</Label>
                   <div className="border rounded-md p-4 space-y-3 max-h-[300px] overflow-y-auto">
                     {options.map((option) => (
-                      <div
-                        key={option.id}
-                        className="flex items-start gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors"
-                      >
+                      <div key={option.id} className="flex items-start gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
                         <Checkbox
                           id={`option-${option.id}`}
                           checked={selectedOptions.includes(option.id)}
@@ -191,9 +202,15 @@ export const SimpleProductDialog = ({
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-lg font-semibold">Prix total</span>
-                  <span className="text-2xl font-bold text-primary">{calculateTotalPrice().toFixed(2)} €</span>
+                  <span className="text-2xl font-bold text-primary">
+                    {calculateTotalPrice().toFixed(2)} €
+                  </span>
                 </div>
-                <Button className="w-full" onClick={handleAddToCart} disabled={loading}>
+                <Button 
+                  className="w-full" 
+                  onClick={handleAddToCart}
+                  disabled={loading}
+                >
                   <ShoppingCart className="h-4 w-4 mr-2" />
                   Ajouter au panier
                 </Button>
