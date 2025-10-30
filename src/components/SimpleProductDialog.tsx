@@ -171,7 +171,7 @@ export const SimpleProductDialog = ({
                         <div className="flex-1 min-w-0">
                           <label
                             htmlFor={`option-${option.id}`}
-                            className="text-sm font-medium leading-snug cursor-pointer block break-words"
+                            className="text-sm font-medium leading-snug cursor-pointer block break-words whitespace-normal"
                           >
                             {option.nom}
                           </label>
