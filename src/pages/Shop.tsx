@@ -395,17 +395,44 @@ const Shop = () => {
   // Procéder au paiement et créer la commande
   const proceedToPayment = async (expenseType: "general" | "supplier" | null) => {
     try {
+      // Vérifications de sécurité
+      if (!user) {
+        toast.error("Utilisateur non connecté");
+        return;
+      }
+
+      if (!shopCustomer.customer) {
+        toast.error("Informations client manquantes");
+        setCustomerFormOpen(true);
+        return;
+      }
+
+      if (cart.cartItems.length === 0) {
+        toast.error("Le panier est vide");
+        return;
+      }
+
       // Générer un numéro de commande
-      const { data: orderNumberData } = await supabase.rpc("generate_order_number");
-      const orderNumber = orderNumberData || `VPB-${Date.now()}`;
+      let orderNumber = `VPB-${Date.now()}`;
+      try {
+        const { data: orderNumberData } = await supabase.rpc("generate_order_number");
+        if (orderNumberData) {
+          orderNumber = orderNumberData;
+        }
+      } catch (rpcError) {
+        // Si la fonction RPC n'existe pas, on utilise le fallback
+        console.log("Fonction generate_order_number non disponible, utilisation du fallback");
+      }
+
+      console.log("Création de la commande:", orderNumber);
 
       // Créer la commande
       const { data: order, error: orderError } = await supabase
         .from("shop_orders")
         .insert({
           order_number: orderNumber,
-          customer_id: shopCustomer.customer!.id,
-          user_id: user!.id,
+          customer_id: shopCustomer.customer.id,
+          user_id: user.id,
           total_amount: cart.getTotalPrice(),
           status: "pending",
           project_id: expenseType ? selectedProject?.id : null,
@@ -415,7 +442,12 @@ const Shop = () => {
         .select()
         .single();
 
-      if (orderError) throw orderError;
+      if (orderError) {
+        console.error("Erreur création commande:", orderError);
+        throw new Error(`Erreur lors de la création de la commande: ${orderError.message}`);
+      }
+
+      console.log("Commande créée:", order);
 
       // Créer les lignes de commande
       const orderItems = cart.cartItems.map((item) => ({
@@ -429,15 +461,28 @@ const Shop = () => {
         configuration: item.configuration,
       }));
 
+      console.log("Création des lignes de commande:", orderItems.length, "articles");
+
       const { error: itemsError } = await supabase
         .from("shop_order_items")
         .insert(orderItems);
 
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        console.error("Erreur création items:", itemsError);
+        throw new Error(`Erreur lors de la création des articles: ${itemsError.message}`);
+      }
+
+      console.log("Lignes de commande créées");
 
       // Si l'utilisateur veut ajouter aux dépenses, le faire maintenant
       if (expenseType && selectedProject) {
-        await addOrderToProjectExpenses(order.id, expenseType);
+        try {
+          await addOrderToProjectExpenses(order.id, expenseType);
+        } catch (expenseError) {
+          console.error("Erreur ajout aux dépenses:", expenseError);
+          // Ne pas bloquer si l'ajout aux dépenses échoue
+          toast.warning("Commande créée mais l'ajout aux dépenses a échoué");
+        }
       }
 
       // Vider le panier
@@ -450,11 +495,13 @@ const Shop = () => {
       toast.success(`Commande ${orderNumber} créée avec succès !`);
       
       // TODO: Rediriger vers Stripe pour le paiement
-      toast.info("Redirection vers le paiement (à venir)");
+      toast.info("La commande est créée. Le paiement Stripe sera intégré prochainement.", {
+        duration: 5000,
+      });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erreur lors de la création de la commande:", error);
-      toast.error("Erreur lors de la création de la commande");
+      toast.error(error.message || "Erreur lors de la création de la commande");
     }
   };
 
