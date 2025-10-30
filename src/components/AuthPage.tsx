@@ -117,7 +117,10 @@ const AuthPage = () => {
             <Button 
               size="lg" 
               className="mt-4 group-hover:scale-105 transition-transform"
-              onClick={() => navigate("/shop")}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate("/shop");
+              }}
             >
               Accéder à la boutique
               <ArrowRight className="ml-2 h-5 w-5" />
