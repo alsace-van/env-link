@@ -134,7 +134,7 @@ const AuthPage = () => {
                 <img 
                   src={shopConfig.image_url} 
                   alt="Boutique" 
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                 />
               </div>
             ) : (
