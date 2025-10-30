@@ -19,6 +19,12 @@ interface Option {
   prix_vente_ttc: number;
 }
 
+interface Accessory {
+  id: string;
+  nom: string;
+  image_url?: string;
+}
+
 interface SimpleProductDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,6 +43,7 @@ export const SimpleProductDialog = ({
   onAddToCart,
 }: SimpleProductDialogProps) => {
   const [options, setOptions] = useState<Option[]>([]);
+  const [accessory, setAccessory] = useState<Accessory | null>(null);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -62,6 +69,17 @@ export const SimpleProductDialog = ({
       console.error("Erreur lors du chargement de l'accessoire:", itemsError);
       setLoading(false);
       return;
+    }
+
+    // Récupérer les informations de l'accessoire avec l'image
+    const { data: accessoryData } = await supabase
+      .from("accessories_catalog")
+      .select("id, nom, image_url")
+      .eq("id", productItems.accessory_id)
+      .single();
+
+    if (accessoryData) {
+      setAccessory(accessoryData);
     }
 
     // Récupérer les options de l'accessoire
@@ -115,6 +133,16 @@ export const SimpleProductDialog = ({
         </DialogHeader>
 
         <div className="space-y-4">
+          {accessory?.image_url && (
+            <div className="rounded-md overflow-hidden border bg-muted/50 h-48">
+              <img
+                src={accessory.image_url}
+                alt={accessory.nom}
+                className="w-full h-full object-contain"
+              />
+            </div>
+          )}
+
           <div>
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-medium">Prix de base</span>

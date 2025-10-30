@@ -58,6 +58,7 @@ interface Accessory {
   promo_price?: number;
   promo_start_date?: string;
   promo_end_date?: string;
+  image_url?: string;
 }
 
 interface CategoryInstance {
@@ -166,7 +167,7 @@ const CustomKitConfigDialog = ({
     // Charger les accessoires disponibles pour chaque catégorie
     const { data: accessoriesData, error: accessoriesError } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, puissance_watts, poids_kg, longueur_mm, largeur_mm, hauteur_mm, promo_active, promo_price, promo_start_date, promo_end_date")
+      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, puissance_watts, poids_kg, longueur_mm, largeur_mm, hauteur_mm, promo_active, promo_price, promo_start_date, promo_end_date, image_url")
       .in("category_id", categoryIds)
       .eq("available_in_shop", true);
 
@@ -468,7 +469,7 @@ const CustomKitConfigDialog = ({
                                       )}
                                     </div>
 
-                                    <div className="space-y-1">
+                                     <div className="space-y-1">
                                       <Label className="text-xs">Accessoire</Label>
                                       <Select
                                         value={instance.accessoryId || ""}
@@ -501,6 +502,16 @@ const CustomKitConfigDialog = ({
                                         </SelectContent>
                                       </Select>
                                     </div>
+
+                                    {selectedAccessory?.image_url && (
+                                      <div className="rounded-md overflow-hidden border bg-muted/50 h-32">
+                                        <img
+                                          src={selectedAccessory.image_url}
+                                          alt={selectedAccessory.nom}
+                                          className="w-full h-full object-contain"
+                                        />
+                                      </div>
+                                    )}
 
                                         {selectedAccessory && (
                                           <>
