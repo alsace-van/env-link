@@ -609,11 +609,11 @@ const Shop = () => {
                   {products.map((product) => (
                     <Card key={product.id}>
                       {(product.accessory_image || product.image_url) && (
-                        <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
+                        <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-white flex items-center justify-center p-4">
                           <img
                             src={product.accessory_image || product.image_url}
                             alt={product.name}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain"
                           />
                         </div>
                       )}
@@ -708,11 +708,11 @@ const Shop = () => {
                       .map((product) => (
                         <Card key={product.id}>
                           {(product.accessory_image || product.image_url) && (
-                            <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-muted">
+                            <div className="aspect-video w-full overflow-hidden rounded-t-lg bg-white flex items-center justify-center p-4">
                               <img
                                 src={product.accessory_image || product.image_url}
                                 alt={product.name}
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-contain"
                               />
                             </div>
                           )}
