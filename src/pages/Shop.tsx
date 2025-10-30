@@ -289,7 +289,7 @@ const Shop = () => {
       return;
     }
 
-    if (cart.items.length === 0) {
+    if (cart.cartItems.length === 0) {
       toast.error("Votre panier est vide");
       return;
     }
@@ -406,7 +406,7 @@ const Shop = () => {
           order_number: orderNumber,
           customer_id: shopCustomer.customer!.id,
           user_id: user!.id,
-          total_amount: cart.totalPrice,
+          total_amount: cart.getTotalPrice(),
           status: "pending",
           project_id: expenseType ? selectedProject?.id : null,
           added_to_expenses: false,
@@ -418,7 +418,7 @@ const Shop = () => {
       if (orderError) throw orderError;
 
       // Créer les lignes de commande
-      const orderItems = cart.items.map((item) => ({
+      const orderItems = cart.cartItems.map((item) => ({
         order_id: order.id,
         product_id: item.product_id,
         product_name: item.product?.name || "Produit",
