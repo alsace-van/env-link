@@ -478,17 +478,17 @@ const CustomKitConfigDialog = ({
                                         <SelectTrigger>
                                           <SelectValue placeholder="Sélectionner un accessoire..." />
                                         </SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="max-w-[400px]">
                                           {categoryAccessories.map((accessory) => (
                                             <SelectItem key={accessory.id} value={accessory.id}>
-                                              <div className="flex flex-col">
-                                                <span>{accessory.nom}</span>
-                                                <span className="text-xs text-muted-foreground">
+                                              <div className="flex flex-col gap-0.5 py-1">
+                                                <span className="font-medium break-words">{accessory.nom}</span>
+                                                <span className="text-xs text-muted-foreground break-words">
                                                   {accessory.prix_vente_ttc?.toFixed(2)} €
                                                   {accessory.marque && ` - ${accessory.marque}`}
                                                 </span>
                                                 {(accessory.puissance_watts || accessory.poids_kg || accessory.longueur_mm) && (
-                                                  <span className="text-xs text-muted-foreground">
+                                                  <span className="text-xs text-muted-foreground break-words">
                                                     {accessory.puissance_watts && `${accessory.puissance_watts}W`}
                                                     {accessory.puissance_watts && (accessory.poids_kg || accessory.longueur_mm) && ' • '}
                                                     {accessory.poids_kg && `${accessory.poids_kg}kg`}
@@ -582,21 +582,24 @@ const CustomKitConfigDialog = ({
                                           {selectedAccessory.options && selectedAccessory.options.length > 0 && (
                                             <div className="space-y-1.5">
                                               <Label className="text-xs">Options disponibles</Label>
-                                              <div className="space-y-1">
+                                              <div className="space-y-2 max-h-[200px] overflow-y-auto">
                                                 {selectedAccessory.options.map((option) => (
-                                                  <div key={option.id} className="flex items-center space-x-2">
+                                                  <div key={option.id} className="flex items-start gap-2 p-2 rounded hover:bg-muted/50 transition-colors">
                                                     <Checkbox
                                                       id={`${instance.id}-${option.id}`}
                                                       checked={instance.selectedOptions.includes(option.id)}
                                                       onCheckedChange={() => toggleInstanceOption(instance.id, option.id)}
-                                                      className="h-4 w-4"
+                                                      className="h-4 w-4 mt-0.5 shrink-0"
                                                     />
                                                     <label
                                                       htmlFor={`${instance.id}-${option.id}`}
-                                                      className="text-xs cursor-pointer flex-1"
+                                                      className="text-xs cursor-pointer flex-1 min-w-0 break-words leading-relaxed"
                                                     >
-                                                      {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
+                                                      {option.nom}
                                                     </label>
+                                                    <Badge variant="secondary" className="text-xs shrink-0 ml-2">
+                                                      +{option.prix_vente_ttc.toFixed(2)} €
+                                                    </Badge>
                                                   </div>
                                                 ))}
                                               </div>
