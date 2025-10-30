@@ -49,34 +49,35 @@ const Shop = () => {
 
   useEffect(() => {
     loadUser();
+    loadProducts();
   }, [navigate]);
 
   useEffect(() => {
-    if (user) {
-      loadProducts();
-    }
-  }, [user, refreshKey]);
+    loadProducts();
+  }, [refreshKey]);
 
   const loadUser = async () => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      navigate("/auth");
-      return;
-    }
-
     setUser(user);
   };
 
   const loadProducts = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("shop_products")
-      .select("*")
-      .eq("user_id", user?.id)
-      .order("created_at", { ascending: false });
+    
+    // Si un utilisateur est connecté, charger ses produits
+    // Sinon, charger tous les produits actifs pour le catalogue public
+    let query = supabase.from("shop_products").select("*");
+    
+    if (user) {
+      query = query.eq("user_id", user.id);
+    } else {
+      query = query.eq("is_active", true);
+    }
+    
+    const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
       console.error("Erreur lors du chargement des produits:", error);
@@ -244,7 +245,7 @@ const Shop = () => {
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
+            <Button variant="ghost" size="sm" onClick={() => navigate(user ? "/dashboard" : "/auth")}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
             </Button>
@@ -256,159 +257,171 @@ const Shop = () => {
             <div className="flex-1">
               <h1 className="text-xl font-bold">Boutique</h1>
               <p className="text-sm text-muted-foreground">
-                Gérez vos produits en vente
+                {user ? "Gérez vos produits en vente" : "Découvrez nos produits"}
               </p>
             </div>
-            {user && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCartOpen(true)}
-                  className="relative"
-                >
-                  <ShoppingBag className="h-4 w-4 mr-2" />
-                  Panier
-                  {cart.getTotalItems() > 0 && (
-                    <Badge
-                      variant="destructive"
-                      className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
-                    >
-                      {cart.getTotalItems()}
-                    </Badge>
-                  )}
+            <div className="flex items-center gap-2">
+              {user ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCartOpen(true)}
+                    className="relative"
+                  >
+                    <ShoppingBag className="h-4 w-4 mr-2" />
+                    Panier
+                    {cart.getTotalItems() > 0 && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
+                      >
+                        {cart.getTotalItems()}
+                      </Badge>
+                    )}
+                  </Button>
+                  <UserMenu user={user} />
+                </>
+              ) : (
+                <Button onClick={() => navigate("/auth")}>
+                  Se connecter
                 </Button>
-                <UserMenu user={user} />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="products" className="space-y-6">
+        <Tabs defaultValue={user ? "products" : "catalog"} className="space-y-6">
           <div className="flex items-center justify-between">
             <TabsList>
-              <TabsTrigger value="products">
-                <Package className="h-4 w-4 mr-2" />
-                Mes Produits
-              </TabsTrigger>
+              {user && (
+                <TabsTrigger value="products">
+                  <Package className="h-4 w-4 mr-2" />
+                  Mes Produits
+                </TabsTrigger>
+              )}
               <TabsTrigger value="catalog">
                 <ShoppingCart className="h-4 w-4 mr-2" />
                 Catalogue Public
               </TabsTrigger>
             </TabsList>
 
-            <ShopProductFormDialog
-              onSuccess={() => setRefreshKey(prev => prev + 1)}
-            />
+            {user && (
+              <ShopProductFormDialog
+                onSuccess={() => setRefreshKey(prev => prev + 1)}
+              />
+            )}
           </div>
 
-          <TabsContent value="products" className="space-y-4">
-            {loading ? (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">Chargement...</p>
-              </div>
-            ) : products.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground mb-4">
-                    Vous n'avez pas encore créé de produits
-                  </p>
-                  <ShopProductFormDialog
-                    trigger={<Button>Créer votre premier produit</Button>}
-                    onSuccess={() => setRefreshKey(prev => prev + 1)}
-                  />
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {products.map((product) => (
-                  <Card key={product.id}>
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <CardTitle className="text-lg">{product.name}</CardTitle>
-                            {!product.is_active && (
-                              <Badge variant="secondary">Inactif</Badge>
-                            )}
-                          </div>
-                          <div className="flex gap-2 mb-2">
-                            <Badge variant={getTypeColor(product.type) as any}>
-                              {getTypeLabel(product.type)}
-                            </Badge>
+          {user && (
+            <TabsContent value="products" className="space-y-4">
+              {loading ? (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground">Chargement...</p>
+                </div>
+              ) : products.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground mb-4">
+                      Vous n'avez pas encore créé de produits
+                    </p>
+                    <ShopProductFormDialog
+                      trigger={<Button>Créer votre premier produit</Button>}
+                      onSuccess={() => setRefreshKey(prev => prev + 1)}
+                    />
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {products.map((product) => (
+                    <Card key={product.id}>
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <CardTitle className="text-lg">{product.name}</CardTitle>
+                              {!product.is_active && (
+                                <Badge variant="secondary">Inactif</Badge>
+                              )}
+                            </div>
+                            <div className="flex gap-2 mb-2">
+                              <Badge variant={getTypeColor(product.type) as any}>
+                                {getTypeLabel(product.type)}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      {product.description && (
-                        <CardDescription className="line-clamp-2">
-                          {product.description}
-                        </CardDescription>
-                      )}
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-muted-foreground">Prix:</span>
-                          <span className="text-lg font-semibold">
-                            {product.price.toFixed(2)} €
-                          </span>
-                        </div>
+                        {product.description && (
+                          <CardDescription className="line-clamp-2">
+                            {product.description}
+                          </CardDescription>
+                        )}
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">Prix:</span>
+                            <span className="text-lg font-semibold">
+                              {product.price.toFixed(2)} €
+                            </span>
+                          </div>
 
-                        <div className="flex gap-2">
-                          <ShopProductFormDialog
-                            trigger={
-                              <Button variant="outline" size="sm" className="flex-1">
-                                <Edit className="h-4 w-4 mr-2" />
-                                Modifier
-                              </Button>
-                            }
-                            editProduct={product}
-                            onSuccess={() => setRefreshKey(prev => prev + 1)}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => {
-                              if (product.type === "custom_kit") {
-                                setKitPricingProduct(product);
-                              } else {
-                                setPricingDialogProduct(product);
+                          <div className="flex gap-2">
+                            <ShopProductFormDialog
+                              trigger={
+                                <Button variant="outline" size="sm" className="flex-1">
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Modifier
+                                </Button>
                               }
-                            }}
-                          >
-                            <Percent className="h-4 w-4 mr-2" />
-                            Tarifs
-                          </Button>
+                              editProduct={product}
+                              onSuccess={() => setRefreshKey(prev => prev + 1)}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => {
+                                if (product.type === "custom_kit") {
+                                  setKitPricingProduct(product);
+                                } else {
+                                  setPricingDialogProduct(product);
+                                }
+                              }}
+                            >
+                              <Percent className="h-4 w-4 mr-2" />
+                              Tarifs
+                            </Button>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                              onClick={() => handleToggleActive(product.id, product.is_active)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              {product.is_active ? "Masquer" : "Activer"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(product.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => handleToggleActive(product.id, product.is_active)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            {product.is_active ? "Masquer" : "Activer"}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDelete(product.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          )}
 
           <TabsContent value="catalog" className="space-y-4">
             <Card>
