@@ -159,24 +159,24 @@ export const SimpleProductDialog = ({
               ) : options.length > 0 ? (
                 <div>
                   <Label className="mb-3 block">Options disponibles</Label>
-                  <div className="border rounded-md p-4 space-y-3">
+                  <div className="border rounded-md p-4 space-y-3 max-h-[300px] overflow-y-auto">
                     {options.map((option) => (
-                      <div key={option.id} className="flex items-start justify-between gap-4">
-                        <div className="flex items-start space-x-2 flex-1">
-                          <Checkbox
-                            id={`option-${option.id}`}
-                            checked={selectedOptions.includes(option.id)}
-                            onCheckedChange={() => handleOptionToggle(option.id)}
-                            className="mt-0.5"
-                          />
+                      <div key={option.id} className="flex items-start gap-3 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                        <Checkbox
+                          id={`option-${option.id}`}
+                          checked={selectedOptions.includes(option.id)}
+                          onCheckedChange={() => handleOptionToggle(option.id)}
+                          className="mt-1 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
                           <label
                             htmlFor={`option-${option.id}`}
-                            className="text-sm font-medium leading-tight cursor-pointer"
+                            className="text-sm font-medium leading-snug cursor-pointer block break-words"
                           >
                             {option.nom}
                           </label>
                         </div>
-                        <Badge variant="secondary" className="shrink-0">
+                        <Badge variant="secondary" className="shrink-0 ml-2">
                           +{option.prix_vente_ttc.toFixed(2)} €
                         </Badge>
                       </div>
