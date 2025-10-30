@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -62,9 +69,7 @@ export const ShoppingCartDialog = ({
     const loadAccessoryTieredPricing = async () => {
       if (!item.configuration?.items) return;
 
-      const accessoryIds = item.configuration.items
-        .map((configItem: any) => configItem.accessoryId)
-        .filter(Boolean);
+      const accessoryIds = item.configuration.items.map((configItem: any) => configItem.accessoryId).filter(Boolean);
 
       if (accessoryIds.length === 0) return;
 
@@ -88,9 +93,7 @@ export const ShoppingCartDialog = ({
       const tiers = accessoryTieredPricing.get(accessoryId) || [];
       if (tiers.length === 0) return null;
 
-      const applicableTier = [...tiers]
-        .reverse()
-        .find((tier) => quantity >= tier.article_position);
+      const applicableTier = [...tiers].reverse().find((tier) => quantity >= tier.article_position);
 
       return applicableTier;
     };
@@ -100,30 +103,39 @@ export const ShoppingCartDialog = ({
         <div className="flex-1 space-y-2">
           <div className="flex items-start justify-between">
             <div>
-              <h4 className="font-semibold">
-                {item.product?.name || "Produit"}
-              </h4>
+              <h4 className="font-semibold">{item.product?.name || "Produit"}</h4>
               <Badge variant="secondary" className="text-xs mt-1">
                 {getProductTypeLabel(item.product?.type || "")}
               </Badge>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onRemoveItem(item.id)}
-              className="text-destructive"
-            >
+            <Button variant="ghost" size="icon" onClick={() => onRemoveItem(item.id)} className="text-destructive">
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
 
-          {item.configuration && (
+          {/* Options pour les produits simples */}
+          {item.configuration?.selectedOptions && item.configuration.selectedOptions.length > 0 && (
+            <div className="text-sm space-y-1 p-2 rounded bg-muted/50">
+              <p className="font-medium text-xs">Options sélectionnées:</p>
+              <div className="space-y-1">
+                {item.configuration.selectedOptions.map((opt: any, idx: number) => (
+                  <div key={idx} className="flex justify-between text-xs text-muted-foreground">
+                    <span>• {opt.name}</span>
+                    <span>+{opt.price?.toFixed(2)} €</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Configuration pour les kits */}
+          {item.configuration?.items && (
             <div className="text-sm space-y-2 p-2 rounded bg-muted/50">
               <p className="font-medium text-xs">Configuration:</p>
               <div className="space-y-2">
                 {item.configuration.items?.map((configItem: any, idx: number) => {
                   const discountInfo = getAccessoryDiscountInfo(configItem.accessoryId, configItem.quantity);
-                  
+
                   return (
                     <div key={idx} className="space-y-1 pb-2 border-b last:border-0 last:pb-0">
                       <div className="flex justify-between items-start">
@@ -132,9 +144,7 @@ export const ShoppingCartDialog = ({
                             {configItem.accessoryName} x{configItem.quantity}
                           </p>
                           {configItem.color && (
-                            <p className="text-xs text-muted-foreground">
-                              Couleur: {configItem.color}
-                            </p>
+                            <p className="text-xs text-muted-foreground">Couleur: {configItem.color}</p>
                           )}
                           {discountInfo && (
                             <div className="flex items-center gap-1 mt-1">
@@ -196,7 +206,7 @@ export const ShoppingCartDialog = ({
                 <span className="text-sm font-medium">{unitPrice.toFixed(2)} €</span>
               </div>
             </div>
-            
+
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">Quantité:</span>
               <div className="flex items-center gap-2">
@@ -211,9 +221,7 @@ export const ShoppingCartDialog = ({
                 <Input
                   type="number"
                   value={item.quantity}
-                  onChange={(e) =>
-                    onUpdateQuantity(item.id, parseInt(e.target.value) || 1)
-                  }
+                  onChange={(e) => onUpdateQuantity(item.id, parseInt(e.target.value) || 1)}
                   className="w-16 h-7 text-center"
                   min="1"
                 />
@@ -232,9 +240,7 @@ export const ShoppingCartDialog = ({
 
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Sous-total:</span>
-              <span className="text-lg font-bold text-primary">
-                {(unitPrice * item.quantity).toFixed(2)} €
-              </span>
+              <span className="text-lg font-bold text-primary">{(unitPrice * item.quantity).toFixed(2)} €</span>
             </div>
           </div>
         </div>
@@ -250,18 +256,14 @@ export const ShoppingCartDialog = ({
             <ShoppingBag className="h-5 w-5" />
             Panier ({cartItems.length})
           </DialogTitle>
-          <DialogDescription>
-            Gérez vos articles avant de passer commande
-          </DialogDescription>
+          <DialogDescription>Gérez vos articles avant de passer commande</DialogDescription>
         </DialogHeader>
 
         {cartItems.length === 0 ? (
           <div className="py-12 text-center">
             <ShoppingBag className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground mb-2">Votre panier est vide</p>
-            <p className="text-sm text-muted-foreground">
-              Ajoutez des produits depuis le catalogue
-            </p>
+            <p className="text-sm text-muted-foreground">Ajoutez des produits depuis le catalogue</p>
           </div>
         ) : (
           <>
@@ -278,25 +280,15 @@ export const ShoppingCartDialog = ({
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-lg font-semibold">Total:</span>
-                <span className="text-2xl font-bold text-primary">
-                  {totalPrice.toFixed(2)} €
-                </span>
+                <span className="text-2xl font-bold text-primary">{totalPrice.toFixed(2)} €</span>
               </div>
             </div>
 
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button
-                variant="outline"
-                onClick={onClearCart}
-                className="w-full sm:w-auto"
-              >
+              <Button variant="outline" onClick={onClearCart} className="w-full sm:w-auto">
                 Vider le panier
               </Button>
-              <Button
-                onClick={onCheckout}
-                className="w-full sm:w-auto"
-                size="lg"
-              >
+              <Button onClick={onCheckout} className="w-full sm:w-auto" size="lg">
                 Passer commande
               </Button>
             </DialogFooter>
