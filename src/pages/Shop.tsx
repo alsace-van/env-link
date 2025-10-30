@@ -10,11 +10,14 @@ import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye, Settings, Shopping
 import UserMenu from "@/components/UserMenu";
 import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
 import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
-import { ShoppingCartDialog } from "@/components/ShoppingCartDialog";
+import { ShoppingCartSidebar } from "@/components/ShoppingCartSidebar";
 import { ProductPricingDialog } from "@/components/ProductPricingDialog";
 import { KitAccessoryPricingDialog } from "@/components/KitAccessoryPricingDialog";
 import { SimpleProductDialog } from "@/components/SimpleProductDialog";
+import { CustomerFormDialog } from "@/components/CustomerFormDialog";
+import { AddToProjectExpensesDialog } from "@/components/AddToProjectExpensesDialog";
 import { useCart } from "@/hooks/useCart";
+import { useShopCustomer } from "@/hooks/useShopCustomer";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 
@@ -44,8 +47,15 @@ const Shop = () => {
   const [cartOpen, setCartOpen] = useState(false);
   const [pricingDialogProduct, setPricingDialogProduct] = useState<ShopProduct | null>(null);
   const [kitPricingProduct, setKitPricingProduct] = useState<ShopProduct | null>(null);
+  
+  // Nouveaux états pour le checkout
+  const [customerFormOpen, setCustomerFormOpen] = useState(false);
+  const [addToProjectDialogOpen, setAddToProjectDialogOpen] = useState(false);
+  const [userProjects, setUserProjects] = useState<any[]>([]);
+  const [selectedProject, setSelectedProject] = useState<any>(null);
 
   const cart = useCart(user?.id);
+  const shopCustomer = useShopCustomer(user?.id);
 
   useEffect(() => {
     loadUser();
@@ -231,7 +241,276 @@ const Shop = () => {
     }
   };
 
-  const handleCheckout = () => {
+  // Charger les projets de l'utilisateur
+  const loadUserProjects = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setUserProjects(data || []);
+      
+      // Sélectionner automatiquement le premier projet s'il existe
+      if (data && data.length > 0) {
+        setSelectedProject(data[0]);
+      }
+    } catch (error) {
+      console.error("Erreur lors du chargement des projets:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadUserProjects();
+    }
+  }, [user]);
+
+  // Flow de checkout
+  const handleCheckout = async () => {
+    if (!user) {
+      toast.error("Veuillez vous connecter pour passer commande");
+      return;
+    }
+
+    if (cart.items.length === 0) {
+      toast.error("Votre panier est vide");
+      return;
+    }
+
+    // Étape 1 : Vérifier si l'utilisateur a complété ses infos client
+    if (!shopCustomer.hasCustomerInfo) {
+      setCustomerFormOpen(true);
+      return;
+    }
+
+    // Étape 2 : Vérifier si l'utilisateur a un projet actif
+    if (userProjects.length > 0 && selectedProject) {
+      setAddToProjectDialogOpen(true);
+    } else {
+      // Pas de projet, passer directement au paiement
+      proceedToPayment(null);
+    }
+  };
+
+  // Soumettre les informations client
+  const handleCustomerFormSubmit = async (formData: any) => {
+    const success = await shopCustomer.createOrUpdateCustomer({
+      company_name: formData.companyName,
+      first_name: formData.firstName,
+      last_name: formData.lastName,
+      email: formData.email,
+      phone: formData.phone,
+      billing_address: formData.billingAddress,
+      billing_postal_code: formData.billingPostalCode,
+      billing_city: formData.billingCity,
+      billing_country: formData.billingCountry,
+      vat_number: formData.vatNumber,
+      shipping_same_as_billing: formData.shippingSameAsBilling,
+      shipping_recipient_name: formData.shippingRecipientName,
+      shipping_address: formData.shippingAddress,
+      shipping_postal_code: formData.shippingPostalCode,
+      shipping_city: formData.shippingCity,
+      shipping_country: formData.shippingCountry,
+    });
+
+    if (success) {
+      setCustomerFormOpen(false);
+      
+      // Continuer le flow : vérifier s'il y a un projet
+      if (userProjects.length > 0 && selectedProject) {
+        setAddToProjectDialogOpen(true);
+      } else {
+        proceedToPayment(null);
+      }
+    }
+  };
+
+  // Gérer la réponse pour l'ajout au projet
+  const handleAddToProjectConfirm = (expenseType: "general" | "supplier" | null) => {
+    proceedToPayment(expenseType);
+  };
+
+  // Créer ou récupérer le fournisseur "Alsace Van Creation"
+  const getOrCreateSupplier = async () => {
+    if (!user || !selectedProject) return null;
+
+    try {
+      // Chercher si le fournisseur existe déjà
+      const { data: existingSupplier, error: searchError } = await supabase
+        .from("suppliers")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("nom", "Alsace Van Creation")
+        .maybeSingle();
+
+      if (searchError && searchError.code !== "PGRST116") {
+        console.error("Erreur recherche fournisseur:", searchError);
+        return null;
+      }
+
+      if (existingSupplier) {
+        return existingSupplier.id;
+      }
+
+      // Créer le fournisseur s'il n'existe pas
+      const { data: newSupplier, error: createError } = await supabase
+        .from("suppliers")
+        .insert({
+          user_id: user.id,
+          nom: "Alsace Van Creation",
+          email: "alsacevancreation@hotmail.com",
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        console.error("Erreur création fournisseur:", createError);
+        return null;
+      }
+
+      return newSupplier.id;
+    } catch (error) {
+      console.error("Erreur gestion fournisseur:", error);
+      return null;
+    }
+  };
+
+  // Procéder au paiement et créer la commande
+  const proceedToPayment = async (expenseType: "general" | "supplier" | null) => {
+    try {
+      // Générer un numéro de commande
+      const { data: orderNumberData } = await supabase.rpc("generate_order_number");
+      const orderNumber = orderNumberData || `VPB-${Date.now()}`;
+
+      // Créer la commande
+      const { data: order, error: orderError } = await supabase
+        .from("shop_orders")
+        .insert({
+          order_number: orderNumber,
+          customer_id: shopCustomer.customer!.id,
+          user_id: user!.id,
+          total_amount: cart.totalPrice,
+          status: "pending",
+          project_id: expenseType ? selectedProject?.id : null,
+          added_to_expenses: false,
+          expense_type: expenseType,
+        })
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      // Créer les lignes de commande
+      const orderItems = cart.items.map((item) => ({
+        order_id: order.id,
+        product_id: item.product_id,
+        product_name: item.product?.name || "Produit",
+        product_type: item.product?.type || "simple",
+        unit_price: item.price_at_addition,
+        quantity: item.quantity,
+        subtotal: item.price_at_addition * item.quantity,
+        configuration: item.configuration,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from("shop_order_items")
+        .insert(orderItems);
+
+      if (itemsError) throw itemsError;
+
+      // Si l'utilisateur veut ajouter aux dépenses, le faire maintenant
+      if (expenseType && selectedProject) {
+        await addOrderToProjectExpenses(order.id, expenseType);
+      }
+
+      // Vider le panier
+      await cart.clearCart();
+
+      // Fermer les dialogs
+      setCartOpen(false);
+      setAddToProjectDialogOpen(false);
+
+      toast.success(`Commande ${orderNumber} créée avec succès !`);
+      
+      // TODO: Rediriger vers Stripe pour le paiement
+      toast.info("Redirection vers le paiement (à venir)");
+      
+    } catch (error) {
+      console.error("Erreur lors de la création de la commande:", error);
+      toast.error("Erreur lors de la création de la commande");
+    }
+  };
+
+  // Ajouter la commande aux dépenses du projet
+  const addOrderToProjectExpenses = async (orderId: string, expenseType: "general" | "supplier") => {
+    try {
+      // Récupérer les détails de la commande
+      const { data: orderItems, error: itemsError } = await supabase
+        .from("shop_order_items")
+        .select("*")
+        .eq("order_id", orderId);
+
+      if (itemsError) throw itemsError;
+
+      if (expenseType === "supplier") {
+        // Ajouter aux dépenses fournisseur
+        const supplierId = await getOrCreateSupplier();
+        
+        if (supplierId && orderItems) {
+          const supplierExpenses = orderItems.map((item) => ({
+            project_id: selectedProject!.id,
+            supplier_id: supplierId,
+            nom_accessoire: item.product_name,
+            prix: item.unit_price,
+            quantite: item.quantity,
+            date_achat: new Date().toISOString().split("T")[0],
+          }));
+
+          const { error } = await supabase
+            .from("supplier_expenses")
+            .insert(supplierExpenses);
+
+          if (error) throw error;
+        }
+      } else {
+        // Ajouter aux dépenses générales
+        if (orderItems) {
+          const generalExpenses = orderItems.map((item) => ({
+            project_id: selectedProject!.id,
+            nom_accessoire: item.product_name,
+            prix: item.unit_price,
+            quantite: item.quantity,
+            date_achat: new Date().toISOString().split("T")[0],
+            fournisseur: "Alsace Van Creation",
+          }));
+
+          const { error } = await supabase
+            .from("project_expenses")
+            .insert(generalExpenses);
+
+          if (error) throw error;
+        }
+      }
+
+      // Marquer la commande comme ajoutée aux dépenses
+      await supabase
+        .from("shop_orders")
+        .update({ added_to_expenses: true })
+        .eq("id", orderId);
+
+      toast.success("Achats ajoutés aux dépenses du projet");
+    } catch (error) {
+      console.error("Erreur lors de l'ajout aux dépenses:", error);
+      toast.error("Erreur lors de l'ajout aux dépenses");
+    }
+  };
+
+  const handleCheckoutOld = () => {
     toast.info("Fonctionnalité de paiement à venir");
     // TODO: Intégrer Stripe
   };
@@ -506,7 +785,7 @@ const Shop = () => {
         />
       )}
 
-      <ShoppingCartDialog
+      <ShoppingCartSidebar
         open={cartOpen}
         onOpenChange={setCartOpen}
         cartItems={cart.cartItems}
@@ -516,6 +795,43 @@ const Shop = () => {
         onClearCart={cart.clearCart}
         onCheckout={handleCheckout}
       />
+
+      <CustomerFormDialog
+        open={customerFormOpen}
+        onOpenChange={setCustomerFormOpen}
+        onSubmit={handleCustomerFormSubmit}
+        initialData={
+          shopCustomer.customer
+            ? {
+                companyName: shopCustomer.customer.company_name,
+                firstName: shopCustomer.customer.first_name,
+                lastName: shopCustomer.customer.last_name,
+                email: shopCustomer.customer.email,
+                phone: shopCustomer.customer.phone,
+                billingAddress: shopCustomer.customer.billing_address,
+                billingPostalCode: shopCustomer.customer.billing_postal_code,
+                billingCity: shopCustomer.customer.billing_city,
+                billingCountry: shopCustomer.customer.billing_country,
+                vatNumber: shopCustomer.customer.vat_number,
+                shippingSameAsBilling: shopCustomer.customer.shipping_same_as_billing,
+                shippingRecipientName: shopCustomer.customer.shipping_recipient_name,
+                shippingAddress: shopCustomer.customer.shipping_address,
+                shippingPostalCode: shopCustomer.customer.shipping_postal_code,
+                shippingCity: shopCustomer.customer.shipping_city,
+                shippingCountry: shopCustomer.customer.shipping_country,
+              }
+            : undefined
+        }
+      />
+
+      {selectedProject && (
+        <AddToProjectExpensesDialog
+          open={addToProjectDialogOpen}
+          onOpenChange={setAddToProjectDialogOpen}
+          projectName={selectedProject.nom_proprietaire || "votre projet"}
+          onConfirm={handleAddToProjectConfirm}
+        />
+      )}
 
       {pricingDialogProduct && (
         <ProductPricingDialog
