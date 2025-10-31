@@ -21,6 +21,7 @@ export type Database = {
           category_id: string | null
           couleur: string | null
           created_at: string
+          delivery_date: string | null
           description: string | null
           fournisseur: string | null
           hauteur_mm: number | null
@@ -41,6 +42,9 @@ export type Database = {
           promo_price: number | null
           promo_start_date: string | null
           puissance_watts: number | null
+          stock_quantity: number | null
+          stock_status: string | null
+          tracking_number: string | null
           type_electrique: string | null
           url_produit: string | null
           user_id: string
@@ -51,6 +55,7 @@ export type Database = {
           category_id?: string | null
           couleur?: string | null
           created_at?: string
+          delivery_date?: string | null
           description?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
@@ -71,6 +76,9 @@ export type Database = {
           promo_price?: number | null
           promo_start_date?: string | null
           puissance_watts?: number | null
+          stock_quantity?: number | null
+          stock_status?: string | null
+          tracking_number?: string | null
           type_electrique?: string | null
           url_produit?: string | null
           user_id: string
@@ -81,6 +89,7 @@ export type Database = {
           category_id?: string | null
           couleur?: string | null
           created_at?: string
+          delivery_date?: string | null
           description?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
@@ -101,6 +110,9 @@ export type Database = {
           promo_price?: number | null
           promo_start_date?: string | null
           puissance_watts?: number | null
+          stock_quantity?: number | null
+          stock_status?: string | null
+          tracking_number?: string | null
           type_electrique?: string | null
           url_produit?: string | null
           user_id?: string
@@ -299,6 +311,72 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "administrative_documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_events: {
+        Row: {
+          accessory_id: string | null
+          all_day: boolean | null
+          created_at: string | null
+          delivery_date: string | null
+          description: string | null
+          end_date: string | null
+          event_type: string
+          id: string
+          project_id: string | null
+          start_date: string
+          title: string
+          tracking_number: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          accessory_id?: string | null
+          all_day?: boolean | null
+          created_at?: string | null
+          delivery_date?: string | null
+          description?: string | null
+          end_date?: string | null
+          event_type?: string
+          id?: string
+          project_id?: string | null
+          start_date: string
+          title: string
+          tracking_number?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          accessory_id?: string | null
+          all_day?: boolean | null
+          created_at?: string | null
+          delivery_date?: string | null
+          description?: string | null
+          end_date?: string | null
+          event_type?: string
+          id?: string
+          project_id?: string | null
+          start_date?: string
+          title?: string
+          tracking_number?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_events_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
