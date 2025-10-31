@@ -357,7 +357,7 @@ const Shop = () => {
         .from("suppliers")
         .select("*")
         .eq("user_id", user.id)
-        .eq("nom", "Alsace Van Creation")
+        .eq("name", "Alsace Van Creation")
         .maybeSingle();
 
       if (searchError && searchError.code !== "PGRST116") {
@@ -374,7 +374,7 @@ const Shop = () => {
         .from("suppliers")
         .insert({
           user_id: user.id,
-          nom: "Alsace Van Creation",
+          name: "Alsace Van Creation",
           email: "alsacevancreation@hotmail.com",
         })
         .select()
@@ -522,12 +522,13 @@ const Shop = () => {
         
         if (supplierId && orderItems) {
           const supplierExpenses = orderItems.map((item) => ({
-            project_id: selectedProject!.id,
+            user_id: user.id,
             supplier_id: supplierId,
-            nom_accessoire: item.product_name,
-            prix: item.unit_price,
-            quantite: item.quantity,
-            date_achat: new Date().toISOString().split("T")[0],
+            product_name: item.product_name,
+            unit_price: item.unit_price,
+            quantity: item.quantity,
+            total_amount: item.unit_price * item.quantity,
+            order_date: new Date().toISOString().split("T")[0],
           }));
 
           const { error } = await supabase

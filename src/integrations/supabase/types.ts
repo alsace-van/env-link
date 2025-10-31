@@ -1116,6 +1116,173 @@ export type Database = {
           },
         ]
       }
+      shop_customers: {
+        Row: {
+          billing_address: string
+          billing_city: string
+          billing_country: string
+          billing_postal_code: string
+          company_name: string | null
+          created_at: string | null
+          email: string
+          first_name: string
+          has_project_subscription: boolean | null
+          id: string
+          last_name: string
+          phone: string
+          shipping_address: string | null
+          shipping_city: string | null
+          shipping_country: string | null
+          shipping_postal_code: string | null
+          shipping_recipient_name: string | null
+          shipping_same_as_billing: boolean | null
+          updated_at: string | null
+          user_id: string | null
+          vat_number: string | null
+        }
+        Insert: {
+          billing_address: string
+          billing_city: string
+          billing_country?: string
+          billing_postal_code: string
+          company_name?: string | null
+          created_at?: string | null
+          email: string
+          first_name: string
+          has_project_subscription?: boolean | null
+          id?: string
+          last_name: string
+          phone: string
+          shipping_address?: string | null
+          shipping_city?: string | null
+          shipping_country?: string | null
+          shipping_postal_code?: string | null
+          shipping_recipient_name?: string | null
+          shipping_same_as_billing?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+          vat_number?: string | null
+        }
+        Update: {
+          billing_address?: string
+          billing_city?: string
+          billing_country?: string
+          billing_postal_code?: string
+          company_name?: string | null
+          created_at?: string | null
+          email?: string
+          first_name?: string
+          has_project_subscription?: boolean | null
+          id?: string
+          last_name?: string
+          phone?: string
+          shipping_address?: string | null
+          shipping_city?: string | null
+          shipping_country?: string | null
+          shipping_postal_code?: string | null
+          shipping_recipient_name?: string | null
+          shipping_same_as_billing?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+          vat_number?: string | null
+        }
+        Relationships: []
+      }
+      shop_order_items: {
+        Row: {
+          configuration: Json | null
+          created_at: string | null
+          id: string
+          order_id: string
+          product_id: string
+          product_name: string
+          quantity: number
+          unit_price: number
+        }
+        Insert: {
+          configuration?: Json | null
+          created_at?: string | null
+          id?: string
+          order_id: string
+          product_id: string
+          product_name: string
+          quantity?: number
+          unit_price: number
+        }
+        Update: {
+          configuration?: Json | null
+          created_at?: string | null
+          id?: string
+          order_id?: string
+          product_id?: string
+          product_name?: string
+          quantity?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "shop_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "shop_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_orders: {
+        Row: {
+          added_to_expenses: boolean | null
+          created_at: string | null
+          customer_id: string | null
+          id: string
+          notes: string | null
+          order_number: string
+          status: string | null
+          total_amount: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          added_to_expenses?: boolean | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          notes?: string | null
+          order_number: string
+          status?: string | null
+          total_amount?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          added_to_expenses?: boolean | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          notes?: string | null
+          order_number?: string
+          status?: string | null
+          total_amount?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "shop_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_product_items: {
         Row: {
           accessory_id: string
@@ -1235,6 +1402,89 @@ export type Database = {
           image_url?: string | null
           title?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      supplier_expenses: {
+        Row: {
+          created_at: string | null
+          id: string
+          notes: string | null
+          order_date: string | null
+          product_name: string
+          quantity: number
+          supplier_id: string | null
+          total_amount: number
+          unit_price: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          product_name: string
+          quantity?: number
+          supplier_id?: string | null
+          total_amount: number
+          unit_price: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          product_name?: string
+          quantity?: number
+          supplier_id?: string | null
+          total_amount?: number
+          unit_price?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_expenses_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
@@ -1375,6 +1625,7 @@ export type Database = {
         Args: { p_base_price: number; p_product_id: string; p_quantity: number }
         Returns: number
       }
+      generate_order_number: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

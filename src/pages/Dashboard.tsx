@@ -5,6 +5,7 @@ import ProjectsList from "@/components/ProjectsList";
 import ProjectForm from "@/components/ProjectForm";
 import UserMenu from "@/components/UserMenu";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
+import { BackupSettingsDialog } from "@/components/BackupSettingsDialog";
 import { Button } from "@/components/ui/button";
 import { ShoppingBag } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -77,6 +78,7 @@ const Dashboard = () => {
             />
           </div>
           <div className="flex items-center gap-2">
+            <BackupSettingsDialog userId={user?.id} />
             <Button 
               variant="default" 
               size="sm"
