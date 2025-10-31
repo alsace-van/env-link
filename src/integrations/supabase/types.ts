@@ -624,6 +624,54 @@ export type Database = {
         }
         Relationships: []
       }
+      project_accessories: {
+        Row: {
+          accessory_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          prix_unitaire: number
+          project_id: string
+          quantite: number
+          updated_at: string
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          prix_unitaire?: number
+          project_id: string
+          quantite?: number
+          updated_at?: string
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          prix_unitaire?: number
+          project_id?: string
+          quantite?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_accessories_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_accessories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_bank_balance: {
         Row: {
           created_at: string
@@ -1057,8 +1105,11 @@ export type Database = {
       projects: {
         Row: {
           adresse_proprietaire: string | null
+          budget: number | null
           charge_utile_kg: number | null
           created_at: string
+          date_debut: string | null
+          date_fin: string | null
           date_mise_circulation: string | null
           email_proprietaire: string | null
           furniture_data: Json | null
@@ -1078,6 +1129,7 @@ export type Database = {
           photo_url: string | null
           poids_vide_kg: number | null
           ptac_kg: number | null
+          statut: string | null
           technical_canvas_data: string | null
           technical_canvas_data_2: string | null
           telephone_proprietaire: string | null
@@ -1088,8 +1140,11 @@ export type Database = {
         }
         Insert: {
           adresse_proprietaire?: string | null
+          budget?: number | null
           charge_utile_kg?: number | null
           created_at?: string
+          date_debut?: string | null
+          date_fin?: string | null
           date_mise_circulation?: string | null
           email_proprietaire?: string | null
           furniture_data?: Json | null
@@ -1109,6 +1164,7 @@ export type Database = {
           photo_url?: string | null
           poids_vide_kg?: number | null
           ptac_kg?: number | null
+          statut?: string | null
           technical_canvas_data?: string | null
           technical_canvas_data_2?: string | null
           telephone_proprietaire?: string | null
@@ -1119,8 +1175,11 @@ export type Database = {
         }
         Update: {
           adresse_proprietaire?: string | null
+          budget?: number | null
           charge_utile_kg?: number | null
           created_at?: string
+          date_debut?: string | null
+          date_fin?: string | null
           date_mise_circulation?: string | null
           email_proprietaire?: string | null
           furniture_data?: Json | null
@@ -1140,6 +1199,7 @@ export type Database = {
           photo_url?: string | null
           poids_vide_kg?: number | null
           ptac_kg?: number | null
+          statut?: string | null
           technical_canvas_data?: string | null
           technical_canvas_data_2?: string | null
           telephone_proprietaire?: string | null
@@ -1319,6 +1379,7 @@ export type Database = {
           added_to_expenses: boolean | null
           created_at: string | null
           customer_id: string | null
+          expense_type: string | null
           id: string
           notes: string | null
           order_number: string
@@ -1331,6 +1392,7 @@ export type Database = {
           added_to_expenses?: boolean | null
           created_at?: string | null
           customer_id?: string | null
+          expense_type?: string | null
           id?: string
           notes?: string | null
           order_number: string
@@ -1343,6 +1405,7 @@ export type Database = {
           added_to_expenses?: boolean | null
           created_at?: string | null
           customer_id?: string | null
+          expense_type?: string | null
           id?: string
           notes?: string | null
           order_number?: string
