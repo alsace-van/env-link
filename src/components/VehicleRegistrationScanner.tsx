@@ -212,6 +212,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
+        tessedit_char_blacklist: "IOQ",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
@@ -310,6 +317,12 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
@@ -547,7 +560,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setProgress(100);
 
-      onDataExtracted(finalData);
+      // Ne pas appeler onDataExtracted automatiquement - l'utilisateur doit valider
+      // onDataExtracted(finalData);
 
       const detectedCount = Object.values(finalData).filter((v) => v !== undefined && v !== null && v !== "").length;
       toast.success(`${detectedCount}/8 champs détectés avec succès`, { duration: 3000 });
@@ -603,9 +617,18 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
   const handleSaveEdits = () => {
     console.log("💾 Sauvegarde des modifications:", editedData);
+
+    // Filtrer les valeurs undefined avant de passer au formulaire
+    const cleanedData: VehicleRegistrationData = {};
+    Object.entries(editedData).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        cleanedData[key as keyof VehicleRegistrationData] = value;
+      }
+    });
+
     setExtractedData(editedData);
     setIsEditMode(false);
-    onDataExtracted(editedData);
+    onDataExtracted(cleanedData);
     toast.success("Modifications enregistrées", { duration: 2000 });
   };
 
@@ -747,73 +770,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
               </div>
             )}
 
-            {/* Boutons de rescan V3.4 - TOUJOURS VISIBLES */}
-            {extractedData && !isProcessing && !isEditMode && (
-              <div className="space-y-2">
-                {/* Bouton rescan VIN - TOUJOURS VISIBLE */}
-                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-900">{getVINStatus()}</p>
-                    {extractedData.numeroChassisVIN && (
-                      <p className="text-xs text-blue-700 mt-1">{extractedData.numeroChassisVIN}</p>
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={processVINOnly}
-                    disabled={isRescanningVIN}
-                    className="bg-white shrink-0"
-                  >
-                    {isRescanningVIN ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Scan...
-                      </>
-                    ) : (
-                      <>
-                        <ScanLine className="h-4 w-4 mr-2" />
-                        Rescanner VIN
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                {/* Bouton rescan Immatriculation - TOUJOURS VISIBLE */}
-                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-900">{getImmatStatus()}</p>
-                    {extractedData.immatriculation && (
-                      <p className="text-xs text-blue-700 mt-1">{extractedData.immatriculation}</p>
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={processImmatriculationOnly}
-                    disabled={isRescanningImmat}
-                    className="bg-white shrink-0"
-                  >
-                    {isRescanningImmat ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Scan...
-                      </>
-                    ) : (
-                      <>
-                        <ScanLine className="h-4 w-4 mr-2" />
-                        Rescanner Immat
-                      </>
-                    )}
-                  </Button>
-                </div>
-
-                <p className="text-xs text-muted-foreground text-center">
-                  💡 Prenez une photo rapprochée de la zone concernée pour un meilleur résultat
-                </p>
-              </div>
-            )}
-
             {/* Résultats de l'extraction */}
             {extractedData && !isProcessing && (
               <div className="space-y-3">
@@ -837,22 +793,56 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                       <div className="space-y-2">
                         <h4 className="font-semibold text-sm">Champs détectés :</h4>
                         <ul className="space-y-1 text-sm">
-                          <li className="flex items-center justify-between">
+                          {/* Immatriculation avec bouton rescan */}
+                          <li className="flex items-center justify-between gap-2">
                             <span>Immatriculation:</span>
-                            {getFieldStatus(extractedData.immatriculation)}
+                            <div className="flex items-center gap-2">
+                              {getFieldStatus(extractedData.immatriculation)}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={processImmatriculationOnly}
+                                disabled={isRescanningImmat}
+                                className="h-7 px-2"
+                                title="Rescanner l'immatriculation"
+                              >
+                                {isRescanningImmat ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ScanLine className="h-3 w-3" />
+                                )}
+                              </Button>
+                            </div>
                           </li>
                           <li className="flex items-center justify-between">
                             <span>Date 1ère immat.:</span>
                             {getFieldStatus(extractedData.datePremiereImmatriculation)}
                           </li>
-                          <li className="flex items-center justify-between">
+                          {/* VIN avec bouton rescan */}
+                          <li className="flex items-center justify-between gap-2">
                             <span>N° de châssis:</span>
-                            {getFieldStatus(extractedData.numeroChassisVIN)}
-                            {extractedData.numeroChassisVIN && extractedData.numeroChassisVIN.length !== 17 && (
-                              <Badge variant="destructive" className="ml-2 text-xs">
-                                {extractedData.numeroChassisVIN.length}/17
-                              </Badge>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {getFieldStatus(extractedData.numeroChassisVIN)}
+                              {extractedData.numeroChassisVIN && extractedData.numeroChassisVIN.length !== 17 && (
+                                <Badge variant="destructive" className="text-xs">
+                                  {extractedData.numeroChassisVIN.length}/17
+                                </Badge>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={processVINOnly}
+                                disabled={isRescanningVIN}
+                                className="h-7 px-2"
+                                title="Rescanner le VIN"
+                              >
+                                {isRescanningVIN ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ScanLine className="h-3 w-3" />
+                                )}
+                              </Button>
+                            </div>
                           </li>
                           <li className="flex items-center justify-between">
                             <span>Marque:</span>
@@ -883,6 +873,12 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                         </ul>
                       </div>
                     </div>
+
+                    {/* Message d'aide pour les boutons de rescan */}
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 justify-center">
+                      <ScanLine className="h-3 w-3" />
+                      Cliquez sur l'icône pour rescanner le VIN ou l'immatriculation
+                    </p>
                   </>
                 ) : (
                   <>
@@ -943,6 +939,24 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
                 {!isEditMode && (
                   <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        // Filtrer les valeurs undefined avant de passer au formulaire
+                        const cleanedData: VehicleRegistrationData = {};
+                        Object.entries(extractedData).forEach(([key, value]) => {
+                          if (value !== undefined && value !== null && value !== "") {
+                            cleanedData[key as keyof VehicleRegistrationData] = value;
+                          }
+                        });
+                        onDataExtracted(cleanedData);
+                        toast.success("Données utilisées dans le formulaire", { duration: 2000 });
+                      }}
+                      className="flex-1"
+                    >
+                      <CheckCircle2 className="h-4 w-4 mr-2" />
+                      Utiliser ces données
+                    </Button>
                     <Button type="button" variant="outline" onClick={handleRetry} className="flex-1">
                       <RotateCw className="h-4 w-4 mr-2" />
                       Réessayer le scan
