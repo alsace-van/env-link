@@ -252,12 +252,15 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         img.src = imgUrl;
       });
 
-      console.log("🔍 Démarrage OCR ULTRA-RAPIDE (1 passe optimale)...");
+      console.log("🔍 Démarrage OCR v3.2 (2 passes: globale + VIN optimisé)...");
 
-      // UNE SEULE passe avec le meilleur compromis vitesse/qualité
-      // OTSU adaptatif = meilleur choix pour la plupart des photos
-      // Scale 1.8 au lieu de 2 = 20% plus rapide
-      const strategies = [{ name: "Passe unique (OTSU adaptatif)", fn: preprocessStrategy2, scale: 1.8 }];
+      // v3.2: DEUX passes pour maximiser la détection du VIN
+      // Passe 1: Scan global rapide (tous les champs)
+      // Passe 2: Scan dédié VIN haute résolution (uniquement pour améliorer le VIN)
+      const strategies = [
+        { name: "Passe globale (OTSU adaptatif)", fn: preprocessStrategy2, scale: 1.8, type: "global" },
+        { name: "Passe VIN dédiée (haute résolution)", fn: preprocessStrategy2, scale: 2.5, type: "vin" },
+      ];
 
       const results: Array<{ text: string; confidence: number; data: VehicleRegistrationData; strategyName: string }> =
         [];
@@ -272,7 +275,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         }
 
         const strategy = strategies[i];
-        setProgress(Math.round((i / strategies.length) * 90)); // 0-90% pour les passes
+        setProgress(Math.round((i / strategies.length) * 85)); // 0-85% pour les passes
 
         console.log(`📸 ${strategy.name} en cours...`);
 
@@ -300,28 +303,47 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           }, "image/png");
         });
 
-        // Reconnaissance OCR avec Tesseract - PARAMÈTRES OPTIMISÉS v2
-        const result = await Tesseract.recognize(preprocessedBlob, "fra", {
-          logger: (m) => {
-            if (m.status === "recognizing text") {
-              const baseProgress = (i / strategies.length) * 90;
-              const stepProgress = (m.progress * 90) / strategies.length;
-              setProgress(Math.round(baseProgress + stepProgress));
-            }
-          },
-          // SPARSE_TEXT: Meilleur pour documents avec texte épars (cartes grises)
-          tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
-          // Whitelist élargie mais sans lettres confuses
-          // Exclu: I, O, Q (jamais dans VIN) + confusion 1/I, 0/O
-          tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789-./: éèêàâôîûù",
-          // Désactiver le dictionnaire pour éviter les corrections non voulues
-          load_system_dawg: "0",
-          load_freq_dawg: "0",
-          // Préserver les espaces entre mots (important pour le VIN)
-          preserve_interword_spaces: "1",
-          // Améliorer la reconnaissance des chiffres
-          classify_bln_numeric_mode: "1",
-        });
+        // Paramètres OCR adaptés selon le type de passe
+        const ocrConfig =
+          strategy.type === "vin"
+            ? {
+                // PASSE VIN: Paramètres optimisés pour VIN uniquement
+                logger: (m: any) => {
+                  if (m.status === "recognizing text") {
+                    const baseProgress = (i / strategies.length) * 85;
+                    const stepProgress = (m.progress * 85) / strategies.length;
+                    setProgress(Math.round(baseProgress + stepProgress));
+                  }
+                },
+                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE, // Ligne unique pour VIN
+                // Whitelist STRICTE VIN: sans I, O, Q (jamais dans VIN)
+                tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
+                load_system_dawg: "0",
+                load_freq_dawg: "0",
+                preserve_interword_spaces: "0", // Pas d'espaces dans VIN
+                classify_bln_numeric_mode: "1",
+                // Améliorer la reconnaissance des caractères similaires
+                tessedit_char_blacklist: "IOQ", // Exclure explicitement I, O, Q
+              }
+            : {
+                // PASSE GLOBALE: Paramètres standards pour tous les champs
+                logger: (m: any) => {
+                  if (m.status === "recognizing text") {
+                    const baseProgress = (i / strategies.length) * 85;
+                    const stepProgress = (m.progress * 85) / strategies.length;
+                    setProgress(Math.round(baseProgress + stepProgress));
+                  }
+                },
+                tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
+                tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789-./: éèêàâôîûù",
+                load_system_dawg: "0",
+                load_freq_dawg: "0",
+                preserve_interword_spaces: "1",
+                classify_bln_numeric_mode: "1",
+              };
+
+        // Reconnaissance OCR avec Tesseract
+        const result = await Tesseract.recognize(preprocessedBlob, "fra", ocrConfig);
 
         console.log(`  ✓ Pass ${i + 1} confiance: ${result.data.confidence.toFixed(1)}%`);
 
@@ -350,31 +372,55 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         return;
       }
 
-      setProgress(95);
+      setProgress(90);
 
-      // Choisir le meilleur résultat (celui avec le plus de champs détectés ET bonne confiance)
-      let bestResult = results[0];
+      // v3.2: Fusion intelligente des 2 passes (globale + VIN)
+      // Stratégie: Prendre la passe globale comme base, mais remplacer le VIN si la passe VIN est meilleure
+      console.log("🔄 Fusion intelligente des résultats des 2 passes...");
+
+      let bestResult = results[0]; // Passe globale (tous les champs)
       let bestScore = 0;
 
-      for (const result of results) {
-        const fieldsDetected = Object.values(result.data).filter(
-          (v) => v !== undefined && v !== null && v !== "",
-        ).length;
-        // Score = nombre de champs * confiance OCR
-        const score = fieldsDetected * (result.confidence / 100);
+      // Calculer le score de la passe globale
+      const fieldsDetected = Object.values(bestResult.data).filter(
+        (v) => v !== undefined && v !== null && v !== "",
+      ).length;
+      bestScore = fieldsDetected * (bestResult.confidence / 100);
 
-        console.log(
-          `📊 ${result.strategyName}: ${fieldsDetected} champs, confiance ${result.confidence.toFixed(1)}% → score ${score.toFixed(2)}`,
-        );
+      console.log(
+        `📊 Passe globale: ${fieldsDetected} champs, confiance ${bestResult.confidence.toFixed(1)}% → score ${bestScore.toFixed(2)}`,
+      );
 
-        if (score > bestScore) {
-          bestScore = score;
-          bestResult = result;
+      // Si on a une passe VIN (2ème passe), comparer les VIN
+      if (results.length > 1) {
+        const globalVIN = results[0].data.numeroChassisVIN;
+        const vinPassVIN = results[1].data.numeroChassisVIN;
+
+        console.log(`🔍 VIN passe globale: ${globalVIN || "non détecté"} (${globalVIN?.length || 0} car.)`);
+        console.log(`🔍 VIN passe dédiée: ${vinPassVIN || "non détecté"} (${vinPassVIN?.length || 0} car.)`);
+
+        // Critères pour choisir le VIN de la passe dédiée:
+        // 1. La passe VIN a détecté un VIN ET la globale n'en a pas
+        // 2. OU la passe VIN a un VIN de 17 caractères ET la globale n'en a pas de 17
+        // 3. OU la passe VIN a moins de '?' que la globale
+        const shouldUseVINPass =
+          (vinPassVIN && !globalVIN) || // VIN trouvé uniquement dans passe dédiée
+          (vinPassVIN && vinPassVIN.length === 17 && globalVIN && globalVIN.length !== 17) || // VIN complet vs incomplet
+          (vinPassVIN && globalVIN && !vinPassVIN.includes("?") && globalVIN.includes("?")); // VIN sans ? vs avec ?
+
+        if (shouldUseVINPass) {
+          console.log(`✅ Utilisation du VIN de la passe dédiée: ${vinPassVIN}`);
+          bestResult.data.numeroChassisVIN = vinPassVIN;
+        } else if (globalVIN) {
+          console.log(`✅ Conservation du VIN de la passe globale: ${globalVIN}`);
+        } else {
+          console.log(`⚠️ Aucun VIN détecté dans les 2 passes`);
         }
       }
 
-      console.log(`✅ Meilleur résultat: ${bestResult.strategyName}`);
-      console.log("📄 Texte OCR:", bestResult.text);
+      console.log(
+        `✅ Résultat final avec ${Object.values(bestResult.data).filter((v) => v !== undefined && v !== null && v !== "").length} champs détectés`,
+      );
       console.log("📦 Données extraites:", bestResult.data);
 
       setOcrText(bestResult.text);
@@ -633,7 +679,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Analyse en cours... (environ 20-30 secondes)
+                    Analyse en cours... (environ 35-45 secondes - 2 passes pour VIN optimal)
                   </span>
                   <span className="text-muted-foreground">{progress}%</span>
                 </div>
