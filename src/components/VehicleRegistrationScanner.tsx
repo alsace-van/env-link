@@ -212,6 +212,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
+        tessedit_char_blacklist: "IOQ",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
@@ -310,6 +317,12 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
@@ -636,23 +649,26 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
-   * NOUVEAU v3.4: Déterminer si le VIN nécessite un rescan
+   * NOUVEAU v3.4: Déterminer le message pour le VIN
    */
-  const needsVINRescan = (): boolean => {
-    if (!extractedData) return false;
+  const getVINStatus = (): string => {
+    if (!extractedData) return "";
     const vin = extractedData.numeroChassisVIN;
-    // Afficher le bouton si: pas de VIN, VIN incomplet, ou VIN invalide
-    return !vin || vin.length !== 17 || !isValidVINFormat(vin);
+    if (!vin) return "VIN non détecté";
+    if (vin.length !== 17) return `VIN incomplet (${vin.length}/17 car.)`;
+    if (!isValidVINFormat(vin)) return "VIN invalide";
+    return "VIN détecté";
   };
 
   /**
-   * NOUVEAU v3.4: Déterminer si l'immatriculation nécessite un rescan
+   * NOUVEAU v3.4: Déterminer le message pour l'immatriculation
    */
-  const needsImmatRescan = (): boolean => {
-    if (!extractedData) return false;
+  const getImmatStatus = (): string => {
+    if (!extractedData) return "";
     const immat = extractedData.immatriculation;
-    // Afficher le bouton si: pas d'immatriculation ou immatriculation invalide
-    return !immat || !isValidImmatriculation(immat);
+    if (!immat) return "Immatriculation non détectée";
+    if (!isValidImmatriculation(immat)) return "Immatriculation invalide";
+    return "Immatriculation détectée";
   };
 
   return (
@@ -744,88 +760,70 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
               </div>
             )}
 
-            {/* Boutons de rescan V3.4 */}
+            {/* Boutons de rescan V3.4 - TOUJOURS VISIBLES */}
             {extractedData && !isProcessing && !isEditMode && (
               <div className="space-y-2">
-                {/* Bouton rescan VIN */}
-                {needsVINRescan() && (
-                  <Alert variant="destructive" className="bg-yellow-50 border-yellow-200">
-                    <AlertCircle className="h-4 w-4 text-yellow-600" />
-                    <AlertDescription>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-yellow-800">
-                          {!extractedData.numeroChassisVIN
-                            ? "VIN non détecté"
-                            : extractedData.numeroChassisVIN.length !== 17
-                              ? `VIN incomplet (${extractedData.numeroChassisVIN.length}/17 car.)`
-                              : "VIN invalide"}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={processVINOnly}
-                          disabled={isRescanningVIN}
-                          className="ml-2 bg-white"
-                        >
-                          {isRescanningVIN ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Scan en cours...
-                            </>
-                          ) : (
-                            <>
-                              <ScanLine className="h-4 w-4 mr-2" />
-                              Re-scanner le VIN (zone E.)
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      {!isRescanningVIN && (
-                        <p className="text-xs text-yellow-700 mt-2">
-                          💡 Astuce: Prenez une photo rapprochée de la ligne E. uniquement (VIN)
-                        </p>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
+                {/* Bouton rescan VIN - TOUJOURS VISIBLE */}
+                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-900">{getVINStatus()}</p>
+                    {extractedData.numeroChassisVIN && (
+                      <p className="text-xs text-blue-700 mt-1">{extractedData.numeroChassisVIN}</p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={processVINOnly}
+                    disabled={isRescanningVIN}
+                    className="bg-white shrink-0"
+                  >
+                    {isRescanningVIN ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Scan...
+                      </>
+                    ) : (
+                      <>
+                        <ScanLine className="h-4 w-4 mr-2" />
+                        Rescanner VIN
+                      </>
+                    )}
+                  </Button>
+                </div>
 
-                {/* Bouton rescan Immatriculation */}
-                {needsImmatRescan() && (
-                  <Alert variant="destructive" className="bg-yellow-50 border-yellow-200">
-                    <AlertCircle className="h-4 w-4 text-yellow-600" />
-                    <AlertDescription>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-yellow-800">
-                          {!extractedData.immatriculation ? "Immatriculation non détectée" : "Immatriculation invalide"}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={processImmatriculationOnly}
-                          disabled={isRescanningImmat}
-                          className="ml-2 bg-white"
-                        >
-                          {isRescanningImmat ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Scan en cours...
-                            </>
-                          ) : (
-                            <>
-                              <ScanLine className="h-4 w-4 mr-2" />
-                              Re-scanner l'immatriculation (champ A)
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      {!isRescanningImmat && (
-                        <p className="text-xs text-yellow-700 mt-2">
-                          💡 Astuce: Prenez une photo rapprochée du champ A uniquement (immatriculation)
-                        </p>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
+                {/* Bouton rescan Immatriculation - TOUJOURS VISIBLE */}
+                <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-900">{getImmatStatus()}</p>
+                    {extractedData.immatriculation && (
+                      <p className="text-xs text-blue-700 mt-1">{extractedData.immatriculation}</p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={processImmatriculationOnly}
+                    disabled={isRescanningImmat}
+                    className="bg-white shrink-0"
+                  >
+                    {isRescanningImmat ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Scan...
+                      </>
+                    ) : (
+                      <>
+                        <ScanLine className="h-4 w-4 mr-2" />
+                        Rescanner Immat
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                <p className="text-xs text-muted-foreground text-center">
+                  💡 Prenez une photo rapprochée de la zone concernée pour un meilleur résultat
+                </p>
               </div>
             )}
 
