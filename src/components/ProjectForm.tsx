@@ -61,6 +61,40 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     loadVehicles();
   }, []);
 
+  // ✅ SOLUTION DE SECOURS : useEffect pour remplir les champs
+  // Se déclenche quand scannedData existe ET que marque + modèle sont sélectionnés
+  useEffect(() => {
+    if (scannedData && selectedMarque && selectedModele) {
+      console.log("🔄 useEffect : Les champs sont maintenant visibles, remplissage...");
+
+      // Remplir uniquement si les champs sont vides (éviter d'écraser une modification manuelle)
+      if (!manualImmatriculation && scannedData.immatriculation) {
+        console.log("  → Remplissage immatriculation via useEffect");
+        setManualImmatriculation(scannedData.immatriculation);
+      }
+      if (!manualNumeroChassis && scannedData.numeroChassisVIN) {
+        console.log("  → Remplissage VIN via useEffect");
+        setManualNumeroChassis(scannedData.numeroChassisVIN);
+      }
+      if (!manualDateMiseCirculation && scannedData.datePremiereImmatriculation) {
+        console.log("  → Remplissage date via useEffect");
+        setManualDateMiseCirculation(scannedData.datePremiereImmatriculation);
+      }
+      if (!manualTypeMine && scannedData.genreNational) {
+        console.log("  → Remplissage type mine via useEffect");
+        setManualTypeMine(scannedData.genreNational);
+      }
+      if (!customPoidsVide && scannedData.masseVide) {
+        console.log("  → Remplissage poids vide via useEffect");
+        setCustomPoidsVide(scannedData.masseVide.toString());
+      }
+      if (!customPtac && scannedData.masseEnChargeMax) {
+        console.log("  → Remplissage PTAC via useEffect");
+        setCustomPtac(scannedData.masseEnChargeMax.toString());
+      }
+    }
+  }, [scannedData, selectedMarque, selectedModele]);
+
   const loadVehicles = async () => {
     const { data, error } = await supabase
       .from("vehicles_catalog")
@@ -109,36 +143,24 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   };
 
   const handleScannedData = (data: VehicleRegistrationData) => {
+    console.log("📥 Données reçues du scanner OCR:", data);
     setScannedData(data);
 
-    // Pré-remplir les champs avec les données extraites
-    if (data.immatriculation) {
-      setManualImmatriculation(data.immatriculation);
-    }
-    if (data.numeroChassisVIN) {
-      setManualNumeroChassis(data.numeroChassisVIN);
-    }
-    if (data.datePremiereImmatriculation) {
-      setManualDateMiseCirculation(data.datePremiereImmatriculation);
-    }
-    if (data.genreNational) {
-      setManualTypeMine(data.genreNational);
-    }
-    if (data.masseVide) {
-      setCustomPoidsVide(data.masseVide.toString());
-    }
-    if (data.masseEnChargeMax) {
-      setCustomPtac(data.masseEnChargeMax.toString());
-    }
+    // IMPORTANT : D'abord sélectionner la marque ET le modèle
+    // pour que les champs deviennent visibles
+    let marqueFound = false;
+    let modeleFound = false;
 
-    // Essayer de trouver la marque ET le modèle dans le catalogue
     if (data.marque) {
       const marqueNormalized = data.marque.toUpperCase();
       const foundMarque = availableMarques.find(
         (m) => m.toUpperCase().includes(marqueNormalized) || marqueNormalized.includes(m.toUpperCase()),
       );
+
       if (foundMarque) {
+        console.log("✅ Marque trouvée:", foundMarque);
         setSelectedMarque(foundMarque);
+        marqueFound = true;
 
         // Essayer aussi de trouver le modèle
         if (data.denominationCommerciale) {
@@ -147,27 +169,65 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
           const foundModele = availableModelesForMarque.find(
             (m) => m.toUpperCase().includes(modeleNormalized) || modeleNormalized.includes(m.toUpperCase()),
           );
+
           if (foundModele) {
+            console.log("✅ Modèle trouvé:", foundModele);
             setSelectedModele(foundModele);
-            toast.success(`Marque et modèle trouvés automatiquement : ${foundMarque} ${foundModele}`, {
-              duration: 3000,
-            });
-          } else {
-            toast.success(`Marque trouvée automatiquement : ${foundMarque}. Sélectionnez le modèle manuellement.`, {
-              duration: 4000,
-            });
+            modeleFound = true;
           }
-        } else {
-          toast.success(`Marque trouvée automatiquement : ${foundMarque}. Sélectionnez le modèle manuellement.`, {
-            duration: 4000,
-          });
         }
-      } else {
-        toast.info("Marque non trouvée dans le catalogue. Sélectionnez-la manuellement.", {
-          duration: 4000,
-        });
       }
     }
+
+    // Utiliser setTimeout pour s'assurer que marque/modèle sont définis
+    // et que les champs sont rendus AVANT de les remplir
+    setTimeout(() => {
+      console.log("📝 Remplissage des champs...");
+
+      // Pré-remplir les champs avec les données extraites
+      if (data.immatriculation) {
+        console.log("  → Immatriculation:", data.immatriculation);
+        setManualImmatriculation(data.immatriculation);
+      }
+      if (data.numeroChassisVIN) {
+        console.log("  → VIN:", data.numeroChassisVIN);
+        setManualNumeroChassis(data.numeroChassisVIN);
+      }
+      if (data.datePremiereImmatriculation) {
+        console.log("  → Date:", data.datePremiereImmatriculation);
+        setManualDateMiseCirculation(data.datePremiereImmatriculation);
+      }
+      if (data.genreNational) {
+        console.log("  → Type mine:", data.genreNational);
+        setManualTypeMine(data.genreNational);
+      }
+      if (data.masseVide) {
+        console.log("  → Poids vide:", data.masseVide);
+        setCustomPoidsVide(data.masseVide.toString());
+      }
+      if (data.masseEnChargeMax) {
+        console.log("  → PTAC:", data.masseEnChargeMax);
+        setCustomPtac(data.masseEnChargeMax.toString());
+      }
+
+      // Toast informatif
+      if (marqueFound && modeleFound) {
+        toast.success(`✅ Données remplies automatiquement !`, {
+          duration: 3000,
+          description: `Marque: ${data.marque} | Modèle: ${data.denominationCommerciale}`,
+        });
+      } else if (marqueFound) {
+        toast.success(`✅ Marque trouvée : ${data.marque}`, {
+          duration: 4000,
+          description: "Sélectionnez le modèle manuellement pour voir tous les champs.",
+        });
+      } else {
+        toast.warning(`⚠️ Marque non trouvée dans le catalogue`, {
+          duration: 4000,
+          description: "Sélectionnez marque et modèle manuellement pour remplir les champs.",
+        });
+      }
+    }, 100); // Petit délai pour laisser React mettre à jour le DOM
 
     // Masquer le scanner après extraction réussie
     setShowScanner(false);
