@@ -1,16 +1,29 @@
 import { useState, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Camera, Upload, X, CheckCircle2, AlertCircle, Loader2, RotateCw } from "lucide-react";
+import { Camera, Upload, X, CheckCircle2, AlertCircle, Loader2, RotateCw, Edit, Save } from "lucide-react";
 import { toast } from "sonner";
 import Tesseract from "tesseract.js";
-import { parseRegistrationCardText, type VehicleRegistrationData } from "@/lib/registrationCardParser";
+import {
+  parseRegistrationCardText,
+  validateAndCorrectVIN,
+  type VehicleRegistrationData,
+} from "@/lib/registrationCardParser";
 
 interface VehicleRegistrationScannerProps {
   onDataExtracted: (data: VehicleRegistrationData) => void;
+}
+
+interface FieldConfidence {
+  field: string;
+  value: any;
+  confidence: number;
+  needsReview: boolean;
 }
 
 const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScannerProps) => {
@@ -19,23 +32,23 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<VehicleRegistrationData | null>(null);
   const [ocrText, setOcrText] = useState<string>("");
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editedData, setEditedData] = useState<VehicleRegistrationData>({});
+  const [confidences, setConfidences] = useState<FieldConfidence[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /**
-   * Prétraitement avancé de l'image pour améliorer l'OCR
-   * - Augmentation de la résolution
-   * - Conversion en niveaux de gris
-   * - Augmentation du contraste
-   * - Réduction du bruit
+   * Prétraitement STRATEGY 1: Haute résolution + niveaux de gris + contraste adaptatif
+   * Meilleur pour: Photos bien éclairées avec texte net
    */
-  const preprocessImageAdvanced = (canvas: HTMLCanvasElement): void => {
+  const preprocessStrategy1 = (canvas: HTMLCanvasElement): void => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
-    // Étape 1 : Conversion en niveaux de gris avec pondération
+    // Conversion en niveaux de gris avec pondération
     for (let i = 0; i < data.length; i += 4) {
       const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
       data[i] = gray;
@@ -43,7 +56,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       data[i + 2] = gray;
     }
 
-    // Étape 2 : Augmentation du contraste (normalisation)
+    // Augmentation du contraste (normalisation adaptative)
     let min = 255;
     let max = 0;
     for (let i = 0; i < data.length; i += 4) {
@@ -62,9 +75,126 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       }
     }
 
-    // Étape 3 : Seuillage adaptatif (binarisation)
-    // Calcul de la moyenne locale pour chaque pixel
-    const threshold = 140; // Seuil ajustable
+    // Seuillage adaptatif
+    const threshold = 140;
+    for (let i = 0; i < data.length; i += 4) {
+      const value = data[i] > threshold ? 255 : 0;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  /**
+   * Prétraitement STRATEGY 2: Seuillage OTSU + débruitage
+   * Meilleur pour: Photos avec éclairage inégal ou légèrement floues
+   */
+  const preprocessStrategy2 = (canvas: HTMLCanvasElement): void => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Conversion en niveaux de gris
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+
+    // Calcul du seuil OTSU (simplifié)
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < data.length; i += 4) {
+      histogram[Math.floor(data[i])]++;
+    }
+
+    const total = canvas.width * canvas.height;
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+
+    let sumB = 0;
+    let wB = 0;
+    let maximum = 0;
+    let threshold = 0;
+
+    for (let i = 0; i < 256; i++) {
+      wB += histogram[i];
+      if (wB === 0) continue;
+
+      const wF = total - wB;
+      if (wF === 0) break;
+
+      sumB += i * histogram[i];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+
+      const between = wB * wF * (mB - mF) * (mB - mF);
+
+      if (between > maximum) {
+        maximum = between;
+        threshold = i;
+      }
+    }
+
+    // Application du seuil
+    for (let i = 0; i < data.length; i += 4) {
+      const value = data[i] > threshold ? 255 : 0;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  /**
+   * Prétraitement STRATEGY 3: Augmentation contraste agressive + sharpen
+   * Meilleur pour: Photos de mauvaise qualité, floues ou sous-exposées
+   */
+  const preprocessStrategy3 = (canvas: HTMLCanvasElement): void => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Conversion en niveaux de gris
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+
+    // Égalisation d'histogramme (améliore le contraste)
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < data.length; i += 4) {
+      histogram[Math.floor(data[i])]++;
+    }
+
+    const cdf = new Array(256);
+    cdf[0] = histogram[0];
+    for (let i = 1; i < 256; i++) {
+      cdf[i] = cdf[i - 1] + histogram[i];
+    }
+
+    const total = canvas.width * canvas.height;
+    const cdfMin = cdf.find((v) => v > 0) || 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const oldValue = Math.floor(data[i]);
+      const newValue = Math.round(((cdf[oldValue] - cdfMin) / (total - cdfMin)) * 255);
+      data[i] = newValue;
+      data[i + 1] = newValue;
+      data[i + 2] = newValue;
+    }
+
+    // Seuillage agressif
+    const threshold = 120;
     for (let i = 0; i < data.length; i += 4) {
       const value = data[i] > threshold ? 255 : 0;
       data[i] = value;
@@ -92,6 +222,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     setProgress(0);
     setExtractedData(null);
     setOcrText("");
+    setConfidences([]);
 
     try {
       // Charger l'image
@@ -104,93 +235,198 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         img.src = imgUrl;
       });
 
-      // Créer un canvas avec une résolution augmentée pour améliorer l'OCR
-      const scaleFactor = 2; // Doubler la résolution
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width * scaleFactor;
-      canvas.height = img.height * scaleFactor;
-      const ctx = canvas.getContext("2d");
+      console.log("🔍 Démarrage OCR MULTI-PASSES (3 stratégies)...");
 
-      if (!ctx) {
-        throw new Error("Impossible de créer le contexte canvas");
+      // MULTI-PASSES: Tester 3 stratégies différentes
+      const strategies = [
+        { name: "Strategy 1 (Haute résolution)", fn: preprocessStrategy1, scale: 3 },
+        { name: "Strategy 2 (OTSU)", fn: preprocessStrategy2, scale: 2.5 },
+        { name: "Strategy 3 (Contraste agressif)", fn: preprocessStrategy3, scale: 2 },
+      ];
+
+      const results: Array<{ text: string; confidence: number; data: VehicleRegistrationData; strategyName: string }> =
+        [];
+
+      for (let i = 0; i < strategies.length; i++) {
+        const strategy = strategies[i];
+        setProgress(Math.round((i / strategies.length) * 90)); // 0-90% pour les passes
+
+        console.log(`📸 Pass ${i + 1}/3: ${strategy.name}`);
+
+        // Créer un canvas avec résolution augmentée
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * strategy.scale;
+        canvas.height = img.height * strategy.scale;
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) continue;
+
+        // Dessiner l'image avec interpolation de haute qualité
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Appliquer la stratégie de prétraitement
+        strategy.fn(canvas);
+
+        // Convertir le canvas en blob
+        const preprocessedBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject(new Error("Conversion canvas vers blob échouée"));
+          }, "image/png");
+        });
+
+        // Reconnaissance OCR avec Tesseract
+        const result = await Tesseract.recognize(preprocessedBlob, "fra", {
+          logger: (m) => {
+            if (m.status === "recognizing text") {
+              const baseProgress = (i / strategies.length) * 90;
+              const stepProgress = (m.progress * 90) / strategies.length;
+              setProgress(Math.round(baseProgress + stepProgress));
+            }
+          },
+          tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-./: éèêàâôîûù",
+        });
+
+        console.log(`  ✓ Pass ${i + 1} confiance: ${result.data.confidence.toFixed(1)}%`);
+
+        // Parser les données
+        const parsedData = parseRegistrationCardText(result.data.text);
+
+        // Valider et corriger le VIN si détecté
+        if (parsedData.numeroChassisVIN) {
+          parsedData.numeroChassisVIN = validateAndCorrectVIN(parsedData.numeroChassisVIN);
+        }
+
+        results.push({
+          text: result.data.text,
+          confidence: result.data.confidence,
+          data: parsedData,
+          strategyName: strategy.name,
+        });
       }
-
-      // Dessiner l'image avec interpolation de haute qualité
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      // Appliquer le prétraitement avancé
-      preprocessImageAdvanced(canvas);
-
-      // Convertir le canvas en blob
-      const preprocessedBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error("Conversion canvas vers blob échouée"));
-        }, "image/png");
-      });
 
       URL.revokeObjectURL(imgUrl);
 
-      console.log("🔍 Lancement de l'OCR avec paramètres optimisés...");
+      setProgress(95);
 
-      // Reconnaissance OCR avec Tesseract - Configuration optimisée
-      const result = await Tesseract.recognize(
-        preprocessedBlob,
-        "fra", // Langue française
+      // Choisir le meilleur résultat (celui avec le plus de champs détectés ET bonne confiance)
+      let bestResult = results[0];
+      let bestScore = 0;
+
+      for (const result of results) {
+        const fieldsDetected = Object.values(result.data).filter(
+          (v) => v !== undefined && v !== null && v !== "",
+        ).length;
+        // Score = nombre de champs * confiance OCR
+        const score = fieldsDetected * (result.confidence / 100);
+
+        console.log(
+          `📊 ${result.strategyName}: ${fieldsDetected} champs, confiance ${result.confidence.toFixed(1)}% → score ${score.toFixed(2)}`,
+        );
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestResult = result;
+        }
+      }
+
+      console.log(`✅ Meilleur résultat: ${bestResult.strategyName}`);
+      console.log("📄 Texte OCR:", bestResult.text);
+      console.log("📦 Données extraites:", bestResult.data);
+
+      setOcrText(bestResult.text);
+      setExtractedData(bestResult.data);
+      setEditedData(bestResult.data);
+
+      // Calculer les confidences pour chaque champ
+      const fieldConfidences: FieldConfidence[] = [
         {
-          logger: (m) => {
-            if (m.status === "recognizing text") {
-              setProgress(Math.round(m.progress * 100));
-            }
-          },
-          // Paramètres Tesseract optimisés pour les cartes grises
-          tessedit_pageseg_mode: Tesseract.PSM.AUTO, // Mode de segmentation automatique
-          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-./: éèêàâôîûù", // Caractères autorisés
+          field: "immatriculation",
+          value: bestResult.data.immatriculation,
+          confidence: bestResult.confidence,
+          needsReview: !bestResult.data.immatriculation,
         },
-      );
+        {
+          field: "numeroChassisVIN",
+          value: bestResult.data.numeroChassisVIN,
+          confidence: bestResult.confidence,
+          needsReview: !bestResult.data.numeroChassisVIN || bestResult.data.numeroChassisVIN.length !== 17,
+        },
+        {
+          field: "datePremiereImmatriculation",
+          value: bestResult.data.datePremiereImmatriculation,
+          confidence: bestResult.confidence,
+          needsReview: !bestResult.data.datePremiereImmatriculation,
+        },
+        {
+          field: "marque",
+          value: bestResult.data.marque,
+          confidence: bestResult.confidence,
+          needsReview: !bestResult.data.marque,
+        },
+        {
+          field: "denominationCommerciale",
+          value: bestResult.data.denominationCommerciale,
+          confidence: bestResult.confidence,
+          needsReview: !bestResult.data.denominationCommerciale,
+        },
+        {
+          field: "masseVide",
+          value: bestResult.data.masseVide,
+          confidence: bestResult.confidence,
+          needsReview: !bestResult.data.masseVide,
+        },
+        {
+          field: "masseEnChargeMax",
+          value: bestResult.data.masseEnChargeMax,
+          confidence: bestResult.confidence,
+          needsReview: !bestResult.data.masseEnChargeMax,
+        },
+      ];
 
-      const text = result.data.text;
-      setOcrText(text);
-      console.log("📄 Texte OCR brut:", text);
-      console.log("📊 Confiance OCR:", result.data.confidence);
-
-      // Parser le texte pour extraire les données structurées
-      const parsedData = parseRegistrationCardText(text);
-      console.log("✅ Données extraites:", parsedData);
-
-      setExtractedData(parsedData);
+      setConfidences(fieldConfidences);
 
       // Notifier le parent avec les données extraites
-      onDataExtracted(parsedData);
+      onDataExtracted(bestResult.data);
+
+      setProgress(100);
 
       // Compter combien de champs ont été détectés
-      const detectedFields = Object.values(parsedData).filter((v) => v !== undefined).length;
+      const detectedFields = Object.values(bestResult.data).filter(
+        (v) => v !== undefined && v !== null && v !== "",
+      ).length;
 
       if (detectedFields === 0) {
-        toast.error("Aucune donnée n'a pu être extraite. Vérifiez que la photo est nette et bien éclairée.", {
+        toast.error("Aucune donnée n'a pu être extraite après 3 tentatives.", {
           duration: 5000,
-          description: "Essayez de prendre une nouvelle photo avec un meilleur éclairage.",
+          description: "Essayez de prendre une nouvelle photo avec un meilleur éclairage et plus de netteté.",
         });
       } else if (detectedFields < 3) {
-        toast.warning(`Seulement ${detectedFields} champ(s) détecté(s). Vous pouvez compléter manuellement.`, {
+        toast.warning(`Seulement ${detectedFields} champ(s) détecté(s). Vérifiez et complétez manuellement.`, {
           duration: 4000,
+          action: {
+            label: "Corriger",
+            onClick: () => setIsEditMode(true),
+          },
         });
       } else {
-        toast.success(`${detectedFields} champs détectés avec succès !`, {
+        toast.success(`${detectedFields} champs détectés avec succès ! (${bestResult.strategyName})`, {
           duration: 3000,
+          description: "Vérifiez les données avant de valider.",
         });
       }
     } catch (error) {
       console.error("❌ Erreur lors du traitement de l'image:", error);
-      toast.error("Erreur lors de la lecture de la carte grise. Veuillez réessayer avec une autre photo.", {
+      toast.error("Erreur lors de la lecture de la carte grise.", {
         duration: 5000,
-        description: "Assurez-vous que la photo est bien éclairée et que le texte est lisible.",
+        description: "Veuillez réessayer avec une photo bien éclairée et nette.",
       });
     } finally {
       setIsProcessing(false);
-      setProgress(0);
+      setTimeout(() => setProgress(0), 500);
     }
   };
 
@@ -228,6 +464,42 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     if (imagePreview && fileInputRef.current?.files?.[0]) {
       processImage(fileInputRef.current.files[0]);
     }
+  };
+
+  const handleEditField = (field: keyof VehicleRegistrationData, value: any) => {
+    setEditedData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSaveEdits = () => {
+    // Valider le VIN si modifié
+    if (editedData.numeroChassisVIN) {
+      editedData.numeroChassisVIN = validateAndCorrectVIN(editedData.numeroChassisVIN);
+    }
+
+    setExtractedData(editedData);
+    onDataExtracted(editedData);
+    setIsEditMode(false);
+
+    const detectedFields = Object.values(editedData).filter((v) => v !== undefined && v !== null && v !== "").length;
+    toast.success(`Données mises à jour ! ${detectedFields} champs renseignés.`, {
+      duration: 2000,
+    });
+  };
+
+  const getFieldLabel = (field: string): string => {
+    const labels: Record<string, string> = {
+      immatriculation: "Immatriculation",
+      numeroChassisVIN: "N° de châssis (VIN - 17 car.)",
+      datePremiereImmatriculation: "Date 1ère immat.",
+      marque: "Marque",
+      denominationCommerciale: "Modèle",
+      masseVide: "Masse à vide (kg)",
+      masseEnChargeMax: "PTAC (kg)",
+    };
+    return labels[field] || field;
   };
 
   const getFieldStatus = (value: any) => {
@@ -315,69 +587,141 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             {/* Résultats de l'extraction */}
             {extractedData && !isProcessing && (
               <div className="space-y-3">
-                <Alert>
-                  <CheckCircle2 className="h-4 w-4" />
-                  <AlertDescription>
-                    Analyse terminée ! Les champs détectés ont été remplis automatiquement. Vous pouvez modifier
-                    manuellement les valeurs si nécessaire.
-                  </AlertDescription>
-                </Alert>
+                {!isEditMode ? (
+                  <>
+                    <Alert>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <AlertDescription>
+                        Analyse terminée ! Les champs détectés ont été remplis automatiquement.{" "}
+                        <Button
+                          variant="link"
+                          className="h-auto p-0 text-primary underline"
+                          onClick={() => setIsEditMode(true)}
+                        >
+                          Corriger les données
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-muted/50 rounded-lg">
-                  <div className="space-y-2">
-                    <h4 className="font-semibold text-sm">Champs détectés :</h4>
-                    <ul className="space-y-1 text-sm">
-                      <li className="flex items-center justify-between">
-                        <span>Immatriculation:</span>
-                        {getFieldStatus(extractedData.immatriculation)}
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>Date 1ère immat.:</span>
-                        {getFieldStatus(extractedData.datePremiereImmatriculation)}
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>N° de châssis:</span>
-                        {getFieldStatus(extractedData.numeroChassisVIN)}
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>Marque:</span>
-                        {getFieldStatus(extractedData.marque)}
-                      </li>
-                    </ul>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-muted/50 rounded-lg">
+                      <div className="space-y-2">
+                        <h4 className="font-semibold text-sm">Champs détectés :</h4>
+                        <ul className="space-y-1 text-sm">
+                          <li className="flex items-center justify-between">
+                            <span>Immatriculation:</span>
+                            {getFieldStatus(extractedData.immatriculation)}
+                          </li>
+                          <li className="flex items-center justify-between">
+                            <span>Date 1ère immat.:</span>
+                            {getFieldStatus(extractedData.datePremiereImmatriculation)}
+                          </li>
+                          <li className="flex items-center justify-between">
+                            <span>N° de châssis:</span>
+                            {getFieldStatus(extractedData.numeroChassisVIN)}
+                            {extractedData.numeroChassisVIN && extractedData.numeroChassisVIN.length !== 17 && (
+                              <Badge variant="destructive" className="ml-2 text-xs">
+                                {extractedData.numeroChassisVIN.length}/17
+                              </Badge>
+                            )}
+                          </li>
+                          <li className="flex items-center justify-between">
+                            <span>Marque:</span>
+                            {getFieldStatus(extractedData.marque)}
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="font-semibold text-sm">Poids & dimensions :</h4>
+                        <ul className="space-y-1 text-sm">
+                          <li className="flex items-center justify-between">
+                            <span>Modèle:</span>
+                            {getFieldStatus(extractedData.denominationCommerciale)}
+                          </li>
+                          <li className="flex items-center justify-between">
+                            <span>Masse à vide:</span>
+                            {getFieldStatus(extractedData.masseVide)}
+                          </li>
+                          <li className="flex items-center justify-between">
+                            <span>PTAC:</span>
+                            {getFieldStatus(extractedData.masseEnChargeMax)}
+                          </li>
+                          <li className="flex items-center justify-between">
+                            <span>Genre:</span>
+                            {getFieldStatus(extractedData.genreNational)}
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Alert>
+                      <Edit className="h-4 w-4" />
+                      <AlertDescription>Mode correction : modifiez les champs détectés ci-dessous.</AlertDescription>
+                    </Alert>
+
+                    <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+                      {confidences.map((field) => (
+                        <div key={field.field} className="space-y-1">
+                          <Label htmlFor={field.field} className="text-sm flex items-center justify-between">
+                            <span>{getFieldLabel(field.field)}</span>
+                            {field.needsReview && (
+                              <Badge variant="outline" className="text-xs">
+                                <AlertCircle className="h-3 w-3 mr-1" />À vérifier
+                              </Badge>
+                            )}
+                          </Label>
+                          <Input
+                            id={field.field}
+                            type={field.field.includes("masse") || field.field.includes("Masse") ? "number" : "text"}
+                            value={editedData[field.field as keyof VehicleRegistrationData] || ""}
+                            onChange={(e) =>
+                              handleEditField(
+                                field.field as keyof VehicleRegistrationData,
+                                field.field.includes("masse") || field.field.includes("Masse")
+                                  ? parseInt(e.target.value) || undefined
+                                  : e.target.value,
+                              )
+                            }
+                            placeholder={`Entrez ${getFieldLabel(field.field).toLowerCase()}`}
+                            className={field.needsReview ? "border-yellow-500" : ""}
+                          />
+                          {field.field === "numeroChassisVIN" && editedData.numeroChassisVIN && (
+                            <p className="text-xs text-muted-foreground">
+                              {editedData.numeroChassisVIN.length}/17 caractères
+                              {editedData.numeroChassisVIN.length !== 17 && (
+                                <span className="text-yellow-600 ml-2">⚠️ Le VIN doit faire 17 caractères</span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button onClick={handleSaveEdits} className="flex-1">
+                        <Save className="h-4 w-4 mr-2" />
+                        Enregistrer les modifications
+                      </Button>
+                      <Button variant="outline" onClick={() => setIsEditMode(false)}>
+                        Annuler
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {!isEditMode && (
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={handleRetry} className="flex-1">
+                      <RotateCw className="h-4 w-4 mr-2" />
+                      Réessayer le scan
+                    </Button>
+                    <Button type="button" variant="outline" onClick={handleReset} className="flex-1">
+                      Scanner une autre carte
+                    </Button>
                   </div>
-
-                  <div className="space-y-2">
-                    <h4 className="font-semibold text-sm">Poids & dimensions :</h4>
-                    <ul className="space-y-1 text-sm">
-                      <li className="flex items-center justify-between">
-                        <span>Modèle:</span>
-                        {getFieldStatus(extractedData.denominationCommerciale)}
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>Masse à vide:</span>
-                        {getFieldStatus(extractedData.masseVide)}
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>PTAC:</span>
-                        {getFieldStatus(extractedData.masseEnChargeMax)}
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span>Genre:</span>
-                        {getFieldStatus(extractedData.genreNational)}
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={handleRetry} className="flex-1">
-                    <RotateCw className="h-4 w-4 mr-2" />
-                    Réessayer le scan
-                  </Button>
-                  <Button type="button" variant="outline" onClick={handleReset} className="flex-1">
-                    Scanner une autre carte
-                  </Button>
-                </div>
+                )}
               </div>
             )}
 
