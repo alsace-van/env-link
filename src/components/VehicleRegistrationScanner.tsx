@@ -212,13 +212,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
-        tessedit_char_blacklist: "IOQ",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
@@ -317,12 +310,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
@@ -446,13 +433,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                     setProgress(Math.round(baseProgress + stepProgress));
                   }
                 },
-                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-                tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
-                load_system_dawg: "0",
-                load_freq_dawg: "0",
-                preserve_interword_spaces: "0",
-                classify_bln_numeric_mode: "1",
-                tessedit_char_blacklist: "IOQ",
               }
             : {
                 logger: (m: any) => {
@@ -462,12 +442,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                     setProgress(Math.round(baseProgress + stepProgress));
                   }
                 },
-                tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
-                tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789-./: éèêàâôîûù",
-                load_system_dawg: "0",
-                load_freq_dawg: "0",
-                preserve_interword_spaces: "1",
-                classify_bln_numeric_mode: "1",
               };
 
         const result = await Tesseract.recognize(preprocessedBlob, "fra", ocrConfig);
@@ -619,7 +593,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     console.log("💾 Sauvegarde des modifications:", editedData);
 
     // Filtrer les valeurs undefined avant de passer au formulaire
-    const cleanedData: VehicleRegistrationData = {};
+    const cleanedData: any = {};
     Object.entries(editedData).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") {
         cleanedData[key as keyof VehicleRegistrationData] = value;
@@ -943,7 +917,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                       type="button"
                       onClick={() => {
                         // Filtrer les valeurs undefined avant de passer au formulaire
-                        const cleanedData: VehicleRegistrationData = {};
+                        const cleanedData: any = {};
                         Object.entries(extractedData).forEach(([key, value]) => {
                           if (value !== undefined && value !== null && value !== "") {
                             cleanedData[key as keyof VehicleRegistrationData] = value;
