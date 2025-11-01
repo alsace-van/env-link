@@ -33,6 +33,106 @@ export const validateAndCorrectVIN = (vin: string): string => {
 };
 
 /**
+ * Validation stricte du format VIN
+ * - Exactement 17 caractères
+ * - Commence par une lettre
+ * - Au moins 3 chiffres
+ * - Code constructeur connu (VF, WV, JA, etc.)
+ * - Pas de mots français courants
+ */
+export const isValidVINFormat = (vin: string): boolean => {
+  if (!vin || vin.length !== 17) return false;
+
+  // Doit commencer par une lettre (code constructeur)
+  if (!/^[A-Z]/.test(vin)) return false;
+
+  // Doit contenir au moins 3 chiffres
+  const digitCount = (vin.match(/\d/g) || []).length;
+  if (digitCount < 3) return false;
+
+  // Liste des codes constructeurs connus (2 premières lettres)
+  const validManufacturerCodes = [
+    "VF",
+    "WV",
+    "WP",
+    "JA",
+    "JM",
+    "JN",
+    "KL",
+    "KM",
+    "KN",
+    "LV",
+    "SA",
+    "SB",
+    "SU",
+    "TM",
+    "TR",
+    "VN",
+    "VS",
+    "WA",
+    "WB",
+    "WD",
+    "WM",
+    "YS",
+    "YV",
+    "ZA",
+    "ZF",
+    "1F",
+    "1G",
+    "1H",
+    "1J",
+    "2F",
+    "2G",
+    "2H",
+    "3F",
+    "3G",
+    "4F",
+    "5F",
+  ];
+  const manufacturerCode = vin.substring(0, 2);
+  if (!validManufacturerCodes.includes(manufacturerCode)) {
+    console.warn(`⚠️ Code constructeur inconnu: ${manufacturerCode} dans ${vin}`);
+    return false;
+  }
+
+  // Rejeter les mots français courants qui pourraient être mal détectés comme VIN
+  const commonFrenchWords = ["RUE", "AVENUE", "BOULEVARD", "FRANCE", "PARIS"];
+  if (commonFrenchWords.some((word) => vin.includes(word))) {
+    console.warn(`⚠️ Mot français détecté dans le VIN: ${vin}`);
+    return false;
+  }
+
+  return true;
+};
+
+/**
+ * Validation de l'immatriculation française
+ * Format SIV: AA-123-AA (ou variations sans tirets)
+ * Ancien format: 1234 AB 56
+ */
+export const isValidImmatriculation = (immat: string): boolean => {
+  if (!immat) return false;
+
+  const cleaned = immat.replace(/[\s\-]/g, "").toUpperCase();
+
+  // Format SIV (nouveau): AA-123-AA (7 caractères)
+  const sivPattern = /^[A-Z]{2}\d{3}[A-Z]{2}$/;
+  if (sivPattern.test(cleaned)) {
+    return true;
+  }
+
+  // Ancien format: 123 ABC 45 ou 1234 AB 45
+  const oldPattern1 = /^\d{3}[A-Z]{2,3}\d{2}$/; // 123ABC45
+  const oldPattern2 = /^\d{4}[A-Z]{2}\d{2}$/; // 1234AB45
+  if (oldPattern1.test(cleaned) || oldPattern2.test(cleaned)) {
+    return true;
+  }
+
+  console.warn(`⚠️ Format d'immatriculation invalide: ${immat}`);
+  return false;
+};
+
+/**
  * Utilitaires pour parser les données d'une carte grise française
  */
 
@@ -98,27 +198,24 @@ export const extractImmatriculation = (text: string): string | undefined => {
     // Ancien format: 123 ABC 45 avec variations
     /\b(\d{1,4}\s?[A-Z]{2,3}\s?\d{2})\b/i,
     // Pattern "A:" suivi de l'immatriculation
-    /A[:\.\s]*([A-Z]{2}[\s\-]?\d{3}[\s\-]?[A-Z]{2})\b/i,
+    /A[\s.:]*([A-Z]{2}[\s\-]?\d{3}[\s\-]?[A-Z]{2})/i,
+    // Recherche après "IMMATRICULATION" ou "N°"
+    /(?:IMMATRICULATION|N°|NUM)[\s.:]*([A-Z]{2}[\s\-]?\d{3}[\s\-]?[A-Z]{2})/i,
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
-      const immat = match[1] || match[0].replace(/^A[:\.\s]*/, "");
-      return cleanText(immat.replace(/\s+/g, "-").toUpperCase());
-    }
-  }
+      const cleaned = match[1].replace(/[\s\-]/g, "").toUpperCase();
 
-  // Stratégie de secours: chercher pattern proche
-  // Format AA-NNN-AA où certains caractères peuvent être mal reconnus
-  const flexiblePattern = /\b([A-Z0-9]{2}[\s\-]?[0-9]{3}[\s\-]?[A-Z0-9]{2})\b/i;
-  const flexMatch = text.match(flexiblePattern);
-
-  if (flexMatch) {
-    const candidate = flexMatch[1].replace(/\s+/g, "-").toUpperCase();
-    // Vérifier que le pattern ressemble à une immatriculation
-    if (/^[A-Z]{2}[\-][0-9]{3}[\-][A-Z]{2}$/.test(candidate)) {
-      return candidate;
+      // Valider avant de retourner
+      if (isValidImmatriculation(cleaned)) {
+        // Reformater au format AA-123-AA si format SIV
+        if (/^[A-Z]{2}\d{3}[A-Z]{2}$/.test(cleaned)) {
+          return `${cleaned.slice(0, 2)}-${cleaned.slice(2, 5)}-${cleaned.slice(5, 7)}`;
+        }
+        return cleaned;
+      }
     }
   }
 
@@ -128,116 +225,26 @@ export const extractImmatriculation = (text: string): string | undefined => {
 /**
  * Extrait la date de première immatriculation (champ B)
  * Format: JJ/MM/AAAA ou JJ.MM.AAAA
- * AMÉLIORÉ v2: Priorité champ B + correction confusion chiffres OCR
  */
 export const extractDatePremiereImmatriculation = (text: string): string | undefined => {
-  // PRIORITÉ 1: Pattern précis avec "B:" ou "B." (champ officiel)
-  const precisPatterns = [
-    /B[:\.\s]+(\d{2})[\/\.](\d{2})[\/\.](\d{4})/i, // B: 13/02/2018
-    /B[:\.\s]+(\d{2})[\/\.](\d{2})[\/\.](\d{2})/i, // B: 13/02/18
-  ];
+  // Pattern pour date complète
+  const datePattern = /\b(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})\b/;
+  const match = text.match(datePattern);
 
-  for (const pattern of precisPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const day = match[1];
-      const month = match[2];
-      let year = match[3];
-
-      // Convertir année courte en année complète
-      if (year.length === 2) {
-        const yearNum = parseInt(year);
-        year = yearNum > 50 ? `19${year}` : `20${year}`;
-      }
-
-      const dayNum = parseInt(day);
-      const monthNum = parseInt(month);
-      const yearNum = parseInt(year);
-
-      // Validation stricte
-      if (dayNum >= 1 && dayNum <= 31 && monthNum >= 1 && monthNum <= 12 && yearNum >= 1990 && yearNum <= 2025) {
-        const date = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
-        if (!isNaN(date.getTime())) {
-          console.log(`🔍 Date détectée (champ B précis): ${day}/${month}/${year}`);
-          return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-        }
-      }
-    }
+  if (match) {
+    const [, jour, mois, annee] = match;
+    return `${jour}/${mois}/${annee}`;
   }
 
-  // PRIORITÉ 2: Recherche ligne par ligne avec contexte "B"
-  const lines = text.split(/[\n\r]+/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Si la ligne contient "B" isolé (champ B)
-    if (/\bB[:\.\s]/i.test(line)) {
-      // Chercher toutes les dates dans cette ligne et les 2 suivantes
-      const contextLines = [line];
-      if (i + 1 < lines.length) contextLines.push(lines[i + 1]);
-      if (i + 2 < lines.length) contextLines.push(lines[i + 2]);
-
-      const contextText = contextLines.join(" ");
-
-      // Chercher pattern date dans le contexte
-      const datePatterns = [/(\d{2})[\/\.](\d{2})[\/\.](\d{4})/g, /(\d{2})[\/\.](\d{2})[\/\.](\d{2})/g];
-
-      for (const datePattern of datePatterns) {
-        const matches = [...contextText.matchAll(datePattern)];
-
-        for (const match of matches) {
-          const day = match[1];
-          const month = match[2];
-          let year = match[3];
-
-          if (year.length === 2) {
-            const yearNum = parseInt(year);
-            year = yearNum > 50 ? `19${year}` : `20${year}`;
-          }
-
-          const dayNum = parseInt(day);
-          const monthNum = parseInt(month);
-          const yearNum = parseInt(year);
-
-          if (dayNum >= 1 && dayNum <= 31 && monthNum >= 1 && monthNum <= 12 && yearNum >= 1990 && yearNum <= 2025) {
-            const date = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
-            if (!isNaN(date.getTime())) {
-              console.log(`🔍 Date détectée (contexte B): ${day}/${month}/${year}`);
-              return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // PRIORITÉ 3: Patterns standards sans contexte (fallback)
-  const fallbackPatterns = [/\b(\d{2})[\/\.](\d{2})[\/\.](\d{4})\b/, /\b(\d{2})[\/\.](\d{2})[\/\.](\d{2})\b/];
-
-  for (const pattern of fallbackPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const day = match[1];
-      const month = match[2];
-      let year = match[3];
-
-      if (year.length === 2) {
-        const yearNum = parseInt(year);
-        year = yearNum > 50 ? `19${year}` : `20${year}`;
-      }
-
-      const dayNum = parseInt(day);
-      const monthNum = parseInt(month);
-      const yearNum = parseInt(year);
-
-      // Validation avec plage de dates plus restrictive pour éviter fausses détections
-      if (dayNum >= 1 && dayNum <= 31 && monthNum >= 1 && monthNum <= 12 && yearNum >= 2000 && yearNum <= 2025) {
-        const date = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`);
-        if (!isNaN(date.getTime())) {
-          console.log(`🔍 Date détectée (fallback): ${day}/${month}/${year}`);
-          return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-        }
-      }
+  // Chercher après "B" ou "B." ou "B:"
+  const bPattern = /B[\s.:]+([\d\/\.\-]{8,10})/i;
+  const bMatch = text.match(bPattern);
+  if (bMatch) {
+    const dateStr = bMatch[1];
+    const dateMatch = dateStr.match(/(\d{2})[\/\.\-](\d{2})[\/\.\-](\d{4})/);
+    if (dateMatch) {
+      const [, jour, mois, annee] = dateMatch;
+      return `${jour}/${mois}/${annee}`;
     }
   }
 
@@ -245,302 +252,114 @@ export const extractDatePremiereImmatriculation = (text: string): string | undef
 };
 
 /**
- * Corrige les erreurs OCR courantes dans un VIN
- * Les VIN n'utilisent JAMAIS les lettres I, O, Q (confusion avec 1, 0)
- * v3.2: Correction intelligente spécifique aux VIN
- */
-const correctVINOCRErrors = (vin: string): string => {
-  let corrected = vin.toUpperCase();
-
-  // Règle 1: Les lettres I, O, Q n'existent JAMAIS dans un VIN
-  // I → 1, O → 0, Q → 0
-  corrected = corrected.replace(/I/g, "1");
-  corrected = corrected.replace(/O/g, "0");
-  corrected = corrected.replace(/Q/g, "0");
-
-  // Règle 2: Corrections contextuelles (basées sur statistiques VIN)
-  // Si le VIN commence par VF (France) ou WV (Allemagne), on sait que c'est un V
-  if (corrected.startsWith("SF")) {
-    corrected = "VF" + corrected.substring(2);
-  }
-  if (corrected.startsWith("WS")) {
-    corrected = "WV" + corrected.substring(2);
-  }
-
-  // Règle 3: Dans un VIN, après 2 lettres vient souvent un chiffre
-  // Exemple: VF3... → si VFC détecté, corriger C → 3
-  const pattern = /^([A-Z]{2})([A-Z])([A-HJ-NPR-Z0-9]{14})$/;
-  const match = corrected.match(pattern);
-  if (match) {
-    const thirdChar = match[3];
-    // Si 3ème caractère ressemble à une lettre mais devrait être un chiffre
-    if (["C", "S", "B"].includes(thirdChar)) {
-      const corrections: { [key: string]: string } = {
-        C: "3",
-        S: "5",
-        B: "8",
-      };
-      if (corrections[thirdChar]) {
-        corrected = match[1] + corrections[thirdChar] + match[4];
-        console.log(`🔧 VIN: Correction 3ème caractère ${thirdChar} → ${corrections[thirdChar]}`);
-      }
-    }
-  }
-
-  return corrected;
-};
-
-/**
- * Extrait le numéro de châssis / VIN (champ E)
- * Format: 17 caractères alphanumériques (sans I, O, Q)
- * v3.2: ULTRA-AMÉLIORÉ avec correction intelligente et recherche contextuelle
+ * Extrait le numéro de châssis VIN (champ E)
+ * Format: 17 caractères alphanumériques
+ * AMÉLIORÉ v3.4: Validation stricte + rejette les VIN invalides
  */
 export const extractNumeroChassisVIN = (text: string): string | undefined => {
-  // PRIORITÉ 1: Recherche contextuelle précise autour du champ "E."
-  // Sur les cartes grises françaises, le VIN est toujours précédé de "E." ou "E:"
-  const lines = text.split(/[\n\r]+/);
+  console.log("🔍 Recherche du VIN dans le texte OCR...");
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  // Nettoyage initial
+  const lines = text.split("\n");
 
-    // Chercher "E." ou "E:" dans la ligne
-    if (/\bE[\.\s:]/i.test(line)) {
-      console.log(`🔍 VIN: Ligne avec marqueur E trouvée: "${line}"`);
+  // Chercher le VIN dans différents patterns
+  const vinCandidates: string[] = [];
 
-      // Extraire ce qui suit "E." ou "E:"
-      // Pattern plus permissif pour capter même un VIN mal lu
-      const vinPattern = /E[\.\s:]+([A-Z0-9\s\-]{15,20})/i;
-      const match = line.match(vinPattern);
-
-      if (match) {
-        let candidate = match[1]
-          .replace(/[\s\-]/g, "") // Enlever espaces et tirets
-          .toUpperCase()
-          .substring(0, 20); // Max 20 caractères pour sécurité
-
-        console.log(`🔍 VIN candidat brut: "${candidate}" (${candidate.length} car.)`);
-
-        // Appliquer les corrections OCR
-        candidate = correctVINOCRErrors(candidate);
-
-        // Si 17 caractères exactement, c'est parfait
-        if (candidate.length === 17) {
-          // Valider que ce sont bien des caractères valides pour un VIN
-          if (/^[A-HJ-NPR-Z0-9]{17}$/.test(candidate)) {
-            console.log(`✅ VIN détecté (ligne E, 17 car.): ${candidate}`);
-            return candidate;
-          }
-        }
-
-        // Si 16-18 caractères, essayer de corriger
-        if (candidate.length >= 16 && candidate.length <= 18) {
-          // Tronquer ou compléter pour avoir 17 caractères
-          if (candidate.length === 18) {
-            // Supprimer le dernier caractère (souvent un artefact)
-            candidate = candidate.substring(0, 17);
-          } else if (candidate.length === 16) {
-            // Marquer comme incomplet avec "?"
-            candidate = candidate + "?";
-          }
-
-          console.log(`⚠️ VIN détecté (ligne E, ajusté): ${candidate}`);
-          return candidate;
-        }
-      }
-
-      // Chercher aussi dans les 2 lignes suivantes (parfois le VIN est sur la ligne d'après)
-      if (i + 1 < lines.length) {
-        const nextLine = lines[i + 1];
-        const vinInNextLine = nextLine.match(/([A-Z0-9]{15,20})/i);
-
-        if (vinInNextLine) {
-          let candidate = vinInNextLine[1].replace(/[\s\-]/g, "").toUpperCase();
-
-          candidate = correctVINOCRErrors(candidate);
-
-          if (candidate.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(candidate)) {
-            console.log(`✅ VIN détecté (ligne après E): ${candidate}`);
-            return candidate;
-          }
-        }
-      }
+  // Pattern 1: Ligne commençant par "E" ou "E." suivi du VIN
+  for (const line of lines) {
+    const ePattern = /E[\s.:]+(VF[A-HJ-NPR-Z0-9]{15})/i;
+    const match = line.match(ePattern);
+    if (match) {
+      vinCandidates.push(match[1]);
     }
   }
 
-  // PRIORITÉ 2: VIN parfait de 17 caractères sans séparateurs (pattern global)
-  const perfectPattern = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
-  const perfectMatch = text.match(perfectPattern);
-
-  if (perfectMatch) {
-    let candidate = correctVINOCRErrors(perfectMatch[1]);
-    console.log(`✅ VIN détecté (pattern parfait): ${candidate}`);
-    return candidate;
+  // Pattern 2: Séquence de 17 caractères commençant par VF
+  const vfPattern = /\b(VF[A-HJ-NPR-Z0-9]{15})\b/gi;
+  let match;
+  while ((match = vfPattern.exec(text)) !== null) {
+    vinCandidates.push(match[1]);
   }
 
-  // PRIORITÉ 3: VIN avec espaces ou tirets (tolérance OCR)
-  const flexiblePattern = /\b([A-HJ-NPR-Z0-9][\s\-]?){17}\b/i;
-  const flexibleMatch = text.match(flexiblePattern);
-
-  if (flexibleMatch) {
-    let candidate = flexibleMatch[0].replace(/[\s\-]/g, "").toUpperCase();
-
-    candidate = correctVINOCRErrors(candidate);
-
-    if (candidate.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(candidate)) {
-      console.log(`✅ VIN détecté (pattern flexible): ${candidate}`);
-      return candidate;
-    }
+  // Pattern 3: Autres codes constructeurs
+  const allManufacturerPattern = /\b([A-Z]{2}[A-HJ-NPR-Z0-9]{15})\b/gi;
+  while ((match = allManufacturerPattern.exec(text)) !== null) {
+    vinCandidates.push(match[1]);
   }
 
-  // PRIORITÉ 4: Recherche pattern "E:" suivi du VIN (fallback global)
-  const fieldEPattern = /E[:\.\s]*([A-Z0-9][\s\-]?){16,19}/i;
-  const fieldEMatch = text.match(fieldEPattern);
+  console.log(`📋 Candidats VIN trouvés: ${vinCandidates.length}`);
 
-  if (fieldEMatch) {
-    let candidate = fieldEMatch[0]
-      .replace(/^E[:\.\s]*/, "")
-      .replace(/[\s\-]/g, "")
-      .toUpperCase();
-
-    candidate = correctVINOCRErrors(candidate);
-
-    // Accepter 16-18 caractères (ajuster si nécessaire)
-    if (candidate.length >= 16 && candidate.length <= 18) {
-      if (candidate.length === 18) {
-        candidate = candidate.substring(0, 17);
-      } else if (candidate.length === 16) {
-        candidate = candidate + "?";
-      }
-
-      console.log(`⚠️ VIN détecté (pattern E fallback): ${candidate}`);
-      return candidate;
-    }
-  }
-
-  // PRIORITÉ 5: Recherche de séquence longue (dernier recours)
-  const longSequencePattern = /\b([A-Z0-9]{15,19})\b/i;
-  const longMatch = text.match(longSequencePattern);
-
-  if (longMatch) {
-    let candidate = correctVINOCRErrors(longMatch[1].toUpperCase());
-
-    // Ajuster à 17 caractères si possible
-    if (candidate.length >= 16 && candidate.length <= 18) {
-      if (candidate.length === 18) {
-        candidate = candidate.substring(0, 17);
-      } else if (candidate.length === 16) {
-        candidate = candidate + "?";
-      }
-
-      console.log(`⚠️ VIN détecté (séquence longue): ${candidate}`);
-      return candidate;
-    }
-  }
-
-  console.log("❌ VIN non détecté");
-  return undefined;
-};
-
-/**
- * Calcule la distance de Levenshtein entre deux chaînes
- * (nombre minimal d'opérations pour transformer s1 en s2)
- */
-const levenshteinDistance = (s1: string, s2: string): number => {
-  const matrix: number[][] = [];
-
-  for (let i = 0; i <= s2.length; i++) {
-    matrix[i] = [i];
-  }
-
-  for (let j = 0; j <= s1.length; j++) {
-    matrix[0][j] = j;
-  }
-
-  for (let i = 1; i <= s2.length; i++) {
-    for (let j = 1; j <= s1.length; j++) {
-      if (s2.charAt(i - 1) === s1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
+  // Valider tous les candidats
+  const validVINs = vinCandidates
+    .map((vin) => vin.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, ""))
+    .filter((vin) => {
+      const isValid = isValidVINFormat(vin);
+      if (isValid) {
+        console.log(`✅ VIN valide: ${vin}`);
       } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1, // insertion
-          matrix[i - 1][j] + 1, // deletion
-        );
+        console.log(`❌ VIN invalide rejeté: ${vin}`);
       }
-    }
+      return isValid;
+    });
+
+  if (validVINs.length > 0) {
+    // Prendre le premier VIN valide
+    const selectedVIN = validVINs[0];
+    console.log(`🎯 VIN sélectionné: ${selectedVIN}`);
+    return selectedVIN;
   }
 
-  return matrix[s2.length][s1.length];
+  console.warn("⚠️ Aucun VIN valide détecté");
+  return undefined;
 };
 
 /**
  * Extrait la marque (champ D.1)
- * AMÉLIORÉ: Utilise fuzzy matching pour tolérer les erreurs OCR
+ * Exemples: RENAULT, PEUGEOT, CITROEN, etc.
  */
 export const extractMarque = (text: string): string | undefined => {
   const marques = [
-    "CITROEN",
-    "CITROËN",
-    "PEUGEOT",
     "RENAULT",
-    "FIAT",
-    "FORD",
+    "PEUGEOT",
+    "CITROEN",
     "VOLKSWAGEN",
-    "VW",
+    "BMW",
     "MERCEDES",
-    "MERCEDES-BENZ",
+    "AUDI",
+    "FORD",
     "OPEL",
-    "IVECO",
-    "NISSAN",
+    "FIAT",
     "TOYOTA",
+    "NISSAN",
     "HYUNDAI",
     "KIA",
     "DACIA",
-    "SUZUKI",
+    "SEAT",
+    "SKODA",
+    "VOLVO",
+    "MAZDA",
+    "HONDA",
     "MITSUBISHI",
-    "ISUZU",
+    "SUZUKI",
+    "JEEP",
+    "LAND ROVER",
+    "PORSCHE",
+    "TESLA",
   ];
 
-  const textUpper = text.toUpperCase().replace(/[ËÉÈ]/g, "E");
-
-  // Stratégie 1: Match exact
+  // Chercher D.1 ou D1 suivi de la marque
   for (const marque of marques) {
-    const normalized = marque.replace(/[ËÉÈ]/g, "E");
-    if (textUpper.includes(normalized)) {
+    const pattern = new RegExp(`D[\\.\\s]?1[\\s.:]*${marque}`, "i");
+    if (pattern.test(text)) {
       return marque;
     }
   }
 
-  // Stratégie 2: Fuzzy matching pour erreurs OCR
-  // Découper le texte en mots de 4+ caractères
-  const words = textUpper.split(/\s+/).filter((w) => w.length >= 4);
-
-  for (const word of words) {
-    for (const marque of marques) {
-      const normalized = marque.replace(/[ËÉÈ]/g, "E");
-      const distance = levenshteinDistance(word, normalized);
-      const threshold = Math.ceil(normalized.length * 0.2); // Tolérance 20%
-
-      if (distance <= threshold) {
-        console.log(`🔍 Fuzzy match marque: "${word}" → "${marque}" (distance: ${distance})`);
-        return marque;
-      }
-    }
-  }
-
-  // Stratégie 3: Pattern D.1 ou D1 suivi de la marque
-  const fieldDPattern = /D\.?1[:\s]*([A-Z][A-Z\s]{3,})/i;
-  const fieldDMatch = text.match(fieldDPattern);
-
-  if (fieldDMatch) {
-    const candidate = fieldDMatch[1].trim().toUpperCase().replace(/[ËÉÈ]/g, "E");
-
-    // Vérifier si correspond à une marque connue (même avec fuzzy)
-    for (const marque of marques) {
-      const normalized = marque.replace(/[ËÉÈ]/g, "E");
-      if (candidate.includes(normalized) || levenshteinDistance(candidate, normalized) <= 2) {
-        return marque;
-      }
+  // Chercher directement la marque dans le texte
+  for (const marque of marques) {
+    const pattern = new RegExp(`\\b${marque}\\b`, "i");
+    if (pattern.test(text)) {
+      return marque;
     }
   }
 
@@ -549,270 +368,36 @@ export const extractMarque = (text: string): string | undefined => {
 
 /**
  * Extrait la dénomination commerciale / modèle (champ D.3)
- * AMÉLIORÉ: Utilise fuzzy matching pour tolérer les erreurs OCR
+ * Exemples: CLIO, 308, C3, GOLF, etc.
  */
 export const extractDenominationCommerciale = (text: string): string | undefined => {
-  const modeles = [
-    "JUMPER",
-    "BOXER",
-    "DUCATO",
-    "MASTER",
-    "MOVANO",
-    "TRANSIT",
-    "SPRINTER",
-    "TRAFIC",
-    "VIVARO",
-    "EXPERT",
-    "PROACE",
-    "TALENTO",
-    "CRAFTER",
-    "DAILY",
-    "PRIMASTAR",
-    "DOBLO",
-    "COMBO",
-    "BERLINGO",
-    "KANGOO",
-    "PARTNER",
-    "CADDY",
-    "CONNECT",
-    "DISPATCH",
-    "SCUDO",
-    "TRAVELLER",
-    "SPACETOURER",
-    "ZAFIRA LIFE",
-    "CALIFORNIA",
-  ];
+  // Chercher D.3 ou D3 suivi du modèle
+  const d3Pattern = /D[\.\s]?3[\s.:]+([A-Z0-9\s\-]{2,30})/i;
+  const match = text.match(d3Pattern);
 
-  const textUpper = text.toUpperCase();
-
-  // Stratégie 1: Match exact
-  for (const modele of modeles) {
-    if (textUpper.includes(modele)) {
-      return modele;
-    }
-  }
-
-  // Stratégie 2: Fuzzy matching
-  const words = textUpper.split(/\s+/).filter((w) => w.length >= 4);
-
-  for (const word of words) {
-    for (const modele of modeles) {
-      const distance = levenshteinDistance(word, modele);
-      const threshold = Math.ceil(modele.length * 0.25); // Tolérance 25%
-
-      if (distance <= threshold) {
-        console.log(`🔍 Fuzzy match modèle: "${word}" → "${modele}" (distance: ${distance})`);
-        return modele;
-      }
-    }
-  }
-
-  // Stratégie 3: Pattern D.3 ou D3 suivi du modèle
-  const fieldD3Pattern = /D\.?3[:\s]*([A-Z][A-Z0-9\s\-]{3,})/i;
-  const fieldD3Match = text.match(fieldD3Pattern);
-
-  if (fieldD3Match) {
-    const candidate = fieldD3Match[1].trim().toUpperCase();
-
-    // Vérifier si correspond à un modèle connu
-    for (const modele of modeles) {
-      if (candidate.includes(modele) || levenshteinDistance(candidate, modele) <= 2) {
-        return modele;
-      }
-    }
-
-    // Si pas de match exact, retourner le candidat nettoyé
-    return cleanText(candidate);
-  }
-
-  // Stratégie 4: Recherche pattern générique après marque
-  const marqueMatch = extractMarque(text);
-  if (marqueMatch) {
-    const afterMarquePattern = new RegExp(`${marqueMatch}\\s+([A-Z][A-Z0-9\\s-]{3,}?)(?=\\s+[A-Z]\\.|\\d|$)`, "i");
-    const match = text.match(afterMarquePattern);
-    if (match && match[1]) {
-      const candidate = cleanText(match[1]).toUpperCase();
-
-      // Vérifier fuzzy avec modèles connus
-      for (const modele of modeles) {
-        if (candidate.includes(modele) || levenshteinDistance(candidate, modele) <= 2) {
-          return modele;
-        }
-      }
-
-      return cleanText(match[1]);
-    }
+  if (match) {
+    return cleanText(match[1]).toUpperCase();
   }
 
   return undefined;
 };
 
 /**
- * Extrait la masse en charge maximale (champ F.2) en kg
- * AMÉLIORÉ v2: Priorité patterns précis + correction OCR chiffres
- */
-export const extractMasseEnChargeMax = (text: string): number | undefined => {
-  // PRIORITÉ 1: Patterns très précis avec F.2 (champ officiel)
-  const precisPatterns = [
-    /F\.2[:\s]+(\d{4})/i, // F.2: 3100
-    /F\.2[:\s]*:?\s*(\d{4})/i, // F.2 3100 ou F.2: 3100
-    /F2[:\s]+(\d{4})/i, // F2 3100
-  ];
-
-  for (const pattern of precisPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const value = parseInt(match[1].replace(/\s/g, ""));
-      // Validation stricte: PTAC typique entre 2500 et 5000 kg pour utilitaires légers
-      if (value >= 2500 && value <= 5000) {
-        console.log(`🔍 PTAC détecté (F.2 précis): ${value} kg`);
-        return value;
-      }
-    }
-  }
-
-  // PRIORITÉ 2: Recherche ligne par ligne avec contexte F.2
-  const lines = text.split(/[\n\r]+/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Si la ligne contient F.2 ou F2
-    if (/F\.?2\b/i.test(line)) {
-      // Extraire TOUS les nombres de 4 chiffres dans cette ligne et les 2 lignes suivantes
-      const contextLines = [line];
-      if (i + 1 < lines.length) contextLines.push(lines[i + 1]);
-      if (i + 2 < lines.length) contextLines.push(lines[i + 2]);
-
-      const contextText = contextLines.join(" ");
-      const numbers = contextText.match(/\b(\d{4})\b/g);
-
-      if (numbers) {
-        console.log(`🔍 Nombres trouvés près de F.2: ${numbers.join(", ")}`);
-
-        // Chercher le premier nombre dans la plage valide
-        for (const num of numbers) {
-          const value = parseInt(num);
-          if (value >= 2500 && value <= 5000) {
-            console.log(`🔍 PTAC détecté (contexte F.2): ${value} kg`);
-            return value;
-          }
-        }
-      }
-    }
-  }
-
-  // PRIORITÉ 3: Patterns moins précis avec PTAC ou "masse en charge"
-  const fallbackPatterns = [/PTAC[:\s]*(\d{4})/i, /masse.*charge.*max[^\d]*(\d{4})/i, /poids.*total[^\d]*(\d{4})/i];
-
-  for (const pattern of fallbackPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const value = parseInt(match[1].replace(/\s/g, ""));
-      if (value >= 2500 && value <= 5000) {
-        console.log(`🔍 PTAC détecté (fallback): ${value} kg`);
-        return value;
-      }
-    }
-  }
-
-  // PRIORITÉ 4: Dernier recours - chercher le plus petit nombre de 4 chiffres dans la plage
-  // (le PTAC est souvent le plus petit des poids)
-  const allNumbers = text.match(/\b(\d{4})\b/g);
-  if (allNumbers) {
-    const validNumbers = allNumbers
-      .map((n) => parseInt(n))
-      .filter((v) => v >= 2500 && v <= 5000)
-      .sort((a, b) => a - b); // Trier du plus petit au plus grand
-
-    if (validNumbers.length > 0) {
-      console.log(`🔍 PTAC détecté (dernier recours, plus petit poids): ${validNumbers[0]} kg`);
-      return validNumbers[0];
-    }
-  }
-
-  return undefined;
-};
-
-/**
- * Extrait la masse à vide (champ G.1) en kg
- * AMÉLIORÉ v2: Priorité patterns précis + correction OCR chiffres
+ * Extrait la masse à vide (champ G.1)
+ * Format: Nombre en kg
  */
 export const extractMasseVide = (text: string): number | undefined => {
-  // PRIORITÉ 1: Patterns très précis avec G.1 (champ officiel)
-  const precisPatterns = [
-    /G\.1[:\s]+(\d{4})/i, // G.1: 1613
-    /G\.1[:\s]*:?\s*(\d{4})/i, // G.1 1613 ou G.1: 1613
-    /G1[:\s]+(\d{4})/i, // G1 1613
-  ];
+  // Chercher G.1 ou G1 suivi d'un nombre
+  const patterns = [/G[\.\s]?1[\s.:]+(\d+)/i, /MASSE[\s]+(?:A\s+)?VIDE[\s.:]+(\d+)/i, /TARE[\s.:]+(\d+)/i];
 
-  for (const pattern of precisPatterns) {
+  for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
-      const value = parseInt(match[1].replace(/\s/g, ""));
-      // Validation stricte: Masse vide typique entre 1200 et 2500 kg pour utilitaires légers
-      if (value >= 1200 && value <= 2500) {
-        console.log(`🔍 Masse à vide détectée (G.1 précis): ${value} kg`);
+      const value = parseInt(correctOCRDigits(match[1]));
+      // Valider que la valeur est réaliste (entre 500kg et 5000kg)
+      if (value >= 500 && value <= 5000) {
         return value;
       }
-    }
-  }
-
-  // PRIORITÉ 2: Recherche ligne par ligne avec contexte G.1
-  const lines = text.split(/[\n\r]+/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Si la ligne contient G.1 ou G1
-    if (/G\.?1\b/i.test(line)) {
-      // Extraire TOUS les nombres de 4 chiffres dans cette ligne et les 2 lignes suivantes
-      const contextLines = [line];
-      if (i + 1 < lines.length) contextLines.push(lines[i + 1]);
-      if (i + 2 < lines.length) contextLines.push(lines[i + 2]);
-
-      const contextText = contextLines.join(" ");
-      const numbers = contextText.match(/\b(\d{4})\b/g);
-
-      if (numbers) {
-        console.log(`🔍 Nombres trouvés près de G.1: ${numbers.join(", ")}`);
-
-        // Chercher le premier nombre dans la plage valide
-        for (const num of numbers) {
-          const value = parseInt(num);
-          if (value >= 1200 && value <= 2500) {
-            console.log(`🔍 Masse à vide détectée (contexte G.1): ${value} kg`);
-            return value;
-          }
-        }
-      }
-    }
-  }
-
-  // PRIORITÉ 3: Patterns moins précis avec "masse vide" ou "poids vide"
-  const fallbackPatterns = [/masse.*vide[^\d]*(\d{4})/i, /poids.*vide[^\d]*(\d{4})/i, /masse.*service[^\d]*(\d{4})/i];
-
-  for (const pattern of fallbackPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const value = parseInt(match[1].replace(/\s/g, ""));
-      if (value >= 1200 && value <= 2500) {
-        console.log(`🔍 Masse à vide détectée (fallback): ${value} kg`);
-        return value;
-      }
-    }
-  }
-
-  // PRIORITÉ 4: Dernier recours - chercher un nombre de 4 chiffres commençant par 1
-  // (la masse vide commence souvent par 1 : 1200-1999 kg)
-  const allNumbers = text.match(/\b(\d{4})\b/g);
-  if (allNumbers) {
-    const validNumbers = allNumbers
-      .map((n) => parseInt(n))
-      .filter((v) => v >= 1200 && v <= 2500 && v.toString().startsWith("1"))
-      .sort((a, b) => a - b);
-
-    if (validNumbers.length > 0) {
-      console.log(`🔍 Masse à vide détectée (dernier recours): ${validNumbers[0]} kg`);
-      return validNumbers[0];
     }
   }
 
@@ -820,88 +405,24 @@ export const extractMasseVide = (text: string): number | undefined => {
 };
 
 /**
- * Extrait la catégorie du véhicule (champ J)
- * AMÉLIORÉ v2: Recherche contextuelle + patterns enrichis
+ * Extrait la masse en charge maximale / PTAC (champ F.1)
+ * Format: Nombre en kg
  */
-export const extractCategorie = (text: string): string | undefined => {
-  const categories = [
-    "M1",
-    "M2",
-    "M3",
-    "N1",
-    "N2",
-    "N3",
-    "O1",
-    "O2",
-    "O3",
-    "O4",
-    "L1",
-    "L2",
-    "L3",
-    "L4",
-    "L5",
-    "L6",
-    "L7",
+export const extractMasseEnChargeMax = (text: string): number | undefined => {
+  const patterns = [
+    /F[\.\s]?1[\s.:]+(\d+)/i,
+    /PTAC[\s.:]+(\d+)/i,
+    /(?:MASSE|POIDS)[\s]+(?:TOTALE|MAX|EN\s+CHARGE)[\s.:]+(\d+)/i,
   ];
 
-  // PRIORITÉ 1: Pattern précis avec J:
-  const precisPatterns = [
-    /\bJ[:\.\s]+([MNOL]\d)/i, // J: N1
-    /\bJ[:\.\s]*:?\s*([MNOL]\d)/i, // J : N1 ou J N1
-  ];
-
-  for (const pattern of precisPatterns) {
+  for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match && match[1]) {
-      const candidate = match[1].toUpperCase();
-
-      if (categories.includes(candidate)) {
-        console.log(`🔍 Catégorie détectée (J précis): ${candidate}`);
-        return candidate;
+    if (match) {
+      const value = parseInt(correctOCRDigits(match[1]));
+      // Valider que la valeur est réaliste (entre 800kg et 7500kg)
+      if (value >= 800 && value <= 7500) {
+        return value;
       }
-    }
-  }
-
-  // PRIORITÉ 2: Recherche ligne par ligne avec contexte J
-  const lines = text.split(/[\n\r]+/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Si la ligne contient "J" isolé ou "J:"
-    if (/\bJ[:\.\s]/i.test(line)) {
-      // Chercher dans cette ligne et les 2 suivantes
-      const contextLines = [line];
-      if (i + 1 < lines.length) contextLines.push(lines[i + 1]);
-      if (i + 2 < lines.length) contextLines.push(lines[i + 2]);
-
-      const contextText = contextLines.join(" ").toUpperCase();
-
-      // Chercher toutes les catégories
-      for (const cat of categories) {
-        const pattern = new RegExp(`\\b${cat}\\b`);
-        if (pattern.test(contextText)) {
-          console.log(`🔍 Catégorie détectée (contexte J): ${cat}`);
-          return cat;
-        }
-      }
-    }
-  }
-
-  // PRIORITÉ 3: Patterns existants (fallback)
-  for (const cat of categories) {
-    const pattern = new RegExp(`\\bJ[:\\.\\s]*${cat}\\b`, "i");
-    if (pattern.test(text)) {
-      console.log(`🔍 Catégorie détectée (fallback): ${cat}`);
-      return cat;
-    }
-  }
-
-  // PRIORITÉ 4: Recherche globale
-  for (const cat of categories) {
-    const pattern = new RegExp(`\\b${cat}\\b`, "i");
-    if (pattern.test(text)) {
-      console.log(`🔍 Catégorie détectée (global): ${cat}`);
-      return cat;
     }
   }
 
@@ -910,187 +431,56 @@ export const extractCategorie = (text: string): string | undefined => {
 
 /**
  * Extrait le genre national (champ J.1)
- * AMÉLIORÉ v2: Recherche contextuelle + patterns enrichis + fuzzy matching
+ * Exemples: VP (Voiture Particulière), CTTE (Camionnette), etc.
  */
 export const extractGenreNational = (text: string): string | undefined => {
-  const genres = [
-    "CTTE",
-    "DERIV-VP",
-    "DERIVVP",
-    "CAMIONNETTE",
-    "CAMION",
-    "TCP",
-    "VASP",
-    "VP",
-    "CAMPING-CAR",
-    "CAMPINGCAR",
-    "AUTOBUS",
-    "AUTOCAR",
-    "REMORQUE",
-    "TRACTEUR",
-  ];
+  const genres = ["VP", "CTTE", "CAM", "TCP", "TRR", "RESP", "SRAT", "MAGA", "VASP"];
 
-  const textUpper = text.toUpperCase();
-
-  // PRIORITÉ 1: Patterns précis avec J.1 ou J1
-  const precisPatterns = [
-    /J\.1[:\s]*([A-Z\-]+)/i, // J.1: CTTE
-    /J\.1[:\s]+([A-Z\-]+)/i, // J.1 CTTE
-    /J1[:\s]*([A-Z\-]+)/i, // J1: CTTE
-    /J\.1[:\s]*:?\s*([A-Z\-]+)/i, // J.1 : CTTE
-  ];
-
-  for (const pattern of precisPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1]) {
-      const candidate = match[1].toUpperCase().trim();
-
-      // Vérifier si c'est un genre connu
-      for (const genre of genres) {
-        if (candidate === genre || candidate.replace(/[\s\-]/g, "") === genre.replace(/[\s\-]/g, "")) {
-          console.log(`🔍 Genre national détecté (J.1 précis): ${genre}`);
-          return genre;
-        }
-      }
-
-      // Fuzzy matching pour variantes
-      for (const genre of genres) {
-        if (levenshteinDistance(candidate, genre) <= 2) {
-          console.log(`🔍 Genre national détecté (fuzzy J.1): "${candidate}" → "${genre}"`);
-          return genre;
-        }
-      }
-    }
-  }
-
-  // PRIORITÉ 2: Recherche ligne par ligne avec contexte J.1
-  const lines = text.split(/[\n\r]+/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Si la ligne contient "J.1" ou "J1" ou "J :" (variations OCR)
-    if (/J\.?1\b|J\s*:/i.test(line)) {
-      // Chercher dans cette ligne et les 2 suivantes
-      const contextLines = [line];
-      if (i + 1 < lines.length) contextLines.push(lines[i + 1]);
-      if (i + 2 < lines.length) contextLines.push(lines[i + 2]);
-
-      const contextText = contextLines.join(" ").toUpperCase();
-
-      // Chercher tous les genres dans le contexte
-      for (const genre of genres) {
-        // Match exact
-        if (contextText.includes(genre)) {
-          console.log(`🔍 Genre national détecté (contexte J.1): ${genre}`);
-          return genre;
-        }
-
-        // Match sans tirets/espaces (DERIV-VP = DERIVVP)
-        const genreNormalized = genre.replace(/[\s\-]/g, "");
-        const contextNormalized = contextText.replace(/[\s\-]/g, "");
-        if (contextNormalized.includes(genreNormalized)) {
-          console.log(`🔍 Genre national détecté (contexte normalisé): ${genre}`);
-          return genre;
-        }
-      }
-
-      // Fuzzy search dans le contexte
-      const words = contextText.split(/\s+/).filter((w) => w.length >= 2);
-      for (const word of words) {
-        for (const genre of genres) {
-          const distance = levenshteinDistance(word, genre);
-          const threshold = Math.ceil(genre.length * 0.25); // Tolérance 25%
-
-          if (distance <= threshold && distance <= 2) {
-            console.log(`🔍 Genre national détecté (fuzzy contexte): "${word}" → "${genre}" (distance: ${distance})`);
-            return genre;
-          }
-        }
-      }
-    }
-  }
-
-  // PRIORITÉ 3: Recherche sans préfixe J.1 (fallback)
+  // Chercher J.1 ou J1 suivi du genre
   for (const genre of genres) {
-    // Match exact dans le texte
-    if (textUpper.includes(genre)) {
-      console.log(`🔍 Genre national détecté (fallback): ${genre}`);
-      return genre;
-    }
-
-    // Match sans tirets/espaces
-    const genreNormalized = genre.replace(/[\s\-]/g, "");
-    const textNormalized = textUpper.replace(/[\s\-]/g, "");
-    if (textNormalized.includes(genreNormalized)) {
-      console.log(`🔍 Genre national détecté (fallback normalisé): ${genre}`);
+    const pattern = new RegExp(`J[\\.\\s]?1[\\s.:]*${genre}`, "i");
+    if (pattern.test(text)) {
       return genre;
     }
   }
 
-  // PRIORITÉ 4: Fuzzy matching global (dernier recours)
-  const words = textUpper.split(/\s+/).filter((w) => w.length >= 3);
-  for (const word of words) {
-    for (const genre of genres) {
-      const distance = levenshteinDistance(word, genre);
-
-      // Seuil très strict pour éviter faux positifs
-      if (distance <= 1 && genre.length >= 4) {
-        console.log(`🔍 Genre national détecté (fuzzy global): "${word}" → "${genre}" (distance: ${distance})`);
-        return genre;
-      }
+  // Chercher "GENRE" suivi du genre
+  for (const genre of genres) {
+    const pattern = new RegExp(`GENRE[\\s.:]+${genre}`, "i");
+    if (pattern.test(text)) {
+      return genre;
     }
   }
 
-  console.log("⚠️ Genre national non détecté");
+  // Chercher directement dans le texte
+  for (const genre of genres) {
+    const pattern = new RegExp(`\\b${genre}\\b`, "i");
+    if (pattern.test(text)) {
+      return genre;
+    }
+  }
+
   return undefined;
 };
 
 /**
- * Parse le texte complet de l'OCR et extrait toutes les données
- * AMÉLIORÉ v2: Correction OCR chiffres avant extraction
+ * Parse le texte OCR pour extraire toutes les données de la carte grise
  */
-export const parseRegistrationCardText = (ocrText: string): VehicleRegistrationData => {
-  // Pré-traitement: Corriger les erreurs OCR communes sur les chiffres
-  const correctedText = correctOCRDigits(ocrText);
+export const parseRegistrationCardText = (text: string): VehicleRegistrationData => {
+  console.log("📄 Parsing du texte OCR...");
+  console.log("Texte brut (premiers 500 caractères):", text.substring(0, 500));
 
-  console.log("📝 Texte OCR corrigé (erreurs chiffres)");
-
-  return {
-    immatriculation: extractImmatriculation(correctedText),
-    datePremiereImmatriculation: extractDatePremiereImmatriculation(correctedText),
-    numeroChassisVIN: extractNumeroChassisVIN(correctedText),
-    marque: extractMarque(correctedText),
-    denominationCommerciale: extractDenominationCommerciale(correctedText),
-    masseEnChargeMax: extractMasseEnChargeMax(correctedText),
-    masseVide: extractMasseVide(correctedText),
-    categorie: extractCategorie(correctedText),
-    genreNational: extractGenreNational(correctedText),
+  const data: VehicleRegistrationData = {
+    immatriculation: extractImmatriculation(text),
+    datePremiereImmatriculation: extractDatePremiereImmatriculation(text),
+    numeroChassisVIN: extractNumeroChassisVIN(text),
+    marque: extractMarque(text),
+    denominationCommerciale: extractDenominationCommerciale(text),
+    masseVide: extractMasseVide(text),
+    masseEnChargeMax: extractMasseEnChargeMax(text),
+    genreNational: extractGenreNational(text),
   };
-};
 
-/**
- * Prétraite une image pour améliorer la reconnaissance OCR
- */
-export const preprocessImageForOCR = (canvas: HTMLCanvasElement): void => {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
-
-  // Augmenter le contraste et convertir en niveaux de gris
-  for (let i = 0; i < data.length; i += 4) {
-    // Conversion en niveaux de gris
-    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-
-    // Augmentation du contraste (seuillage)
-    const threshold = 128;
-    const value = gray > threshold ? 255 : 0;
-
-    data[i] = value; // Rouge
-    data[i + 1] = value; // Vert
-    data[i + 2] = value; // Bleu
-  }
-
-  ctx.putImageData(imageData, 0, 0);
+  console.log("✅ Données extraites:", data);
+  return data;
 };
