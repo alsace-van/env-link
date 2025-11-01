@@ -6,12 +6,16 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Camera, Upload, X, CheckCircle2, AlertCircle, Loader2, RotateCw, Edit, Save } from "lucide-react";
+import { Camera, Upload, X, CheckCircle2, AlertCircle, Loader2, RotateCw, Edit, Save, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 import Tesseract from "tesseract.js";
 import {
   parseRegistrationCardText,
   validateAndCorrectVIN,
+  extractNumeroChassisVIN,
+  extractImmatriculation,
+  isValidVINFormat,
+  isValidImmatriculation,
   type VehicleRegistrationData,
 } from "@/lib/registrationCardParser";
 
@@ -36,12 +40,14 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   const [editedData, setEditedData] = useState<VehicleRegistrationData>({});
   const [confidences, setConfidences] = useState<FieldConfidence[]>([]);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRescanningVIN, setIsRescanningVIN] = useState(false);
+  const [isRescanningImmat, setIsRescanningImmat] = useState(false);
+  const [lastImageFile, setLastImageFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef(false);
 
   /**
    * Prétraitement RAPIDE 1: Contraste simple + binarisation
-   * Plus rapide que l'ancienne version, résultats corrects
    */
   const preprocessStrategy1 = (canvas: HTMLCanvasElement): void => {
     const ctx = canvas.getContext("2d");
@@ -89,7 +95,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
   /**
    * Prétraitement PRÉCIS 2: OTSU simplifié
-   * Plus lent mais meilleurs résultats sur photos difficiles
    */
   const preprocessStrategy2 = (canvas: HTMLCanvasElement): void => {
     const ctx = canvas.getContext("2d");
@@ -106,7 +111,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       data[i + 2] = gray;
     }
 
-    // OTSU simplifié (plus rapide)
+    // OTSU simplifié
     const histogram = new Array(256).fill(0);
     for (let i = 0; i < data.length; i += 4) {
       histogram[Math.floor(data[i])]++;
@@ -147,80 +152,217 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
-   * Prétraitement ULTRA-AGRESSIF 3: Pour photos très difficiles
-   * Combine égalisation d'histogramme + débruitage + contraste extrême
+   * NOUVEAU v3.4: Scan ultra-précis du VIN uniquement
    */
-  const preprocessStrategy3 = (canvas: HTMLCanvasElement): void => {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
-    // 1. Conversion niveaux de gris
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      data[i] = gray;
-      data[i + 1] = gray;
-      data[i + 2] = gray;
+  const processVINOnly = async () => {
+    if (!lastImageFile) {
+      toast.error("Image originale non disponible");
+      return;
     }
 
-    // 2. Égalisation d'histogramme (améliore contraste sur images sombres)
-    const histogram = new Array(256).fill(0);
-    for (let i = 0; i < data.length; i += 4) {
-      histogram[Math.floor(data[i])]++;
-    }
+    setIsRescanningVIN(true);
+    setProgress(0);
 
-    const cdf = new Array(256).fill(0);
-    cdf[0] = histogram[0];
-    for (let i = 1; i < 256; i++) {
-      cdf[i] = cdf[i - 1] + histogram[i];
-    }
+    try {
+      console.log("🔍 Rescan VIN uniquement (ultra-précis)...");
 
-    const cdfMin = cdf.find((v) => v > 0) || 0;
-    const totalPixels = canvas.width * canvas.height;
+      // Charger l'image
+      const img = new Image();
+      const imgUrl = URL.createObjectURL(lastImageFile);
 
-    for (let i = 0; i < data.length; i += 4) {
-      const oldValue = data[i];
-      const newValue = Math.round(((cdf[Math.floor(oldValue)] - cdfMin) / (totalPixels - cdfMin)) * 255);
-      data[i] = newValue;
-      data[i + 1] = newValue;
-      data[i + 2] = newValue;
-    }
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imgUrl;
+      });
 
-    // 3. Contraste agressif
-    let min = 255,
-      max = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] < min) min = data[i];
-      if (data[i] > max) max = data[i];
-    }
+      // Scan VIN avec résolution MAXIMALE (x3.0)
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * 3.0; // Résolution maximale
+      canvas.height = img.height * 3.0;
+      const ctx = canvas.getContext("2d");
 
-    const range = max - min;
-    if (range > 0) {
-      for (let i = 0; i < data.length; i += 4) {
-        // Augmentation agressive du contraste
-        let value = ((data[i] - min) / range) * 255;
-        // Amplification des contrastes
-        value = value < 128 ? value * 0.7 : 255 - (255 - value) * 0.7;
-        data[i] = value;
-        data[i + 1] = value;
-        data[i + 2] = value;
+      if (!ctx) throw new Error("Canvas context error");
+
+      setProgress(20);
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // Prétraitement OTSU
+      preprocessStrategy2(canvas);
+
+      setProgress(40);
+
+      // Convertir en blob
+      const preprocessedBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Conversion échouée"));
+        }, "image/png");
+      });
+
+      setProgress(60);
+
+      // OCR avec paramètres optimisés VIN
+      const result = await Tesseract.recognize(preprocessedBlob, "fra", {
+        logger: (m: any) => {
+          if (m.status === "recognizing text") {
+            setProgress(60 + Math.round(m.progress * 30));
+          }
+        },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
+        tessedit_char_blacklist: "IOQ",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
+      });
+
+      URL.revokeObjectURL(imgUrl);
+
+      // Extraire le VIN
+      const detectedVIN = extractNumeroChassisVIN(result.data.text);
+
+      if (detectedVIN && isValidVINFormat(detectedVIN)) {
+        console.log("✅ VIN rescanné avec succès:", detectedVIN);
+
+        // Mettre à jour uniquement le VIN
+        setExtractedData((prev) => ({
+          ...prev,
+          numeroChassisVIN: detectedVIN,
+        }));
+
+        setEditedData((prev) => ({
+          ...prev,
+          numeroChassisVIN: detectedVIN,
+        }));
+
+        toast.success(`VIN détecté: ${detectedVIN}`);
+      } else {
+        console.warn("⚠️ VIN toujours invalide après rescan");
+        toast.warning("VIN non détecté. Essayez une photo plus rapprochée de la ligne E.");
       }
+
+      setProgress(100);
+    } catch (error) {
+      console.error("Erreur rescan VIN:", error);
+      toast.error("Erreur lors du rescan du VIN");
+    } finally {
+      setIsRescanningVIN(false);
+      setProgress(0);
+    }
+  };
+
+  /**
+   * NOUVEAU v3.4: Scan ultra-précis de l'immatriculation uniquement
+   */
+  const processImmatriculationOnly = async () => {
+    if (!lastImageFile) {
+      toast.error("Image originale non disponible");
+      return;
     }
 
-    // 4. Binarisation avec seuil bas pour capter plus de texte
-    for (let i = 0; i < data.length; i += 4) {
-      const value = data[i] > 110 ? 255 : 0; // Seuil plus bas
-      data[i] = value;
-      data[i + 1] = value;
-      data[i + 2] = value;
-    }
+    setIsRescanningImmat(true);
+    setProgress(0);
 
-    ctx.putImageData(imageData, 0, 0);
+    try {
+      console.log("🔍 Rescan immatriculation uniquement (ultra-précis)...");
+
+      // Charger l'image
+      const img = new Image();
+      const imgUrl = URL.createObjectURL(lastImageFile);
+
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imgUrl;
+      });
+
+      // Scan avec résolution MAXIMALE (x3.0)
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * 3.0;
+      canvas.height = img.height * 3.0;
+      const ctx = canvas.getContext("2d");
+
+      if (!ctx) throw new Error("Canvas context error");
+
+      setProgress(20);
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // Prétraitement OTSU
+      preprocessStrategy2(canvas);
+
+      setProgress(40);
+
+      // Convertir en blob
+      const preprocessedBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Conversion échouée"));
+        }, "image/png");
+      });
+
+      setProgress(60);
+
+      // OCR avec paramètres optimisés pour immatriculation
+      const result = await Tesseract.recognize(preprocessedBlob, "fra", {
+        logger: (m: any) => {
+          if (m.status === "recognizing text") {
+            setProgress(60 + Math.round(m.progress * 30));
+          }
+        },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
+      });
+
+      URL.revokeObjectURL(imgUrl);
+
+      // Extraire l'immatriculation
+      const detectedImmat = extractImmatriculation(result.data.text);
+
+      if (detectedImmat && isValidImmatriculation(detectedImmat)) {
+        console.log("✅ Immatriculation rescannée avec succès:", detectedImmat);
+
+        // Mettre à jour uniquement l'immatriculation
+        setExtractedData((prev) => ({
+          ...prev,
+          immatriculation: detectedImmat,
+        }));
+
+        setEditedData((prev) => ({
+          ...prev,
+          immatriculation: detectedImmat,
+        }));
+
+        toast.success(`Immatriculation détectée: ${detectedImmat}`);
+      } else {
+        console.warn("⚠️ Immatriculation toujours invalide après rescan");
+        toast.warning("Immatriculation non détectée. Essayez une photo plus rapprochée du champ A.");
+      }
+
+      setProgress(100);
+    } catch (error) {
+      console.error("Erreur rescan immatriculation:", error);
+      toast.error("Erreur lors du rescan de l'immatriculation");
+    } finally {
+      setIsRescanningImmat(false);
+      setProgress(0);
+    }
   };
 
   const handleImageSelect = async (file: File) => {
+    setLastImageFile(file); // Sauvegarder pour les rescans
+
     // Prévisualisation
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -231,7 +373,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     // Lancer l'OCR
     await processImage(file);
   };
-
   const processImage = async (file: File) => {
     setIsProcessing(true);
     setProgress(0);
@@ -252,11 +393,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         img.src = imgUrl;
       });
 
-      console.log("🔍 Démarrage OCR v3.2 (2 passes: globale + VIN optimisé)...");
+      console.log("🔍 Démarrage OCR v3.4 (2 passes + rescan intelligent)...");
 
-      // v3.2: DEUX passes pour maximiser la détection du VIN
-      // Passe 1: Scan global rapide (tous les champs)
-      // Passe 2: Scan dédié VIN haute résolution (uniquement pour améliorer le VIN)
       const strategies = [
         { name: "Passe globale (OTSU adaptatif)", fn: preprocessStrategy2, scale: 1.8, type: "global" },
         { name: "Passe VIN dédiée (haute résolution)", fn: preprocessStrategy2, scale: 2.5, type: "vin" },
@@ -266,7 +404,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         [];
 
       for (let i = 0; i < strategies.length; i++) {
-        // Vérifier si l'utilisateur a annulé
         if (cancelRef.current) {
           console.log("🛑 Scan annulé par l'utilisateur");
           URL.revokeObjectURL(imgUrl);
@@ -275,11 +412,10 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         }
 
         const strategy = strategies[i];
-        setProgress(Math.round((i / strategies.length) * 85)); // 0-85% pour les passes
+        setProgress(Math.round((i / strategies.length) * 85));
 
         console.log(`📸 ${strategy.name} en cours...`);
 
-        // Créer un canvas avec résolution augmentée
         const canvas = document.createElement("canvas");
         canvas.width = img.width * strategy.scale;
         canvas.height = img.height * strategy.scale;
@@ -287,15 +423,12 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
         if (!ctx) continue;
 
-        // Dessiner l'image avec interpolation de haute qualité
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        // Appliquer la stratégie de prétraitement
         strategy.fn(canvas);
 
-        // Convertir le canvas en blob
         const preprocessedBlob = await new Promise<Blob>((resolve, reject) => {
           canvas.toBlob((blob) => {
             if (blob) resolve(blob);
@@ -303,11 +436,9 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           }, "image/png");
         });
 
-        // Paramètres OCR adaptés selon le type de passe
         const ocrConfig =
           strategy.type === "vin"
             ? {
-                // PASSE VIN: Paramètres optimisés pour VIN uniquement
                 logger: (m: any) => {
                   if (m.status === "recognizing text") {
                     const baseProgress = (i / strategies.length) * 85;
@@ -315,18 +446,15 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                     setProgress(Math.round(baseProgress + stepProgress));
                   }
                 },
-                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE, // Ligne unique pour VIN
-                // Whitelist STRICTE VIN: sans I, O, Q (jamais dans VIN)
+                tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
                 tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
                 load_system_dawg: "0",
                 load_freq_dawg: "0",
-                preserve_interword_spaces: "0", // Pas d'espaces dans VIN
+                preserve_interword_spaces: "0",
                 classify_bln_numeric_mode: "1",
-                // Améliorer la reconnaissance des caractères similaires
-                tessedit_char_blacklist: "IOQ", // Exclure explicitement I, O, Q
+                tessedit_char_blacklist: "IOQ",
               }
             : {
-                // PASSE GLOBALE: Paramètres standards pour tous les champs
                 logger: (m: any) => {
                   if (m.status === "recognizing text") {
                     const baseProgress = (i / strategies.length) * 85;
@@ -342,15 +470,12 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                 classify_bln_numeric_mode: "1",
               };
 
-        // Reconnaissance OCR avec Tesseract
         const result = await Tesseract.recognize(preprocessedBlob, "fra", ocrConfig);
 
         console.log(`  ✓ Pass ${i + 1} confiance: ${result.data.confidence.toFixed(1)}%`);
 
-        // Parser les données
         const parsedData = parseRegistrationCardText(result.data.text);
 
-        // Valider et corriger le VIN si détecté
         if (parsedData.numeroChassisVIN) {
           parsedData.numeroChassisVIN = validateAndCorrectVIN(parsedData.numeroChassisVIN);
         }
@@ -365,7 +490,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       URL.revokeObjectURL(imgUrl);
 
-      // Vérifier une dernière fois si annulé
       if (cancelRef.current) {
         console.log("🛑 Scan annulé par l'utilisateur");
         toast.info("Scan annulé", { duration: 2000 });
@@ -374,14 +498,11 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setProgress(90);
 
-      // v3.2: Fusion intelligente des 2 passes (globale + VIN)
-      // Stratégie: Prendre la passe globale comme base, mais remplacer le VIN si la passe VIN est meilleure
       console.log("🔄 Fusion intelligente des résultats des 2 passes...");
 
-      let bestResult = results[0]; // Passe globale (tous les champs)
+      let bestResult = results[0];
       let bestScore = 0;
 
-      // Calculer le score de la passe globale
       const fieldsDetected = Object.values(bestResult.data).filter(
         (v) => v !== undefined && v !== null && v !== "",
       ).length;
@@ -391,7 +512,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         `📊 Passe globale: ${fieldsDetected} champs, confiance ${bestResult.confidence.toFixed(1)}% → score ${bestScore.toFixed(2)}`,
       );
 
-      // Si on a une passe VIN (2ème passe), comparer les VIN
       if (results.length > 1) {
         const globalVIN = results[0].data.numeroChassisVIN;
         const vinPassVIN = results[1].data.numeroChassisVIN;
@@ -399,174 +519,92 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         console.log(`🔍 VIN passe globale: ${globalVIN || "non détecté"} (${globalVIN?.length || 0} car.)`);
         console.log(`🔍 VIN passe dédiée: ${vinPassVIN || "non détecté"} (${vinPassVIN?.length || 0} car.)`);
 
-        // Critères pour choisir le VIN de la passe dédiée:
-        // 1. La passe VIN a détecté un VIN ET la globale n'en a pas
-        // 2. OU la passe VIN a un VIN de 17 caractères ET la globale n'en a pas de 17
-        // 3. OU la passe VIN a moins de '?' que la globale
-        const shouldUseVINPass =
-          (vinPassVIN && !globalVIN) || // VIN trouvé uniquement dans passe dédiée
-          (vinPassVIN && vinPassVIN.length === 17 && globalVIN && globalVIN.length !== 17) || // VIN complet vs incomplet
-          (vinPassVIN && globalVIN && !vinPassVIN.includes("?") && globalVIN.includes("?")); // VIN sans ? vs avec ?
-
-        if (shouldUseVINPass) {
-          console.log(`✅ Utilisation du VIN de la passe dédiée: ${vinPassVIN}`);
+        if (vinPassVIN && vinPassVIN.length === 17 && (!globalVIN || globalVIN.length !== 17)) {
+          console.log("✅ Utilisation du VIN de la passe dédiée (meilleur)");
           bestResult.data.numeroChassisVIN = vinPassVIN;
-        } else if (globalVIN) {
-          console.log(`✅ Conservation du VIN de la passe globale: ${globalVIN}`);
-        } else {
-          console.log(`⚠️ Aucun VIN détecté dans les 2 passes`);
+        } else if (
+          globalVIN &&
+          vinPassVIN &&
+          globalVIN.length === 17 &&
+          vinPassVIN.length === 17 &&
+          globalVIN !== vinPassVIN
+        ) {
+          console.log("⚠️ Deux VIN différents détectés, priorité à la passe globale");
         }
       }
 
+      setProgress(95);
+
+      const finalData = bestResult.data;
+      console.log("✅ Données finales extraites:", finalData);
       console.log(
-        `✅ Résultat final avec ${Object.values(bestResult.data).filter((v) => v !== undefined && v !== null && v !== "").length} champs détectés`,
+        `📊 Total: ${Object.values(finalData).filter((v) => v !== undefined && v !== null && v !== "").length}/8 champs détectés`,
       );
-      console.log("📦 Données extraites:", bestResult.data);
 
-      setOcrText(bestResult.text);
-      setExtractedData(bestResult.data);
-      setEditedData(bestResult.data);
+      const rawOcrText = results.map((r) => r.text).join("\n\n--- NEXT PASS ---\n\n");
+      setOcrText(rawOcrText);
 
-      // Calculer les confidences pour chaque champ
-      const fieldConfidences: FieldConfidence[] = [
-        {
-          field: "immatriculation",
-          value: bestResult.data.immatriculation,
-          confidence: bestResult.confidence,
-          needsReview: !bestResult.data.immatriculation,
-        },
-        {
-          field: "numeroChassisVIN",
-          value: bestResult.data.numeroChassisVIN,
-          confidence: bestResult.confidence,
-          needsReview: !bestResult.data.numeroChassisVIN || bestResult.data.numeroChassisVIN.length !== 17,
-        },
-        {
-          field: "datePremiereImmatriculation",
-          value: bestResult.data.datePremiereImmatriculation,
-          confidence: bestResult.confidence,
-          needsReview: !bestResult.data.datePremiereImmatriculation,
-        },
-        {
-          field: "marque",
-          value: bestResult.data.marque,
-          confidence: bestResult.confidence,
-          needsReview: !bestResult.data.marque,
-        },
-        {
-          field: "denominationCommerciale",
-          value: bestResult.data.denominationCommerciale,
-          confidence: bestResult.confidence,
-          needsReview: !bestResult.data.denominationCommerciale,
-        },
-        {
-          field: "masseVide",
-          value: bestResult.data.masseVide,
-          confidence: bestResult.confidence,
-          needsReview: !bestResult.data.masseVide,
-        },
-        {
-          field: "masseEnChargeMax",
-          value: bestResult.data.masseEnChargeMax,
-          confidence: bestResult.confidence,
-          needsReview: !bestResult.data.masseEnChargeMax,
-        },
-      ];
+      setExtractedData(finalData);
+      setEditedData(finalData);
 
-      setConfidences(fieldConfidences);
+      const confidenceFields: FieldConfidence[] = Object.entries(finalData)
+        .filter(([_, value]) => value !== undefined && value !== null && value !== "")
+        .map(([field, value]) => ({
+          field,
+          value,
+          confidence: 100,
+          needsReview: field === "numeroChassisVIN" && typeof value === "string" && value.length !== 17,
+        }));
 
-      // Notifier le parent avec les données extraites
-      onDataExtracted(bestResult.data);
+      setConfidences(confidenceFields);
 
       setProgress(100);
 
-      // Compter combien de champs ont été détectés
-      const detectedFields = Object.values(bestResult.data).filter(
-        (v) => v !== undefined && v !== null && v !== "",
-      ).length;
+      onDataExtracted(finalData);
 
-      if (detectedFields === 0) {
-        toast.error("Aucune donnée n'a pu être extraite après 2 tentatives.", {
-          duration: 5000,
-          description: "Essayez de prendre une nouvelle photo avec un meilleur éclairage et plus de netteté.",
-        });
-      } else if (detectedFields < 3) {
-        toast.warning(`Seulement ${detectedFields} champ(s) détecté(s). Vérifiez et complétez manuellement.`, {
-          duration: 4000,
-          action: {
-            label: "Corriger",
-            onClick: () => setIsEditMode(true),
-          },
-        });
-      } else {
-        toast.success(`${detectedFields} champs détectés avec succès ! (${bestResult.strategyName})`, {
-          duration: 3000,
-          description: "Vérifiez les données avant de valider.",
-        });
-      }
+      const detectedCount = Object.values(finalData).filter((v) => v !== undefined && v !== null && v !== "").length;
+      toast.success(`${detectedCount}/8 champs détectés avec succès`, { duration: 3000 });
     } catch (error) {
-      // Ne pas afficher d'erreur si l'utilisateur a annulé
-      if (!cancelRef.current) {
-        console.error("❌ Erreur lors du traitement de l'image:", error);
-        toast.error("Erreur lors de la lecture de la carte grise.", {
-          duration: 5000,
-          description: "Veuillez réessayer avec une photo bien éclairée et nette.",
-        });
-      }
+      console.error("Erreur OCR:", error);
+      toast.error("Erreur lors du traitement de l'image. Veuillez réessayer.", { duration: 5000 });
     } finally {
       setIsProcessing(false);
-      setIsCancelling(false);
+      setProgress(0);
       cancelRef.current = false;
-      setTimeout(() => setProgress(0), 500);
+      setIsCancelling(false);
     }
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file) {
-      if (!file.type.startsWith("image/")) {
-        toast.error("Veuillez sélectionner une image");
-        return;
-      }
-
-      // Vérifier la taille du fichier (max 10 MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error("L'image est trop volumineuse. Maximum 10 MB.", {
-          duration: 4000,
-        });
-        return;
-      }
-
       handleImageSelect(file);
     }
   };
 
+  const handleRetry = () => {
+    if (lastImageFile) {
+      processImage(lastImageFile);
+    }
+  };
+
   const handleReset = () => {
-    cancelRef.current = true; // Annuler le scan en cours si actif
     setImagePreview(null);
     setExtractedData(null);
     setOcrText("");
-    setProgress(0);
+    setConfidences([]);
     setIsEditMode(false);
     setEditedData({});
-    setConfidences([]);
-    setIsCancelling(false);
+    setLastImageFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
   const handleCancel = () => {
-    setIsCancelling(true);
+    console.log("🛑 Demande d'annulation du scan...");
     cancelRef.current = true;
-    console.log("🛑 Annulation du scan demandée...");
-    toast.info("Annulation en cours...", { duration: 1000 });
-  };
-
-  const handleRetry = () => {
-    if (imagePreview && fileInputRef.current?.files?.[0]) {
-      processImage(fileInputRef.current.files[0]);
-    }
+    setIsCancelling(true);
   };
 
   const handleEditField = (field: keyof VehicleRegistrationData, value: any) => {
@@ -577,122 +615,133 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   const handleSaveEdits = () => {
-    // Valider le VIN si modifié
-    if (editedData.numeroChassisVIN) {
-      editedData.numeroChassisVIN = validateAndCorrectVIN(editedData.numeroChassisVIN);
-    }
-
+    console.log("💾 Sauvegarde des modifications:", editedData);
     setExtractedData(editedData);
-    onDataExtracted(editedData);
     setIsEditMode(false);
-
-    const detectedFields = Object.values(editedData).filter((v) => v !== undefined && v !== null && v !== "").length;
-    toast.success(`Données mises à jour ! ${detectedFields} champs renseignés.`, {
-      duration: 2000,
-    });
+    onDataExtracted(editedData);
+    toast.success("Modifications enregistrées", { duration: 2000 });
   };
 
   const getFieldLabel = (field: string): string => {
     const labels: Record<string, string> = {
-      immatriculation: "Immatriculation",
-      numeroChassisVIN: "N° de châssis (VIN - 17 car.)",
-      datePremiereImmatriculation: "Date 1ère immat.",
-      marque: "Marque",
-      denominationCommerciale: "Modèle",
-      masseVide: "Masse à vide (kg)",
-      masseEnChargeMax: "PTAC (kg)",
+      immatriculation: "Immatriculation (A)",
+      datePremiereImmatriculation: "Date 1ère immatriculation (B)",
+      numeroChassisVIN: "N° de châssis VIN (E)",
+      marque: "Marque (D.1)",
+      denominationCommerciale: "Modèle (D.3)",
+      masseVide: "Masse à vide / G.1 (kg)",
+      masseEnChargeMax: "PTAC / F.1 (kg)",
+      genreNational: "Genre national (J.1)",
     };
     return labels[field] || field;
   };
 
   const getFieldStatus = (value: any) => {
-    if (value === undefined || value === null) {
-      return (
-        <Badge variant="secondary" className="ml-2">
-          <AlertCircle className="h-3 w-3 mr-1" />
-          Non détecté
-        </Badge>
-      );
+    if (value === undefined || value === null || value === "") {
+      return <Badge variant="outline">Non détecté</Badge>;
     }
     return (
-      <Badge variant="default" className="ml-2 bg-green-600">
-        <CheckCircle2 className="h-3 w-3 mr-1" />
+      <span className="text-green-600 font-medium flex items-center gap-1">
+        <CheckCircle2 className="h-4 w-4" />
         Détecté
-      </Badge>
+      </span>
     );
   };
 
+  /**
+   * NOUVEAU v3.4: Déterminer si le VIN nécessite un rescan
+   */
+  const needsVINRescan = (): boolean => {
+    if (!extractedData) return false;
+    const vin = extractedData.numeroChassisVIN;
+    // Afficher le bouton si: pas de VIN, VIN incomplet, ou VIN invalide
+    return !vin || vin.length !== 17 || !isValidVINFormat(vin);
+  };
+
+  /**
+   * NOUVEAU v3.4: Déterminer si l'immatriculation nécessite un rescan
+   */
+  const needsImmatRescan = (): boolean => {
+    if (!extractedData) return false;
+    const immat = extractedData.immatriculation;
+    // Afficher le bouton si: pas d'immatriculation ou immatriculation invalide
+    return !immat || !isValidImmatriculation(immat);
+  };
+
   return (
-    <Card className="mb-6">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Camera className="h-5 w-5" />
-          Scanner la Carte Grise
+          Scanner une carte grise
         </CardTitle>
         <CardDescription>
-          Scannez votre carte grise pour remplir automatiquement les informations du véhicule (traitement 100% local)
+          Prenez une photo de la carte grise pour extraire automatiquement les informations du véhicule
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {!imagePreview ? (
-          <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted rounded-lg p-8 space-y-4">
-            <Camera className="h-12 w-12 text-muted-foreground" />
-            <div className="text-center space-y-2">
-              <p className="text-sm text-muted-foreground">Prenez une photo claire de votre carte grise</p>
-              <p className="text-xs text-muted-foreground">💡 Conseils : Bonne luminosité, carte à plat, texte net</p>
-              <p className="text-xs text-muted-foreground">Formats acceptés: JPG, PNG, WEBP (max 10 MB)</p>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isProcessing}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Télécharger une image
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3">
+              <Button onClick={() => fileInputRef.current?.click()} className="w-full h-24">
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="h-6 w-6" />
+                  <span>Choisir une photo de la carte grise</span>
+                </div>
               </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+                capture="environment"
+              />
             </div>
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
+
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                <strong>Conseils pour une meilleure détection :</strong>
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Utilisez un éclairage naturel (lumière du jour)</li>
+                  <li>Posez la carte grise à plat sur une surface</li>
+                  <li>Évitez les reflets et les ombres</li>
+                  <li>Assurez-vous que le texte est net et lisible</li>
+                  <li>Centrez la carte dans le cadre de la photo</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Prévisualisation de l'image */}
             <div className="relative">
               <img src={imagePreview} alt="Carte grise" className="w-full rounded-lg border" />
-              {!isProcessing && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={handleReset}
-                >
+              {!isProcessing && !extractedData && (
+                <Button variant="outline" size="sm" onClick={handleReset} className="absolute top-2 right-2">
                   <X className="h-4 w-4" />
                 </Button>
               )}
             </div>
 
-            {/* Barre de progression */}
             {isProcessing && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Analyse en cours... (environ 35-45 secondes - 2 passes pour VIN optimal)
-                  </span>
+                  <span className="font-medium">Analyse en cours...</span>
                   <span className="text-muted-foreground">{progress}%</span>
                 </div>
                 <Progress value={progress} className="w-full" />
-
-                {/* Bouton pour annuler le scan */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isCancelling}
-                  className="w-full mt-2"
-                >
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>
+                    {progress < 45
+                      ? "Scan global de la carte..."
+                      : progress < 90
+                        ? "Scan précis du VIN..."
+                        : "Finalisation..."}
+                  </span>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleCancel} disabled={isCancelling} className="w-full">
                   {isCancelling ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -705,6 +754,91 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                     </>
                   )}
                 </Button>
+              </div>
+            )}
+
+            {/* Boutons de rescan V3.4 */}
+            {extractedData && !isProcessing && !isEditMode && (
+              <div className="space-y-2">
+                {/* Bouton rescan VIN */}
+                {needsVINRescan() && (
+                  <Alert variant="destructive" className="bg-yellow-50 border-yellow-200">
+                    <AlertCircle className="h-4 w-4 text-yellow-600" />
+                    <AlertDescription>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-yellow-800">
+                          {!extractedData.numeroChassisVIN
+                            ? "VIN non détecté"
+                            : extractedData.numeroChassisVIN.length !== 17
+                              ? `VIN incomplet (${extractedData.numeroChassisVIN.length}/17 car.)`
+                              : "VIN invalide"}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={processVINOnly}
+                          disabled={isRescanningVIN}
+                          className="ml-2 bg-white"
+                        >
+                          {isRescanningVIN ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Scan en cours...
+                            </>
+                          ) : (
+                            <>
+                              <ScanLine className="h-4 w-4 mr-2" />
+                              Re-scanner le VIN (zone E.)
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      {!isRescanningVIN && (
+                        <p className="text-xs text-yellow-700 mt-2">
+                          💡 Astuce: Prenez une photo rapprochée de la ligne E. uniquement (VIN)
+                        </p>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Bouton rescan Immatriculation */}
+                {needsImmatRescan() && (
+                  <Alert variant="destructive" className="bg-yellow-50 border-yellow-200">
+                    <AlertCircle className="h-4 w-4 text-yellow-600" />
+                    <AlertDescription>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-yellow-800">
+                          {!extractedData.immatriculation ? "Immatriculation non détectée" : "Immatriculation invalide"}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={processImmatriculationOnly}
+                          disabled={isRescanningImmat}
+                          className="ml-2 bg-white"
+                        >
+                          {isRescanningImmat ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Scan en cours...
+                            </>
+                          ) : (
+                            <>
+                              <ScanLine className="h-4 w-4 mr-2" />
+                              Re-scanner l'immatriculation (champ A)
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      {!isRescanningImmat && (
+                        <p className="text-xs text-yellow-700 mt-2">
+                          💡 Astuce: Prenez une photo rapprochée du champ A uniquement (immatriculation)
+                        </p>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             )}
 
@@ -880,7 +1014,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           </div>
         )}
 
-        {/* Message d'information RGPD */}
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="text-xs">
