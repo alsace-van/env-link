@@ -223,7 +223,10 @@ export const ImageZoneSelector = ({ imageUrl, onZoneSelected, onCancel, title, h
               <li>
                 <strong>Mobile :</strong> Touchez et glissez avec votre doigt
               </li>
-              <li>Sélectionnez la zone contenant le texte à scanner</li>
+              <li>Sélectionnez toute la ligne avec un peu de marge</li>
+              <li>
+                <strong>Important :</strong> La zone sera agrandie x3 automatiquement
+              </li>
             </ul>
           </div>
 
