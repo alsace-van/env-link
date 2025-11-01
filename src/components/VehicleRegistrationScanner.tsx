@@ -146,6 +146,80 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     ctx.putImageData(imageData, 0, 0);
   };
 
+  /**
+   * Prétraitement ULTRA-AGRESSIF 3: Pour photos très difficiles
+   * Combine égalisation d'histogramme + débruitage + contraste extrême
+   */
+  const preprocessStrategy3 = (canvas: HTMLCanvasElement): void => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // 1. Conversion niveaux de gris
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+
+    // 2. Égalisation d'histogramme (améliore contraste sur images sombres)
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < data.length; i += 4) {
+      histogram[Math.floor(data[i])]++;
+    }
+
+    const cdf = new Array(256).fill(0);
+    cdf[0] = histogram[0];
+    for (let i = 1; i < 256; i++) {
+      cdf[i] = cdf[i - 1] + histogram[i];
+    }
+
+    const cdfMin = cdf.find((v) => v > 0) || 0;
+    const totalPixels = canvas.width * canvas.height;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const oldValue = data[i];
+      const newValue = Math.round(((cdf[Math.floor(oldValue)] - cdfMin) / (totalPixels - cdfMin)) * 255);
+      data[i] = newValue;
+      data[i + 1] = newValue;
+      data[i + 2] = newValue;
+    }
+
+    // 3. Contraste agressif
+    let min = 255,
+      max = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < min) min = data[i];
+      if (data[i] > max) max = data[i];
+    }
+
+    const range = max - min;
+    if (range > 0) {
+      for (let i = 0; i < data.length; i += 4) {
+        // Augmentation agressive du contraste
+        let value = ((data[i] - min) / range) * 255;
+        // Amplification des contrastes
+        value = value < 128 ? value * 0.7 : 255 - (255 - value) * 0.7;
+        data[i] = value;
+        data[i + 1] = value;
+        data[i + 2] = value;
+      }
+    }
+
+    // 4. Binarisation avec seuil bas pour capter plus de texte
+    for (let i = 0; i < data.length; i += 4) {
+      const value = data[i] > 110 ? 255 : 0; // Seuil plus bas
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  };
+
   const handleImageSelect = async (file: File) => {
     // Prévisualisation
     const reader = new FileReader();
@@ -178,13 +252,12 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         img.src = imgUrl;
       });
 
-      console.log("🔍 Démarrage OCR OPTIMISÉ (2 passes rapides)...");
+      console.log("🔍 Démarrage OCR ULTRA-RAPIDE (1 passe optimale)...");
 
-      // OPTIMISÉ: Seulement 2 stratégies pour être RAPIDE (< 30s)
-      const strategies = [
-        { name: "Passe 1 (Rapide)", fn: preprocessStrategy1, scale: 1.5 },
-        { name: "Passe 2 (Précis)", fn: preprocessStrategy2, scale: 2 },
-      ];
+      // UNE SEULE passe avec le meilleur compromis vitesse/qualité
+      // OTSU adaptatif = meilleur choix pour la plupart des photos
+      // Scale 1.8 au lieu de 2 = 20% plus rapide
+      const strategies = [{ name: "Passe unique (OTSU adaptatif)", fn: preprocessStrategy2, scale: 1.8 }];
 
       const results: Array<{ text: string; confidence: number; data: VehicleRegistrationData; strategyName: string }> =
         [];
@@ -201,7 +274,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         const strategy = strategies[i];
         setProgress(Math.round((i / strategies.length) * 90)); // 0-90% pour les passes
 
-        console.log(`📸 Pass ${i + 1}/2: ${strategy.name}`);
+        console.log(`📸 ${strategy.name} en cours...`);
 
         // Créer un canvas avec résolution augmentée
         const canvas = document.createElement("canvas");
@@ -227,7 +300,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           }, "image/png");
         });
 
-        // Reconnaissance OCR avec Tesseract
+        // Reconnaissance OCR avec Tesseract - PARAMÈTRES OPTIMISÉS v2
         const result = await Tesseract.recognize(preprocessedBlob, "fra", {
           logger: (m) => {
             if (m.status === "recognizing text") {
@@ -236,6 +309,18 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
               setProgress(Math.round(baseProgress + stepProgress));
             }
           },
+          // SPARSE_TEXT: Meilleur pour documents avec texte épars (cartes grises)
+          tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
+          // Whitelist élargie mais sans lettres confuses
+          // Exclu: I, O, Q (jamais dans VIN) + confusion 1/I, 0/O
+          tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789-./: éèêàâôîûù",
+          // Désactiver le dictionnaire pour éviter les corrections non voulues
+          load_system_dawg: "0",
+          load_freq_dawg: "0",
+          // Préserver les espaces entre mots (important pour le VIN)
+          preserve_interword_spaces: "1",
+          // Améliorer la reconnaissance des chiffres
+          classify_bln_numeric_mode: "1",
         });
 
         console.log(`  ✓ Pass ${i + 1} confiance: ${result.data.confidence.toFixed(1)}%`);
