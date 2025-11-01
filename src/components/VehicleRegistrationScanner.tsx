@@ -182,28 +182,60 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     try {
       console.log("🔍 Rescan VIN sur zone sélectionnée (ultra-précis)...");
 
+      setProgress(10);
+
+      // ÉTAPE 1: Agrandir la zone x3 pour améliorer la précision
+      const zoomedCanvas = document.createElement("canvas");
+      zoomedCanvas.width = zoneCanvas.width * 3.0;
+      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      const zoomedCtx = zoomedCanvas.getContext("2d");
+
+      if (!zoomedCtx) throw new Error("Canvas context error");
+
+      zoomedCtx.imageSmoothingEnabled = true;
+      zoomedCtx.imageSmoothingQuality = "high";
+      zoomedCtx.drawImage(zoneCanvas, 0, 0, zoomedCanvas.width, zoomedCanvas.height);
+
+      console.log("✅ Zone agrandie x3:", zoomedCanvas.width, "x", zoomedCanvas.height);
+
       setProgress(20);
 
-      // Convertir le canvas en blob
+      // ÉTAPE 2: Appliquer le prétraitement OTSU
+      console.log("🎨 Application du prétraitement OTSU...");
+      preprocessStrategy2(zoomedCanvas);
+
+      setProgress(40);
+
+      // ÉTAPE 3: Convertir le canvas prétraité en blob
       const zoneBlob = await new Promise<Blob>((resolve, reject) => {
-        zoneCanvas.toBlob((blob) => {
+        zoomedCanvas.toBlob((blob) => {
           if (blob) resolve(blob);
           else reject(new Error("Conversion échouée"));
         }, "image/png");
       });
 
-      setProgress(40);
+      setProgress(50);
 
-      // OCR avec paramètres optimisés VIN
+      // ÉTAPE 4: OCR avec paramètres optimisés VIN
+      console.log("📖 OCR en cours...");
       const result = await Tesseract.recognize(zoneBlob, "fra", {
         logger: (m: any) => {
           if (m.status === "recognizing text") {
-            setProgress(40 + Math.round(m.progress * 50));
+            setProgress(50 + Math.round(m.progress * 40));
           }
         },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
+        tessedit_char_blacklist: "IOQ",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
       });
 
-      // Extraire le VIN
+      console.log("📄 Texte OCR détecté:", result.data.text);
+
+      // ÉTAPE 5: Extraire le VIN
       const detectedVIN = extractNumeroChassisVIN(result.data.text);
 
       if (detectedVIN && isValidVINFormat(detectedVIN)) {
@@ -223,7 +255,10 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         toast.success(`VIN détecté: ${detectedVIN}`);
       } else {
         console.warn("⚠️ VIN toujours invalide après rescan");
-        toast.warning("VIN non détecté dans la zone sélectionnée. Essayez une zone plus large ou plus nette.");
+        console.warn("Texte détecté:", result.data.text);
+        toast.warning(
+          "VIN non détecté dans la zone sélectionnée. Essayez une zone plus large incluant la ligne E. complète.",
+        );
       }
 
       setProgress(100);
@@ -258,28 +293,59 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     try {
       console.log("🔍 Rescan immatriculation sur zone sélectionnée (ultra-précis)...");
 
+      setProgress(10);
+
+      // ÉTAPE 1: Agrandir la zone x3 pour améliorer la précision
+      const zoomedCanvas = document.createElement("canvas");
+      zoomedCanvas.width = zoneCanvas.width * 3.0;
+      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      const zoomedCtx = zoomedCanvas.getContext("2d");
+
+      if (!zoomedCtx) throw new Error("Canvas context error");
+
+      zoomedCtx.imageSmoothingEnabled = true;
+      zoomedCtx.imageSmoothingQuality = "high";
+      zoomedCtx.drawImage(zoneCanvas, 0, 0, zoomedCanvas.width, zoomedCanvas.height);
+
+      console.log("✅ Zone agrandie x3:", zoomedCanvas.width, "x", zoomedCanvas.height);
+
       setProgress(20);
 
-      // Convertir le canvas en blob
+      // ÉTAPE 2: Appliquer le prétraitement OTSU
+      console.log("🎨 Application du prétraitement OTSU...");
+      preprocessStrategy2(zoomedCanvas);
+
+      setProgress(40);
+
+      // ÉTAPE 3: Convertir le canvas prétraité en blob
       const zoneBlob = await new Promise<Blob>((resolve, reject) => {
-        zoneCanvas.toBlob((blob) => {
+        zoomedCanvas.toBlob((blob) => {
           if (blob) resolve(blob);
           else reject(new Error("Conversion échouée"));
         }, "image/png");
       });
 
-      setProgress(40);
+      setProgress(50);
 
-      // OCR avec paramètres optimisés pour immatriculation
+      // ÉTAPE 4: OCR avec paramètres optimisés pour immatriculation
+      console.log("📖 OCR en cours...");
       const result = await Tesseract.recognize(zoneBlob, "fra", {
         logger: (m: any) => {
           if (m.status === "recognizing text") {
-            setProgress(40 + Math.round(m.progress * 50));
+            setProgress(50 + Math.round(m.progress * 40));
           }
         },
+        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
+        load_system_dawg: "0",
+        load_freq_dawg: "0",
+        preserve_interword_spaces: "0",
+        classify_bln_numeric_mode: "1",
       });
 
-      // Extraire l'immatriculation
+      console.log("📄 Texte OCR détecté:", result.data.text);
+
+      // ÉTAPE 5: Extraire l'immatriculation
       const detectedImmat = extractImmatriculation(result.data.text);
 
       if (detectedImmat && isValidImmatriculation(detectedImmat)) {
@@ -299,8 +365,9 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         toast.success(`Immatriculation détectée: ${detectedImmat}`);
       } else {
         console.warn("⚠️ Immatriculation toujours invalide après rescan");
+        console.warn("Texte détecté:", result.data.text);
         toast.warning(
-          "Immatriculation non détectée dans la zone sélectionnée. Essayez une zone plus large ou plus nette.",
+          "Immatriculation non détectée dans la zone sélectionnée. Essayez une zone plus large incluant le champ A complet.",
         );
       }
 
@@ -573,10 +640,10 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     console.log("💾 Sauvegarde des modifications:", editedData);
 
     // Filtrer les valeurs undefined avant de passer au formulaire
-    const cleanedData: Record<string, any> = {};
+    const cleanedData: VehicleRegistrationData = {};
     Object.entries(editedData).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") {
-        cleanedData[key] = value;
+        cleanedData[key as keyof VehicleRegistrationData] = value;
       }
     });
 
@@ -844,7 +911,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                       {/* Message d'aide pour les boutons de rescan */}
                       <p className="text-xs text-muted-foreground flex items-center gap-1 justify-center">
                         <ScanLine className="h-3 w-3" />
-                        Cliquez sur l'icône pour rescanner le VIN ou l'immatriculation
+                        Cliquez sur "Rescan" pour sélectionner une zone précise (agrandie x3 automatiquement)
                       </p>
                     </>
                   ) : (
@@ -910,10 +977,10 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                         type="button"
                         onClick={() => {
                           // Filtrer les valeurs undefined avant de passer au formulaire
-                          const cleanedData: Record<string, any> = {};
+                          const cleanedData: VehicleRegistrationData = {};
                           Object.entries(extractedData).forEach(([key, value]) => {
                             if (value !== undefined && value !== null && value !== "") {
-                              cleanedData[key] = value;
+                              cleanedData[key as keyof VehicleRegistrationData] = value;
                             }
                           });
                           onDataExtracted(cleanedData);
