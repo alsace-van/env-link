@@ -212,13 +212,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
-        tessedit_char_blacklist: "IOQ",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
@@ -317,12 +310,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(60 + Math.round(m.progress * 30));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       URL.revokeObjectURL(imgUrl);
