@@ -224,13 +224,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
-        tessedit_char_blacklist: "IOQ",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       console.log("📄 Texte OCR détecté:", result.data.text);
@@ -335,12 +328,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       console.log("📄 Texte OCR détecté:", result.data.text);
@@ -640,10 +627,10 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     console.log("💾 Sauvegarde des modifications:", editedData);
 
     // Filtrer les valeurs undefined avant de passer au formulaire
-    const cleanedData: VehicleRegistrationData = {};
+    const cleanedData: Partial<VehicleRegistrationData> = {};
     Object.entries(editedData).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") {
-        cleanedData[key as keyof VehicleRegistrationData] = value;
+        (cleanedData as any)[key] = value;
       }
     });
 
@@ -977,13 +964,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                         type="button"
                         onClick={() => {
                           // Filtrer les valeurs undefined avant de passer au formulaire
-                          const cleanedData: VehicleRegistrationData = {};
+                          const cleanedData: Partial<VehicleRegistrationData> = {};
                           Object.entries(extractedData).forEach(([key, value]) => {
                             if (value !== undefined && value !== null && value !== "") {
-                              cleanedData[key as keyof VehicleRegistrationData] = value;
+                              (cleanedData as any)[key] = value;
                             }
                           });
-                          onDataExtracted(cleanedData);
+                          onDataExtracted(cleanedData as VehicleRegistrationData);
                           toast.success("Données utilisées dans le formulaire", { duration: 2000 });
                         }}
                         className="flex-1"
