@@ -5,8 +5,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, Scan } from "lucide-react";
+import { Plus, Scan, RotateCcw } from "lucide-react";
 import VehicleRegistrationScanner from "./VehicleRegistrationScanner";
 import type { VehicleRegistrationData } from "@/lib/registrationCardParser";
 
@@ -14,6 +24,7 @@ interface VehicleCatalog {
   id: string;
   marque: string;
   modele: string;
+  dimension?: string; // L1H1, L2H2, etc.
   longueur_mm: number;
   largeur_mm?: number;
   hauteur_mm?: number;
@@ -30,6 +41,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const [vehicles, setVehicles] = useState<VehicleCatalog[]>([]);
   const [selectedMarque, setSelectedMarque] = useState<string>("");
   const [selectedModele, setSelectedModele] = useState<string>("");
+  const [selectedDimension, setSelectedDimension] = useState<string>("");
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleCatalog | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [customPoidsVide, setCustomPoidsVide] = useState<string>("");
@@ -45,6 +57,12 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const [manualDateMiseCirculation, setManualDateMiseCirculation] = useState<string>("");
   const [manualTypeMine, setManualTypeMine] = useState<string>("");
 
+  // États pour les dialogues de création
+  const [showCreateMarqueDialog, setShowCreateMarqueDialog] = useState(false);
+  const [showCreateModeleDialog, setShowCreateModeleDialog] = useState(false);
+  const [newMarqueToCreate, setNewMarqueToCreate] = useState<string>("");
+  const [newModeleToCreate, setNewModeleToCreate] = useState<string>("");
+
   // Compute available options for cascade dropdowns
   const availableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
 
@@ -54,8 +72,21 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
   const availableDimensions =
     selectedMarque && selectedModele
-      ? vehicles.filter((v) => v.marque === selectedMarque && v.modele === selectedModele)
+      ? Array.from(
+          new Set(
+            vehicles
+              .filter((v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension)
+              .map((v) => v.dimension!)
+          )
+        ).sort()
       : [];
+
+  const matchingVehicle =
+    selectedMarque && selectedModele && selectedDimension
+      ? vehicles.find(
+          (v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension === selectedDimension
+        )
+      : null;
 
   useEffect(() => {
     loadVehicles();
@@ -113,22 +144,34 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const handleMarqueChange = (marque: string) => {
     setSelectedMarque(marque);
     setSelectedModele("");
+    setSelectedDimension("");
     setSelectedVehicle(null);
   };
 
   const handleModeleChange = (modele: string) => {
     setSelectedModele(modele);
+    setSelectedDimension("");
     setSelectedVehicle(null);
   };
 
-  const handleDimensionChange = (vehicleId: string) => {
-    const vehicle = vehicles.find((v) => v.id === vehicleId);
+  const handleDimensionChange = (dimension: string) => {
+    setSelectedDimension(dimension);
+    const vehicle = vehicles.find(
+      (v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension === dimension
+    );
     setSelectedVehicle(vehicle || null);
     if (vehicle) {
       setCustomPoidsVide(vehicle.poids_vide_kg?.toString() || "");
       setCustomPtac(vehicle.ptac_kg?.toString() || "");
     }
   };
+
+  // Utiliser matchingVehicle pour détecter quand un véhicule complet est sélectionné
+  useEffect(() => {
+    if (matchingVehicle && matchingVehicle !== selectedVehicle) {
+      setSelectedVehicle(matchingVehicle);
+    }
+  }, [matchingVehicle, selectedVehicle]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -145,11 +188,6 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const handleScannedData = (data: VehicleRegistrationData) => {
     console.log("📥 Données reçues du scanner OCR:", data);
     setScannedData(data);
-
-    // IMPORTANT : D'abord sélectionner la marque ET le modèle
-    // pour que les champs deviennent visibles
-    let marqueFound = false;
-    let modeleFound = false;
 
     // Fonction de normalisation ultra-tolérante
     const normalize = (str: string): string => {
@@ -189,101 +227,78 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       if (foundMarque) {
         console.log("✅ Marque trouvée:", foundMarque);
         setSelectedMarque(foundMarque);
-        marqueFound = true;
 
         // Essayer aussi de trouver le modèle
         if (data.denominationCommerciale) {
           const modeleNormalized = normalize(data.denominationCommerciale);
-          console.log("🔍 Recherche modèle:", data.denominationCommerciale, "→ normalisé:", modeleNormalized);
-
-          const availableModelesForMarque = vehicles.filter((v) => v.marque === foundMarque).map((v) => v.modele);
-
-          let foundModele = availableModelesForMarque.find((m) => {
+          const availableModelesForMarque = vehicles
+            .filter((v) => v.marque === foundMarque)
+            .map((v) => v.modele);
+          const foundModele = Array.from(new Set(availableModelesForMarque)).find((m) => {
             const mNorm = normalize(m);
-            // Stratégie 1 : Match exact
-            if (mNorm === modeleNormalized) return true;
-            // Stratégie 2 : L'un contient l'autre
-            if (mNorm.includes(modeleNormalized) || modeleNormalized.includes(mNorm)) return true;
-            // Stratégie 3 : Match partiel
-            const minLength = Math.min(mNorm.length, modeleNormalized.length);
-            const maxLength = Math.max(mNorm.length, modeleNormalized.length);
-            if (minLength / maxLength >= 0.7 && mNorm.startsWith(modeleNormalized.substring(0, 3))) return true;
-            return false;
+            return mNorm.includes(modeleNormalized) || modeleNormalized.includes(mNorm);
           });
 
-          // Si pas trouvé, essayer avec juste les premiers caractères
-          if (!foundModele && modeleNormalized.length >= 3) {
-            foundModele = availableModelesForMarque.find((m) => {
-              const mNorm = normalize(m);
-              return mNorm.startsWith(modeleNormalized.substring(0, 3));
-            });
-          }
-
           if (foundModele) {
-            console.log("✅ Modèle trouvé:", foundModele);
             setSelectedModele(foundModele);
-            modeleFound = true;
+            toast.success(`Marque et modèle trouvés : ${foundMarque} ${foundModele}`, {
+              duration: 3000,
+            });
           } else {
-            console.log("❌ Modèle non trouvé. Modèles disponibles:", availableModelesForMarque);
+            // Modèle non trouvé, proposer de le créer
+            setNewModeleToCreate(data.denominationCommerciale);
+            setShowCreateModeleDialog(true);
           }
+        } else {
+          toast.success(`Marque trouvée : ${foundMarque}. Sélectionnez le modèle manuellement.`, {
+            duration: 4000,
+          });
         }
       } else {
-        console.log("❌ Marque non trouvée. Marques disponibles:", availableMarques);
+        // Marque non trouvée, proposer de la créer
+        console.log("❌ Marque non trouvée:", data.marque);
+        setNewMarqueToCreate(data.marque);
+        setShowCreateMarqueDialog(true);
       }
     }
+  };
 
-    // Utiliser setTimeout pour s'assurer que marque/modèle sont définis
-    // et que les champs sont rendus AVANT de les remplir
-    setTimeout(() => {
-      console.log("📝 Remplissage des champs...");
+  const handleRescanMarque = () => {
+    setShowScanner(true);
+    toast.info("Scanner la carte grise pour extraire la marque", { duration: 2000 });
+  };
 
-      // Pré-remplir les champs avec les données extraites
-      if (data.immatriculation) {
-        console.log("  → Immatriculation:", data.immatriculation);
-        setManualImmatriculation(data.immatriculation);
-      }
-      if (data.numeroChassisVIN) {
-        console.log("  → VIN:", data.numeroChassisVIN);
-        setManualNumeroChassis(data.numeroChassisVIN);
-      }
-      if (data.datePremiereImmatriculation) {
-        console.log("  → Date:", data.datePremiereImmatriculation);
-        setManualDateMiseCirculation(data.datePremiereImmatriculation);
-      }
-      if (data.genreNational) {
-        console.log("  → Type mine:", data.genreNational);
-        setManualTypeMine(data.genreNational);
-      }
-      if (data.masseVide) {
-        console.log("  → Poids vide:", data.masseVide);
-        setCustomPoidsVide(data.masseVide.toString());
-      }
-      if (data.masseEnChargeMax) {
-        console.log("  → PTAC:", data.masseEnChargeMax);
-        setCustomPtac(data.masseEnChargeMax.toString());
-      }
+  const handleRescanModele = () => {
+    setShowScanner(true);
+    toast.info("Scanner la carte grise pour extraire le modèle", { duration: 2000 });
+  };
 
-      // Toast informatif
-      if (marqueFound && modeleFound) {
-        toast.success(`✅ Données remplies automatiquement !`, {
-          duration: 3000,
-          description: `Marque: ${data.marque} | Modèle: ${data.denominationCommerciale}`,
-        });
-      } else if (marqueFound) {
-        toast.warning(`⚠️ Marque trouvée : ${data.marque}`, {
-          duration: 4000,
-          description: "Sélectionnez le modèle manuellement. Les autres champs sont remplis.",
-        });
-      } else {
-        toast.warning(`⚠️ Marque "${data.marque}" non trouvée dans le catalogue`, {
-          duration: 4000,
-          description: "Sélectionnez marque et modèle manuellement. Les autres champs sont remplis.",
-        });
-      }
-    }, 100); // Petit délai pour laisser React mettre à jour le DOM
+  const handleCreateMarque = async () => {
+    if (!newMarqueToCreate.trim()) {
+      toast.error("Veuillez entrer un nom de marque");
+      return;
+    }
 
-    // Masquer le scanner après extraction réussie
-    setShowScanner(false);
+    // Ajouter la marque temporairement à la liste locale
+    setSelectedMarque(newMarqueToCreate.trim());
+    setShowCreateMarqueDialog(false);
+    toast.success(`Marque "${newMarqueToCreate}" ajoutée temporairement. Sélectionnez le modèle.`);
+
+    // Note: La marque sera ajoutée à la BDD lors de la création du projet
+  };
+
+  const handleCreateModele = async () => {
+    if (!newModeleToCreate.trim()) {
+      toast.error("Veuillez entrer un nom de modèle");
+      return;
+    }
+
+    // Ajouter le modèle temporairement à la liste locale
+    setSelectedModele(newModeleToCreate.trim());
+    setShowCreateModeleDialog(false);
+    toast.success(`Modèle "${newModeleToCreate}" ajouté temporairement.`);
+
+    // Note: Le modèle sera ajouté à la BDD lors de la création du projet
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -474,49 +489,73 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
             <div className="space-y-2">
               <Label htmlFor="marque">Marque *</Label>
-              <Select value={selectedMarque} onValueChange={handleMarqueChange} required disabled={isLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez une marque" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableMarques.map((marque) => (
-                    <SelectItem key={marque} value={marque}>
-                      {marque}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select value={selectedMarque} onValueChange={handleMarqueChange} required disabled={isLoading}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Sélectionnez une marque" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableMarques.map((marque) => (
+                      <SelectItem key={marque} value={marque}>
+                        {marque}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleRescanMarque}
+                  disabled={isLoading}
+                  title="Re-scanner la carte grise"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {selectedMarque && (
               <div className="space-y-2">
                 <Label htmlFor="modele">Modèle *</Label>
-                <Select value={selectedModele} onValueChange={handleModeleChange} required disabled={isLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionnez un modèle" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableModeles.map((modele) => (
-                      <SelectItem key={modele} value={modele}>
-                        {modele}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2">
+                  <Select value={selectedModele} onValueChange={handleModeleChange} required disabled={isLoading}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Sélectionnez un modèle" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModeles.map((modele) => (
+                        <SelectItem key={modele} value={modele}>
+                          {modele}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRescanModele}
+                    disabled={isLoading}
+                    title="Re-scanner la carte grise"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
 
             {selectedMarque && selectedModele && availableDimensions.length > 0 && (
               <div className="space-y-2">
-                <Label htmlFor="dimension">Dimensions *</Label>
-                <Select value={selectedVehicle?.id} onValueChange={handleDimensionChange} required disabled={isLoading}>
+                <Label htmlFor="dimension">Dimensions (L×H) *</Label>
+                <Select value={selectedDimension} onValueChange={handleDimensionChange} required disabled={isLoading}>
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionnez les dimensions" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableDimensions.map((vehicle) => (
-                      <SelectItem key={vehicle.id} value={vehicle.id}>
-                        L: {vehicle.longueur_mm}mm × l: {vehicle.largeur_mm}mm × H: {vehicle.hauteur_mm}mm
+                    {availableDimensions.map((dimension) => (
+                      <SelectItem key={dimension} value={dimension}>
+                        {dimension}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -609,7 +648,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
               </>
             )}
 
-            {selectedVehicle && (
+            {matchingVehicle && (
               <div className="p-4 bg-muted/50 rounded-lg text-sm">
                 <div className="flex gap-6 justify-between">
                   {/* Dimensions totales */}
@@ -618,38 +657,38 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                     <div className="space-y-1">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">L :</span>
-                        <span className="font-medium">{selectedVehicle.longueur_mm} mm</span>
+                        <span className="font-medium">{matchingVehicle.longueur_mm} mm</span>
                       </div>
-                      {selectedVehicle.largeur_mm && (
+                      {matchingVehicle.largeur_mm && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">l :</span>
-                          <span className="font-medium">{selectedVehicle.largeur_mm} mm</span>
+                          <span className="font-medium">{matchingVehicle.largeur_mm} mm</span>
                         </div>
                       )}
-                      {selectedVehicle.hauteur_mm && (
+                      {matchingVehicle.hauteur_mm && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">H :</span>
-                          <span className="font-medium">{selectedVehicle.hauteur_mm} mm</span>
+                          <span className="font-medium">{matchingVehicle.hauteur_mm} mm</span>
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* Surface utile */}
-                  {(selectedVehicle.longueur_mm || selectedVehicle.largeur_mm) && (
+                  {(matchingVehicle.longueur_mm || matchingVehicle.largeur_mm) && (
                     <div className="flex-1">
                       <h4 className="font-semibold mb-2 text-blue-600">Surface utile</h4>
                       <div className="space-y-1">
-                        {selectedVehicle.longueur_mm && (
+                        {matchingVehicle.longueur_mm && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">L utile :</span>
-                            <span className="font-medium">{selectedVehicle.longueur_mm} mm</span>
+                            <span className="font-medium">{matchingVehicle.longueur_mm} mm</span>
                           </div>
                         )}
-                        {selectedVehicle.largeur_mm && (
+                        {matchingVehicle.largeur_mm && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">l utile :</span>
-                            <span className="font-medium">{selectedVehicle.largeur_mm} mm</span>
+                            <span className="font-medium">{matchingVehicle.largeur_mm} mm</span>
                           </div>
                         )}
                       </div>
@@ -657,26 +696,26 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                   )}
 
                   {/* Poids */}
-                  {(selectedVehicle.poids_vide_kg || selectedVehicle.charge_utile_kg || selectedVehicle.ptac_kg) && (
+                  {(matchingVehicle.poids_vide_kg || matchingVehicle.charge_utile_kg || matchingVehicle.ptac_kg) && (
                     <div className="flex-1">
                       <h4 className="font-semibold mb-2">Poids</h4>
                       <div className="space-y-1">
-                        {selectedVehicle.poids_vide_kg && (
+                        {matchingVehicle.poids_vide_kg && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Vide :</span>
-                            <span className="font-medium">{selectedVehicle.poids_vide_kg} kg</span>
+                            <span className="font-medium">{matchingVehicle.poids_vide_kg} kg</span>
                           </div>
                         )}
-                        {selectedVehicle.charge_utile_kg && (
+                        {matchingVehicle.charge_utile_kg && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Charge :</span>
-                            <span className="font-medium">{selectedVehicle.charge_utile_kg} kg</span>
+                            <span className="font-medium">{matchingVehicle.charge_utile_kg} kg</span>
                           </div>
                         )}
-                        {selectedVehicle.ptac_kg && (
+                        {matchingVehicle.ptac_kg && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">PTAC :</span>
-                            <span className="font-medium">{selectedVehicle.ptac_kg} kg</span>
+                            <span className="font-medium">{matchingVehicle.ptac_kg} kg</span>
                           </div>
                         )}
                       </div>
@@ -693,6 +732,58 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
         </form>
       </CardContent>
     </Card>
+
+    {/* Dialogue de création de marque */}
+    <AlertDialog open={showCreateMarqueDialog} onOpenChange={setShowCreateMarqueDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Marque non trouvée</AlertDialogTitle>
+          <AlertDialogDescription>
+            La marque "{newMarqueToCreate}" n'existe pas dans le catalogue. Voulez-vous l'ajouter ?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="py-4">
+          <Label htmlFor="new_marque">Nom de la marque</Label>
+          <Input
+            id="new_marque"
+            value={newMarqueToCreate}
+            onChange={(e) => setNewMarqueToCreate(e.target.value)}
+            placeholder="Ex: Peugeot"
+            className="mt-2"
+          />
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction onClick={handleCreateMarque}>Ajouter la marque</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Dialogue de création de modèle */}
+    <AlertDialog open={showCreateModeleDialog} onOpenChange={setShowCreateModeleDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Modèle non trouvé</AlertDialogTitle>
+          <AlertDialogDescription>
+            Le modèle "{newModeleToCreate}" n'existe pas dans le catalogue pour la marque {selectedMarque}. Voulez-vous l'ajouter ?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="py-4">
+          <Label htmlFor="new_modele">Nom du modèle</Label>
+          <Input
+            id="new_modele"
+            value={newModeleToCreate}
+            onChange={(e) => setNewModeleToCreate(e.target.value)}
+            placeholder="Ex: Boxer"
+            className="mt-2"
+          />
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Annuler</AlertDialogCancel>
+          <AlertDialogAction onClick={handleCreateModele}>Ajouter le modèle</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 };
 
