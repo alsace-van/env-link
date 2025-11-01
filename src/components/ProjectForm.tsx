@@ -36,7 +36,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const [customPtac, setCustomPtac] = useState<string>("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  
+
   // États pour les données du scanner OCR
   const [showScanner, setShowScanner] = useState(false);
   const [scannedData, setScannedData] = useState<VehicleRegistrationData | null>(null);
@@ -110,7 +110,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
   const handleScannedData = (data: VehicleRegistrationData) => {
     setScannedData(data);
-    
+
     // Pré-remplir les champs avec les données extraites
     if (data.immatriculation) {
       setManualImmatriculation(data.immatriculation);
@@ -130,18 +130,45 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     if (data.masseEnChargeMax) {
       setCustomPtac(data.masseEnChargeMax.toString());
     }
-    
-    // Essayer de trouver la marque dans le catalogue
+
+    // Essayer de trouver la marque ET le modèle dans le catalogue
     if (data.marque) {
       const marqueNormalized = data.marque.toUpperCase();
-      const foundMarque = availableMarques.find(m => 
-        m.toUpperCase().includes(marqueNormalized) || marqueNormalized.includes(m.toUpperCase())
+      const foundMarque = availableMarques.find(
+        (m) => m.toUpperCase().includes(marqueNormalized) || marqueNormalized.includes(m.toUpperCase()),
       );
       if (foundMarque) {
         setSelectedMarque(foundMarque);
+
+        // Essayer aussi de trouver le modèle
+        if (data.denominationCommerciale) {
+          const modeleNormalized = data.denominationCommerciale.toUpperCase();
+          const availableModelesForMarque = vehicles.filter((v) => v.marque === foundMarque).map((v) => v.modele);
+          const foundModele = availableModelesForMarque.find(
+            (m) => m.toUpperCase().includes(modeleNormalized) || modeleNormalized.includes(m.toUpperCase()),
+          );
+          if (foundModele) {
+            setSelectedModele(foundModele);
+            toast.success(`Marque et modèle trouvés automatiquement : ${foundMarque} ${foundModele}`, {
+              duration: 3000,
+            });
+          } else {
+            toast.success(`Marque trouvée automatiquement : ${foundMarque}. Sélectionnez le modèle manuellement.`, {
+              duration: 4000,
+            });
+          }
+        } else {
+          toast.success(`Marque trouvée automatiquement : ${foundMarque}. Sélectionnez le modèle manuellement.`, {
+            duration: 4000,
+          });
+        }
+      } else {
+        toast.info("Marque non trouvée dans le catalogue. Sélectionnez-la manuellement.", {
+          duration: 4000,
+        });
       }
     }
-    
+
     // Masquer le scanner après extraction réussie
     setShowScanner(false);
   };
@@ -261,7 +288,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       </CardHeader>
       <CardContent>
         {showScanner && <VehicleRegistrationScanner onDataExtracted={handleScannedData} />}
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
@@ -384,10 +411,10 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
               </div>
             )}
 
-            {selectedVehicle && (
+            {selectedMarque && selectedModele && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="numero_chassis">Numéro de chassis</Label>
+                  <Label htmlFor="numero_chassis">Numéro de chassis (VIN - 17 car.)</Label>
                   <Input
                     id="numero_chassis"
                     name="numero_chassis"
@@ -395,42 +422,48 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                     onChange={(e) => setManualNumeroChassis(e.target.value)}
                     disabled={isLoading}
                     placeholder="VF1234567890ABCDE"
+                    maxLength={17}
                   />
+                  {manualNumeroChassis && manualNumeroChassis.length > 0 && manualNumeroChassis.length !== 17 && (
+                    <p className="text-xs text-yellow-600">
+                      ⚠️ Le VIN doit faire 17 caractères ({manualNumeroChassis.length}/17)
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="immatriculation">Immatriculation</Label>
-                  <Input 
-                    id="immatriculation" 
-                    name="immatriculation" 
+                  <Input
+                    id="immatriculation"
+                    name="immatriculation"
                     value={manualImmatriculation}
                     onChange={(e) => setManualImmatriculation(e.target.value)}
-                    disabled={isLoading} 
-                    placeholder="AB-123-CD" 
+                    disabled={isLoading}
+                    placeholder="AB-123-CD"
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="date_mise_circulation">Date de mise en circulation</Label>
-                  <Input 
-                    id="date_mise_circulation" 
-                    name="date_mise_circulation" 
-                    type="date" 
+                  <Input
+                    id="date_mise_circulation"
+                    name="date_mise_circulation"
+                    type="date"
                     value={manualDateMiseCirculation}
                     onChange={(e) => setManualDateMiseCirculation(e.target.value)}
-                    disabled={isLoading} 
+                    disabled={isLoading}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="type_mine">Type mine</Label>
-                  <Input 
-                    id="type_mine" 
-                    name="type_mine" 
+                  <Input
+                    id="type_mine"
+                    name="type_mine"
                     value={manualTypeMine}
                     onChange={(e) => setManualTypeMine(e.target.value)}
-                    disabled={isLoading} 
-                    placeholder="CTTE, VASP, Ambulance..." 
+                    disabled={isLoading}
+                    placeholder="CTTE, VASP, Ambulance..."
                   />
                 </div>
 
