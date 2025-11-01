@@ -6,7 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Scan } from "lucide-react";
+import VehicleRegistrationScanner from "./VehicleRegistrationScanner";
+import type { VehicleRegistrationData } from "@/lib/registrationCardParser";
 
 interface VehicleCatalog {
   id: string;
@@ -34,6 +36,14 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const [customPtac, setCustomPtac] = useState<string>("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  
+  // États pour les données du scanner OCR
+  const [showScanner, setShowScanner] = useState(false);
+  const [scannedData, setScannedData] = useState<VehicleRegistrationData | null>(null);
+  const [manualImmatriculation, setManualImmatriculation] = useState<string>("");
+  const [manualNumeroChassis, setManualNumeroChassis] = useState<string>("");
+  const [manualDateMiseCirculation, setManualDateMiseCirculation] = useState<string>("");
+  const [manualTypeMine, setManualTypeMine] = useState<string>("");
 
   // Compute available options for cascade dropdowns
   const availableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
@@ -98,6 +108,44 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     }
   };
 
+  const handleScannedData = (data: VehicleRegistrationData) => {
+    setScannedData(data);
+    
+    // Pré-remplir les champs avec les données extraites
+    if (data.immatriculation) {
+      setManualImmatriculation(data.immatriculation);
+    }
+    if (data.numeroChassisVIN) {
+      setManualNumeroChassis(data.numeroChassisVIN);
+    }
+    if (data.datePremiereImmatriculation) {
+      setManualDateMiseCirculation(data.datePremiereImmatriculation);
+    }
+    if (data.genreNational) {
+      setManualTypeMine(data.genreNational);
+    }
+    if (data.masseVide) {
+      setCustomPoidsVide(data.masseVide.toString());
+    }
+    if (data.masseEnChargeMax) {
+      setCustomPtac(data.masseEnChargeMax.toString());
+    }
+    
+    // Essayer de trouver la marque dans le catalogue
+    if (data.marque) {
+      const marqueNormalized = data.marque.toUpperCase();
+      const foundMarque = availableMarques.find(m => 
+        m.toUpperCase().includes(marqueNormalized) || marqueNormalized.includes(m.toUpperCase())
+      );
+      if (foundMarque) {
+        setSelectedMarque(foundMarque);
+      }
+    }
+    
+    // Masquer le scanner après extraction réussie
+    setShowScanner(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -152,10 +200,10 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       adresse_proprietaire: formData.get("adresse_proprietaire") as string,
       telephone_proprietaire: formData.get("telephone_proprietaire") as string,
       email_proprietaire: formData.get("email_proprietaire") as string,
-      numero_chassis: (formData.get("numero_chassis") as string) || null,
-      immatriculation: (formData.get("immatriculation") as string) || null,
-      date_mise_circulation: (formData.get("date_mise_circulation") as string) || null,
-      type_mine: (formData.get("type_mine") as string) || null,
+      numero_chassis: manualNumeroChassis || null,
+      immatriculation: manualImmatriculation || null,
+      date_mise_circulation: manualDateMiseCirculation || null,
+      type_mine: manualTypeMine || null,
       photo_url: photoUrl,
       vehicle_catalog_id: selectedVehicle?.id || null,
       longueur_mm: selectedVehicle?.longueur_mm || null,
@@ -185,6 +233,11 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     setCustomPtac("");
     setPhotoFile(null);
     setPhotoPreview(null);
+    setScannedData(null);
+    setManualImmatriculation("");
+    setManualNumeroChassis("");
+    setManualDateMiseCirculation("");
+    setManualTypeMine("");
     onProjectCreated();
   };
 
@@ -196,8 +249,19 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
           Nouveau Projet
         </CardTitle>
         <CardDescription>Créez un nouveau projet d'aménagement</CardDescription>
+        <Button
+          type="button"
+          variant={showScanner ? "outline" : "default"}
+          onClick={() => setShowScanner(!showScanner)}
+          className="w-full mt-4"
+        >
+          <Scan className="h-4 w-4 mr-2" />
+          {showScanner ? "Masquer le scanner" : "Scanner une carte grise"}
+        </Button>
       </CardHeader>
       <CardContent>
+        {showScanner && <VehicleRegistrationScanner onDataExtracted={handleScannedData} />}
+        
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
@@ -327,6 +391,8 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                   <Input
                     id="numero_chassis"
                     name="numero_chassis"
+                    value={manualNumeroChassis}
+                    onChange={(e) => setManualNumeroChassis(e.target.value)}
                     disabled={isLoading}
                     placeholder="VF1234567890ABCDE"
                   />
@@ -334,17 +400,38 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
                 <div className="space-y-2">
                   <Label htmlFor="immatriculation">Immatriculation</Label>
-                  <Input id="immatriculation" name="immatriculation" disabled={isLoading} placeholder="AB-123-CD" />
+                  <Input 
+                    id="immatriculation" 
+                    name="immatriculation" 
+                    value={manualImmatriculation}
+                    onChange={(e) => setManualImmatriculation(e.target.value)}
+                    disabled={isLoading} 
+                    placeholder="AB-123-CD" 
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="date_mise_circulation">Date de mise en circulation</Label>
-                  <Input id="date_mise_circulation" name="date_mise_circulation" type="date" disabled={isLoading} />
+                  <Input 
+                    id="date_mise_circulation" 
+                    name="date_mise_circulation" 
+                    type="date" 
+                    value={manualDateMiseCirculation}
+                    onChange={(e) => setManualDateMiseCirculation(e.target.value)}
+                    disabled={isLoading} 
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="type_mine">Type mine</Label>
-                  <Input id="type_mine" name="type_mine" disabled={isLoading} placeholder="CTTE, VASP, Ambulance..." />
+                  <Input 
+                    id="type_mine" 
+                    name="type_mine" 
+                    value={manualTypeMine}
+                    onChange={(e) => setManualTypeMine(e.target.value)}
+                    disabled={isLoading} 
+                    placeholder="CTTE, VASP, Ambulance..." 
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
