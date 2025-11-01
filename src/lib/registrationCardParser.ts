@@ -245,64 +245,199 @@ export const extractDatePremiereImmatriculation = (text: string): string | undef
 };
 
 /**
+ * Corrige les erreurs OCR courantes dans un VIN
+ * Les VIN n'utilisent JAMAIS les lettres I, O, Q (confusion avec 1, 0)
+ * v3.2: Correction intelligente spécifique aux VIN
+ */
+const correctVINOCRErrors = (vin: string): string => {
+  let corrected = vin.toUpperCase();
+
+  // Règle 1: Les lettres I, O, Q n'existent JAMAIS dans un VIN
+  // I → 1, O → 0, Q → 0
+  corrected = corrected.replace(/I/g, "1");
+  corrected = corrected.replace(/O/g, "0");
+  corrected = corrected.replace(/Q/g, "0");
+
+  // Règle 2: Corrections contextuelles (basées sur statistiques VIN)
+  // Si le VIN commence par VF (France) ou WV (Allemagne), on sait que c'est un V
+  if (corrected.startsWith("SF")) {
+    corrected = "VF" + corrected.substring(2);
+  }
+  if (corrected.startsWith("WS")) {
+    corrected = "WV" + corrected.substring(2);
+  }
+
+  // Règle 3: Dans un VIN, après 2 lettres vient souvent un chiffre
+  // Exemple: VF3... → si VFC détecté, corriger C → 3
+  const pattern = /^([A-Z]{2})([A-Z])([A-HJ-NPR-Z0-9]{14})$/;
+  const match = corrected.match(pattern);
+  if (match) {
+    const thirdChar = match[3];
+    // Si 3ème caractère ressemble à une lettre mais devrait être un chiffre
+    if (["C", "S", "B"].includes(thirdChar)) {
+      const corrections: { [key: string]: string } = {
+        C: "3",
+        S: "5",
+        B: "8",
+      };
+      if (corrections[thirdChar]) {
+        corrected = match[1] + corrections[thirdChar] + match[4];
+        console.log(`🔧 VIN: Correction 3ème caractère ${thirdChar} → ${corrections[thirdChar]}`);
+      }
+    }
+  }
+
+  return corrected;
+};
+
+/**
  * Extrait le numéro de châssis / VIN (champ E)
- * Format: 17 caractères alphanumériques
- * AMÉLIORÉ: Tolère les espaces, tirets et erreurs OCR communes
+ * Format: 17 caractères alphanumériques (sans I, O, Q)
+ * v3.2: ULTRA-AMÉLIORÉ avec correction intelligente et recherche contextuelle
  */
 export const extractNumeroChassisVIN = (text: string): string | undefined => {
-  // Stratégie 1: VIN parfait de 17 caractères sans séparateurs
+  // PRIORITÉ 1: Recherche contextuelle précise autour du champ "E."
+  // Sur les cartes grises françaises, le VIN est toujours précédé de "E." ou "E:"
+  const lines = text.split(/[\n\r]+/);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Chercher "E." ou "E:" dans la ligne
+    if (/\bE[\.\s:]/i.test(line)) {
+      console.log(`🔍 VIN: Ligne avec marqueur E trouvée: "${line}"`);
+
+      // Extraire ce qui suit "E." ou "E:"
+      // Pattern plus permissif pour capter même un VIN mal lu
+      const vinPattern = /E[\.\s:]+([A-Z0-9\s\-]{15,20})/i;
+      const match = line.match(vinPattern);
+
+      if (match) {
+        let candidate = match[1]
+          .replace(/[\s\-]/g, "") // Enlever espaces et tirets
+          .toUpperCase()
+          .substring(0, 20); // Max 20 caractères pour sécurité
+
+        console.log(`🔍 VIN candidat brut: "${candidate}" (${candidate.length} car.)`);
+
+        // Appliquer les corrections OCR
+        candidate = correctVINOCRErrors(candidate);
+
+        // Si 17 caractères exactement, c'est parfait
+        if (candidate.length === 17) {
+          // Valider que ce sont bien des caractères valides pour un VIN
+          if (/^[A-HJ-NPR-Z0-9]{17}$/.test(candidate)) {
+            console.log(`✅ VIN détecté (ligne E, 17 car.): ${candidate}`);
+            return candidate;
+          }
+        }
+
+        // Si 16-18 caractères, essayer de corriger
+        if (candidate.length >= 16 && candidate.length <= 18) {
+          // Tronquer ou compléter pour avoir 17 caractères
+          if (candidate.length === 18) {
+            // Supprimer le dernier caractère (souvent un artefact)
+            candidate = candidate.substring(0, 17);
+          } else if (candidate.length === 16) {
+            // Marquer comme incomplet avec "?"
+            candidate = candidate + "?";
+          }
+
+          console.log(`⚠️ VIN détecté (ligne E, ajusté): ${candidate}`);
+          return candidate;
+        }
+      }
+
+      // Chercher aussi dans les 2 lignes suivantes (parfois le VIN est sur la ligne d'après)
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        const vinInNextLine = nextLine.match(/([A-Z0-9]{15,20})/i);
+
+        if (vinInNextLine) {
+          let candidate = vinInNextLine[1].replace(/[\s\-]/g, "").toUpperCase();
+
+          candidate = correctVINOCRErrors(candidate);
+
+          if (candidate.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(candidate)) {
+            console.log(`✅ VIN détecté (ligne après E): ${candidate}`);
+            return candidate;
+          }
+        }
+      }
+    }
+  }
+
+  // PRIORITÉ 2: VIN parfait de 17 caractères sans séparateurs (pattern global)
   const perfectPattern = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
   const perfectMatch = text.match(perfectPattern);
 
   if (perfectMatch) {
-    return cleanText(perfectMatch[1].toUpperCase());
+    let candidate = correctVINOCRErrors(perfectMatch[1]);
+    console.log(`✅ VIN détecté (pattern parfait): ${candidate}`);
+    return candidate;
   }
 
-  // Stratégie 2: VIN avec espaces ou tirets (tolérance OCR)
-  // Exemple: "VF3 VFAHK HJZ012953" ou "VF3-VFAHK-HJZ012953"
+  // PRIORITÉ 3: VIN avec espaces ou tirets (tolérance OCR)
   const flexiblePattern = /\b([A-HJ-NPR-Z0-9][\s\-]?){17}\b/i;
   const flexibleMatch = text.match(flexiblePattern);
 
   if (flexibleMatch) {
-    // Nettoyer: enlever espaces et tirets
-    const cleaned = flexibleMatch[0].replace(/[\s\-]/g, "").toUpperCase();
+    let candidate = flexibleMatch[0].replace(/[\s\-]/g, "").toUpperCase();
 
-    // Vérifier que c'est bien 17 caractères après nettoyage
-    if (cleaned.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(cleaned)) {
-      return cleaned;
-    }
-  }
+    candidate = correctVINOCRErrors(candidate);
 
-  // Stratégie 3: Recherche pattern "E:" suivi du VIN
-  // Sur les cartes grises, le VIN est précédé de "E" ou "E:"
-  const fieldEPattern = /E[:\.\s]*([A-HJ-NPR-Z0-9][\s\-]?){16,18}/i;
-  const fieldEMatch = text.match(fieldEPattern);
-
-  if (fieldEMatch) {
-    const cleaned = fieldEMatch[0]
-      .replace(/^E[:\.\s]*/, "")
-      .replace(/[\s\-]/g, "")
-      .toUpperCase();
-
-    // Accepter 16-18 caractères (on corrigera après)
-    if (cleaned.length >= 16 && cleaned.length <= 18 && /^[A-HJ-NPR-Z0-9]+$/.test(cleaned)) {
-      return cleaned;
-    }
-  }
-
-  // Stratégie 4: Recherche de séquence longue de caractères alphanumériques
-  // (dernier recours pour OCR de mauvaise qualité)
-  const longSequencePattern = /\b([A-HJ-NPR-Z0-9]{15,19})\b/i;
-  const longMatch = text.match(longSequencePattern);
-
-  if (longMatch) {
-    const candidate = longMatch[1].toUpperCase();
-    // Vérifier que c'est proche de 17 caractères
-    if (candidate.length >= 16 && candidate.length <= 18) {
+    if (candidate.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(candidate)) {
+      console.log(`✅ VIN détecté (pattern flexible): ${candidate}`);
       return candidate;
     }
   }
 
+  // PRIORITÉ 4: Recherche pattern "E:" suivi du VIN (fallback global)
+  const fieldEPattern = /E[:\.\s]*([A-Z0-9][\s\-]?){16,19}/i;
+  const fieldEMatch = text.match(fieldEPattern);
+
+  if (fieldEMatch) {
+    let candidate = fieldEMatch[0]
+      .replace(/^E[:\.\s]*/, "")
+      .replace(/[\s\-]/g, "")
+      .toUpperCase();
+
+    candidate = correctVINOCRErrors(candidate);
+
+    // Accepter 16-18 caractères (ajuster si nécessaire)
+    if (candidate.length >= 16 && candidate.length <= 18) {
+      if (candidate.length === 18) {
+        candidate = candidate.substring(0, 17);
+      } else if (candidate.length === 16) {
+        candidate = candidate + "?";
+      }
+
+      console.log(`⚠️ VIN détecté (pattern E fallback): ${candidate}`);
+      return candidate;
+    }
+  }
+
+  // PRIORITÉ 5: Recherche de séquence longue (dernier recours)
+  const longSequencePattern = /\b([A-Z0-9]{15,19})\b/i;
+  const longMatch = text.match(longSequencePattern);
+
+  if (longMatch) {
+    let candidate = correctVINOCRErrors(longMatch[1].toUpperCase());
+
+    // Ajuster à 17 caractères si possible
+    if (candidate.length >= 16 && candidate.length <= 18) {
+      if (candidate.length === 18) {
+        candidate = candidate.substring(0, 17);
+      } else if (candidate.length === 16) {
+        candidate = candidate + "?";
+      }
+
+      console.log(`⚠️ VIN détecté (séquence longue): ${candidate}`);
+      return candidate;
+    }
+  }
+
+  console.log("❌ VIN non détecté");
   return undefined;
 };
 
