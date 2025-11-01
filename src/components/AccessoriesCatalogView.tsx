@@ -63,7 +63,7 @@ interface Accessory {
   categories?: Category;
   accessory_options?: AccessoryOption[];
   // Champs de gestion de stock
-  stock_status?: 'in_stock' | 'on_order' | 'out_of_stock' | 'pre_order';
+  stock_status?: 'in_stock' | 'on_order' | 'out_of_stock';
   stock_quantity?: number | null;
   delivery_date?: string | null;
   tracking_number?: string | null;
@@ -213,8 +213,8 @@ const AccessoriesCatalogView = () => {
       toast.error("Erreur lors du chargement du catalogue");
       console.error(error);
     } else {
-      setAccessories(data || []);
-      setFilteredAccessories(data || []);
+      setAccessories((data || []) as Accessory[]);
+      setFilteredAccessories((data || []) as Accessory[]);
     }
     setLoading(false);
   };
@@ -519,9 +519,6 @@ const AccessoriesCatalogView = () => {
                           currentQuantity={accessory.stock_quantity || 0}
                           deliveryDate={accessory.delivery_date}
                           trackingNumber={accessory.tracking_number}
-                          expectedDeliveryDate={accessory.expected_delivery_date}
-                          stockNotes={accessory.stock_notes}
-                          supplierOrderRef={accessory.supplier_order_ref}
                           onStatusChange={loadAccessories}
                         />
                       </div>
@@ -818,9 +815,6 @@ const AccessoriesCatalogView = () => {
                             currentQuantity={accessory.stock_quantity || 0}
                             deliveryDate={accessory.delivery_date}
                             trackingNumber={accessory.tracking_number}
-                            expectedDeliveryDate={accessory.expected_delivery_date}
-                            stockNotes={accessory.stock_notes}
-                            supplierOrderRef={accessory.supplier_order_ref}
                             onStatusChange={loadAccessories}
                           />
                         </div>

@@ -286,8 +286,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
               setProgress(Math.round(baseProgress + stepProgress));
             }
           },
-          tessedit_pageseg_mode: Tesseract.PSM.AUTO,
-          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-./: éèêàâôîûù",
         });
 
         console.log(`  ✓ Pass ${i + 1} confiance: ${result.data.confidence.toFixed(1)}%`);
