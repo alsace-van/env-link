@@ -62,10 +62,10 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   }, []);
 
   // ✅ SOLUTION DE SECOURS : useEffect pour remplir les champs
-  // Se déclenche quand scannedData existe ET que marque + modèle sont sélectionnés
+  // Se déclenche dès que scannedData existe (même si marque/modèle pas trouvés dans catalogue)
   useEffect(() => {
-    if (scannedData && selectedMarque && selectedModele) {
-      console.log("🔄 useEffect : Les champs sont maintenant visibles, remplissage...");
+    if (scannedData) {
+      console.log("🔄 useEffect : Remplissage des champs avec données scannées...");
 
       // Remplir uniquement si les champs sont vides (éviter d'écraser une modification manuelle)
       if (!manualImmatriculation && scannedData.immatriculation) {
@@ -93,7 +93,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
         setCustomPtac(scannedData.masseEnChargeMax.toString());
       }
     }
-  }, [scannedData, selectedMarque, selectedModele]);
+  }, [scannedData]); // Déclenché dès que scannedData change
 
   const loadVehicles = async () => {
     const { data, error } = await supabase
@@ -151,11 +151,40 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     let marqueFound = false;
     let modeleFound = false;
 
+    // Fonction de normalisation ultra-tolérante
+    const normalize = (str: string): string => {
+      return str
+        .normalize("NFD") // Décompose les caractères accentués
+        .replace(/[\u0300-\u036f]/g, "") // Supprime les accents
+        .replace(/[^a-z0-9]/gi, "") // Garde seulement lettres et chiffres
+        .toUpperCase();
+    };
+
     if (data.marque) {
-      const marqueNormalized = data.marque.toUpperCase();
-      const foundMarque = availableMarques.find(
-        (m) => m.toUpperCase().includes(marqueNormalized) || marqueNormalized.includes(m.toUpperCase()),
-      );
+      const marqueNormalized = normalize(data.marque);
+      console.log("🔍 Recherche marque:", data.marque, "→ normalisé:", marqueNormalized);
+
+      // Chercher avec différentes stratégies
+      let foundMarque = availableMarques.find((m) => {
+        const mNorm = normalize(m);
+        // Stratégie 1 : Match exact
+        if (mNorm === marqueNormalized) return true;
+        // Stratégie 2 : L'un contient l'autre
+        if (mNorm.includes(marqueNormalized) || marqueNormalized.includes(mNorm)) return true;
+        // Stratégie 3 : Match partiel (au moins 80% de correspondance)
+        const minLength = Math.min(mNorm.length, marqueNormalized.length);
+        const maxLength = Math.max(mNorm.length, marqueNormalized.length);
+        if (minLength / maxLength >= 0.8 && mNorm.startsWith(marqueNormalized.substring(0, 3))) return true;
+        return false;
+      });
+
+      // Si pas trouvé, essayer avec juste les premiers caractères (PEUG → PEUGEOT)
+      if (!foundMarque && marqueNormalized.length >= 4) {
+        foundMarque = availableMarques.find((m) => {
+          const mNorm = normalize(m);
+          return mNorm.startsWith(marqueNormalized.substring(0, 4));
+        });
+      }
 
       if (foundMarque) {
         console.log("✅ Marque trouvée:", foundMarque);
@@ -164,18 +193,42 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
         // Essayer aussi de trouver le modèle
         if (data.denominationCommerciale) {
-          const modeleNormalized = data.denominationCommerciale.toUpperCase();
+          const modeleNormalized = normalize(data.denominationCommerciale);
+          console.log("🔍 Recherche modèle:", data.denominationCommerciale, "→ normalisé:", modeleNormalized);
+
           const availableModelesForMarque = vehicles.filter((v) => v.marque === foundMarque).map((v) => v.modele);
-          const foundModele = availableModelesForMarque.find(
-            (m) => m.toUpperCase().includes(modeleNormalized) || modeleNormalized.includes(m.toUpperCase()),
-          );
+
+          let foundModele = availableModelesForMarque.find((m) => {
+            const mNorm = normalize(m);
+            // Stratégie 1 : Match exact
+            if (mNorm === modeleNormalized) return true;
+            // Stratégie 2 : L'un contient l'autre
+            if (mNorm.includes(modeleNormalized) || modeleNormalized.includes(mNorm)) return true;
+            // Stratégie 3 : Match partiel
+            const minLength = Math.min(mNorm.length, modeleNormalized.length);
+            const maxLength = Math.max(mNorm.length, modeleNormalized.length);
+            if (minLength / maxLength >= 0.7 && mNorm.startsWith(modeleNormalized.substring(0, 3))) return true;
+            return false;
+          });
+
+          // Si pas trouvé, essayer avec juste les premiers caractères
+          if (!foundModele && modeleNormalized.length >= 3) {
+            foundModele = availableModelesForMarque.find((m) => {
+              const mNorm = normalize(m);
+              return mNorm.startsWith(modeleNormalized.substring(0, 3));
+            });
+          }
 
           if (foundModele) {
             console.log("✅ Modèle trouvé:", foundModele);
             setSelectedModele(foundModele);
             modeleFound = true;
+          } else {
+            console.log("❌ Modèle non trouvé. Modèles disponibles:", availableModelesForMarque);
           }
         }
+      } else {
+        console.log("❌ Marque non trouvée. Marques disponibles:", availableMarques);
       }
     }
 
@@ -217,14 +270,14 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
           description: `Marque: ${data.marque} | Modèle: ${data.denominationCommerciale}`,
         });
       } else if (marqueFound) {
-        toast.success(`✅ Marque trouvée : ${data.marque}`, {
+        toast.warning(`⚠️ Marque trouvée : ${data.marque}`, {
           duration: 4000,
-          description: "Sélectionnez le modèle manuellement pour voir tous les champs.",
+          description: "Sélectionnez le modèle manuellement. Les autres champs sont remplis.",
         });
       } else {
-        toast.warning(`⚠️ Marque non trouvée dans le catalogue`, {
+        toast.warning(`⚠️ Marque "${data.marque}" non trouvée dans le catalogue`, {
           duration: 4000,
-          description: "Sélectionnez marque et modèle manuellement pour remplir les champs.",
+          description: "Sélectionnez marque et modèle manuellement. Les autres champs sont remplis.",
         });
       }
     }, 100); // Petit délai pour laisser React mettre à jour le DOM
@@ -471,7 +524,8 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
               </div>
             )}
 
-            {selectedMarque && selectedModele && (
+            {/* Champs de carte grise - TOUJOURS VISIBLES si des données OCR ont été scannées OU si marque+modèle sélectionnés */}
+            {(scannedData || (selectedMarque && selectedModele)) && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="numero_chassis">Numéro de chassis (VIN - 17 car.)</Label>
