@@ -35,11 +35,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedData, setEditedData] = useState<VehicleRegistrationData>({});
   const [confidences, setConfidences] = useState<FieldConfidence[]>([]);
+  const [isCancelling, setIsCancelling] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cancelRef = useRef(false);
 
   /**
-   * Prétraitement STRATEGY 1: Haute résolution + niveaux de gris + contraste adaptatif
-   * Meilleur pour: Photos bien éclairées avec texte net
+   * Prétraitement RAPIDE 1: Contraste simple + binarisation
+   * Plus rapide que l'ancienne version, résultats corrects
    */
   const preprocessStrategy1 = (canvas: HTMLCanvasElement): void => {
     const ctx = canvas.getContext("2d");
@@ -48,7 +50,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
-    // Conversion en niveaux de gris avec pondération
+    // Conversion en niveaux de gris
     for (let i = 0; i < data.length; i += 4) {
       const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
       data[i] = gray;
@@ -56,13 +58,12 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       data[i + 2] = gray;
     }
 
-    // Augmentation du contraste (normalisation adaptative)
-    let min = 255;
-    let max = 0;
+    // Contraste simple
+    let min = 255,
+      max = 0;
     for (let i = 0; i < data.length; i += 4) {
-      const value = data[i];
-      if (value < min) min = value;
-      if (value > max) max = value;
+      if (data[i] < min) min = data[i];
+      if (data[i] > max) max = data[i];
     }
 
     const range = max - min;
@@ -75,10 +76,9 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       }
     }
 
-    // Seuillage adaptatif
-    const threshold = 140;
+    // Binarisation simple
     for (let i = 0; i < data.length; i += 4) {
-      const value = data[i] > threshold ? 255 : 0;
+      const value = data[i] > 130 ? 255 : 0;
       data[i] = value;
       data[i + 1] = value;
       data[i + 2] = value;
@@ -88,8 +88,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
-   * Prétraitement STRATEGY 2: Seuillage OTSU + débruitage
-   * Meilleur pour: Photos avec éclairage inégal ou légèrement floues
+   * Prétraitement PRÉCIS 2: OTSU simplifié
+   * Plus lent mais meilleurs résultats sur photos difficiles
    */
   const preprocessStrategy2 = (canvas: HTMLCanvasElement): void => {
     const ctx = canvas.getContext("2d");
@@ -98,7 +98,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
-    // Conversion en niveaux de gris
+    // Niveaux de gris
     for (let i = 0; i < data.length; i += 4) {
       const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
       data[i] = gray;
@@ -106,7 +106,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       data[i + 2] = gray;
     }
 
-    // Calcul du seuil OTSU (simplifié)
+    // OTSU simplifié (plus rapide)
     const histogram = new Array(256).fill(0);
     for (let i = 0; i < data.length; i += 4) {
       histogram[Math.floor(data[i])]++;
@@ -116,24 +116,19 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     let sum = 0;
     for (let i = 0; i < 256; i++) sum += i * histogram[i];
 
-    let sumB = 0;
-    let wB = 0;
-    let maximum = 0;
-    let threshold = 0;
-
+    let sumB = 0,
+      wB = 0,
+      maximum = 0,
+      threshold = 0;
     for (let i = 0; i < 256; i++) {
       wB += histogram[i];
       if (wB === 0) continue;
-
       const wF = total - wB;
       if (wF === 0) break;
-
       sumB += i * histogram[i];
       const mB = sumB / wB;
       const mF = (sum - sumB) / wF;
-
       const between = wB * wF * (mB - mF) * (mB - mF);
-
       if (between > maximum) {
         maximum = between;
         threshold = i;
@@ -141,60 +136,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     }
 
     // Application du seuil
-    for (let i = 0; i < data.length; i += 4) {
-      const value = data[i] > threshold ? 255 : 0;
-      data[i] = value;
-      data[i + 1] = value;
-      data[i + 2] = value;
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-  };
-
-  /**
-   * Prétraitement STRATEGY 3: Augmentation contraste agressive + sharpen
-   * Meilleur pour: Photos de mauvaise qualité, floues ou sous-exposées
-   */
-  const preprocessStrategy3 = (canvas: HTMLCanvasElement): void => {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
-    // Conversion en niveaux de gris
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      data[i] = gray;
-      data[i + 1] = gray;
-      data[i + 2] = gray;
-    }
-
-    // Égalisation d'histogramme (améliore le contraste)
-    const histogram = new Array(256).fill(0);
-    for (let i = 0; i < data.length; i += 4) {
-      histogram[Math.floor(data[i])]++;
-    }
-
-    const cdf = new Array(256);
-    cdf[0] = histogram[0];
-    for (let i = 1; i < 256; i++) {
-      cdf[i] = cdf[i - 1] + histogram[i];
-    }
-
-    const total = canvas.width * canvas.height;
-    const cdfMin = cdf.find((v) => v > 0) || 0;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const oldValue = Math.floor(data[i]);
-      const newValue = Math.round(((cdf[oldValue] - cdfMin) / (total - cdfMin)) * 255);
-      data[i] = newValue;
-      data[i + 1] = newValue;
-      data[i + 2] = newValue;
-    }
-
-    // Seuillage agressif
-    const threshold = 120;
     for (let i = 0; i < data.length; i += 4) {
       const value = data[i] > threshold ? 255 : 0;
       data[i] = value;
@@ -223,6 +164,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     setExtractedData(null);
     setOcrText("");
     setConfidences([]);
+    cancelRef.current = false;
+    setIsCancelling(false);
 
     try {
       // Charger l'image
@@ -235,23 +178,30 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         img.src = imgUrl;
       });
 
-      console.log("🔍 Démarrage OCR MULTI-PASSES (3 stratégies)...");
+      console.log("🔍 Démarrage OCR OPTIMISÉ (2 passes rapides)...");
 
-      // MULTI-PASSES: Tester 3 stratégies différentes
+      // OPTIMISÉ: Seulement 2 stratégies pour être RAPIDE (< 30s)
       const strategies = [
-        { name: "Strategy 1 (Haute résolution)", fn: preprocessStrategy1, scale: 3 },
-        { name: "Strategy 2 (OTSU)", fn: preprocessStrategy2, scale: 2.5 },
-        { name: "Strategy 3 (Contraste agressif)", fn: preprocessStrategy3, scale: 2 },
+        { name: "Passe 1 (Rapide)", fn: preprocessStrategy1, scale: 1.5 },
+        { name: "Passe 2 (Précis)", fn: preprocessStrategy2, scale: 2 },
       ];
 
       const results: Array<{ text: string; confidence: number; data: VehicleRegistrationData; strategyName: string }> =
         [];
 
       for (let i = 0; i < strategies.length; i++) {
+        // Vérifier si l'utilisateur a annulé
+        if (cancelRef.current) {
+          console.log("🛑 Scan annulé par l'utilisateur");
+          URL.revokeObjectURL(imgUrl);
+          toast.info("Scan annulé", { duration: 2000 });
+          return;
+        }
+
         const strategy = strategies[i];
         setProgress(Math.round((i / strategies.length) * 90)); // 0-90% pour les passes
 
-        console.log(`📸 Pass ${i + 1}/3: ${strategy.name}`);
+        console.log(`📸 Pass ${i + 1}/2: ${strategy.name}`);
 
         // Créer un canvas avec résolution augmentée
         const canvas = document.createElement("canvas");
@@ -286,6 +236,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
               setProgress(Math.round(baseProgress + stepProgress));
             }
           },
+          tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+          tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-./: éèêàâôîûù",
         });
 
         console.log(`  ✓ Pass ${i + 1} confiance: ${result.data.confidence.toFixed(1)}%`);
@@ -307,6 +259,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       }
 
       URL.revokeObjectURL(imgUrl);
+
+      // Vérifier une dernière fois si annulé
+      if (cancelRef.current) {
+        console.log("🛑 Scan annulé par l'utilisateur");
+        toast.info("Scan annulé", { duration: 2000 });
+        return;
+      }
 
       setProgress(95);
 
@@ -398,7 +357,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       ).length;
 
       if (detectedFields === 0) {
-        toast.error("Aucune donnée n'a pu être extraite après 3 tentatives.", {
+        toast.error("Aucune donnée n'a pu être extraite après 2 tentatives.", {
           duration: 5000,
           description: "Essayez de prendre une nouvelle photo avec un meilleur éclairage et plus de netteté.",
         });
@@ -417,13 +376,18 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         });
       }
     } catch (error) {
-      console.error("❌ Erreur lors du traitement de l'image:", error);
-      toast.error("Erreur lors de la lecture de la carte grise.", {
-        duration: 5000,
-        description: "Veuillez réessayer avec une photo bien éclairée et nette.",
-      });
+      // Ne pas afficher d'erreur si l'utilisateur a annulé
+      if (!cancelRef.current) {
+        console.error("❌ Erreur lors du traitement de l'image:", error);
+        toast.error("Erreur lors de la lecture de la carte grise.", {
+          duration: 5000,
+          description: "Veuillez réessayer avec une photo bien éclairée et nette.",
+        });
+      }
     } finally {
       setIsProcessing(false);
+      setIsCancelling(false);
+      cancelRef.current = false;
       setTimeout(() => setProgress(0), 500);
     }
   };
@@ -449,13 +413,25 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   const handleReset = () => {
+    cancelRef.current = true; // Annuler le scan en cours si actif
     setImagePreview(null);
     setExtractedData(null);
     setOcrText("");
     setProgress(0);
+    setIsEditMode(false);
+    setEditedData({});
+    setConfidences([]);
+    setIsCancelling(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const handleCancel = () => {
+    setIsCancelling(true);
+    cancelRef.current = true;
+    console.log("🛑 Annulation du scan demandée...");
+    toast.info("Annulation en cours...", { duration: 1000 });
   };
 
   const handleRetry = () => {
@@ -574,11 +550,32 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Analyse en cours... (cela peut prendre 10-20 secondes)
+                    Analyse en cours... (environ 20-30 secondes)
                   </span>
                   <span className="text-muted-foreground">{progress}%</span>
                 </div>
                 <Progress value={progress} className="w-full" />
+
+                {/* Bouton pour annuler le scan */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                  className="w-full mt-2"
+                >
+                  {isCancelling ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Annulation...
+                    </>
+                  ) : (
+                    <>
+                      <X className="h-4 w-4 mr-2" />
+                      Annuler le scan
+                    </>
+                  )}
+                </Button>
               </div>
             )}
 
