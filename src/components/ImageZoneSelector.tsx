@@ -17,18 +17,14 @@ interface Rectangle {
   endY: number;
 }
 
-export const ImageZoneSelector = ({
-  imageUrl,
-  onZoneSelected,
-  onCancel,
-  title,
-  hint,
-}: ImageZoneSelectorProps) => {
+export const ImageZoneSelector = ({ imageUrl, onZoneSelected, onCancel, title, hint }: ImageZoneSelectorProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [rectangle, setRectangle] = useState<Rectangle | null>(null);
   const [currentPos, setCurrentPos] = useState<{ x: number; y: number } | null>(null);
+
+  console.log("📸 ImageZoneSelector monté !", { imageUrl: imageUrl.substring(0, 50) });
 
   // Charger l'image
   useEffect(() => {
@@ -181,9 +177,8 @@ export const ImageZoneSelector = ({
     onZoneSelected(tempCanvas);
   };
 
-  const hasValidSelection = rectangle && 
-    Math.abs(rectangle.endX - rectangle.startX) > 50 && 
-    Math.abs(rectangle.endY - rectangle.startY) > 20;
+  const hasValidSelection =
+    rectangle && Math.abs(rectangle.endX - rectangle.startX) > 50 && Math.abs(rectangle.endY - rectangle.startY) > 20;
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -233,11 +228,7 @@ export const ImageZoneSelector = ({
           </div>
 
           <div className="flex gap-2">
-            <Button
-              onClick={handleConfirm}
-              disabled={!hasValidSelection}
-              className="flex-1"
-            >
+            <Button onClick={handleConfirm} disabled={!hasValidSelection} className="flex-1">
               <Check className="h-4 w-4 mr-2" />
               Rescanner cette zone
             </Button>
