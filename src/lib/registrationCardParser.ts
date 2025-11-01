@@ -1,4 +1,38 @@
 /**
+ * Valide et corrige un VIN (Vehicle Identification Number)
+ * Le VIN doit faire exactement 17 caractères
+ * Ne contient jamais les lettres I, O, Q (confusion avec 1, 0)
+ */
+export const validateAndCorrectVIN = (vin: string): string => {
+  if (!vin) return vin;
+
+  const cleaned = vin.replace(/[^A-HJ-NPR-Z0-9]/gi, "").toUpperCase();
+
+  // Si le VIN fait exactement 17 caractères, c'est bon
+  if (cleaned.length === 17) {
+    return cleaned;
+  }
+
+  // Si le VIN fait 16 ou 18 caractères, tenter une correction
+  if (cleaned.length === 16) {
+    console.warn(`⚠️ VIN trop court (${cleaned.length} caractères): ${cleaned}`);
+    // Souvent, un caractère est manquant au milieu ou à la fin
+    // On retourne quand même le VIN pour que l'utilisateur puisse le corriger
+    return cleaned + "?"; // Ajouter un ? pour indiquer qu'il manque un caractère
+  }
+
+  if (cleaned.length === 18) {
+    console.warn(`⚠️ VIN trop long (${cleaned.length} caractères): ${cleaned}`);
+    // Souvent, un caractère en trop est détecté
+    // On retourne quand même pour correction manuelle
+    return cleaned;
+  }
+
+  // Si trop différent de 17, retourner tel quel
+  return cleaned;
+};
+
+/**
  * Utilitaires pour parser les données d'une carte grise française
  */
 
@@ -20,7 +54,7 @@ export interface VehicleRegistrationData {
  * Nettoie et formate une chaîne de texte
  */
 const cleanText = (text: string): string => {
-  return text.trim().replace(/\s+/g, ' ');
+  return text.trim().replace(/\s+/g, " ");
 };
 
 /**
@@ -38,7 +72,7 @@ export const extractImmatriculation = (text: string): string | undefined => {
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
-      return cleanText(match[1].replace(/\s/g, '-').toUpperCase());
+      return cleanText(match[1].replace(/\s/g, "-").toUpperCase());
     }
   }
 
@@ -61,7 +95,7 @@ export const extractDatePremiereImmatriculation = (text: string): string | undef
       const day = match[1];
       const month = match[2];
       let year = match[3];
-      
+
       // Convertir année courte en année complète
       if (year.length === 2) {
         const yearNum = parseInt(year);
@@ -87,7 +121,7 @@ export const extractNumeroChassisVIN = (text: string): string | undefined => {
   // VIN: 17 caractères (lettres et chiffres, pas de I, O, Q)
   const pattern = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
   const match = text.match(pattern);
-  
+
   if (match) {
     return cleanText(match[1].toUpperCase());
   }
@@ -100,17 +134,44 @@ export const extractNumeroChassisVIN = (text: string): string | undefined => {
  */
 export const extractMarque = (text: string): string | undefined => {
   const marques = [
-    'CITROEN', 'CITROËN', 'PEUGEOT', 'RENAULT', 'FIAT', 'FORD', 
-    'VOLKSWAGEN', 'VW', 'MERCEDES', 'MERCEDES-BENZ', 'OPEL',
-    'IVECO', 'NISSAN', 'TOYOTA', 'HYUNDAI', 'KIA', 'DACIA',
-    'SUZUKI', 'MITSUBISHI', 'ISUZU', 'VOLKSWAGEN UTILITAIRES',
-    'DUCATO', 'TRANSIT', 'SPRINTER', 'MASTER', 'MOVANO', 'BOXER',
-    'JUMPER', 'TRAFIC', 'VIVARO', 'EXPERT', 'PROACE', 'TALENTO'
+    "CITROEN",
+    "CITROËN",
+    "PEUGEOT",
+    "RENAULT",
+    "FIAT",
+    "FORD",
+    "VOLKSWAGEN",
+    "VW",
+    "MERCEDES",
+    "MERCEDES-BENZ",
+    "OPEL",
+    "IVECO",
+    "NISSAN",
+    "TOYOTA",
+    "HYUNDAI",
+    "KIA",
+    "DACIA",
+    "SUZUKI",
+    "MITSUBISHI",
+    "ISUZU",
+    "VOLKSWAGEN UTILITAIRES",
+    "DUCATO",
+    "TRANSIT",
+    "SPRINTER",
+    "MASTER",
+    "MOVANO",
+    "BOXER",
+    "JUMPER",
+    "TRAFIC",
+    "VIVARO",
+    "EXPERT",
+    "PROACE",
+    "TALENTO",
   ];
 
   // Recherche insensible à la casse
   const textUpper = text.toUpperCase();
-  
+
   for (const marque of marques) {
     if (textUpper.includes(marque)) {
       return marque;
@@ -125,15 +186,38 @@ export const extractMarque = (text: string): string | undefined => {
  */
 export const extractDenominationCommerciale = (text: string): string | undefined => {
   const modeles = [
-    'JUMPER', 'BOXER', 'DUCATO', 'MASTER', 'MOVANO', 'TRANSIT',
-    'SPRINTER', 'TRAFIC', 'VIVARO', 'EXPERT', 'PROACE', 'TALENTO',
-    'CRAFTER', 'DAILY', 'PRIMASTAR', 'DOBLO', 'COMBO', 'BERLINGO',
-    'KANGOO', 'PARTNER', 'CADDY', 'CONNECT', 'DISPATCH', 'SCUDO',
-    'TRAVELLER', 'SPACETOURER', 'ZAFIRA LIFE', 'CALIFORNIA'
+    "JUMPER",
+    "BOXER",
+    "DUCATO",
+    "MASTER",
+    "MOVANO",
+    "TRANSIT",
+    "SPRINTER",
+    "TRAFIC",
+    "VIVARO",
+    "EXPERT",
+    "PROACE",
+    "TALENTO",
+    "CRAFTER",
+    "DAILY",
+    "PRIMASTAR",
+    "DOBLO",
+    "COMBO",
+    "BERLINGO",
+    "KANGOO",
+    "PARTNER",
+    "CADDY",
+    "CONNECT",
+    "DISPATCH",
+    "SCUDO",
+    "TRAVELLER",
+    "SPACETOURER",
+    "ZAFIRA LIFE",
+    "CALIFORNIA",
   ];
 
   const textUpper = text.toUpperCase();
-  
+
   for (const modele of modeles) {
     if (textUpper.includes(modele)) {
       return modele;
@@ -143,7 +227,7 @@ export const extractDenominationCommerciale = (text: string): string | undefined
   // Recherche pattern générique après marque
   const marqueMatch = extractMarque(text);
   if (marqueMatch) {
-    const afterMarquePattern = new RegExp(`${marqueMatch}\\s+([A-Z][A-Z0-9\\s-]+?)(?=\\s+[A-Z]\\.|\\d|$)`, 'i');
+    const afterMarquePattern = new RegExp(`${marqueMatch}\\s+([A-Z][A-Z0-9\\s-]+?)(?=\\s+[A-Z]\\.|\\d|$)`, "i");
     const match = text.match(afterMarquePattern);
     if (match && match[1]) {
       return cleanText(match[1]);
@@ -158,11 +242,7 @@ export const extractDenominationCommerciale = (text: string): string | undefined
  */
 export const extractMasseEnChargeMax = (text: string): number | undefined => {
   // Recherche "F.2" ou "F2" suivi d'un nombre
-  const patterns = [
-    /F\.?2[:\s]*(\d{3,5})/i,
-    /masse.*charge.*max.*[:\s]*(\d{3,5})/i,
-    /PTAC[:\s]*(\d{3,5})/i,
-  ];
+  const patterns = [/F\.?2[:\s]*(\d{3,5})/i, /masse.*charge.*max.*[:\s]*(\d{3,5})/i, /PTAC[:\s]*(\d{3,5})/i];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -183,11 +263,7 @@ export const extractMasseEnChargeMax = (text: string): number | undefined => {
  */
 export const extractMasseVide = (text: string): number | undefined => {
   // Recherche "G.1" ou "G1" suivi d'un nombre
-  const patterns = [
-    /G\.?1[:\s]*(\d{3,5})/i,
-    /masse.*vide[:\s]*(\d{3,5})/i,
-    /poids.*vide[:\s]*(\d{3,5})/i,
-  ];
+  const patterns = [/G\.?1[:\s]*(\d{3,5})/i, /masse.*vide[:\s]*(\d{3,5})/i, /poids.*vide[:\s]*(\d{3,5})/i];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -207,10 +283,10 @@ export const extractMasseVide = (text: string): number | undefined => {
  * Extrait la catégorie du véhicule (champ J)
  */
 export const extractCategorie = (text: string): string | undefined => {
-  const categories = ['M1', 'M2', 'M3', 'N1', 'N2', 'N3', 'O1', 'O2', 'O3', 'O4'];
-  
+  const categories = ["M1", "M2", "M3", "N1", "N2", "N3", "O1", "O2", "O3", "O4"];
+
   for (const cat of categories) {
-    const pattern = new RegExp(`\\bJ[:\\.\\s]*${cat}\\b`, 'i');
+    const pattern = new RegExp(`\\bJ[:\\.\\s]*${cat}\\b`, "i");
     if (pattern.test(text)) {
       return cat;
     }
@@ -224,12 +300,20 @@ export const extractCategorie = (text: string): string | undefined => {
  */
 export const extractGenreNational = (text: string): string | undefined => {
   const genres = [
-    'CTTE', 'DERIV-VP', 'CAMIONNETTE', 'CAMION', 'TCP',
-    'VASP', 'VP', 'CAMPING-CAR', 'AUTOBUS', 'AUTOCAR'
+    "CTTE",
+    "DERIV-VP",
+    "CAMIONNETTE",
+    "CAMION",
+    "TCP",
+    "VASP",
+    "VP",
+    "CAMPING-CAR",
+    "AUTOBUS",
+    "AUTOCAR",
   ];
 
   const textUpper = text.toUpperCase();
-  
+
   for (const genre of genres) {
     if (textUpper.includes(`J.1${genre}`) || textUpper.includes(`J1${genre}`)) {
       return genre;
@@ -267,7 +351,7 @@ export const parseRegistrationCardText = (ocrText: string): VehicleRegistrationD
  * Prétraite une image pour améliorer la reconnaissance OCR
  */
 export const preprocessImageForOCR = (canvas: HTMLCanvasElement): void => {
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -277,12 +361,12 @@ export const preprocessImageForOCR = (canvas: HTMLCanvasElement): void => {
   for (let i = 0; i < data.length; i += 4) {
     // Conversion en niveaux de gris
     const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-    
+
     // Augmentation du contraste (seuillage)
     const threshold = 128;
     const value = gray > threshold ? 255 : 0;
-    
-    data[i] = value;     // Rouge
+
+    data[i] = value; // Rouge
     data[i + 1] = value; // Vert
     data[i + 2] = value; // Bleu
   }
