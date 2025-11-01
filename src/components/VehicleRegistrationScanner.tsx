@@ -201,13 +201,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(40 + Math.round(m.progress * 50));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789",
-        tessedit_char_blacklist: "IOQ",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       // Extraire le VIN
@@ -284,12 +277,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(40 + Math.round(m.progress * 50));
           }
         },
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE,
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
-        load_system_dawg: "0",
-        load_freq_dawg: "0",
-        preserve_interword_spaces: "0",
-        classify_bln_numeric_mode: "1",
       });
 
       // Extraire l'immatriculation
@@ -586,10 +573,10 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     console.log("💾 Sauvegarde des modifications:", editedData);
 
     // Filtrer les valeurs undefined avant de passer au formulaire
-    const cleanedData: VehicleRegistrationData = {};
+    const cleanedData: Record<string, any> = {};
     Object.entries(editedData).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== "") {
-        cleanedData[key as keyof VehicleRegistrationData] = value;
+        cleanedData[key] = value;
       }
     });
 
@@ -923,10 +910,10 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                         type="button"
                         onClick={() => {
                           // Filtrer les valeurs undefined avant de passer au formulaire
-                          const cleanedData: VehicleRegistrationData = {};
+                          const cleanedData: Record<string, any> = {};
                           Object.entries(extractedData).forEach(([key, value]) => {
                             if (value !== undefined && value !== null && value !== "") {
-                              cleanedData[key as keyof VehicleRegistrationData] = value;
+                              cleanedData[key] = value;
                             }
                           });
                           onDataExtracted(cleanedData);
