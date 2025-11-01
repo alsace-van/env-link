@@ -397,6 +397,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   };
 
   return (
+    <>
     <Card className="h-fit sticky top-4">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -784,6 +785,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    </>
   );
 };
 
