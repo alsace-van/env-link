@@ -134,7 +134,7 @@ export const ProjectNotes = ({ projectId }: ProjectNotesProps) => {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-full space-y-3">
       {/* Bouton pour afficher/masquer l'historique */}
       <div className="flex items-center justify-between">
         <Button
@@ -175,8 +175,8 @@ export const ProjectNotes = ({ projectId }: ProjectNotesProps) => {
       )}
 
       {/* Liste des notes */}
-      <ScrollArea className={showArchived ? "h-[450px]" : "h-[350px]"}>
-        <div className="space-y-2">
+      <ScrollArea className="flex-1">
+        <div className="space-y-2 pr-4">
           {notes.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               {showArchived ? "Aucune note archivée" : "Aucune note"}
