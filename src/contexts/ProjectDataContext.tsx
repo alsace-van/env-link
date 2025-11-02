@@ -8,9 +8,10 @@ interface Todo {
   title: string;
   completed: boolean;
   due_date: string | null;
-  description: string | null;
   project_id: string;
   created_at: string;
+  updated_at: string;
+  priority: string;
 }
 
 interface ProjectNote {

@@ -49,6 +49,9 @@ export const AddAppointmentModal = ({
     setIsLoading(true);
 
     try {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error("Non authentifié");
+
       // Créer la date avec l'heure sélectionnée
       const appointmentDate = setMinutes(setHours(selectedDate, selectedHour), 0);
 
@@ -56,8 +59,10 @@ export const AddAppointmentModal = ({
         .from("client_appointments")
         .insert([
           {
+            user_id: user.user.id,
             project_id: projectId,
             client_name: clientName.trim(),
+            title: clientName.trim(),
             description: description.trim() || null,
             appointment_date: appointmentDate.toISOString(),
             duration_minutes: parseInt(duration),

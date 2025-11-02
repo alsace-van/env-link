@@ -633,16 +633,12 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         onClose={() => setIsAddNoteOpen(false)}
         onSuccess={handleModalSuccess}
         projectId={projectId}
-        selectedDate={currentDate}
-        selectedHour={selectedHour}
       />
       <AddSupplierExpenseModal
         isOpen={isAddExpenseOpen}
         onClose={() => setIsAddExpenseOpen(false)}
         onSuccess={handleModalSuccess}
-        projectId={projectId}
         selectedDate={currentDate}
-        selectedHour={selectedHour}
       />
       <AddAppointmentModal
         isOpen={isAddAppointmentOpen}

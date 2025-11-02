@@ -10,10 +10,11 @@ import { toast } from "sonner";
 interface AddNoteModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   projectId: string | null;
 }
 
-export const AddNoteModal = ({ isOpen, onClose, projectId }: AddNoteModalProps) => {
+export const AddNoteModal = ({ isOpen, onClose, onSuccess, projectId }: AddNoteModalProps) => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -43,6 +44,7 @@ export const AddNoteModal = ({ isOpen, onClose, projectId }: AddNoteModalProps) 
       if (error) throw error;
 
       toast.success("Note ajoutée avec succès");
+      onSuccess?.();
       handleClose();
     } catch (error) {
       console.error("Error adding note:", error);
