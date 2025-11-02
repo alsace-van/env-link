@@ -120,7 +120,7 @@ export const GlobalNotes = () => {
   };
 
   return (
-    <div className="flex flex-col h-full space-y-3">
+    <div className="space-y-3">
       {/* Filtres */}
       <div className="space-y-2">
         <Select value={selectedProject} onValueChange={setSelectedProject}>
@@ -149,62 +149,60 @@ export const GlobalNotes = () => {
       </div>
 
       {/* Liste des notes */}
-      <ScrollArea className="flex-1">
-        <div className="space-y-2 pr-4">
-          {notes.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              {showArchived ? "Aucune note archivée" : "Aucune note"}
-            </p>
-          ) : (
-            notes.map((note) => (
-              <Card key={note.id} className={showArchived ? "opacity-60" : ""}>
-                <CardHeader className="pb-2 space-y-1">
-                  <CardTitle className="text-sm flex justify-between items-start">
-                    <span className="flex-1 line-clamp-1">{note.title}</span>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <Badge variant="outline" className="text-xs">
-                        {note.projects?.nom_projet || "Projet"}
-                      </Badge>
-                      {!showArchived && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => archiveNote(note.id)}
-                          title="Solder"
-                          className="h-6 w-6 p-0"
-                        >
-                          <CheckCircle2 className="h-3 w-3 text-green-600" />
-                        </Button>
-                      )}
-                      {showArchived && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => restoreNote(note.id)}
-                          title="Restaurer"
-                          className="h-6 w-6 p-0 text-xs"
-                        >
-                          ↻
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={() => deleteNote(note.id)} className="h-6 w-6 p-0">
-                        <Trash2 className="h-3 w-3" />
+      <div className="space-y-2">
+        {notes.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {showArchived ? "Aucune note archivée" : "Aucune note"}
+          </p>
+        ) : (
+          notes.map((note) => (
+            <Card key={note.id} className={showArchived ? "opacity-60" : ""}>
+              <CardHeader className="pb-2 space-y-1">
+                <CardTitle className="text-sm flex justify-between items-start">
+                  <span className="flex-1 line-clamp-1">{note.title}</span>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Badge variant="outline" className="text-xs">
+                      {note.projects?.nom_projet || "Projet"}
+                    </Badge>
+                    {!showArchived && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => archiveNote(note.id)}
+                        title="Solder"
+                        className="h-6 w-6 p-0"
+                      >
+                        <CheckCircle2 className="h-3 w-3 text-green-600" />
                       </Button>
-                    </div>
-                  </CardTitle>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    <span>{formatDate(note.updated_at || note.created_at)}</span>
+                    )}
+                    {showArchived && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => restoreNote(note.id)}
+                        title="Restaurer"
+                        className="h-6 w-6 p-0 text-xs"
+                      >
+                        ↻
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={() => deleteNote(note.id)} className="h-6 w-6 p-0">
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
                   </div>
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <p className="text-xs text-muted-foreground line-clamp-2">{note.content}</p>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
-      </ScrollArea>
+                </CardTitle>
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  <span>{formatDate(note.updated_at || note.created_at)}</span>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <p className="text-xs text-muted-foreground line-clamp-2">{note.content}</p>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
     </div>
   );
 };
