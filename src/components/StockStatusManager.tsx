@@ -1,3 +1,9 @@
+// ============================================================================
+// FICHIER 2 : StockStatusManager.tsx
+// EMPLACEMENT : src/components/StockStatusManager.tsx
+// ACTION : REMPLACER le fichier existant par celui-ci
+// ============================================================================
+
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Package, PackageX, Truck, Edit, Calendar, Clipboard } from "lucide-react";
@@ -162,10 +168,7 @@ export default function StockStatusManager({
           accessory_id: accessoryId,
         };
 
-        const { error: todoError } = await supabase.from("project_todos").insert({
-          ...taskData,
-          project_id: null, // Tâche sans projet spécifique
-        });
+        const { error: todoError } = await supabase.from("global_todos").insert(taskData);
 
         if (todoError) {
           console.error("Erreur lors de la création de la tâche:", todoError);
