@@ -556,6 +556,9 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setExtractedData(finalData);
       setEditedData(finalData);
+      
+      // Ouvrir automatiquement le modal de vérification après le scan
+      setShowConfirmationModal(true);
 
       const confidenceFields: FieldConfidence[] = Object.entries(finalData)
         .filter(([_, value]) => value !== undefined && value !== null && value !== "")
@@ -1044,6 +1047,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             toast.success("Données vérifiées et utilisées dans le formulaire ✓", { duration: 2000 });
             setShowConfirmationModal(false);
           }}
+          onRescanVIN={startVINZoneSelection}
+          onRescanImmat={startImmatZoneSelection}
         />
       )}
 
