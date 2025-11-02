@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -73,11 +73,12 @@ export const ScanConfirmationModal = ({
   const [editingPTAC, setEditingPTAC] = useState(false);
   const [editingGenre, setEditingGenre] = useState(false);
 
-  // Réinitialiser quand les données changent
-  useState(() => {
+  // ✅ CORRECTION: Mettre à jour editedData quand scannedData change (après rescan)
+  useEffect(() => {
+    console.log("📥 ScanConfirmationModal: Mise à jour avec nouvelles données scannées");
     setEditedData(scannedData);
     setVinVerified(false);
-  });
+  }, [scannedData]);
 
   const handleFieldChange = (field: keyof VehicleRegistrationData, value: any) => {
     setEditedData(prev => ({ ...prev, [field]: value }));
