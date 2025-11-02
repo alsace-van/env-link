@@ -45,6 +45,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [isExpanded, setIsExpanded] = useState(false); // Mode réduit (4h) vs journée complète (13h)
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false);
   const [monthCellSize, setMonthCellSize] = useState<"normal" | "large">("normal"); // Taille des cases du mois
+  const [currentTime, setCurrentTime] = useState(new Date()); // Pour rafraîchir l'heure actuelle
 
   // États pour les modales
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -59,6 +60,15 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   useEffect(() => {
     setCurrentProjectId(projectId);
   }, [projectId, setCurrentProjectId]);
+
+  // Rafraîchir l'heure actuelle toutes les minutes pour mettre à jour la surbrillance
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Toutes les minutes
+
+    return () => clearInterval(interval);
+  }, []);
 
   const toggleTodoComplete = async (todoId: string, currentStatus: boolean) => {
     const { error } = await supabase.from("project_todos").update({ completed: !currentStatus }).eq("id", todoId);
@@ -149,12 +159,11 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
   const handleModalSuccess = () => refreshData?.();
 
-  const isToday = isSameDay(currentDate, new Date());
+  const isToday = isSameDay(currentDate, currentTime);
 
   // Calculer les 4 heures centrées sur l'heure actuelle (pour mode réduit)
   const getCurrentFourHours = () => {
-    const now = new Date();
-    const currentHour = now.getHours();
+    const currentHour = currentTime.getHours(); // Utiliser currentTime pour le rafraîchissement
 
     // Si on est en dehors des heures de travail (8h-20h), afficher 8h-11h
     if (currentHour < 8) return [8, 9, 10, 11];
@@ -196,7 +205,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     const items = getItemsForHour(date, hour);
     const hasItems = items.todos.length > 0 || items.expenses.length > 0 || items.appointments.length > 0;
     const totalItems = items.todos.length + items.expenses.length + items.appointments.length;
-    const currentHour = new Date().getHours();
+    const currentHour = currentTime.getHours(); // Utiliser currentTime
     const isCurrentHour = isToday && hour === currentHour;
 
     return (
@@ -347,7 +356,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           {/* Jours du mois */}
           {daysInMonth.map((day) => {
             const dayItems = getItemsForDate(day);
-            const isCurrentDay = isSameDay(day, new Date());
+            const isCurrentDay = isSameDay(day, currentTime);
             const isSelectedDay = isSameDay(day, currentDate);
             const totalEvents = dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length;
 
@@ -473,10 +482,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   return (
     <>
       <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-white/90 border-gray-200/50">
-        <CardHeader
-          className="pb-3 cursor-pointer hover:bg-gray-50/50 transition-colors relative"
-          onClick={handleCardClick}
-        >
+        <CardHeader className="pb-3 cursor-pointer hover:bg-gray-50/50 transition-colors" onClick={handleCardClick}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-700">📅 Agenda</h3>
@@ -502,13 +508,9 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
           {/* En-tête du jour */}
           <div className="text-center">
-            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              {format(currentDate, "EEEE", { locale: fr })}
+            <div className={`text-sm font-semibold ${isToday ? "text-blue-600" : "text-gray-900"}`}>
+              {format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}
             </div>
-            <div className={`text-3xl font-bold ${isToday ? "text-blue-600" : "text-gray-900"}`}>
-              {format(currentDate, "d")}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">{format(currentDate, "MMMM yyyy", { locale: fr })}</div>
           </div>
 
           <div className="flex items-center justify-center gap-2 mt-2">
@@ -537,7 +539,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           </div>
 
           {/* Indicateur de mode */}
-          <div className="absolute bottom-2 right-2 text-[9px] text-gray-400">
+          <div className="text-center text-[9px] text-gray-400 mt-2">
             {isExpanded ? "Clic pour réduire · Double-clic pour mois" : "Clic pour étendre · Double-clic pour mois"}
           </div>
         </CardHeader>
