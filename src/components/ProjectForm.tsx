@@ -92,35 +92,36 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     loadVehicles();
   }, []);
 
-  // ✅ SOLUTION DE SECOURS : useEffect pour remplir les champs
-  // Se déclenche dès que scannedData existe (même si marque/modèle pas trouvés dans catalogue)
+  // ✅ useEffect pour remplir les champs avec les données scannées
+  // IMPORTANT: On écrase TOUJOURS les champs avec les nouvelles données scannées
+  // car l'utilisateur vient de confirmer ces données dans la modale
   useEffect(() => {
     if (scannedData) {
       console.log("🔄 useEffect : Remplissage des champs avec données scannées...");
 
-      // Remplir uniquement si les champs sont vides (éviter d'écraser une modification manuelle)
-      if (!manualImmatriculation && scannedData.immatriculation) {
-        console.log("  → Remplissage immatriculation via useEffect");
+      // Remplir TOUS les champs avec les données validées (on écrase les anciennes valeurs)
+      if (scannedData.immatriculation) {
+        console.log("  → Remplissage immatriculation:", scannedData.immatriculation);
         setManualImmatriculation(scannedData.immatriculation);
       }
-      if (!manualNumeroChassis && scannedData.numeroChassisVIN) {
-        console.log("  → Remplissage VIN via useEffect");
+      if (scannedData.numeroChassisVIN) {
+        console.log("  → Remplissage VIN:", scannedData.numeroChassisVIN);
         setManualNumeroChassis(scannedData.numeroChassisVIN);
       }
-      if (!manualDateMiseCirculation && scannedData.datePremiereImmatriculation) {
-        console.log("  → Remplissage date via useEffect");
+      if (scannedData.datePremiereImmatriculation) {
+        console.log("  → Remplissage date:", scannedData.datePremiereImmatriculation);
         setManualDateMiseCirculation(scannedData.datePremiereImmatriculation);
       }
-      if (!manualTypeMine && scannedData.genreNational) {
-        console.log("  → Remplissage type mine via useEffect");
+      if (scannedData.genreNational) {
+        console.log("  → Remplissage type mine:", scannedData.genreNational);
         setManualTypeMine(scannedData.genreNational);
       }
-      if (!customPoidsVide && scannedData.masseVide) {
-        console.log("  → Remplissage poids vide via useEffect");
+      if (scannedData.masseVide) {
+        console.log("  → Remplissage poids vide:", scannedData.masseVide);
         setCustomPoidsVide(scannedData.masseVide.toString());
       }
-      if (!customPtac && scannedData.masseEnChargeMax) {
-        console.log("  → Remplissage PTAC via useEffect");
+      if (scannedData.masseEnChargeMax) {
+        console.log("  → Remplissage PTAC:", scannedData.masseEnChargeMax);
         setCustomPtac(scannedData.masseEnChargeMax.toString());
       }
     }
