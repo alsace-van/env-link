@@ -515,6 +515,7 @@ const AccessoriesCatalogView = () => {
                       <div className="mt-3 pt-3 border-t">
                         <StockStatusManager
                           accessoryId={accessory.id}
+                          accessoryName={accessory.nom}
                           currentStatus={accessory.stock_status || 'in_stock'}
                           currentQuantity={accessory.stock_quantity || 0}
                           deliveryDate={accessory.delivery_date}
@@ -811,6 +812,7 @@ const AccessoriesCatalogView = () => {
                         <div className="pt-3 border-t mt-3">
                           <StockStatusManager
                             accessoryId={accessory.id}
+                            accessoryName={accessory.nom}
                             currentStatus={accessory.stock_status || 'in_stock'}
                             currentQuantity={accessory.stock_quantity || 0}
                             deliveryDate={accessory.delivery_date}
