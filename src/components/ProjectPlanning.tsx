@@ -18,10 +18,10 @@ interface Todo {
 
 interface Expense {
   id: string;
-  description: string;
-  amount: number;
-  date: string;
-  payment_status: string;
+  nom_accessoire: string;
+  prix: number;
+  date_achat: string;
+  statut_paiement: string;
   created_at: string;
 }
 
@@ -64,10 +64,10 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
     if (!projectId) return;
 
     const { data, error } = await supabase
-      .from("expenses")
+      .from("project_expenses")
       .select("*")
       .eq("project_id", projectId)
-      .order("date", { ascending: true });
+      .order("date_achat", { ascending: true });
 
     if (error) {
       console.error(error);
@@ -103,7 +103,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
       (todo) => todo.due_date && isSameDay(parseISO(todo.due_date), date)
     );
     const expensesForDate = expenses.filter(
-      (expense) => expense.date && isSameDay(parseISO(expense.date), date)
+      (expense) => expense.date_achat && isSameDay(parseISO(expense.date_achat), date)
     );
     return { todos: todosForDate, expenses: expensesForDate };
   };
@@ -275,18 +275,18 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                         <Euro className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-gray-900 leading-tight">
-                            {expense.description}
+                            {expense.nom_accessoire}
                           </p>
                           <div className="flex items-center gap-1 mt-1">
                             <span className="text-xs font-bold text-emerald-700">
-                              {expense.amount.toFixed(2)} €
+                              {expense.prix.toFixed(2)} €
                             </span>
                             <Badge
                               className={`text-[10px] px-1 py-0 h-4 ${getPaymentStatusColor(
-                                expense.payment_status
+                                expense.statut_paiement
                               )}`}
                             >
-                              {getPaymentStatusLabel(expense.payment_status)}
+                              {getPaymentStatusLabel(expense.statut_paiement)}
                             </Badge>
                           </div>
                         </div>
