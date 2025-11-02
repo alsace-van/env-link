@@ -1,30 +1,14 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Euro, Maximize2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Euro, Maximize2, Package, UserCircle } from "lucide-react";
 import { format, addDays, isSameDay, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
-
-interface Todo {
-  id: string;
-  title: string;
-  completed: boolean;
-  due_date: string | null;
-  created_at: string;
-}
-
-interface Expense {
-  id: string;
-  nom_accessoire: string;
-  prix: number;
-  date_achat: string;
-  statut_paiement: string;
-  created_at: string;
-}
+import { useProjectData } from "@/contexts/ProjectDataContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface CompactAgendaProps {
   projectId: string | null;
@@ -32,49 +16,21 @@ interface CompactAgendaProps {
 
 export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false);
+  
+  // Utiliser le contexte pour les données synchronisées
+  const { 
+    todos, 
+    supplierExpenses, 
+    monthlyCharges, 
+    appointments,
+    setCurrentProjectId 
+  } = useProjectData();
 
+  // Mettre à jour le projectId dans le contexte quand il change
   useEffect(() => {
-    if (projectId) {
-      loadTodos();
-      loadExpenses();
-    }
-  }, [projectId]);
-
-  const loadTodos = async () => {
-    if (!projectId) return;
-
-    const { data, error } = await supabase
-      .from("project_todos")
-      .select("*")
-      .eq("project_id", projectId)
-      .not("due_date", "is", null)
-      .order("due_date", { ascending: true });
-
-    if (error) {
-      console.error(error);
-    } else {
-      setTodos(data || []);
-    }
-  };
-
-  const loadExpenses = async () => {
-    if (!projectId) return;
-
-    const { data, error } = await supabase
-      .from("project_expenses")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("date_achat", { ascending: true });
-
-    if (error) {
-      console.error(error);
-    } else {
-      setExpenses(data || []);
-    }
-  };
+    setCurrentProjectId(projectId);
+  }, [projectId, setCurrentProjectId]);
 
   const toggleTodoComplete = async (todoId: string, currentStatus: boolean) => {
     const { error } = await supabase
@@ -85,7 +41,6 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     if (error) {
       toast.error("Erreur lors de la mise à jour");
     } else {
-      loadTodos();
       toast.success(currentStatus ? "Tâche réactivée" : "Tâche terminée");
     }
   };
@@ -94,10 +49,25 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     const todosForDate = todos.filter(
       (todo) => todo.due_date && isSameDay(parseISO(todo.due_date), date)
     );
-    const expensesForDate = expenses.filter(
-      (expense) => expense.date_achat && isSameDay(parseISO(expense.date_achat), date)
+    
+    const expensesForDate = supplierExpenses.filter(
+      (expense) => expense.order_date && isSameDay(parseISO(expense.order_date), date)
     );
-    return { todos: todosForDate, expenses: expensesForDate };
+
+    const chargesForDate = monthlyCharges.filter(
+      (charge) => charge.jour_mois === date.getDate()
+    );
+
+    const appointmentsForDate = appointments.filter(
+      (appointment) => isSameDay(parseISO(appointment.appointment_date), date)
+    );
+
+    return { 
+      todos: todosForDate, 
+      expenses: expensesForDate,
+      charges: chargesForDate,
+      appointments: appointmentsForDate 
+    };
   };
 
   const goToPreviousDay = () => {
@@ -112,36 +82,23 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     setCurrentDate(new Date());
   };
 
-  const getPaymentStatusColor = (status: string) => {
+  const getAppointmentStatusColor = (status: string) => {
     switch (status) {
-      case "paid":
+      case "confirmed":
         return "bg-green-500/20 text-green-700 border-green-500/30";
       case "pending":
         return "bg-orange-500/20 text-orange-700 border-orange-500/30";
-      case "overdue":
+      case "cancelled":
         return "bg-red-500/20 text-red-700 border-red-500/30";
       default:
         return "bg-gray-500/20 text-gray-700 border-gray-500/30";
     }
   };
 
-  const getPaymentStatusLabel = (status: string) => {
-    switch (status) {
-      case "paid":
-        return "Payé";
-      case "pending":
-        return "En attente";
-      case "overdue":
-        return "En retard";
-      default:
-        return status;
-    }
-  };
-
-  const { todos: todosForDay, expenses: expensesForDay } = getItemsForDate(currentDate);
+  const { todos: todosForDay, expenses: expensesForDay, charges: chargesForDay, appointments: appointmentsForDay } = getItemsForDate(currentDate);
   const isToday = isSameDay(currentDate, new Date());
 
-  // Vue mensuelle
+  // Vue mensuelle améliorée avec cases plus grandes
   const MonthView = () => {
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
@@ -153,53 +110,102 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
     return (
       <div>
-        <div className="grid grid-cols-7 gap-2 mb-2">
-          {["L", "M", "M", "J", "V", "S", "D"].map((day, i) => (
-            <div key={i} className="text-center text-xs font-medium text-gray-500">
+        {/* En-têtes des jours */}
+        <div className="grid grid-cols-7 gap-3 mb-3">
+          {["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"].map((day, i) => (
+            <div key={i} className="text-center text-sm font-semibold text-gray-700 bg-gray-50 py-2 rounded-lg">
               {day}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-1">
+
+        {/* Grille des jours */}
+        <div className="grid grid-cols-7 gap-3">
+          {/* Cases vides pour aligner le premier jour */}
           {Array.from({ length: startPadding }).map((_, i) => (
-            <div key={`empty-${i}`} className="h-20" />
+            <div key={`empty-${i}`} className="h-32 bg-gray-50/50 rounded-lg" />
           ))}
+
+          {/* Jours du mois */}
           {daysInMonth.map((day) => {
-            const { todos: dayTodos, expenses: dayExpenses } = getItemsForDate(day);
-            const hasEvents = dayTodos.length > 0 || dayExpenses.length > 0;
+            const { todos: dayTodos, expenses: dayExpenses, charges: dayCharges, appointments: dayAppointments } = getItemsForDate(day);
+            const hasEvents = dayTodos.length > 0 || dayExpenses.length > 0 || dayCharges.length > 0 || dayAppointments.length > 0;
             const isDayToday = isSameDay(day, new Date());
+            const totalEvents = dayTodos.length + dayExpenses.length + dayCharges.length + dayAppointments.length;
 
             return (
               <div
                 key={day.toISOString()}
-                className={`h-20 p-1 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors ${
-                  isDayToday ? "bg-blue-50 border-blue-300" : "bg-white border-gray-200"
+                className={`h-32 p-3 border-2 rounded-lg cursor-pointer hover:shadow-lg transition-all ${
+                  isDayToday 
+                    ? "bg-blue-50 border-blue-400 shadow-md" 
+                    : hasEvents
+                    ? "bg-white border-gray-300 hover:border-blue-300"
+                    : "bg-gray-50/50 border-gray-200 hover:border-gray-300"
                 }`}
                 onClick={() => {
                   setCurrentDate(day);
                   setIsMonthViewOpen(false);
                 }}
               >
-                <div className={`text-xs font-medium mb-1 ${isDayToday ? "text-blue-600" : ""}`}>
+                {/* Numéro du jour */}
+                <div className={`text-lg font-bold mb-2 ${
+                  isDayToday ? "text-blue-600" : "text-gray-900"
+                }`}>
                   {format(day, "d")}
                 </div>
+
+                {/* Événements */}
                 {hasEvents && (
-                  <div className="space-y-0.5">
-                    {dayTodos.slice(0, 2).map((todo) => (
+                  <div className="space-y-1">
+                    {/* Tâches */}
+                    {dayTodos.slice(0, 1).map((todo) => (
                       <div
                         key={todo.id}
-                        className="h-1 bg-purple-400 rounded-full"
-                      />
+                        className="flex items-center gap-1.5 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded"
+                      >
+                        <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{todo.title}</span>
+                      </div>
                     ))}
-                    {dayExpenses.slice(0, 2).map((expense) => (
+
+                    {/* Rendez-vous */}
+                    {dayAppointments.slice(0, 1).map((appointment) => (
+                      <div
+                        key={appointment.id}
+                        className="flex items-center gap-1.5 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
+                      >
+                        <UserCircle className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{appointment.client_name}</span>
+                      </div>
+                    ))}
+
+                    {/* Dépenses */}
+                    {dayExpenses.slice(0, 1).map((expense) => (
                       <div
                         key={expense.id}
-                        className="h-1 bg-emerald-400 rounded-full"
-                      />
+                        className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded"
+                      >
+                        <Package className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{expense.product_name}</span>
+                      </div>
                     ))}
-                    {(dayTodos.length + dayExpenses.length > 2) && (
-                      <div className="text-[9px] text-gray-500 text-center">
-                        +{dayTodos.length + dayExpenses.length - 2}
+
+                    {/* Charges */}
+                    {dayCharges.slice(0, 1).map((charge) => (
+                      <div
+                        key={charge.id}
+                        className="flex items-center gap-1.5 text-xs bg-red-100 text-red-800 px-2 py-1 rounded"
+                      >
+                        <Euro className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{charge.nom_charge}</span>
+                      </div>
+                    ))}
+
+                    {/* Indicateur d'événements supplémentaires */}
+                    {totalEvents > 2 && (
+                      <div className="text-[10px] text-gray-600 font-medium text-center bg-gray-100 px-2 py-0.5 rounded">
+                        +{totalEvents - 2} autre{totalEvents - 2 > 1 ? "s" : ""}
                       </div>
                     )}
                   </div>
@@ -255,7 +261,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
           {/* Événements du jour */}
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
-            {todosForDay.length === 0 && expensesForDay.length === 0 ? (
+            {todosForDay.length === 0 && expensesForDay.length === 0 && chargesForDay.length === 0 && appointmentsForDay.length === 0 ? (
               <div className="text-center py-6 text-xs text-gray-400">
                 Aucun événement
               </div>
@@ -301,28 +307,89 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   </div>
                 ))}
 
-                {/* Dépenses / Paiements */}
+                {/* Rendez-vous */}
+                {appointmentsForDay.map((appointment) => (
+                  <div
+                    key={appointment.id}
+                    className="p-2 rounded-lg backdrop-blur-sm bg-white/80 border border-blue-200 shadow-sm hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-start gap-2">
+                      <UserCircle className="h-4 w-4 mt-0.5 text-blue-600 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900 leading-tight">
+                          {appointment.client_name}
+                        </p>
+                        {appointment.description && (
+                          <p className="text-[10px] text-gray-500 mt-0.5">
+                            {appointment.description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[10px] text-gray-600">
+                            {appointment.duration_minutes} min
+                          </span>
+                          <Badge
+                            className={`text-[10px] px-1 py-0 h-4 ${getAppointmentStatusColor(
+                              appointment.status
+                            )}`}
+                          >
+                            RDV
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Dépenses fournisseurs */}
                 {expensesForDay.map((expense) => (
                   <div
                     key={expense.id}
-                    className="p-2 rounded-lg backdrop-blur-sm bg-white/80 border border-emerald-200 shadow-sm hover:shadow-md transition-all"
+                    className="p-2 rounded-lg backdrop-blur-sm bg-white/80 border border-orange-200 shadow-sm hover:shadow-md transition-all"
                   >
                     <div className="flex items-start gap-2">
-                      <Euro className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
+                      <Package className="h-4 w-4 mt-0.5 text-orange-600 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-900 leading-tight">
-                          {expense.nom_accessoire}
+                          {expense.product_name}
                         </p>
                         <div className="flex items-center gap-1 mt-1">
-                          <span className="text-xs font-bold text-emerald-700">
-                            {expense.prix.toFixed(2)} €
+                          <span className="text-xs font-bold text-orange-700">
+                            {expense.total_amount.toFixed(2)} €
                           </span>
                           <Badge
-                            className={`text-[10px] px-1 py-0 h-4 ${getPaymentStatusColor(
-                              expense.statut_paiement
-                            )}`}
+                            variant="outline"
+                            className="text-[10px] px-1 py-0 h-4 bg-orange-50 text-orange-700 border-orange-200"
                           >
-                            {getPaymentStatusLabel(expense.statut_paiement)}
+                            Fournisseur
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Charges mensuelles */}
+                {chargesForDay.map((charge) => (
+                  <div
+                    key={charge.id}
+                    className="p-2 rounded-lg backdrop-blur-sm bg-white/80 border border-red-200 shadow-sm hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-start gap-2">
+                      <Euro className="h-4 w-4 mt-0.5 text-red-600 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900 leading-tight">
+                          {charge.nom_charge}
+                        </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-xs font-bold text-red-700">
+                            {charge.montant.toFixed(2)} €
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] px-1 py-0 h-4 bg-red-50 text-red-700 border-red-200"
+                          >
+                            Charge
                           </Badge>
                         </div>
                       </div>
@@ -334,32 +401,41 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           </div>
 
           {/* Légende */}
-          <div className="flex items-center justify-center gap-4 pt-2 border-t text-[10px] text-gray-500">
+          <div className="flex items-center justify-center gap-3 pt-2 border-t text-[10px] text-gray-500">
             <div className="flex items-center gap-1">
               <div className="h-2 w-2 bg-purple-400 rounded-full" />
               <span>Tâches</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="h-2 w-2 bg-emerald-600 rounded-full" />
-              <span>Paiements</span>
+              <div className="h-2 w-2 bg-blue-600 rounded-full" />
+              <span>RDV</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-2 w-2 bg-orange-600 rounded-full" />
+              <span>Dép.</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-2 w-2 bg-red-600 rounded-full" />
+              <span>Charges</span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Modal Vue Mensuelle */}
+      {/* Modal Vue Mensuelle Améliorée */}
       <Dialog open={isMonthViewOpen} onOpenChange={setIsMonthViewOpen}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
-              <span>Planning Mensuel - {format(currentDate, "MMMM yyyy", { locale: fr })}</span>
+              <span className="text-xl">📅 Planning Mensuel - {format(currentDate, "MMMM yyyy", { locale: fr })}</span>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentDate(addDays(startOfMonth(currentDate), -1))}
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Mois précédent
                 </Button>
                 <Button variant="outline" size="sm" onClick={goToToday}>
                   Aujourd'hui
@@ -369,7 +445,8 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   size="sm"
                   onClick={() => setCurrentDate(addDays(endOfMonth(currentDate), 1))}
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  Mois suivant
+                  <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>
             </DialogTitle>
