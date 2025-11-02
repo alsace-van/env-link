@@ -13,17 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { 
-  AlertTriangle, 
-  CheckCircle2, 
-  Eye, 
-  EyeOff, 
-  Edit2,
-  AlertCircle,
-  Info,
-  XCircle,
-  ScanLine
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, Edit2, AlertCircle, Info, XCircle, ScanLine } from "lucide-react";
 import { type VehicleRegistrationData } from "@/lib/registrationCardParser";
 
 interface ScanConfirmationModalProps {
@@ -39,7 +29,7 @@ interface ScanConfirmationModalProps {
 
 /**
  * Modal de confirmation des données scannées - VERSION COMPLÈTE
- * 
+ *
  * Affiche les 8 champs avec :
  * - Statut de détection (Détecté / Non détecté)
  * - Boutons Rescan pour VIN, Immat, Marque, Modèle
@@ -58,11 +48,11 @@ export const ScanConfirmationModal = ({
 }: ScanConfirmationModalProps) => {
   // État local pour l'édition
   const [editedData, setEditedData] = useState<VehicleRegistrationData>(scannedData);
-  
+
   // États de vérification
   const [vinVerified, setVinVerified] = useState(false);
   const [showVinHelp, setShowVinHelp] = useState(false);
-  
+
   // Mode édition pour chaque champ
   const [editingVin, setEditingVin] = useState(false);
   const [editingImmat, setEditingImmat] = useState(false);
@@ -81,9 +71,9 @@ export const ScanConfirmationModal = ({
   }, [scannedData]);
 
   const handleFieldChange = (field: keyof VehicleRegistrationData, value: any) => {
-    setEditedData(prev => ({ ...prev, [field]: value }));
+    setEditedData((prev) => ({ ...prev, [field]: value }));
     // Réinitialiser la vérification si le VIN est modifié
-    if (field === 'numeroChassisVIN') setVinVerified(false);
+    if (field === "numeroChassisVIN") setVinVerified(false);
   };
 
   const handleConfirm = () => {
@@ -97,7 +87,7 @@ export const ScanConfirmationModal = ({
   // Helper pour afficher le statut de détection
   const getDetectionStatus = (value: any) => {
     const isDetected = value !== undefined && value !== null && value !== "";
-    
+
     if (isDetected) {
       return (
         <Badge className="bg-green-100 text-green-800 border-green-300">
@@ -126,9 +116,7 @@ export const ScanConfirmationModal = ({
             <CheckCircle2 className="h-5 w-5 text-green-600" />
             Vérification des données scannées
           </DialogTitle>
-          <DialogDescription>
-            Vérifiez attentivement les informations détectées avant de les utiliser
-          </DialogDescription>
+          <DialogDescription>Vérifiez attentivement les informations détectées avant de les utiliser</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -156,12 +144,7 @@ export const ScanConfirmationModal = ({
                     Rescan
                   </Button>
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setEditingImmat(!editingImmat)}
-                >
+                <Button type="button" variant="outline" size="sm" onClick={() => setEditingImmat(!editingImmat)}>
                   <Edit2 className="h-4 w-4 mr-2" />
                   {editingImmat ? "Annuler" : "Modifier"}
                 </Button>
@@ -175,7 +158,7 @@ export const ScanConfirmationModal = ({
             ) : editingImmat ? (
               <Input
                 value={editedData.immatriculation || ""}
-                onChange={(e) => handleFieldChange('immatriculation', e.target.value.toUpperCase())}
+                onChange={(e) => handleFieldChange("immatriculation", e.target.value.toUpperCase())}
                 className="text-xl font-mono tracking-wider"
                 placeholder="AA-123-BB"
               />
@@ -189,55 +172,44 @@ export const ScanConfirmationModal = ({
           {/* ============================================ */}
           {/* SECTION 2 : VIN (CRITIQUE) */}
           {/* ============================================ */}
-          {editedData.numeroChassisVIN && (
-            <div className="space-y-3">
-              {/* Alerte de vérification obligatoire */}
-              {!vinVerified && (
-                <Alert className="border-2 border-orange-500 bg-orange-50">
-                  <AlertTriangle className="h-5 w-5 text-orange-600" />
-                  <AlertTitle className="text-orange-900 font-bold">
-                    🚨 VÉRIFICATION OBLIGATOIRE DU VIN
-                  </AlertTitle>
-                  <AlertDescription className="text-orange-800">
-                    <p className="font-semibold mb-2">
-                      L'OCR peut confondre certains caractères (Z→1, O→0, I→1, S→5, B→8)
-                    </p>
-                    <p className="text-sm">
-                      Vous devez vérifier le VIN caractère par caractère avant de continuer.
-                    </p>
-                  </AlertDescription>
-                </Alert>
-              )}
+          <div className="space-y-3">
+            {/* Alerte de vérification obligatoire - affichée seulement si VIN détecté */}
+            {editedData.numeroChassisVIN && !vinVerified && (
+              <Alert className="border-2 border-orange-500 bg-orange-50">
+                <AlertTriangle className="h-5 w-5 text-orange-600" />
+                <AlertTitle className="text-orange-900 font-bold">🚨 VÉRIFICATION OBLIGATOIRE DU VIN</AlertTitle>
+                <AlertDescription className="text-orange-800">
+                  <p className="font-semibold mb-2">
+                    L'OCR peut confondre certains caractères (Z→1, O→0, I→1, S→5, B→8)
+                  </p>
+                  <p className="text-sm">Vous devez vérifier le VIN caractère par caractère avant de continuer.</p>
+                </AlertDescription>
+              </Alert>
+            )}
 
-              <div className="p-4 border-2 border-orange-300 rounded-lg bg-white">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Label className="text-base font-semibold text-orange-900">
-                      Numéro de châssis (VIN)
-                    </Label>
-                    {getDetectionStatus(editedData.numeroChassisVIN)}
-                  </div>
-                  <div className="flex gap-2">
-                    {onRescanVIN && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          onClose();
-                          onRescanVIN();
-                        }}
-                      >
-                        <ScanLine className="h-4 w-4 mr-2" />
-                        Rescan
-                      </Button>
-                    )}
+            <div className="p-4 border-2 border-orange-300 rounded-lg bg-white">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Label className="text-base font-semibold text-orange-900">Numéro de châssis (VIN)</Label>
+                  {getDetectionStatus(editedData.numeroChassisVIN)}
+                </div>
+                <div className="flex gap-2">
+                  {onRescanVIN && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setShowVinHelp(!showVinHelp)}
+                      onClick={() => {
+                        onClose();
+                        onRescanVIN();
+                      }}
                     >
+                      <ScanLine className="h-4 w-4 mr-2" />
+                      Rescan
+                    </Button>
+                  )}
+                  {editedData.numeroChassisVIN && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowVinHelp(!showVinHelp)}>
                       {showVinHelp ? (
                         <>
                           <EyeOff className="h-4 w-4 mr-2" />
@@ -250,127 +222,151 @@ export const ScanConfirmationModal = ({
                         </>
                       )}
                     </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingVin(!editingVin)}
-                    >
-                      <Edit2 className="h-4 w-4 mr-2" />
-                      {editingVin ? "Annuler" : "Corriger"}
-                    </Button>
-                  </div>
+                  )}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setEditingVin(!editingVin)}>
+                    <Edit2 className="h-4 w-4 mr-2" />
+                    {editingVin ? "Annuler" : editedData.numeroChassisVIN ? "Corriger" : "Saisir"}
+                  </Button>
                 </div>
+              </div>
 
-                {/* Affichage du VIN */}
-                {!editingVin ? (
-                  <>
-                    {/* Caractères séparés visuellement */}
-                    <div className="flex flex-wrap gap-1 mb-3 justify-center">
-                      {editedData.numeroChassisVIN.split("").map((char, index) => (
-                        <div
-                          key={index}
-                          className={`
-                            w-10 h-14 flex items-center justify-center 
-                            border-2 rounded font-mono text-2xl font-bold
-                            ${vinVerified 
-                              ? 'bg-green-100 border-green-500 text-green-900' 
-                              : 'bg-orange-100 border-orange-400 text-orange-900'
-                            }
-                          `}
-                          title={`Position ${index + 1}`}
-                        >
-                          {char}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Compteur de caractères */}
-                    <div className="flex items-center justify-center gap-2 mb-3">
-                      <Badge 
-                        variant={isVinValid ? "default" : "destructive"}
-                        className="text-sm"
+              {/* Affichage du VIN si détecté */}
+              {editedData.numeroChassisVIN && !editingVin ? (
+                <>
+                  {/* Caractères séparés visuellement */}
+                  <div className="flex flex-wrap gap-1 mb-3 justify-center">
+                    {editedData.numeroChassisVIN.split("").map((char, index) => (
+                      <div
+                        key={index}
+                        className={`
+                          w-10 h-14 flex items-center justify-center 
+                          border-2 rounded font-mono text-2xl font-bold
+                          ${
+                            vinVerified
+                              ? "bg-green-100 border-green-500 text-green-900"
+                              : "bg-orange-100 border-orange-400 text-orange-900"
+                          }
+                        `}
+                        title={`Position ${index + 1}`}
                       >
-                        {vinLength}/17 caractères
-                      </Badge>
-                      {!isVinValid && (
-                        <span className="text-sm text-red-600 font-semibold">
-                          ⚠️ Le VIN doit faire exactement 17 caractères
-                        </span>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  /* Mode édition du VIN */
-                  <div className="mb-3">
-                    <Input
-                      value={editedData.numeroChassisVIN}
-                      onChange={(e) => handleFieldChange('numeroChassisVIN', e.target.value.toUpperCase())}
-                      className="text-center font-mono text-xl tracking-wider"
-                      maxLength={17}
-                      placeholder="17 caractères"
-                    />
-                    <p className="text-xs text-center text-muted-foreground mt-1">
-                      Modifiez directement les caractères incorrects
-                    </p>
-                  </div>
-                )}
-
-                {/* Aide visuelle - Confusions courantes */}
-                {showVinHelp && (
-                  <Alert className="bg-yellow-50 border-yellow-300 mb-3">
-                    <Info className="h-4 w-4 text-yellow-700" />
-                    <AlertDescription>
-                      <p className="text-sm font-semibold text-yellow-900 mb-2">
-                        ⚠️ Confusions courantes de l'OCR :
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono">0</Badge>
-                          <span className="text-xs">≠</span>
-                          <Badge variant="outline" className="font-mono">O</Badge>
-                          <span className="text-xs text-gray-600">(zéro vs lettre O)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono">1</Badge>
-                          <span className="text-xs">≠</span>
-                          <Badge variant="outline" className="font-mono">I</Badge>
-                          <span className="text-xs text-gray-600">(un vs lettre I)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono">5</Badge>
-                          <span className="text-xs">≠</span>
-                          <Badge variant="outline" className="font-mono">S</Badge>
-                          <span className="text-xs text-gray-600">(cinq vs lettre S)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono">8</Badge>
-                          <span className="text-xs">≠</span>
-                          <Badge variant="outline" className="font-mono">B</Badge>
-                          <span className="text-xs text-gray-600">(huit vs lettre B)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono">Z</Badge>
-                          <span className="text-xs">≠</span>
-                          <Badge variant="outline" className="font-mono">2</Badge>
-                          <span className="text-xs text-gray-600">(Z vs deux)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono">Z</Badge>
-                          <span className="text-xs">≠</span>
-                          <Badge variant="outline" className="font-mono">1</Badge>
-                          <span className="text-xs text-gray-600 font-bold">(Z vs un) 🔴</span>
-                        </div>
+                        {char}
                       </div>
-                      <p className="text-xs text-yellow-800 font-semibold">
-                        💡 Info : Le VIN ne contient JAMAIS les lettres I, O, Q
-                      </p>
-                    </AlertDescription>
-                  </Alert>
-                )}
+                    ))}
+                  </div>
 
-                {/* Boutons de vérification */}
-                {!vinVerified ? (
+                  {/* Compteur de caractères */}
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <Badge variant={isVinValid ? "default" : "destructive"} className="text-sm">
+                      {vinLength}/17 caractères
+                    </Badge>
+                    {!isVinValid && (
+                      <span className="text-sm text-red-600 font-semibold">
+                        ⚠️ Le VIN doit faire exactement 17 caractères
+                      </span>
+                    )}
+                  </div>
+                </>
+              ) : editingVin ? (
+                /* Mode édition du VIN */
+                <div className="mb-3">
+                  <Input
+                    value={editedData.numeroChassisVIN || ""}
+                    onChange={(e) => handleFieldChange("numeroChassisVIN", e.target.value.toUpperCase())}
+                    className="text-center font-mono text-xl tracking-wider"
+                    maxLength={17}
+                    placeholder="17 caractères"
+                  />
+                  <p className="text-xs text-center text-muted-foreground mt-1">
+                    {editedData.numeroChassisVIN
+                      ? "Modifiez directement les caractères incorrects"
+                      : "Saisissez le VIN manuellement"}
+                  </p>
+                </div>
+              ) : (
+                /* VIN non détecté */
+                <div className="text-center p-3 text-gray-500 italic">
+                  Non détecté - Cliquez sur "Rescan" ou "Saisir" pour ajouter le VIN
+                </div>
+              )}
+
+              {/* Aide visuelle - Confusions courantes - affichée uniquement si VIN détecté */}
+              {editedData.numeroChassisVIN && showVinHelp && (
+                <Alert className="bg-yellow-50 border-yellow-300 mb-3">
+                  <Info className="h-4 w-4 text-yellow-700" />
+                  <AlertDescription>
+                    <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Confusions courantes de l'OCR :</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono">
+                          0
+                        </Badge>
+                        <span className="text-xs">≠</span>
+                        <Badge variant="outline" className="font-mono">
+                          O
+                        </Badge>
+                        <span className="text-xs text-gray-600">(zéro vs lettre O)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono">
+                          1
+                        </Badge>
+                        <span className="text-xs">≠</span>
+                        <Badge variant="outline" className="font-mono">
+                          I
+                        </Badge>
+                        <span className="text-xs text-gray-600">(un vs lettre I)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono">
+                          5
+                        </Badge>
+                        <span className="text-xs">≠</span>
+                        <Badge variant="outline" className="font-mono">
+                          S
+                        </Badge>
+                        <span className="text-xs text-gray-600">(cinq vs lettre S)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono">
+                          8
+                        </Badge>
+                        <span className="text-xs">≠</span>
+                        <Badge variant="outline" className="font-mono">
+                          B
+                        </Badge>
+                        <span className="text-xs text-gray-600">(huit vs lettre B)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono">
+                          Z
+                        </Badge>
+                        <span className="text-xs">≠</span>
+                        <Badge variant="outline" className="font-mono">
+                          2
+                        </Badge>
+                        <span className="text-xs text-gray-600">(Z vs deux)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono">
+                          Z
+                        </Badge>
+                        <span className="text-xs">≠</span>
+                        <Badge variant="outline" className="font-mono">
+                          1
+                        </Badge>
+                        <span className="text-xs text-gray-600 font-bold">(Z vs un) 🔴</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-yellow-800 font-semibold">
+                      💡 Info : Le VIN ne contient JAMAIS les lettres I, O, Q
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Boutons de vérification - affichés uniquement si VIN détecté */}
+              {editedData.numeroChassisVIN &&
+                (!vinVerified ? (
                   <Button
                     type="button"
                     onClick={() => setVinVerified(true)}
@@ -394,10 +390,9 @@ export const ScanConfirmationModal = ({
                       Révérifier
                     </Button>
                   </div>
-                )}
-              </div>
+                ))}
             </div>
-          )}
+          </div>
 
           <Separator />
 
@@ -413,7 +408,7 @@ export const ScanConfirmationModal = ({
                   {getDetectionStatus(editedData.marque)}
                 </div>
                 <div className="flex gap-2">
-                  {onRescanMarque && editedData.marque && (
+                  {onRescanMarque && (
                     <Button
                       type="button"
                       variant="outline"
@@ -427,31 +422,22 @@ export const ScanConfirmationModal = ({
                       Rescan
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingMarque(!editingMarque)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMarque(!editingMarque)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
 
               {!editingMarque && editedData.marque ? (
-                <div className="font-semibold text-lg p-2 bg-white border rounded">
-                  {editedData.marque}
-                </div>
+                <div className="font-semibold text-lg p-2 bg-white border rounded">{editedData.marque}</div>
               ) : editingMarque ? (
                 <Input
                   value={editedData.marque || ""}
-                  onChange={(e) => handleFieldChange('marque', e.target.value)}
+                  onChange={(e) => handleFieldChange("marque", e.target.value)}
                   className="font-semibold"
                 />
               ) : (
-                <div className="text-center p-2 text-gray-500 text-sm italic">
-                  Non détecté
-                </div>
+                <div className="text-center p-2 text-gray-500 text-sm italic">Non détecté</div>
               )}
             </div>
 
@@ -463,7 +449,7 @@ export const ScanConfirmationModal = ({
                   {getDetectionStatus(editedData.denominationCommerciale)}
                 </div>
                 <div className="flex gap-2">
-                  {onRescanModele && editedData.denominationCommerciale && (
+                  {onRescanModele && (
                     <Button
                       type="button"
                       variant="outline"
@@ -477,12 +463,7 @@ export const ScanConfirmationModal = ({
                       Rescan
                     </Button>
                   )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingModele(!editingModele)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingModele(!editingModele)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -495,12 +476,10 @@ export const ScanConfirmationModal = ({
               ) : editingModele ? (
                 <Input
                   value={editedData.denominationCommerciale || ""}
-                  onChange={(e) => handleFieldChange('denominationCommerciale', e.target.value)}
+                  onChange={(e) => handleFieldChange("denominationCommerciale", e.target.value)}
                 />
               ) : (
-                <div className="text-center p-2 text-gray-500 text-sm italic">
-                  Non détecté
-                </div>
+                <div className="text-center p-2 text-gray-500 text-sm italic">Non détecté</div>
               )}
             </div>
           </div>
@@ -519,15 +498,8 @@ export const ScanConfirmationModal = ({
               </div>
               {!editingDate && editedData.datePremiereImmatriculation ? (
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 p-2 bg-slate-50 border rounded">
-                    {editedData.datePremiereImmatriculation}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingDate(!editingDate)}
-                  >
+                  <div className="flex-1 p-2 bg-slate-50 border rounded">{editedData.datePremiereImmatriculation}</div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingDate(!editingDate)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -535,21 +507,19 @@ export const ScanConfirmationModal = ({
                 <div className="flex items-center gap-2">
                   <Input
                     value={editedData.datePremiereImmatriculation || ""}
-                    onChange={(e) => handleFieldChange('datePremiereImmatriculation', e.target.value)}
+                    onChange={(e) => handleFieldChange("datePremiereImmatriculation", e.target.value)}
                     className="flex-1"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingDate(false)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingDate(false)}>
                     OK
                   </Button>
                 </div>
               ) : (
                 <div className="p-2 text-gray-500 text-sm italic">
-                  Non détecté - <button onClick={() => setEditingDate(true)} className="underline">Saisir</button>
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingDate(true)} className="underline">
+                    Saisir
+                  </button>
                 </div>
               )}
             </div>
@@ -562,9 +532,7 @@ export const ScanConfirmationModal = ({
               </div>
               {!editingMasseVide && editedData.masseVide ? (
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">
-                    {editedData.masseVide} kg
-                  </div>
+                  <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">{editedData.masseVide} kg</div>
                   <Button
                     type="button"
                     variant="ghost"
@@ -579,21 +547,19 @@ export const ScanConfirmationModal = ({
                   <Input
                     type="number"
                     value={editedData.masseVide || ""}
-                    onChange={(e) => handleFieldChange('masseVide', parseInt(e.target.value) || undefined)}
+                    onChange={(e) => handleFieldChange("masseVide", parseInt(e.target.value) || undefined)}
                     className="flex-1"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingMasseVide(false)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMasseVide(false)}>
                     OK
                   </Button>
                 </div>
               ) : (
                 <div className="p-2 text-gray-500 text-sm italic">
-                  Non détecté - <button onClick={() => setEditingMasseVide(true)} className="underline">Saisir</button>
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingMasseVide(true)} className="underline">
+                    Saisir
+                  </button>
                 </div>
               )}
             </div>
@@ -609,12 +575,7 @@ export const ScanConfirmationModal = ({
                   <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">
                     {editedData.masseEnChargeMax} kg
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingPTAC(!editingPTAC)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPTAC(!editingPTAC)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -623,21 +584,19 @@ export const ScanConfirmationModal = ({
                   <Input
                     type="number"
                     value={editedData.masseEnChargeMax || ""}
-                    onChange={(e) => handleFieldChange('masseEnChargeMax', parseInt(e.target.value) || undefined)}
+                    onChange={(e) => handleFieldChange("masseEnChargeMax", parseInt(e.target.value) || undefined)}
                     className="flex-1"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingPTAC(false)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPTAC(false)}>
                     OK
                   </Button>
                 </div>
               ) : (
                 <div className="p-2 text-gray-500 text-sm italic">
-                  Non détecté - <button onClick={() => setEditingPTAC(true)} className="underline">Saisir</button>
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingPTAC(true)} className="underline">
+                    Saisir
+                  </button>
                 </div>
               )}
             </div>
@@ -650,15 +609,8 @@ export const ScanConfirmationModal = ({
               </div>
               {!editingGenre && editedData.genreNational ? (
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 p-2 bg-slate-50 border rounded">
-                    {editedData.genreNational}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingGenre(!editingGenre)}
-                  >
+                  <div className="flex-1 p-2 bg-slate-50 border rounded">{editedData.genreNational}</div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingGenre(!editingGenre)}>
                     <Edit2 className="h-3 w-3" />
                   </Button>
                 </div>
@@ -666,21 +618,19 @@ export const ScanConfirmationModal = ({
                 <div className="flex items-center gap-2">
                   <Input
                     value={editedData.genreNational || ""}
-                    onChange={(e) => handleFieldChange('genreNational', e.target.value)}
+                    onChange={(e) => handleFieldChange("genreNational", e.target.value)}
                     className="flex-1"
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingGenre(false)}
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingGenre(false)}>
                     OK
                   </Button>
                 </div>
               ) : (
                 <div className="p-2 text-gray-500 text-sm italic">
-                  Non détecté - <button onClick={() => setEditingGenre(true)} className="underline">Saisir</button>
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingGenre(true)} className="underline">
+                    Saisir
+                  </button>
                 </div>
               )}
             </div>
@@ -698,11 +648,7 @@ export const ScanConfirmationModal = ({
         </div>
 
         <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             Annuler
           </Button>
           <Button
