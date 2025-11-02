@@ -9,7 +9,7 @@ interface NoteWithProject {
   title: string;
   content: string | null;
   created_at: string;
-  project: { nom_projet: string };
+  projects: { nom_projet: string } | null;
 }
 
 export const GlobalNotes = () => {
@@ -54,7 +54,7 @@ export const GlobalNotes = () => {
                 <CardTitle className="text-sm flex justify-between items-start">
                   <span>{note.title}</span>
                   <Badge variant="outline" className="text-xs">
-                    {(note.project as any).nom_projet || "Projet"}
+                    {note.projects?.nom_projet || "Projet"}
                   </Badge>
                 </CardTitle>
               </CardHeader>
