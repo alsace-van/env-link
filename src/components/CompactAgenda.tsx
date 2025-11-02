@@ -210,7 +210,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
     return (
       <ContextMenu>
-        <ContextMenuTrigger>
+        <ContextMenuTrigger asChild>
           <div
             className={`relative p-1.5 rounded-lg transition-all cursor-pointer min-h-[40px] ${
               isCurrentHour
@@ -633,12 +633,16 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         onClose={() => setIsAddNoteOpen(false)}
         onSuccess={handleModalSuccess}
         projectId={projectId}
+        selectedDate={currentDate}
+        selectedHour={selectedHour}
       />
       <AddSupplierExpenseModal
         isOpen={isAddExpenseOpen}
         onClose={() => setIsAddExpenseOpen(false)}
         onSuccess={handleModalSuccess}
+        projectId={projectId}
         selectedDate={currentDate}
+        selectedHour={selectedHour}
       />
       <AddAppointmentModal
         isOpen={isAddAppointmentOpen}
