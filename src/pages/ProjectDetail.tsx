@@ -48,7 +48,7 @@ import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
-import { ProjectPlanning } from "@/components/ProjectPlanning";
+import { CompactAgenda } from "@/components/CompactAgenda";
 import logo from "@/assets/logo.png";
 
 interface Project {
@@ -310,8 +310,9 @@ const ProjectDetail = () => {
         <div className="flex gap-6">
           {/* Contenu principal */}
           <div className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? "mr-0" : "mr-0"}`}>
-            <div className="mb-6">
-              <Card className="w-fit">
+            <div className="mb-6 flex gap-6">
+              {/* Informations du Projet */}
+              <Card className="flex-1">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between gap-8">
                     <CardTitle className="text-base">Informations du Projet</CardTitle>
@@ -488,11 +489,11 @@ const ProjectDetail = () => {
                   </CardContent>
                 )}
               </Card>
-            </div>
 
-            {/* Planning du projet */}
-            <div className="mb-6">
-              <ProjectPlanning projectId={project?.id || null} />
+              {/* Agenda Compact */}
+              <div className="w-80">
+                <CompactAgenda projectId={project?.id || null} />
+              </div>
             </div>
 
             <Tabs defaultValue="photos" className="w-full">
