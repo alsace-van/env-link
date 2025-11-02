@@ -48,6 +48,7 @@ import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
+import { ProjectPlanning } from "@/components/ProjectPlanning";
 import logo from "@/assets/logo.png";
 
 interface Project {
@@ -487,6 +488,11 @@ const ProjectDetail = () => {
                   </CardContent>
                 )}
               </Card>
+            </div>
+
+            {/* Planning du projet */}
+            <div className="mb-6">
+              <ProjectPlanning projectId={project?.id || null} />
             </div>
 
             <Tabs defaultValue="photos" className="w-full">
