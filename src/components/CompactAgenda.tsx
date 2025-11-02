@@ -165,24 +165,24 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const getCurrentFourHours = () => {
     const currentHour = currentTime.getHours(); // Utiliser currentTime pour le rafraîchissement
 
-    // Si on est en dehors des heures de travail (8h-20h), afficher 8h-11h
+    // Si on est en dehors des heures de travail (8h-21h)
     if (currentHour < 8) return [8, 9, 10, 11];
-    if (currentHour > 20) return [17, 18, 19, 20];
+    if (currentHour > 21) return [18, 19, 20, 21]; // Après 21h, afficher fin de journée
 
     // Centrer sur l'heure actuelle : 2h avant et 1h après
     const startHour = Math.max(8, currentHour - 2);
-    const endHour = Math.min(20, startHour + 3);
+    const endHour = Math.min(21, startHour + 3);
 
     // Ajuster si on est à la fin de la journée
-    const adjustedStart = endHour === 20 ? Math.max(8, 20 - 3) : startHour;
+    const adjustedStart = endHour === 21 ? Math.max(8, 21 - 3) : startHour;
 
     return [adjustedStart, adjustedStart + 1, adjustedStart + 2, adjustedStart + 3];
   };
 
-  // Toutes les heures (8h-20h) pour le mode étendu
-  const allHours = Array.from({ length: 13 }, (_, i) => i + 8);
+  // Toutes les heures (8h-21h) pour le mode étendu
+  const allHours = Array.from({ length: 14 }, (_, i) => i + 8); // 8h à 21h (14 heures)
   const leftColumnHours = allHours.slice(0, 7); // 8h-14h
-  const rightColumnHours = allHours.slice(7); // 15h-20h
+  const rightColumnHours = allHours.slice(7); // 15h-21h
 
   // Choisir les heures à afficher selon le mode
   const displayHours = isExpanded ? allHours : getCurrentFourHours();
@@ -633,12 +633,16 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         onClose={() => setIsAddNoteOpen(false)}
         onSuccess={handleModalSuccess}
         projectId={projectId}
+        selectedDate={currentDate}
+        selectedHour={selectedHour}
       />
       <AddSupplierExpenseModal
         isOpen={isAddExpenseOpen}
         onClose={() => setIsAddExpenseOpen(false)}
         onSuccess={handleModalSuccess}
+        projectId={projectId}
         selectedDate={currentDate}
+        selectedHour={selectedHour}
       />
       <AddAppointmentModal
         isOpen={isAddAppointmentOpen}
