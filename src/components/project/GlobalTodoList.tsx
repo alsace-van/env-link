@@ -33,10 +33,7 @@ export const GlobalTodoList = () => {
   }, []);
 
   const loadTodos = async () => {
-    const { data, error } = await supabase
-      .from("project_todos")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("project_todos").select("*").order("created_at", { ascending: false });
 
     if (error) {
       console.error(error);
@@ -61,7 +58,6 @@ export const GlobalTodoList = () => {
     const { error } = await supabase.from("project_todos").delete().eq("id", id);
     if (!error) loadTodos();
   };
-
 
   return (
     <div className="space-y-2">
@@ -99,32 +95,30 @@ export const GlobalTodoList = () => {
         </div>
       </div>
 
-      <ScrollArea className="h-[300px]">
-        <div className="space-y-2">
-          {todos.map((todo) => (
-            <div key={todo.id} className="flex flex-col gap-1 p-3 rounded-lg border">
-              <div className="flex items-center gap-2">
-                <Checkbox checked={todo.completed} onCheckedChange={() => toggleTodo(todo.id, todo.completed)} />
-                <span className={`flex-1 text-sm ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
-                  {todo.title}
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => deleteTodo(todo.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex items-center gap-2 ml-6 text-xs text-muted-foreground">
-                {todo.due_date && (
-                  <Badge variant={new Date(todo.due_date) < new Date() && !todo.completed ? "destructive" : "outline"}>
-                    <CalendarIcon className="h-3 w-3 mr-1" />
-                    {format(new Date(todo.due_date), "dd MMM yyyy", { locale: fr })}
-                  </Badge>
-                )}
-                <span>Créé le {format(new Date(todo.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}</span>
-              </div>
+      <div className="space-y-2">
+        {todos.map((todo) => (
+          <div key={todo.id} className="flex flex-col gap-1 p-3 rounded-lg border">
+            <div className="flex items-center gap-2">
+              <Checkbox checked={todo.completed} onCheckedChange={() => toggleTodo(todo.id, todo.completed)} />
+              <span className={`flex-1 text-sm ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
+                {todo.title}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => deleteTodo(todo.id)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
-          ))}
-        </div>
-      </ScrollArea>
+            <div className="flex items-center gap-2 ml-6 text-xs text-muted-foreground">
+              {todo.due_date && (
+                <Badge variant={new Date(todo.due_date) < new Date() && !todo.completed ? "destructive" : "outline"}>
+                  <CalendarIcon className="h-3 w-3 mr-1" />
+                  {format(new Date(todo.due_date), "dd MMM yyyy", { locale: fr })}
+                </Badge>
+              )}
+              <span>Créé le {format(new Date(todo.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
