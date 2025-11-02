@@ -10,11 +10,23 @@ import {
   CheckCircle2,
   Euro,
   Maximize2,
+  Minimize2,
   Package,
   UserCircle,
   StickyNote,
+  Calendar,
 } from "lucide-react";
-import { format, addDays, isSameDay, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from "date-fns";
+import {
+  format,
+  addDays,
+  isSameDay,
+  parseISO,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  getDay,
+  addMonths,
+} from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
 import { useProjectData } from "@/contexts/ProjectDataContext";
@@ -30,7 +42,9 @@ interface CompactAgendaProps {
 
 export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [isExpanded, setIsExpanded] = useState(false); // Mode réduit (4h) vs journée complète (13h)
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false);
+  const [monthCellSize, setMonthCellSize] = useState<"normal" | "large">("normal"); // Taille des cases du mois
 
   // États pour les modales
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -137,24 +151,71 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
   const isToday = isSameDay(currentDate, new Date());
 
-  // Heures en 2 colonnes : seulement aujourd'hui de 8h à 20h
-  const leftColumnHours = [8, 9, 10, 11, 12, 13, 14]; // Colonne gauche (matin + début après-midi)
-  const rightColumnHours = [15, 16, 17, 18, 19, 20]; // Colonne droite (après-midi + soir)
+  // Calculer les 4 heures centrées sur l'heure actuelle (pour mode réduit)
+  const getCurrentFourHours = () => {
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    // Si on est en dehors des heures de travail (8h-20h), afficher 8h-11h
+    if (currentHour < 8) return [8, 9, 10, 11];
+    if (currentHour > 20) return [17, 18, 19, 20];
+
+    // Centrer sur l'heure actuelle : 2h avant et 1h après
+    const startHour = Math.max(8, currentHour - 2);
+    const endHour = Math.min(20, startHour + 3);
+
+    // Ajuster si on est à la fin de la journée
+    const adjustedStart = endHour === 20 ? Math.max(8, 20 - 3) : startHour;
+
+    return [adjustedStart, adjustedStart + 1, adjustedStart + 2, adjustedStart + 3];
+  };
+
+  // Toutes les heures (8h-20h) pour le mode étendu
+  const allHours = Array.from({ length: 13 }, (_, i) => i + 8);
+  const leftColumnHours = allHours.slice(0, 7); // 8h-14h
+  const rightColumnHours = allHours.slice(7); // 15h-20h
+
+  // Choisir les heures à afficher selon le mode
+  const displayHours = isExpanded ? allHours : getCurrentFourHours();
+
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Vérifier si c'est un double-clic
+    if (e.detail === 2) {
+      setIsMonthViewOpen(true);
+    } else if (e.detail === 1) {
+      // Simple clic : basculer entre mode réduit et étendu
+      setTimeout(() => {
+        if (e.detail === 1) {
+          setIsExpanded(!isExpanded);
+        }
+      }, 200); // Petit délai pour éviter le conflit avec le double-clic
+    }
+  };
 
   const HourCell = ({ date, hour, label }: { date: Date; hour: number; label: string }) => {
     const items = getItemsForHour(date, hour);
     const hasItems = items.todos.length > 0 || items.expenses.length > 0 || items.appointments.length > 0;
     const totalItems = items.todos.length + items.expenses.length + items.appointments.length;
+    const currentHour = new Date().getHours();
+    const isCurrentHour = isToday && hour === currentHour;
 
     return (
       <ContextMenu>
         <ContextMenuTrigger>
           <div
             className={`relative p-1.5 rounded-lg transition-all cursor-pointer min-h-[40px] ${
-              hasItems ? "bg-blue-50/50 border border-blue-200/50 hover:border-blue-300" : "hover:bg-gray-50/50"
+              isCurrentHour
+                ? "bg-blue-100/80 border-2 border-blue-400 shadow-md"
+                : hasItems
+                  ? "bg-blue-50/50 border border-blue-200/50 hover:border-blue-300"
+                  : "hover:bg-gray-50/50 border border-transparent"
             }`}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-xs font-medium text-gray-600 mb-1">{label}</div>
+            <div className={`text-xs font-medium mb-1 ${isCurrentHour ? "text-blue-700 font-bold" : "text-gray-600"}`}>
+              {label}
+              {isCurrentHour && <span className="ml-1 text-[9px]">●</span>}
+            </div>
 
             {/* Événements (affichage compact) */}
             {hasItems && (
@@ -210,101 +271,193 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           </ContextMenuItem>
           <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
             <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
-            <span>Ajouter un rendez-vous client</span>
+            <span>Ajouter un rendez-vous</span>
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
     );
   };
 
-  // Vue mensuelle (inchangée)
+  // Composant pour la vue mensuelle
   const MonthView = () => {
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    // Calculer le premier jour de la semaine pour l'alignement
     const firstDayOfWeek = getDay(monthStart);
-    const startPadding = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+    const startDay = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; // Lundi = 0
+
+    // Ajouter des jours vides au début
+    const emptyDays = Array.from({ length: startDay }, (_, i) => i);
+
+    const cellClass = monthCellSize === "large" ? "min-h-[180px] p-3" : "min-h-[120px] p-2";
 
     return (
-      <div>
-        <div className="grid grid-cols-7 gap-3 mb-3">
-          {["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"].map((day, i) => (
-            <div key={i} className="text-center text-sm font-semibold text-gray-700 bg-gray-50 py-2 rounded-lg">
+      <div className="space-y-4">
+        {/* Contrôles de navigation */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCurrentDate(addMonths(currentDate, -1))}>
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Mois précédent
+            </Button>
+            <Button variant="outline" size="sm" onClick={goToToday}>
+              Aujourd'hui
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+              Mois suivant
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMonthCellSize(monthCellSize === "normal" ? "large" : "normal")}
+          >
+            {monthCellSize === "normal" ? (
+              <>
+                <Maximize2 className="h-4 w-4 mr-2" />
+                Agrandir les cases
+              </>
+            ) : (
+              <>
+                <Minimize2 className="h-4 w-4 mr-2" />
+                Réduire les cases
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Calendrier mensuel */}
+        <div className="grid grid-cols-7 gap-2">
+          {/* En-têtes des jours */}
+          {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => (
+            <div key={day} className="text-center text-sm font-semibold text-gray-600 p-2">
               {day}
             </div>
           ))}
-        </div>
 
-        <div className="grid grid-cols-7 gap-3">
-          {Array.from({ length: startPadding }).map((_, i) => (
-            <div key={`empty-${i}`} className="h-32 bg-gray-50/50 rounded-lg" />
+          {/* Jours vides au début */}
+          {emptyDays.map((i) => (
+            <div key={`empty-${i}`} className="border border-gray-100 rounded-lg bg-gray-50/30" />
           ))}
 
+          {/* Jours du mois */}
           {daysInMonth.map((day) => {
-            const {
-              todos: dayTodos,
-              expenses: dayExpenses,
-              charges: dayCharges,
-              appointments: dayAppointments,
-            } = getItemsForDate(day);
-            const hasEvents =
-              dayTodos.length > 0 || dayExpenses.length > 0 || dayCharges.length > 0 || dayAppointments.length > 0;
-            const isDayToday = isSameDay(day, new Date());
-            const totalEvents = dayTodos.length + dayExpenses.length + dayCharges.length + dayAppointments.length;
+            const dayItems = getItemsForDate(day);
+            const isCurrentDay = isSameDay(day, new Date());
+            const isSelectedDay = isSameDay(day, currentDate);
+            const totalEvents = dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length;
 
             return (
               <div
                 key={day.toISOString()}
-                className={`h-32 p-3 border-2 rounded-lg cursor-pointer hover:shadow-lg transition-all ${
-                  isDayToday
-                    ? "bg-blue-50 border-blue-400 shadow-md"
-                    : hasEvents
-                      ? "bg-white border-gray-300 hover:border-blue-300"
-                      : "bg-gray-50/50 border-gray-200 hover:border-gray-300"
+                className={`border rounded-lg transition-all cursor-pointer ${cellClass} ${
+                  isCurrentDay
+                    ? "border-blue-500 bg-blue-50/50 shadow-md"
+                    : isSelectedDay
+                      ? "border-purple-400 bg-purple-50/30"
+                      : "border-gray-200 bg-white hover:border-gray-300 hover:shadow"
                 }`}
                 onClick={() => {
                   setCurrentDate(day);
                   setIsMonthViewOpen(false);
+                  setIsExpanded(true); // Ouvrir en mode étendu
                 }}
               >
-                <div className={`text-lg font-bold mb-2 ${isDayToday ? "text-blue-600" : "text-gray-900"}`}>
+                <div className={`text-sm font-semibold mb-2 ${isCurrentDay ? "text-blue-700" : "text-gray-700"}`}>
                   {format(day, "d")}
                 </div>
 
-                {hasEvents && (
+                {totalEvents > 0 && (
                   <div className="space-y-1">
-                    {dayTodos.slice(0, 1).map((todo) => (
-                      <div
-                        key={todo.id}
-                        className="flex items-center gap-1.5 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded"
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span className="truncate">{todo.title}</span>
-                      </div>
-                    ))}
-                    {dayAppointments.slice(0, 1).map((apt) => (
-                      <div
-                        key={apt.id}
-                        className="flex items-center gap-1.5 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
-                      >
-                        <UserCircle className="h-3 w-3" />
-                        <span className="truncate">{apt.client_name}</span>
-                      </div>
-                    ))}
-                    {dayExpenses.slice(0, 1).map((exp) => (
-                      <div
-                        key={exp.id}
-                        className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded"
-                      >
-                        <Package className="h-3 w-3" />
-                        <span className="truncate">{exp.product_name}</span>
-                      </div>
-                    ))}
-                    {totalEvents > 2 && (
-                      <div className="text-[10px] text-center text-gray-600 bg-gray-100 rounded px-1 py-0.5">
-                        +{totalEvents - 2}
-                      </div>
+                    {monthCellSize === "large" ? (
+                      // Mode agrandi : afficher les détails
+                      <>
+                        {dayItems.todos.slice(0, 3).map((todo) => (
+                          <div
+                            key={todo.id}
+                            className="flex items-center gap-1.5 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span className="truncate">{todo.title}</span>
+                          </div>
+                        ))}
+                        {dayItems.appointments.slice(0, 2).map((apt) => (
+                          <div
+                            key={apt.id}
+                            className="flex items-center gap-1.5 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
+                          >
+                            <UserCircle className="h-3 w-3" />
+                            <span className="truncate">{apt.client_name}</span>
+                          </div>
+                        ))}
+                        {dayItems.expenses.slice(0, 2).map((exp) => (
+                          <div
+                            key={exp.id}
+                            className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded"
+                          >
+                            <Package className="h-3 w-3" />
+                            <span className="truncate">{exp.product_name}</span>
+                          </div>
+                        ))}
+                        {totalEvents > 7 && (
+                          <div className="text-[10px] text-center text-gray-600 bg-gray-100 rounded px-1 py-0.5">
+                            +{totalEvents - 7} événements
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      // Mode normal : afficher seulement les 2 premiers
+                      <>
+                        {dayItems.todos.slice(0, 1).map((todo) => (
+                          <div
+                            key={todo.id}
+                            className="flex items-center gap-1.5 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span className="truncate">{todo.title}</span>
+                          </div>
+                        ))}
+                        {dayItems.appointments.slice(0, 1).map((apt) => (
+                          <div
+                            key={apt.id}
+                            className="flex items-center gap-1.5 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
+                          >
+                            <UserCircle className="h-3 w-3" />
+                            <span className="truncate">{apt.client_name}</span>
+                          </div>
+                        ))}
+                        {dayItems.expenses.slice(0, 1).map((exp) => (
+                          <div
+                            key={exp.id}
+                            className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded"
+                          >
+                            <Package className="h-3 w-3" />
+                            <span className="truncate">{exp.product_name}</span>
+                          </div>
+                        ))}
+                        {totalEvents > 3 && (
+                          <div className="text-[10px] text-center text-gray-600 bg-gray-100 rounded px-1 py-0.5">
+                            +{totalEvents - 3}
+                          </div>
+                        )}
+                      </>
                     )}
+                  </div>
+                )}
+
+                {/* Charges mensuelles */}
+                {dayItems.charges.length > 0 && (
+                  <div className="mt-1 pt-1 border-t border-red-200">
+                    {dayItems.charges.slice(0, monthCellSize === "large" ? 3 : 1).map((charge) => (
+                      <div key={charge.id} className="flex items-center justify-between text-[10px] text-red-700">
+                        <span className="truncate">{charge.nom_charge}</span>
+                        <span className="font-bold">{charge.montant.toFixed(0)}€</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -321,13 +474,18 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     <>
       <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-white/90 border-gray-200/50">
         <CardHeader
-          className="pb-3 cursor-pointer hover:bg-gray-50/50 transition-colors"
-          onClick={() => setIsMonthViewOpen(true)}
+          className="pb-3 cursor-pointer hover:bg-gray-50/50 transition-colors relative"
+          onClick={handleCardClick}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-700">📅 Agenda</h3>
-              <Maximize2 className="h-3.5 w-3.5 text-gray-400" />
+              {isExpanded ? (
+                <Minimize2 className="h-3.5 w-3.5 text-gray-400" />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5 text-gray-400" />
+              )}
+              <Calendar className="h-3.5 w-3.5 text-gray-400" />
             </div>
             <Button
               variant="ghost"
@@ -377,25 +535,37 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+
+          {/* Indicateur de mode */}
+          <div className="absolute bottom-2 right-2 text-[9px] text-gray-400">
+            {isExpanded ? "Clic pour réduire · Double-clic pour mois" : "Clic pour étendre · Double-clic pour mois"}
+          </div>
         </CardHeader>
 
         <CardContent className="p-3 space-y-2">
-          {/* Grille des heures en 2 colonnes (aujourd'hui uniquement) */}
-          <div className="grid grid-cols-2 gap-2">
-            {/* Colonne 1 : Matin + début après-midi (8h-14h) */}
+          {/* Grille des heures */}
+          {isExpanded ? (
+            // Mode étendu : 2 colonnes
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                {leftColumnHours.map((hour) => (
+                  <HourCell key={`left-${hour}`} date={currentDate} hour={hour} label={`${hour}h`} />
+                ))}
+              </div>
+              <div className="space-y-1">
+                {rightColumnHours.map((hour) => (
+                  <HourCell key={`right-${hour}`} date={currentDate} hour={hour} label={`${hour}h`} />
+                ))}
+              </div>
+            </div>
+          ) : (
+            // Mode réduit : 4 heures en 1 colonne
             <div className="space-y-1">
-              {leftColumnHours.map((hour) => (
-                <HourCell key={`left-${hour}`} date={currentDate} hour={hour} label={`${hour}h`} />
+              {displayHours.map((hour) => (
+                <HourCell key={hour} date={currentDate} hour={hour} label={`${hour}h`} />
               ))}
             </div>
-
-            {/* Colonne 2 : Après-midi + soir (15h-20h) */}
-            <div className="space-y-1">
-              {rightColumnHours.map((hour) => (
-                <HourCell key={`right-${hour}`} date={currentDate} hour={hour} label={`${hour}h`} />
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Charges mensuelles */}
           {chargesForDay.length > 0 && (
@@ -437,27 +607,10 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
       {/* Modal Vue Mensuelle */}
       <Dialog open={isMonthViewOpen} onOpenChange={setIsMonthViewOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span className="text-xl">📅 Planning Mensuel - {format(currentDate, "MMMM yyyy", { locale: fr })}</span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentDate(addDays(startOfMonth(currentDate), -1))}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Mois précédent
-                </Button>
-                <Button variant="outline" size="sm" onClick={goToToday}>
-                  Aujourd'hui
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setCurrentDate(addDays(endOfMonth(currentDate), 1))}>
-                  Mois suivant
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
+            <DialogTitle className="text-xl">
+              📅 Planning Mensuel - {format(currentDate, "MMMM yyyy", { locale: fr })}
             </DialogTitle>
           </DialogHeader>
           <MonthView />
