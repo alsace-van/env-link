@@ -913,6 +913,7 @@ export type Database = {
       }
       project_notes: {
         Row: {
+          archived: boolean
           content: string | null
           created_at: string
           id: string
@@ -921,6 +922,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived?: boolean
           content?: string | null
           created_at?: string
           id?: string
@@ -929,6 +931,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived?: boolean
           content?: string | null
           created_at?: string
           id?: string
