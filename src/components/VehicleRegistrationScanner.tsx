@@ -334,8 +334,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
-        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789", // Exclut I, O, Q
-        tessedit_pageseg_mode: "7", // Single text line
       });
 
       console.log("📄 Texte OCR brut:", result.data.text);
@@ -468,8 +466,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
-        tessedit_pageseg_mode: "7", // Single text line
       });
 
       console.log("📄 Texte OCR brut:", result.data.text);
@@ -575,7 +571,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
-        tessedit_pageseg_mode: "6", // Assume uniform block of text
       });
 
       console.log("📄 Texte OCR détecté pour marque:", result.data.text);
@@ -679,7 +674,6 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
-        tessedit_pageseg_mode: "6", // Assume uniform block of text
       });
 
       console.log("📄 Texte OCR détecté pour modèle:", result.data.text);
