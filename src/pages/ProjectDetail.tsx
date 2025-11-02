@@ -309,7 +309,7 @@ const ProjectDetail = () => {
       <main className="container mx-auto px-4 py-8">
         <div className="flex gap-6">
           {/* Contenu principal */}
-          <div className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? "mr-0" : "mr-0"}`}>
+          <div className="flex-1 min-w-0">
             <div className="mb-6 flex gap-6">
               {/* Informations du Projet */}
               <Card className="flex-1">
@@ -689,14 +689,8 @@ const ProjectDetail = () => {
             </Tabs>
           </div>
 
-          {/* Sidebar droite */}
-          {isSidebarOpen && (
-            <div className="w-[400px] transition-all duration-300">
-              <div className="sticky top-20">
-                <ProjectSidebar projectId={project.id} />
-              </div>
-            </div>
-          )}
+          {/* Sidebar en overlay */}
+          <ProjectSidebar projectId={project.id} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         </div>
       </main>
 
