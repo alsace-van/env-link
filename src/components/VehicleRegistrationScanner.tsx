@@ -19,6 +19,7 @@ import {
   type VehicleRegistrationData,
 } from "@/lib/registrationCardParser";
 import { ImageZoneSelector } from "./ImageZoneSelector";
+import { ScanConfirmationModal } from "./ScanConfirmationModal";
 
 interface VehicleRegistrationScannerProps {
   onDataExtracted: (data: VehicleRegistrationData) => void;
@@ -46,6 +47,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   const [lastImageFile, setLastImageFile] = useState<File | null>(null);
   const [showVINZoneSelector, setShowVINZoneSelector] = useState(false);
   const [showImmatZoneSelector, setShowImmatZoneSelector] = useState(false);
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef(false);
 
@@ -963,15 +965,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
                       <Button
                         type="button"
                         onClick={() => {
-                          // Filtrer les valeurs undefined avant de passer au formulaire
-                          const cleanedData: Partial<VehicleRegistrationData> = {};
-                          Object.entries(extractedData).forEach(([key, value]) => {
-                            if (value !== undefined && value !== null && value !== "") {
-                              (cleanedData as any)[key] = value;
-                            }
-                          });
-                          onDataExtracted(cleanedData as VehicleRegistrationData);
-                          toast.success("Données utilisées dans le formulaire", { duration: 2000 });
+                          // Ouvrir le modal de confirmation au lieu de passer directement les données
+                          setShowConfirmationModal(true);
                         }}
                         className="flex-1"
                       >
@@ -1030,6 +1025,27 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           </Alert>
         </CardContent>
       </Card>
+
+      {/* Modal de confirmation des données scannées */}
+      {extractedData && (
+        <ScanConfirmationModal
+          isOpen={showConfirmationModal}
+          onClose={() => setShowConfirmationModal(false)}
+          scannedData={extractedData}
+          onConfirm={(confirmedData) => {
+            // Filtrer les valeurs undefined avant de passer au formulaire
+            const cleanedData: Partial<VehicleRegistrationData> = {};
+            Object.entries(confirmedData).forEach(([key, value]) => {
+              if (value !== undefined && value !== null && value !== "") {
+                (cleanedData as any)[key] = value;
+              }
+            });
+            onDataExtracted(cleanedData as VehicleRegistrationData);
+            toast.success("Données vérifiées et utilisées dans le formulaire ✓", { duration: 2000 });
+            setShowConfirmationModal(false);
+          }}
+        />
+      )}
 
       {/* Sélecteur de zone pour le VIN */}
       {showVINZoneSelector && imagePreview && (
