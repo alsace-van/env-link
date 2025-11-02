@@ -161,6 +161,109 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
+   * Prétraitement ULTRA-PRÉCIS pour VIN : optimisé pour codes alphanumériques
+   * Combine plusieurs techniques pour maximiser la lisibilité
+   */
+  const preprocessForVIN = (canvas: HTMLCanvasElement): void => {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // ÉTAPE 1: Conversion en niveaux de gris
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+
+    // ÉTAPE 2: Débruitage avec filtre médian (3x3)
+    const tempData = new Uint8ClampedArray(data);
+    const width = canvas.width;
+    const height = canvas.height;
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const neighbors = [];
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const idx = ((y + dy) * width + (x + dx)) * 4;
+            neighbors.push(tempData[idx]);
+          }
+        }
+        neighbors.sort((a, b) => a - b);
+        const median = neighbors[4]; // milieu du tableau trié
+        const idx = (y * width + x) * 4;
+        data[idx] = median;
+        data[idx + 1] = median;
+        data[idx + 2] = median;
+      }
+    }
+
+    // ÉTAPE 3: Augmentation drastique du contraste
+    let min = 255,
+      max = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < min) min = data[i];
+      if (data[i] > max) max = data[i];
+    }
+
+    const range = max - min;
+    if (range > 0) {
+      for (let i = 0; i < data.length; i += 4) {
+        const normalized = ((data[i] - min) / range) * 255;
+        // Augmenter encore plus le contraste avec une fonction gamma
+        const enhanced = Math.pow(normalized / 255, 0.7) * 255;
+        data[i] = enhanced;
+        data[i + 1] = enhanced;
+        data[i + 2] = enhanced;
+      }
+    }
+
+    // ÉTAPE 4: Binarisation adaptative (plus agressive qu'OTSU)
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < data.length; i += 4) {
+      histogram[Math.floor(data[i])]++;
+    }
+
+    const total = width * height;
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+
+    let sumB = 0,
+      wB = 0,
+      maximum = 0,
+      threshold = 0;
+    for (let i = 0; i < 256; i++) {
+      wB += histogram[i];
+      if (wB === 0) continue;
+      const wF = total - wB;
+      if (wF === 0) break;
+      sumB += i * histogram[i];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > maximum) {
+        maximum = between;
+        threshold = i;
+      }
+    }
+
+    // Application du seuil avec une légère augmentation pour éviter le bruit
+    threshold = Math.min(threshold + 10, 255);
+    for (let i = 0; i < data.length; i += 4) {
+      const value = data[i] > threshold ? 255 : 0;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  /**
    * NOUVEAU v3.4: Ouvrir le sélecteur de zone pour le VIN
    */
   const startVINZoneSelection = () => {
@@ -178,7 +281,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
-   * NOUVEAU v3.4: Scan ultra-précis du VIN sur la zone sélectionnée
+   * NOUVEAU v3.5: Scan ultra-précis du VIN sur la zone sélectionnée
+   * Améliorations: Zoom x4, prétraitement optimisé VIN, paramètres OCR améliorés
    */
   const processVINZone = async (zoneCanvas: HTMLCanvasElement) => {
     setShowVINZoneSelector(false);
@@ -186,14 +290,14 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     setProgress(0);
 
     try {
-      console.log("🔍 Rescan VIN sur zone sélectionnée (ultra-précis)...");
+      console.log("🔍 Rescan VIN sur zone sélectionnée (ultra-précis v3.5)...");
 
       setProgress(10);
 
-      // ÉTAPE 1: Agrandir la zone x3 pour améliorer la précision
+      // ÉTAPE 1: Agrandir la zone x4 pour améliorer la précision
       const zoomedCanvas = document.createElement("canvas");
-      zoomedCanvas.width = zoneCanvas.width * 3.0;
-      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      zoomedCanvas.width = zoneCanvas.width * 4.0;
+      zoomedCanvas.height = zoneCanvas.height * 4.0;
       const zoomedCtx = zoomedCanvas.getContext("2d");
 
       if (!zoomedCtx) throw new Error("Canvas context error");
@@ -202,13 +306,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       zoomedCtx.imageSmoothingQuality = "high";
       zoomedCtx.drawImage(zoneCanvas, 0, 0, zoomedCanvas.width, zoomedCanvas.height);
 
-      console.log("✅ Zone agrandie x3:", zoomedCanvas.width, "x", zoomedCanvas.height);
+      console.log("✅ Zone agrandie x4:", zoomedCanvas.width, "x", zoomedCanvas.height);
 
       setProgress(20);
 
-      // ÉTAPE 2: Appliquer le prétraitement OTSU
-      console.log("🎨 Application du prétraitement OTSU...");
-      preprocessStrategy2(zoomedCanvas);
+      // ÉTAPE 2: Appliquer le prétraitement optimisé pour VIN
+      console.log("🎨 Application du prétraitement optimisé VIN...");
+      preprocessForVIN(zoomedCanvas);
 
       setProgress(40);
 
@@ -222,22 +326,43 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setProgress(50);
 
-      // ÉTAPE 4: OCR avec paramètres optimisés VIN
-      console.log("📖 OCR en cours...");
-      const result = await Tesseract.recognize(zoneBlob, "fra", {
+      // ÉTAPE 4: OCR avec paramètres optimisés pour codes alphanumériques
+      console.log("📖 OCR en cours avec paramètres optimisés...");
+      const result = await Tesseract.recognize(zoneBlob, "eng", {
         logger: (m: any) => {
           if (m.status === "recognizing text") {
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
+        tessedit_char_whitelist: "ABCDEFGHJKLMNPRSTUVWXYZ0123456789", // Exclut I, O, Q
+        tessedit_pageseg_mode: "7", // Single text line
       });
 
-      console.log("📄 Texte OCR détecté:", result.data.text);
+      console.log("📄 Texte OCR brut:", result.data.text);
 
-      // ÉTAPE 5: Extraire le VIN
-      const detectedVIN = extractNumeroChassisVIN(result.data.text);
+      // ÉTAPE 5: Extraire et corriger le VIN
+      let detectedVIN = extractNumeroChassisVIN(result.data.text);
 
-      if (detectedVIN && isValidVINFormat(detectedVIN)) {
+      // Correction post-OCR spécifique au VIN
+      if (detectedVIN) {
+        console.log("🔧 VIN avant correction:", detectedVIN);
+
+        // Appliquer les corrections courantes
+        detectedVIN = detectedVIN
+          .replace(/[IOQ]/g, (char) => {
+            // I, O, Q n'existent jamais dans un VIN
+            if (char === "I") return "1";
+            if (char === "O") return "0";
+            if (char === "Q") return "0";
+            return char;
+          })
+          .toUpperCase()
+          .replace(/\s/g, ""); // Supprimer espaces
+
+        console.log("🔧 VIN après correction:", detectedVIN);
+      }
+
+      if (detectedVIN && detectedVIN.length === 17) {
         console.log("✅ VIN rescanné avec succès:", detectedVIN);
 
         // Mettre à jour uniquement le VIN
@@ -251,16 +376,17 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           numeroChassisVIN: detectedVIN,
         }));
 
-        toast.success(`VIN détecté: ${detectedVIN}`);
+        toast.success(`VIN détecté: ${detectedVIN}`, { duration: 3000 });
 
         // ✅ Rouvrir la modale de confirmation pour voir la mise à jour
         setShowConfirmationModal(true);
       } else {
         console.warn("⚠️ VIN toujours invalide après rescan");
         console.warn("Texte détecté:", result.data.text);
-        toast.warning(
-          "VIN non détecté dans la zone sélectionnée. Essayez une zone plus large incluant la ligne E. complète.",
-        );
+        console.warn("VIN extrait:", detectedVIN);
+        toast.warning("VIN non détecté ou incorrect. Sélectionnez précisément la ligne E. (17 caractères)", {
+          duration: 4000,
+        });
         // Rouvrir quand même la modale pour permettre une nouvelle tentative
         setShowConfirmationModal(true);
       }
@@ -289,7 +415,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
-   * NOUVEAU v3.4: Scan ultra-précis de l'immatriculation sur la zone sélectionnée
+   * NOUVEAU v3.5: Scan ultra-précis de l'immatriculation sur la zone sélectionnée
+   * Améliorations: Zoom x4, paramètres OCR améliorés
    */
   const processImmatZone = async (zoneCanvas: HTMLCanvasElement) => {
     setShowImmatZoneSelector(false);
@@ -297,14 +424,14 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     setProgress(0);
 
     try {
-      console.log("🔍 Rescan immatriculation sur zone sélectionnée (ultra-précis)...");
+      console.log("🔍 Rescan immatriculation sur zone sélectionnée (ultra-précis v3.5)...");
 
       setProgress(10);
 
-      // ÉTAPE 1: Agrandir la zone x3 pour améliorer la précision
+      // ÉTAPE 1: Agrandir la zone x4 pour améliorer la précision
       const zoomedCanvas = document.createElement("canvas");
-      zoomedCanvas.width = zoneCanvas.width * 3.0;
-      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      zoomedCanvas.width = zoneCanvas.width * 4.0;
+      zoomedCanvas.height = zoneCanvas.height * 4.0;
       const zoomedCtx = zoomedCanvas.getContext("2d");
 
       if (!zoomedCtx) throw new Error("Canvas context error");
@@ -313,13 +440,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       zoomedCtx.imageSmoothingQuality = "high";
       zoomedCtx.drawImage(zoneCanvas, 0, 0, zoomedCanvas.width, zoomedCanvas.height);
 
-      console.log("✅ Zone agrandie x3:", zoomedCanvas.width, "x", zoomedCanvas.height);
+      console.log("✅ Zone agrandie x4:", zoomedCanvas.width, "x", zoomedCanvas.height);
 
       setProgress(20);
 
-      // ÉTAPE 2: Appliquer le prétraitement OTSU
-      console.log("🎨 Application du prétraitement OTSU...");
-      preprocessStrategy2(zoomedCanvas);
+      // ÉTAPE 2: Appliquer le prétraitement optimisé
+      console.log("🎨 Application du prétraitement optimisé...");
+      preprocessForVIN(zoomedCanvas); // Utiliser le même prétraitement amélioré
 
       setProgress(40);
 
@@ -334,16 +461,18 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       setProgress(50);
 
       // ÉTAPE 4: OCR avec paramètres optimisés pour immatriculation
-      console.log("📖 OCR en cours...");
+      console.log("📖 OCR en cours avec paramètres optimisés...");
       const result = await Tesseract.recognize(zoneBlob, "fra", {
         logger: (m: any) => {
           if (m.status === "recognizing text") {
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
+        tessedit_pageseg_mode: "7", // Single text line
       });
 
-      console.log("📄 Texte OCR détecté:", result.data.text);
+      console.log("📄 Texte OCR brut:", result.data.text);
 
       // ÉTAPE 5: Extraire l'immatriculation
       const detectedImmat = extractImmatriculation(result.data.text);
@@ -362,16 +491,16 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           immatriculation: detectedImmat,
         }));
 
-        toast.success(`Immatriculation détectée: ${detectedImmat}`);
+        toast.success(`Immatriculation détectée: ${detectedImmat}`, { duration: 3000 });
 
         // ✅ Rouvrir la modale de confirmation pour voir la mise à jour
         setShowConfirmationModal(true);
       } else {
         console.warn("⚠️ Immatriculation toujours invalide après rescan");
         console.warn("Texte détecté:", result.data.text);
-        toast.warning(
-          "Immatriculation non détectée dans la zone sélectionnée. Essayez une zone plus large incluant le champ A complet.",
-        );
+        toast.warning("Immatriculation non détectée. Sélectionnez précisément le champ A (format AA-123-AA)", {
+          duration: 4000,
+        });
         // Rouvrir quand même la modale pour permettre une nouvelle tentative
         setShowConfirmationModal(true);
       }
@@ -400,7 +529,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
-   * Scan de la marque sur la zone sélectionnée
+   * Scan de la marque sur la zone sélectionnée - v3.5
    */
   const processMarqueZone = async (zoneCanvas: HTMLCanvasElement) => {
     setShowMarqueZoneSelector(false);
@@ -408,13 +537,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     setProgress(0);
 
     try {
-      console.log("🔍 Rescan marque sur zone sélectionnée...");
+      console.log("🔍 Rescan marque sur zone sélectionnée (v3.5)...");
       setProgress(10);
 
-      // Agrandir la zone
+      // Agrandir la zone x4
       const zoomedCanvas = document.createElement("canvas");
-      zoomedCanvas.width = zoneCanvas.width * 3.0;
-      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      zoomedCanvas.width = zoneCanvas.width * 4.0;
+      zoomedCanvas.height = zoneCanvas.height * 4.0;
       const zoomedCtx = zoomedCanvas.getContext("2d");
 
       if (!zoomedCtx) throw new Error("Canvas context error");
@@ -425,8 +554,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setProgress(20);
 
-      // Prétraitement
-      preprocessStrategy2(zoomedCanvas);
+      // Prétraitement optimisé
+      preprocessForVIN(zoomedCanvas);
       setProgress(40);
 
       // Convertir en blob
@@ -439,23 +568,26 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setProgress(50);
 
-      // OCR
+      // OCR avec paramètres optimisés
       const result = await Tesseract.recognize(zoneBlob, "fra", {
         logger: (m: any) => {
           if (m.status === "recognizing text") {
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
+        tessedit_pageseg_mode: "6", // Assume uniform block of text
       });
 
       console.log("📄 Texte OCR détecté pour marque:", result.data.text);
 
-      // Extraire la marque (prendre les premiers mots significatifs)
-      const detectedMarque = result.data.text
+      // Extraire la marque (prendre le texte le plus significatif)
+      const lines = result.data.text
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 2)
-        .find((line) => /^[A-Z]/i.test(line)); // Ligne commençant par une majuscule
+        .filter((line) => /^[A-Z]/i.test(line)); // Ligne commençant par une majuscule
+
+      const detectedMarque = lines[0]; // Prendre la première ligne significative
 
       if (detectedMarque) {
         console.log("✅ Marque rescannée:", detectedMarque);
@@ -470,11 +602,11 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           marque: detectedMarque.toUpperCase(),
         }));
 
-        toast.success(`Marque détectée: ${detectedMarque}`);
+        toast.success(`Marque détectée: ${detectedMarque}`, { duration: 3000 });
         setShowConfirmationModal(true);
       } else {
         console.warn("⚠️ Marque non détectée après rescan");
-        toast.warning("Marque non détectée. Sélectionnez la zone du champ D.1");
+        toast.warning("Marque non détectée. Sélectionnez la zone du champ D.1", { duration: 4000 });
         setShowConfirmationModal(true);
       }
 
@@ -501,7 +633,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   };
 
   /**
-   * Scan du modèle sur la zone sélectionnée
+   * Scan du modèle sur la zone sélectionnée - v3.5
    */
   const processModeleZone = async (zoneCanvas: HTMLCanvasElement) => {
     setShowModeleZoneSelector(false);
@@ -509,13 +641,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
     setProgress(0);
 
     try {
-      console.log("🔍 Rescan modèle sur zone sélectionnée...");
+      console.log("🔍 Rescan modèle sur zone sélectionnée (v3.5)...");
       setProgress(10);
 
-      // Agrandir la zone
+      // Agrandir la zone x4
       const zoomedCanvas = document.createElement("canvas");
-      zoomedCanvas.width = zoneCanvas.width * 3.0;
-      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      zoomedCanvas.width = zoneCanvas.width * 4.0;
+      zoomedCanvas.height = zoneCanvas.height * 4.0;
       const zoomedCtx = zoomedCanvas.getContext("2d");
 
       if (!zoomedCtx) throw new Error("Canvas context error");
@@ -526,8 +658,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setProgress(20);
 
-      // Prétraitement
-      preprocessStrategy2(zoomedCanvas);
+      // Prétraitement optimisé
+      preprocessForVIN(zoomedCanvas);
       setProgress(40);
 
       // Convertir en blob
@@ -540,23 +672,26 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setProgress(50);
 
-      // OCR
+      // OCR avec paramètres optimisés
       const result = await Tesseract.recognize(zoneBlob, "fra", {
         logger: (m: any) => {
           if (m.status === "recognizing text") {
             setProgress(50 + Math.round(m.progress * 40));
           }
         },
+        tessedit_pageseg_mode: "6", // Assume uniform block of text
       });
 
       console.log("📄 Texte OCR détecté pour modèle:", result.data.text);
 
-      // Extraire le modèle (prendre les premiers mots significatifs)
-      const detectedModele = result.data.text
+      // Extraire le modèle (prendre le texte le plus significatif)
+      const lines = result.data.text
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line.length > 2)
-        .find((line) => /^[A-Z0-9]/i.test(line)); // Ligne commençant par une majuscule ou chiffre
+        .filter((line) => /^[A-Z0-9]/i.test(line)); // Ligne commençant par une majuscule ou chiffre
+
+      const detectedModele = lines[0]; // Prendre la première ligne significative
 
       if (detectedModele) {
         console.log("✅ Modèle rescanné:", detectedModele);
@@ -571,11 +706,11 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           denominationCommerciale: detectedModele,
         }));
 
-        toast.success(`Modèle détecté: ${detectedModele}`);
+        toast.success(`Modèle détecté: ${detectedModele}`, { duration: 3000 });
         setShowConfirmationModal(true);
       } else {
         console.warn("⚠️ Modèle non détecté après rescan");
-        toast.warning("Modèle non détecté. Sélectionnez la zone du champ D.3");
+        toast.warning("Modèle non détecté. Sélectionnez la zone du champ D.3", { duration: 4000 });
         setShowConfirmationModal(true);
       }
 
