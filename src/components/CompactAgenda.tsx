@@ -232,12 +232,25 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 {items.todos.slice(0, 1).map((todo) => (
                   <div
                     key={todo.id}
-                    className="flex items-center gap-1"
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${
+                      todo.is_global ? "bg-blue-100/70 border border-blue-300/50" : ""
+                    }`}
                     onClick={() => toggleTodoComplete(todo.id, todo.completed)}
                   >
                     <CheckCircle2
-                      className={`h-2.5 w-2.5 ${todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"}`}
+                      className={`h-2.5 w-2.5 ${
+                        todo.completed
+                          ? "text-green-600 fill-green-600"
+                          : todo.is_global
+                            ? "text-blue-500"
+                            : "text-purple-500"
+                      }`}
                     />
+                    {todo.is_global && (
+                      <Badge variant="outline" className="h-3 text-[8px] px-1 bg-blue-50 text-blue-700 border-blue-300">
+                        🌍
+                      </Badge>
+                    )}
                     <span
                       className={`text-[10px] truncate ${todo.completed ? "line-through text-gray-500" : "text-gray-900"}`}
                     >
