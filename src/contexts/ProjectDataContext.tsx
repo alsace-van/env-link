@@ -110,7 +110,6 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
 
   // Channels pour les subscriptions
   const [todosChannel, setTodosChannel] = useState<RealtimeChannel | null>(null);
-  const [globalTodosChannel, setGlobalTodosChannel] = useState<RealtimeChannel | null>(null); // 🆕
   const [notesChannel, setNotesChannel] = useState<RealtimeChannel | null>(null);
   const [expensesChannel, setExpensesChannel] = useState<RealtimeChannel | null>(null);
   const [chargesChannel, setChargesChannel] = useState<RealtimeChannel | null>(null);
@@ -129,63 +128,22 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     }
   };
 
-  // 🆕 Chargement des tâches : FUSION project_todos + global_todos
   const loadTodos = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+    if (!currentProjectId) {
+      setTodos([]);
+      return;
+    }
 
-      // 1. Charger les tâches de projet (si un projet est sélectionné)
-      let projectTodos: Todo[] = [];
-      if (currentProjectId) {
-        const { data, error } = await supabase
-          .from("project_todos")
-          .select("*")
-          .eq("project_id", currentProjectId)
-          .order("due_date", { ascending: true });
+    const { data, error } = await supabase
+      .from("project_todos")
+      .select("*")
+      .eq("project_id", currentProjectId)
+      .order("due_date", { ascending: true });
 
-        if (error) {
-          console.error("Error loading project todos:", error);
-        } else {
-          projectTodos = (data || []).map((todo) => ({
-            ...todo,
-            is_global: false,
-          }));
-        }
-      }
-
-      // 2. 🆕 Charger les tâches GLOBALES (toujours, pour tous les projets)
-      const { data: globalData, error: globalError } = await supabase
-        .from("global_todos")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("due_date", { ascending: true });
-
-      if (globalError) {
-        console.error("Error loading global todos:", globalError);
-      }
-
-      const globalTodos: Todo[] = (globalData || []).map((todo) => ({
-        ...todo,
-        project_id: null, // Les tâches globales n'ont pas de project_id
-        is_global: true, // Marquer comme global
-      }));
-
-      // 3. 🆕 Fusionner les deux listes
-      const allTodos = [...projectTodos, ...globalTodos];
-
-      // 4. Trier par date
-      allTodos.sort((a, b) => {
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      });
-
-      setTodos(allTodos);
-    } catch (error) {
-      console.error("Error in loadTodos:", error);
+    if (error) {
+      console.error("Error loading project todos:", error);
+    } else {
+      setTodos(data || []);
     }
   };
 
@@ -277,7 +235,6 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
 
     // Nettoyer les anciennes subscriptions
     todosChannel?.unsubscribe();
-    globalTodosChannel?.unsubscribe();
     notesChannel?.unsubscribe();
     chargesChannel?.unsubscribe();
     appointmentsChannel?.unsubscribe();
@@ -303,35 +260,6 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
         .subscribe();
       setTodosChannel(todosSubscription);
     }
-
-    // 🆕 Subscription pour les tâches GLOBALES (toujours actif)
-    const setupGlobalTodosSubscription = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const globalSubscription = supabase
-        .channel(`global-todos-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "global_todos",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            console.log("Global todos change:", payload);
-            loadTodos();
-          },
-        )
-        .subscribe();
-
-      setGlobalTodosChannel(globalSubscription);
-    };
-
-    setupGlobalTodosSubscription();
 
     // Subscription pour les notes (si un projet est sélectionné)
     let notesSubscription: RealtimeChannel | null = null;
@@ -402,7 +330,6 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     // Cleanup
     return () => {
       todosSubscription?.unsubscribe();
-      globalSubscription?.unsubscribe();
       notesSubscription?.unsubscribe();
       chargesSubscription?.unsubscribe();
       appointmentsSubscription?.unsubscribe();

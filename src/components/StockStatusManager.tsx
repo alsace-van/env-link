@@ -168,7 +168,10 @@ export default function StockStatusManager({
           accessory_id: accessoryId,
         };
 
-        const { error: todoError } = await supabase.from("global_todos").insert(taskData);
+        const { error: todoError } = await supabase.from("project_todos").insert({
+          ...taskData,
+          project_id: null, // Tâche globale
+        });
 
         if (todoError) {
           console.error("Erreur lors de la création de la tâche:", todoError);
