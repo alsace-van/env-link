@@ -248,18 +248,25 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         }));
 
         toast.success(`VIN détecté: ${detectedVIN}`);
+        
+        // ✅ Rouvrir la modale de confirmation pour voir la mise à jour
+        setShowConfirmationModal(true);
       } else {
         console.warn("⚠️ VIN toujours invalide après rescan");
         console.warn("Texte détecté:", result.data.text);
         toast.warning(
           "VIN non détecté dans la zone sélectionnée. Essayez une zone plus large incluant la ligne E. complète.",
         );
+        // Rouvrir quand même la modale pour permettre une nouvelle tentative
+        setShowConfirmationModal(true);
       }
 
       setProgress(100);
     } catch (error) {
       console.error("Erreur rescan VIN:", error);
       toast.error("Erreur lors du rescan du VIN");
+      // Rouvrir la modale même en cas d'erreur
+      setShowConfirmationModal(true);
     } finally {
       setIsRescanningVIN(false);
       setProgress(0);
@@ -352,18 +359,25 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         }));
 
         toast.success(`Immatriculation détectée: ${detectedImmat}`);
+        
+        // ✅ Rouvrir la modale de confirmation pour voir la mise à jour
+        setShowConfirmationModal(true);
       } else {
         console.warn("⚠️ Immatriculation toujours invalide après rescan");
         console.warn("Texte détecté:", result.data.text);
         toast.warning(
           "Immatriculation non détectée dans la zone sélectionnée. Essayez une zone plus large incluant le champ A complet.",
         );
+        // Rouvrir quand même la modale pour permettre une nouvelle tentative
+        setShowConfirmationModal(true);
       }
 
       setProgress(100);
     } catch (error) {
       console.error("Erreur rescan immatriculation:", error);
       toast.error("Erreur lors du rescan de l'immatriculation");
+      // Rouvrir la modale même en cas d'erreur
+      setShowConfirmationModal(true);
     } finally {
       setIsRescanningImmat(false);
       setProgress(0);
