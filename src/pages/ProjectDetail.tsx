@@ -271,11 +271,7 @@ const ProjectDetail = () => {
               <ArrowLeft className="h-4 w-4 mr-2" />
               Retour
             </Button>
-            <img 
-              src={logo} 
-              alt="Alsace Van Création" 
-              className="h-20 w-auto object-contain"
-            />
+            <img src={logo} alt="Alsace Van Création" className="h-20 w-auto object-contain" />
             <div className="flex-1">
               <h1 className="text-xl font-bold">{project.nom_proprietaire}</h1>
               {project.vehicles_catalog && (
@@ -285,11 +281,7 @@ const ProjectDetail = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button 
-                variant="default" 
-                size="sm"
-                onClick={() => navigate("/shop")}
-              >
+              <Button variant="default" size="sm" onClick={() => navigate("/shop")}>
                 <ShoppingBag className="h-4 w-4 mr-2" />
                 Boutique
               </Button>
@@ -333,346 +325,361 @@ const ProjectDetail = () => {
                         onClick={() => setIsProjectInfoCollapsed(!isProjectInfoCollapsed)}
                         className="h-8 w-8 p-0"
                       >
-                        {isProjectInfoCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                        {isProjectInfoCollapsed ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronUp className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-            {!isProjectInfoCollapsed && (
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {/* Informations générales */}
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-semibold text-muted-foreground mb-3">Informations générales</h4>
-                    {project.nom_projet && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Nom du projet :</span>
-                        <p className="font-medium">{project.nom_projet}</p>
+                {!isProjectInfoCollapsed && (
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {/* Informations générales */}
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold text-muted-foreground mb-3">Informations générales</h4>
+                        {project.nom_projet && (
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-muted-foreground shrink-0">Nom du projet :</span>
+                            <p className="font-medium">{project.nom_projet}</p>
+                          </div>
+                        )}
+                        {project.numero_chassis && (
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-muted-foreground shrink-0">N° de châssis :</span>
+                            <p className="font-medium">{project.numero_chassis}</p>
+                          </div>
+                        )}
+                        {project.immatriculation && (
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-muted-foreground shrink-0">Immatriculation :</span>
+                            <p className="font-medium">{project.immatriculation}</p>
+                          </div>
+                        )}
+                        {project.type_mine && (
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-muted-foreground shrink-0">Type mine :</span>
+                            <p className="font-medium">{project.type_mine}</p>
+                          </div>
+                        )}
+                        {project.date_mise_circulation && (
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-muted-foreground shrink-0">Date de circulation :</span>
+                            <p className="font-medium">
+                              {new Date(project.date_mise_circulation).toLocaleDateString("fr-FR")}
+                            </p>
+                          </div>
+                        )}
+                        {(project.marque_custom || project.modele_custom) && (
+                          <div className="flex gap-3 text-xs">
+                            <span className="text-muted-foreground shrink-0">Véhicule :</span>
+                            <p className="font-medium">
+                              {project.marque_custom} {project.modele_custom}
+                            </p>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {project.numero_chassis && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">N° de châssis :</span>
-                        <p className="font-medium">{project.numero_chassis}</p>
-                      </div>
-                    )}
-                    {project.immatriculation && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Immatriculation :</span>
-                        <p className="font-medium">{project.immatriculation}</p>
-                      </div>
-                    )}
-                    {project.type_mine && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Type mine :</span>
-                        <p className="font-medium">{project.type_mine}</p>
-                      </div>
-                    )}
-                    {project.date_mise_circulation && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Date de circulation :</span>
-                        <p className="font-medium">{new Date(project.date_mise_circulation).toLocaleDateString('fr-FR')}</p>
-                      </div>
-                    )}
-                    {(project.marque_custom || project.modele_custom) && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground w-32">Véhicule :</span>
-                        <p className="font-medium">{project.marque_custom} {project.modele_custom}</p>
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Contact */}
-                  {(project.adresse_proprietaire || project.telephone_proprietaire || project.email_proprietaire) && (
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-3">Contact</h4>
-                      {project.adresse_proprietaire && (
-                        <div className="flex gap-2 text-xs">
-                          <span className="text-muted-foreground w-32">Adresse :</span>
-                          <p className="font-medium">{project.adresse_proprietaire}</p>
+                      {/* Contact */}
+                      {(project.adresse_proprietaire ||
+                        project.telephone_proprietaire ||
+                        project.email_proprietaire) && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground mb-3">Contact</h4>
+                          {project.adresse_proprietaire && (
+                            <div className="flex gap-3 text-xs">
+                              <span className="text-muted-foreground shrink-0">Adresse :</span>
+                              <p className="font-medium">{project.adresse_proprietaire}</p>
+                            </div>
+                          )}
+                          {project.telephone_proprietaire && (
+                            <div className="flex gap-3 text-xs">
+                              <span className="text-muted-foreground shrink-0">Téléphone :</span>
+                              <p className="font-medium">{project.telephone_proprietaire}</p>
+                            </div>
+                          )}
+                          {project.email_proprietaire && (
+                            <div className="flex gap-3 text-xs">
+                              <span className="text-muted-foreground shrink-0">Email :</span>
+                              <p className="font-medium">{project.email_proprietaire}</p>
+                            </div>
+                          )}
                         </div>
                       )}
-                      {project.telephone_proprietaire && (
-                        <div className="flex gap-2 text-xs">
-                          <span className="text-muted-foreground w-32">Téléphone :</span>
-                          <p className="font-medium">{project.telephone_proprietaire}</p>
+
+                      {/* Dimensions totales */}
+                      {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground mb-3">Dimensions totales</h4>
+                          <div className="space-y-1">
+                            {project.longueur_mm && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">L :</span>
+                                <p className="font-medium">{project.longueur_mm} mm</p>
+                              </div>
+                            )}
+                            {project.largeur_mm && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">l :</span>
+                                <p className="font-medium">{project.largeur_mm} mm</p>
+                              </div>
+                            )}
+                            {project.hauteur_mm && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">H :</span>
+                                <p className="font-medium">{project.hauteur_mm} mm</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
-                      {project.email_proprietaire && (
-                        <div className="flex gap-2 text-xs">
-                          <span className="text-muted-foreground w-32">Email :</span>
-                          <p className="font-medium">{project.email_proprietaire}</p>
+
+                      {/* Surface utile */}
+                      {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-primary mb-3">Surface utile</h4>
+                          <div className="space-y-1">
+                            {project.longueur_chargement_mm && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">L utile :</span>
+                                <p className="font-medium">{project.longueur_chargement_mm} mm</p>
+                              </div>
+                            )}
+                            {project.largeur_chargement_mm && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">l utile :</span>
+                                <p className="font-medium">{project.largeur_chargement_mm} mm</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Poids */}
+                      {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground mb-3">Poids</h4>
+                          <div className="space-y-1">
+                            {project.poids_vide_kg && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">Vide :</span>
+                                <p className="font-medium">{project.poids_vide_kg} kg</p>
+                              </div>
+                            )}
+                            {project.charge_utile_kg && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">Charge :</span>
+                                <p className="font-medium">{project.charge_utile_kg} kg</p>
+                              </div>
+                            )}
+                            {project.ptac_kg && (
+                              <div className="flex gap-3 text-xs">
+                                <span className="text-muted-foreground shrink-0">PTAC :</span>
+                                <p className="font-medium">{project.ptac_kg} kg</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
-                  )}
+                  </CardContent>
+                )}
+              </Card>
+            </div>
 
-                  {/* Dimensions totales */}
-                  {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-3">Dimensions totales</h4>
-                      <div className="space-y-1">
-                        {project.longueur_mm && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">L :</span>
-                            <p className="font-medium">{project.longueur_mm} mm</p>
-                          </div>
-                        )}
-                        {project.largeur_mm && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">l :</span>
-                            <p className="font-medium">{project.largeur_mm} mm</p>
-                          </div>
-                        )}
-                        {project.hauteur_mm && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">H :</span>
-                            <p className="font-medium">{project.hauteur_mm} mm</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Surface utile */}
-                  {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-semibold text-primary mb-3">Surface utile</h4>
-                      <div className="space-y-1">
-                        {project.longueur_chargement_mm && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">L utile :</span>
-                            <p className="font-medium">{project.longueur_chargement_mm} mm</p>
-                          </div>
-                        )}
-                        {project.largeur_chargement_mm && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">l utile :</span>
-                            <p className="font-medium">{project.largeur_chargement_mm} mm</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Poids */}
-                  {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-3">Poids</h4>
-                      <div className="space-y-1">
-                        {project.poids_vide_kg && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Vide :</span>
-                            <p className="font-medium">{project.poids_vide_kg} kg</p>
-                          </div>
-                        )}
-                        {project.charge_utile_kg && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">Charge :</span>
-                            <p className="font-medium">{project.charge_utile_kg} kg</p>
-                          </div>
-                        )}
-                        {project.ptac_kg && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground">PTAC :</span>
-                            <p className="font-medium">{project.ptac_kg} kg</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            )}
-          </Card>
-        </div>
-
-        <Tabs defaultValue="photos" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-            <TabsTrigger value="photos" className="gap-2">
-              <Image className="h-4 w-4 text-purple-600" />
-              <span className="hidden sm:inline">Photos</span>
-            </TabsTrigger>
-            <TabsTrigger value="expenses" className="gap-2">
-              <Euro className="h-4 w-4 text-green-600" />
-              <span className="hidden sm:inline">Dépenses</span>
-            </TabsTrigger>
-            <TabsTrigger value="documents" className="gap-2">
-              <FileText className="h-4 w-4 text-blue-600" />
-              <span className="hidden sm:inline">Documents</span>
-            </TabsTrigger>
-            <TabsTrigger value="accessories" className="gap-2">
-              <Package className="h-4 w-4 text-orange-600" />
-              <span className="hidden sm:inline">Catalogue</span>
-            </TabsTrigger>
-            <TabsTrigger value="notices" className="gap-2">
-              <BookOpen className="h-4 w-4 text-indigo-600" />
-              <span className="hidden sm:inline">Notices</span>
-            </TabsTrigger>
-            <TabsTrigger value="technical" className="gap-2">
-              <Wrench className="h-4 w-4 text-red-600" />
-              <span className="hidden sm:inline">Technique</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="photos">
-            <Card>
-              <CardHeader>
-                <CardTitle>Photos</CardTitle>
-                <CardDescription>Gérez vos photos de projet et d'inspiration</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <PhotosTab projectId={project.id} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="expenses">
-            <Tabs defaultValue="liste" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="liste">Liste des Dépenses</TabsTrigger>
-                <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
+            <Tabs defaultValue="photos" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+                <TabsTrigger value="photos" className="gap-2">
+                  <Image className="h-4 w-4 text-purple-600" />
+                  <span className="hidden sm:inline">Photos</span>
+                </TabsTrigger>
+                <TabsTrigger value="expenses" className="gap-2">
+                  <Euro className="h-4 w-4 text-green-600" />
+                  <span className="hidden sm:inline">Dépenses</span>
+                </TabsTrigger>
+                <TabsTrigger value="documents" className="gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <span className="hidden sm:inline">Documents</span>
+                </TabsTrigger>
+                <TabsTrigger value="accessories" className="gap-2">
+                  <Package className="h-4 w-4 text-orange-600" />
+                  <span className="hidden sm:inline">Catalogue</span>
+                </TabsTrigger>
+                <TabsTrigger value="notices" className="gap-2">
+                  <BookOpen className="h-4 w-4 text-indigo-600" />
+                  <span className="hidden sm:inline">Notices</span>
+                </TabsTrigger>
+                <TabsTrigger value="technical" className="gap-2">
+                  <Wrench className="h-4 w-4 text-red-600" />
+                  <span className="hidden sm:inline">Technique</span>
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="liste">
-                <div className="flex gap-6">
-                  <div className="flex-1">
+              <TabsContent value="photos">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Photos</CardTitle>
+                    <CardDescription>Gérez vos photos de projet et d'inspiration</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <PhotosTab projectId={project.id} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="expenses">
+                <Tabs defaultValue="liste" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 mb-4">
+                    <TabsTrigger value="liste">Liste des Dépenses</TabsTrigger>
+                    <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="liste">
+                    <div className="flex gap-6">
+                      <div className="flex-1">
+                        <Card>
+                          <CardContent className="pt-6">
+                            <ExpensesList
+                              projectId={project.id}
+                              onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                            />
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      <div
+                        className={`transition-all duration-300 ${isSummaryOpen ? "w-[500px]" : "w-0"} overflow-hidden`}
+                      >
+                        <div className="w-[500px]">
+                          <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={() => setIsSummaryOpen(!isSummaryOpen)}
+                      className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+                      size="icon"
+                      title="Récapitulatif des dépenses"
+                    >
+                      <Receipt className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
+                    </Button>
+                  </TabsContent>
+
+                  <TabsContent value="bilan">
+                    <BilanComptable
+                      projectId={project.id}
+                      projectName={project.nom_projet || project.nom_proprietaire}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </TabsContent>
+
+              <TabsContent value="documents">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Documents Administratifs</CardTitle>
+                    <CardDescription>Certificats, factures et documents du projet</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <DocumentsUpload projectId={project.id} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="accessories">
+                <AccessoriesCatalogView />
+              </TabsContent>
+
+              <TabsContent value="notices">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle>Base de Notices</CardTitle>
+                      <CardDescription>Notices partagées entre tous les utilisateurs</CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <NoticeUploadDialog onSuccess={() => setPhotoRefresh((prev) => prev + 1)} />
+                    <NoticesList refreshTrigger={photoRefresh} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="technical">
+                <Tabs
+                  defaultValue="layout"
+                  className="w-full"
+                  onValueChange={(value) => {
+                    // Force le rechargement de la vue 3D quand on y accède
+                    if (value === "3d") {
+                      setLayout3DKey((prev) => prev + 1);
+                    }
+                  }}
+                >
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="layout">Aménagement</TabsTrigger>
+                    <TabsTrigger value="3d">Vue 3D</TabsTrigger>
+                    <TabsTrigger value="schema">Schémas</TabsTrigger>
+                    <TabsTrigger value="electrical">Câbles & Énergie</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="layout">
                     <Card>
-                      <CardContent className="pt-6">
-                        <ExpensesList
+                      <CardHeader>
+                        <CardTitle>Aménagement et Poids</CardTitle>
+                        <CardDescription>Planifiez votre aménagement et suivez la charge du véhicule</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <LayoutCanvas
+                          key={layoutCanvasKey}
                           projectId={project.id}
-                          onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                          vehicleLength={project.longueur_mm}
+                          vehicleWidth={project.largeur_mm}
+                          loadAreaLength={project.longueur_chargement_mm}
+                          loadAreaWidth={project.largeur_chargement_mm}
+                          maxLoad={project.charge_utile_kg}
                         />
                       </CardContent>
                     </Card>
-                  </div>
+                  </TabsContent>
 
-                  <div className={`transition-all duration-300 ${isSummaryOpen ? "w-[500px]" : "w-0"} overflow-hidden`}>
-                    <div className="w-[500px]">
-                      <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
+                  <TabsContent value="3d">
+                    <Layout3DView
+                      key={layout3DKey}
+                      projectId={project.id}
+                      loadAreaLength={project.longueur_chargement_mm || 3000}
+                      loadAreaWidth={project.largeur_chargement_mm || 1800}
+                      loadAreaHeight={project.hauteur_mm || 1800}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="schema">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Canevas de Schémas Techniques</CardTitle>
+                        <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <TechnicalCanvas
+                          projectId={project.id}
+                          onExpenseAdded={() => setExpenseRefresh((prev) => prev + 1)}
+                        />
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="electrical">
+                    <div className="space-y-6">
+                      <CableSectionCalculator />
+                      <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
                     </div>
-                  </div>
-                </div>
-
-                <Button
-                  onClick={() => setIsSummaryOpen(!isSummaryOpen)}
-                  className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
-                  size="icon"
-                  title="Récapitulatif des dépenses"
-                >
-                  <Receipt className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="bilan">
-                <BilanComptable projectId={project.id} projectName={project.nom_projet || project.nom_proprietaire} />
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
             </Tabs>
-          </TabsContent>
-
-          <TabsContent value="documents">
-            <Card>
-              <CardHeader>
-                <CardTitle>Documents Administratifs</CardTitle>
-                <CardDescription>Certificats, factures et documents du projet</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <DocumentsUpload projectId={project.id} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="accessories">
-            <AccessoriesCatalogView />
-          </TabsContent>
-
-          <TabsContent value="notices">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Base de Notices</CardTitle>
-                  <CardDescription>Notices partagées entre tous les utilisateurs</CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <NoticeUploadDialog onSuccess={() => setPhotoRefresh((prev) => prev + 1)} />
-                <NoticesList refreshTrigger={photoRefresh} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="technical">
-            <Tabs
-              defaultValue="layout"
-              className="w-full"
-              onValueChange={(value) => {
-                // Force le rechargement de la vue 3D quand on y accède
-                if (value === "3d") {
-                  setLayout3DKey((prev) => prev + 1);
-                }
-              }}
-            >
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="layout">Aménagement</TabsTrigger>
-                <TabsTrigger value="3d">Vue 3D</TabsTrigger>
-                <TabsTrigger value="schema">Schémas</TabsTrigger>
-                <TabsTrigger value="electrical">Câbles & Énergie</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="layout">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Aménagement et Poids</CardTitle>
-                    <CardDescription>Planifiez votre aménagement et suivez la charge du véhicule</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <LayoutCanvas
-                      key={layoutCanvasKey}
-                      projectId={project.id}
-                      vehicleLength={project.longueur_mm}
-                      vehicleWidth={project.largeur_mm}
-                      loadAreaLength={project.longueur_chargement_mm}
-                      loadAreaWidth={project.largeur_chargement_mm}
-                      maxLoad={project.charge_utile_kg}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="3d">
-                <Layout3DView
-                  key={layout3DKey}
-                  projectId={project.id}
-                  loadAreaLength={project.longueur_chargement_mm || 3000}
-                  loadAreaWidth={project.largeur_chargement_mm || 1800}
-                  loadAreaHeight={project.hauteur_mm || 1800}
-                />
-              </TabsContent>
-
-              <TabsContent value="schema">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Canevas de Schémas Techniques</CardTitle>
-                    <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <TechnicalCanvas
-                      projectId={project.id}
-                      onExpenseAdded={() => setExpenseRefresh((prev) => prev + 1)}
-                    />
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="electrical">
-                <div className="space-y-6">
-                  <CableSectionCalculator />
-                  <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
-                </div>
-              </TabsContent>
-            </Tabs>
-          </TabsContent>
-        </Tabs>
           </div>
 
           {/* Sidebar droite */}
@@ -683,7 +690,6 @@ const ProjectDetail = () => {
               </div>
             </div>
           )}
-
         </div>
       </main>
 
