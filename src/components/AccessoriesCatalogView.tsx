@@ -4,7 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Trash2, Edit, Plus, Settings, LayoutGrid, LayoutList, ChevronDown, ChevronRight, Store, Package } from "lucide-react";
+import {
+  Search,
+  Trash2,
+  Edit,
+  Plus,
+  Settings,
+  LayoutGrid,
+  LayoutList,
+  ChevronDown,
+  ChevronRight,
+  Store,
+  Package,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -63,7 +75,7 @@ interface Accessory {
   categories?: Category;
   accessory_options?: AccessoryOption[];
   // Champs de gestion de stock
-  stock_status?: 'in_stock' | 'on_order' | 'out_of_stock';
+  stock_status?: "in_stock" | "on_order" | "out_of_stock";
   stock_quantity?: number | null;
   delivery_date?: string | null;
   tracking_number?: string | null;
@@ -85,9 +97,9 @@ const AccessoriesCatalogView = () => {
   const [isCategoryManagementOpen, setIsCategoryManagementOpen] = useState(false);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
-    const saved = localStorage.getItem('accessories-view-mode');
-    return (saved as 'list' | 'grid') || 'list';
+  const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
+    const saved = localStorage.getItem("accessories-view-mode");
+    return (saved as "list" | "grid") || "list";
   });
   const [expandedMainCategories, setExpandedMainCategories] = useState<Set<string>>(new Set());
   const [expandedSubCategories, setExpandedSubCategories] = useState<Set<string>>(new Set());
@@ -100,7 +112,7 @@ const AccessoriesCatalogView = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('accessories-view-mode', viewMode);
+    localStorage.setItem("accessories-view-mode", viewMode);
   }, [viewMode]);
 
   useEffect(() => {
@@ -113,15 +125,13 @@ const AccessoriesCatalogView = () => {
           acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
           acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase())
+          acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     }
 
     // Filtrer par catégories
     if (selectedCategories.length > 0) {
-      filtered = filtered.filter((acc) =>
-        acc.category_id && selectedCategories.includes(acc.category_id)
-      );
+      filtered = filtered.filter((acc) => acc.category_id && selectedCategories.includes(acc.category_id));
     }
 
     setFilteredAccessories(filtered);
@@ -134,9 +144,9 @@ const AccessoriesCatalogView = () => {
       mainCategoryId: string | null;
       subGroups: Map<string, Accessory[]>;
     }
-    
+
     const mainGroups = new Map<string, CategoryGroup>();
-    
+
     filteredAccessories.forEach((accessory) => {
       if (!accessory.category_id) {
         // Accessoires sans catégorie
@@ -150,19 +160,17 @@ const AccessoriesCatalogView = () => {
         mainGroups.get("Sans catégorie")!.subGroups.get("Sans catégorie")!.push(accessory);
         return;
       }
-      
+
       const category = accessory.categories;
       if (!category) return;
-      
+
       // Trouver la catégorie principale
-      const mainCategory = category.parent_id 
-        ? categories.find(c => c.id === category.parent_id)
-        : category;
-      
+      const mainCategory = category.parent_id ? categories.find((c) => c.id === category.parent_id) : category;
+
       if (!mainCategory) return;
-      
+
       const mainCategoryName = mainCategory.nom;
-      
+
       if (!mainGroups.has(mainCategoryName)) {
         mainGroups.set(mainCategoryName, {
           mainCategory: mainCategoryName,
@@ -170,32 +178,29 @@ const AccessoriesCatalogView = () => {
           subGroups: new Map(),
         });
       }
-      
+
       const subCategoryName = category.parent_id ? category.nom : "Général";
       const group = mainGroups.get(mainCategoryName)!;
-      
+
       if (!group.subGroups.has(subCategoryName)) {
         group.subGroups.set(subCategoryName, []);
       }
-      
+
       group.subGroups.get(subCategoryName)!.push(accessory);
     });
-    
+
     // Trier les catégories principales (Sans catégorie en dernier)
     const sortedMainGroups = Array.from(mainGroups.entries()).sort(([a], [b]) => {
       if (a === "Sans catégorie") return 1;
       if (b === "Sans catégorie") return -1;
       return a.localeCompare(b);
     });
-    
+
     return sortedMainGroups;
   };
 
   const loadCategories = async () => {
-    const { data, error } = await supabase
-      .from("categories")
-      .select("*")
-      .order("nom");
+    const { data, error } = await supabase.from("categories").select("*").order("nom");
 
     if (!error && data) {
       setCategories(data);
@@ -220,10 +225,7 @@ const AccessoriesCatalogView = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase
-      .from("accessories_catalog")
-      .delete()
-      .eq("id", id);
+    const { error } = await supabase.from("accessories_catalog").delete().eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la suppression");
@@ -286,7 +288,7 @@ const AccessoriesCatalogView = () => {
   };
 
   const toggleMainCategory = (categoryName: string) => {
-    setExpandedMainCategories(prev => {
+    setExpandedMainCategories((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(categoryName)) {
         newSet.delete(categoryName);
@@ -299,7 +301,7 @@ const AccessoriesCatalogView = () => {
 
   const toggleSubCategory = (mainCategoryName: string, subCategoryName: string) => {
     const key = `${mainCategoryName}-${subCategoryName}`;
-    setExpandedSubCategories(prev => {
+    setExpandedSubCategories((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(key)) {
         newSet.delete(key);
@@ -317,7 +319,7 @@ const AccessoriesCatalogView = () => {
         onCategoryChange={setSelectedCategories}
         onAccessoryDrop={handleAccessoryDrop}
       />
-      
+
       <Card className="ml-96">
         <CardHeader>
           <CardTitle>Catalogue d'Accessoires</CardTitle>
@@ -325,562 +327,588 @@ const AccessoriesCatalogView = () => {
         </CardHeader>
         <CardContent>
           <div className="mb-6 flex gap-4 flex-wrap">
-        <div className="flex-1 relative min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher un accessoire..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <div className="flex gap-1 border rounded-md p-1">
-          <Button
-            variant={viewMode === 'list' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setViewMode('list')}
-          >
-            <LayoutList className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={viewMode === 'grid' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setViewMode('grid')}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-        </div>
-        <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
-          Import/Export
-        </Button>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          Ajouter un accessoire
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-12">Chargement...</div>
-      ) : filteredAccessories.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground mb-4">
-              {searchTerm
-                ? "Aucun accessoire trouvé"
-                : "Aucun accessoire dans le catalogue"}
-            </p>
-            <p className="text-sm text-muted-foreground mb-4">
-              Créez votre catalogue d'accessoires personnel pour faciliter l'ajout aux projets
-            </p>
+            <div className="flex-1 relative min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher un accessoire..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex gap-1 border rounded-md p-1">
+              <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("list")}>
+                <LayoutList className="h-4 w-4" />
+              </Button>
+              <Button variant={viewMode === "grid" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("grid")}>
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
+              Import/Export
+            </Button>
             <Button onClick={handleAdd}>
               <Plus className="h-4 w-4 mr-2" />
-              Ajouter le premier accessoire
+              Ajouter un accessoire
             </Button>
-          </CardContent>
-        </Card>
-      ) : viewMode === 'list' ? (
-        <div className="space-y-8">
-          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => {
-            const isMainExpanded = expandedMainCategories.has(mainCategoryName);
-            return (
-              <div key={mainCategoryName} className="space-y-4">
-                {/* En-tête de catégorie principale */}
-                <div 
-                  className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg cursor-pointer hover:bg-primary/15 transition-colors flex items-center justify-between"
-                  onClick={() => toggleMainCategory(mainCategoryName)}
-                >
-                  <h2 className="text-xl font-bold text-primary flex items-center gap-2">
-                    {isMainExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                    {mainCategoryName}
-                    <span className="text-sm font-normal text-muted-foreground ml-2">
-                      ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
-                    </span>
-                  </h2>
-                </div>
-                
-                {/* Sous-catégories */}
-                {isMainExpanded && (
-                  <div className="space-y-4 pl-4 animate-fade-in">
-                    {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => {
-                      const subKey = `${mainCategoryName}-${subCategoryName}`;
-                      const isSubExpanded = expandedSubCategories.has(subKey);
-                      return (
-                        <div key={subCategoryName} className="space-y-2">
-                          <h3 
-                            className="text-lg font-semibold text-muted-foreground border-b pb-1 cursor-pointer hover:text-foreground transition-colors flex items-center gap-2"
-                            onClick={() => toggleSubCategory(mainCategoryName, subCategoryName)}
-                          >
-                            {isSubExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            {subCategoryName} ({categoryAccessories.length})
-                          </h3>
-                          {isSubExpanded && (
-                            <div className="space-y-2 animate-fade-in">
-                              {categoryAccessories.map((accessory) => (
-                  <Card 
-                    key={accessory.id} 
-                    className="hover:bg-muted/50 transition-colors cursor-move"
-                    draggable
-                    onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
-                  >
-                     <CardContent className="p-4">
-                      <div className="flex items-center gap-4">
-                        {accessory.image_url && (
-                          <img 
-                            src={accessory.image_url} 
-                            alt={accessory.nom}
-                            className="w-16 h-16 object-contain rounded border"
-                          />
-                        )}
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
-                          <div className="md:col-span-2">
-                            <div className="font-semibold flex items-center gap-2">
-                              {accessory.nom}
-                              {accessory.accessory_options && accessory.accessory_options.length > 0 && (
-                                <Badge variant="outline" className="text-xs">
-                                  <Package className="h-3 w-3 mr-1" />
-                                  {accessory.accessory_options.length}
-                                </Badge>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-12">Chargement...</div>
+          ) : filteredAccessories.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground mb-4">
+                  {searchTerm ? "Aucun accessoire trouvé" : "Aucun accessoire dans le catalogue"}
+                </p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Créez votre catalogue d'accessoires personnel pour faciliter l'ajout aux projets
+                </p>
+                <Button onClick={handleAdd}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter le premier accessoire
+                </Button>
+              </CardContent>
+            </Card>
+          ) : viewMode === "list" ? (
+            <div className="space-y-8">
+              {groupedAccessories().map(([mainCategoryName, categoryGroup]) => {
+                const isMainExpanded = expandedMainCategories.has(mainCategoryName);
+                return (
+                  <div key={mainCategoryName} className="space-y-4">
+                    {/* En-tête de catégorie principale */}
+                    <div
+                      className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg cursor-pointer hover:bg-primary/15 transition-colors flex items-center justify-between"
+                      onClick={() => toggleMainCategory(mainCategoryName)}
+                    >
+                      <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                        {isMainExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                        {mainCategoryName}
+                        <span className="text-sm font-normal text-muted-foreground ml-2">
+                          ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)}{" "}
+                          articles)
+                        </span>
+                      </h2>
+                    </div>
+
+                    {/* Sous-catégories */}
+                    {isMainExpanded && (
+                      <div className="space-y-4 pl-4 animate-fade-in">
+                        {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => {
+                          const subKey = `${mainCategoryName}-${subCategoryName}`;
+                          const isSubExpanded = expandedSubCategories.has(subKey);
+                          return (
+                            <div key={subCategoryName} className="space-y-2">
+                              <h3
+                                className="text-lg font-semibold text-muted-foreground border-b pb-1 cursor-pointer hover:text-foreground transition-colors flex items-center gap-2"
+                                onClick={() => toggleSubCategory(mainCategoryName, subCategoryName)}
+                              >
+                                {isSubExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                                {subCategoryName} ({categoryAccessories.length})
+                              </h3>
+                              {isSubExpanded && (
+                                <div className="space-y-2 animate-fade-in">
+                                  {categoryAccessories.map((accessory) => (
+                                    <Card
+                                      key={accessory.id}
+                                      className="hover:bg-muted/50 transition-colors cursor-move"
+                                      draggable
+                                      onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
+                                    >
+                                      <CardContent className="p-4">
+                                        <div className="flex items-center gap-4">
+                                          {accessory.image_url && (
+                                            <img
+                                              src={accessory.image_url}
+                                              alt={accessory.nom}
+                                              className="w-16 h-16 object-contain rounded border"
+                                            />
+                                          )}
+                                          <div className="flex-1 grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
+                                            <div className="md:col-span-2">
+                                              <div className="font-semibold flex items-center gap-2">
+                                                {accessory.nom}
+                                                {accessory.accessory_options &&
+                                                  accessory.accessory_options.length > 0 && (
+                                                    <Badge variant="outline" className="text-xs">
+                                                      <Package className="h-3 w-3 mr-1" />
+                                                      {accessory.accessory_options.length}
+                                                    </Badge>
+                                                  )}
+                                              </div>
+                                              {accessory.marque && (
+                                                <div className="text-sm text-muted-foreground">{accessory.marque}</div>
+                                              )}
+                                            </div>
+                                            <div className="md:col-span-1">
+                                              {accessory.categories ? (
+                                                <Badge variant="secondary">{accessory.categories.nom}</Badge>
+                                              ) : (
+                                                <span className="text-sm text-muted-foreground">Sans catégorie</span>
+                                              )}
+                                            </div>
+                                            <div className="md:col-span-1 text-sm">
+                                              {accessory.prix_reference && (
+                                                <div>
+                                                  <span className="text-muted-foreground">HT: </span>
+                                                  {accessory.prix_reference.toFixed(2)} €
+                                                </div>
+                                              )}
+                                              {accessory.prix_vente_ttc && (
+                                                <div>
+                                                  <span className="text-muted-foreground">TTC: </span>
+                                                  {accessory.prix_vente_ttc.toFixed(2)} €
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="md:col-span-1 text-sm">
+                                              {accessory.puissance_watts && (
+                                                <div>
+                                                  <span className="text-muted-foreground">P: </span>
+                                                  {accessory.puissance_watts} W
+                                                </div>
+                                              )}
+                                              {accessory.intensite_amperes && (
+                                                <div>
+                                                  <span className="text-muted-foreground">I: </span>
+                                                  {accessory.intensite_amperes} A
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="md:col-span-1 text-sm text-muted-foreground">
+                                              {accessory.fournisseur && <div>{accessory.fournisseur}</div>}
+                                            </div>
+                                          </div>
+                                          <div className="flex gap-1 flex-shrink-0">
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                                              title={
+                                                accessory.available_in_shop
+                                                  ? "Retirer de la boutique"
+                                                  : "Ajouter à la boutique"
+                                              }
+                                              onClick={() =>
+                                                handleToggleShopAvailability(
+                                                  accessory.id,
+                                                  accessory.available_in_shop || false,
+                                                )
+                                              }
+                                            >
+                                              <Store
+                                                className={`h-4 w-4 ${accessory.available_in_shop ? "text-primary" : "text-muted-foreground"}`}
+                                              />
+                                            </div>
+                                            <Button variant="ghost" size="icon" onClick={() => handleEdit(accessory)}>
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              onClick={() => setDeleteId(accessory.id)}
+                                              className="text-destructive hover:text-destructive"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                        </div>
+
+                                        {/* Gestion du stock */}
+                                        <div className="mt-3 pt-3 border-t">
+                                          <StockStatusManager
+                                            accessoryId={accessory.id}
+                                            accessoryName={accessory.nom}
+                                            currentStatus={accessory.stock_status || "in_stock"}
+                                            currentQuantity={accessory.stock_quantity || 0}
+                                            deliveryDate={accessory.delivery_date}
+                                            trackingNumber={accessory.tracking_number}
+                                            onStatusChange={loadAccessories}
+                                          />
+                                        </div>
+
+                                        {/* Options collapsible */}
+                                        {accessory.accessory_options && accessory.accessory_options.length > 0 && (
+                                          <Collapsible
+                                            open={expandedOptions.has(accessory.id)}
+                                            onOpenChange={() => {
+                                              setExpandedOptions((prev) => {
+                                                const newSet = new Set(prev);
+                                                if (newSet.has(accessory.id)) {
+                                                  newSet.delete(accessory.id);
+                                                } else {
+                                                  newSet.add(accessory.id);
+                                                }
+                                                return newSet;
+                                              });
+                                            }}
+                                            className="mt-3"
+                                          >
+                                            <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                                              {expandedOptions.has(accessory.id) ? (
+                                                <ChevronDown className="h-4 w-4" />
+                                              ) : (
+                                                <ChevronRight className="h-4 w-4" />
+                                              )}
+                                              <Package className="h-4 w-4" />
+                                              Voir les options ({accessory.accessory_options.length})
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent className="mt-2">
+                                              <div className="bg-muted/30 rounded-md p-3 space-y-2">
+                                                {accessory.accessory_options.map((option) => (
+                                                  <div
+                                                    key={option.id}
+                                                    className="flex items-center justify-between text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0"
+                                                  >
+                                                    <span className="font-medium">{option.nom}</span>
+                                                    <div className="flex gap-4 text-xs">
+                                                      {option.prix_reference !== null &&
+                                                        option.prix_reference !== undefined && (
+                                                          <span>
+                                                            <span className="text-muted-foreground">Achat: </span>
+                                                            {option.prix_reference.toFixed(2)} €
+                                                          </span>
+                                                        )}
+                                                      {option.marge_pourcent !== null &&
+                                                        option.marge_pourcent !== undefined && (
+                                                          <span>
+                                                            <span className="text-muted-foreground">Marge: </span>
+                                                            {option.marge_pourcent.toFixed(1)} %
+                                                          </span>
+                                                        )}
+                                                      {option.prix_vente_ttc !== null &&
+                                                        option.prix_vente_ttc !== undefined && (
+                                                          <span>
+                                                            <span className="text-muted-foreground">Vente: </span>
+                                                            {option.prix_vente_ttc.toFixed(2)} €
+                                                          </span>
+                                                        )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </CollapsibleContent>
+                                          </Collapsible>
+                                        )}
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                            {accessory.marque && (
-                              <div className="text-sm text-muted-foreground">{accessory.marque}</div>
-                            )}
-                          </div>
-                          <div className="md:col-span-1">
-                            {accessory.categories ? (
-                              <Badge variant="secondary">{accessory.categories.nom}</Badge>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">Sans catégorie</span>
-                            )}
-                          </div>
-                          <div className="md:col-span-1 text-sm">
-                            {accessory.prix_reference && (
-                              <div>
-                                <span className="text-muted-foreground">HT: </span>
-                                {accessory.prix_reference.toFixed(2)} €
-                              </div>
-                            )}
-                            {accessory.prix_vente_ttc && (
-                              <div>
-                                <span className="text-muted-foreground">TTC: </span>
-                                {accessory.prix_vente_ttc.toFixed(2)} €
-                              </div>
-                            )}
-                          </div>
-                          <div className="md:col-span-1 text-sm">
-                            {accessory.puissance_watts && (
-                              <div>
-                                <span className="text-muted-foreground">P: </span>
-                                {accessory.puissance_watts} W
-                              </div>
-                            )}
-                            {accessory.intensite_amperes && (
-                              <div>
-                                <span className="text-muted-foreground">I: </span>
-                                {accessory.intensite_amperes} A
-                              </div>
-                            )}
-                          </div>
-                          <div className="md:col-span-1 text-sm text-muted-foreground">
-                            {accessory.fournisseur && <div>{accessory.fournisseur}</div>}
-                          </div>
-                        </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <div 
-                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
-                            title={accessory.available_in_shop ? "Retirer de la boutique" : "Ajouter à la boutique"}
-                            onClick={() => handleToggleShopAvailability(accessory.id, accessory.available_in_shop || false)}
-                          >
-                            <Store className={`h-4 w-4 ${accessory.available_in_shop ? 'text-primary' : 'text-muted-foreground'}`} />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(accessory)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteId(accessory.id)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                      
-                      {/* Gestion du stock */}
-                      <div className="mt-3 pt-3 border-t">
-                        <StockStatusManager
-                          accessoryId={accessory.id}
-                          accessoryName={accessory.nom}
-                          currentStatus={accessory.stock_status || 'in_stock'}
-                          currentQuantity={accessory.stock_quantity || 0}
-                          deliveryDate={accessory.delivery_date}
-                          trackingNumber={accessory.tracking_number}
-                          onStatusChange={loadAccessories}
-                        />
-                      </div>
-                      
-                      {/* Options collapsible */}
-                      {accessory.accessory_options && accessory.accessory_options.length > 0 && (
-                        <Collapsible
-                          open={expandedOptions.has(accessory.id)}
-                          onOpenChange={() => {
-                            setExpandedOptions(prev => {
-                              const newSet = new Set(prev);
-                              if (newSet.has(accessory.id)) {
-                                newSet.delete(accessory.id);
-                              } else {
-                                newSet.add(accessory.id);
-                              }
-                              return newSet;
-                            });
-                          }}
-                          className="mt-3"
-                        >
-                          <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                            {expandedOptions.has(accessory.id) ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                            <Package className="h-4 w-4" />
-                            Voir les options ({accessory.accessory_options.length})
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="mt-2">
-                            <div className="bg-muted/30 rounded-md p-3 space-y-2">
-                              {accessory.accessory_options.map((option) => (
-                                <div key={option.id} className="flex items-center justify-between text-sm border-b border-border/50 pb-2 last:border-0 last:pb-0">
-                                  <span className="font-medium">{option.nom}</span>
-                                  <div className="flex gap-4 text-xs">
-                                    {option.prix_reference !== null && option.prix_reference !== undefined && (
-                                      <span>
-                                        <span className="text-muted-foreground">Achat: </span>
-                                        {option.prix_reference.toFixed(2)} €
-                                      </span>
-                                    )}
-                                    {option.marge_pourcent !== null && option.marge_pourcent !== undefined && (
-                                      <span>
-                                        <span className="text-muted-foreground">Marge: </span>
-                                        {option.marge_pourcent.toFixed(1)} %
-                                      </span>
-                                    )}
-                                    {option.prix_vente_ttc !== null && option.prix_vente_ttc !== undefined && (
-                                      <span>
-                                        <span className="text-muted-foreground">Vente: </span>
-                                        {option.prix_vente_ttc.toFixed(2)} €
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      )}
-                    </CardContent>
-                  </Card>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="space-y-8">
-          {groupedAccessories().map(([mainCategoryName, categoryGroup]) => {
-            const isMainExpanded = expandedMainCategories.has(mainCategoryName);
-            return (
-              <div key={mainCategoryName} className="space-y-4">
-                {/* En-tête de catégorie principale */}
-                <div 
-                  className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg cursor-pointer hover:bg-primary/15 transition-colors flex items-center justify-between"
-                  onClick={() => toggleMainCategory(mainCategoryName)}
-                >
-                  <h2 className="text-xl font-bold text-primary flex items-center gap-2">
-                    {isMainExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                    {mainCategoryName}
-                    <span className="text-sm font-normal text-muted-foreground ml-2">
-                      ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)} articles)
-                    </span>
-                  </h2>
-                </div>
-                
-                {/* Sous-catégories en grille */}
-                {isMainExpanded && (
-                  <div className="space-y-4 pl-4 animate-fade-in">
-                    {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => {
-                      const subKey = `${mainCategoryName}-${subCategoryName}`;
-                      const isSubExpanded = expandedSubCategories.has(subKey);
-                      return (
-                        <div key={subCategoryName} className="space-y-2">
-                          <h3 
-                            className="text-lg font-semibold text-muted-foreground border-b pb-1 cursor-pointer hover:text-foreground transition-colors flex items-center gap-2"
-                            onClick={() => toggleSubCategory(mainCategoryName, subCategoryName)}
-                          >
-                            {isSubExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            {subCategoryName} ({categoryAccessories.length})
-                          </h3>
-                          {isSubExpanded && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
-                              {categoryAccessories.map((accessory) => (
-                  <Card 
-                    key={accessory.id}
-                    draggable
-                    onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
-                    className="cursor-move overflow-hidden"
-                  >
-                    {accessory.image_url && (
-                      <div className="w-full h-48 bg-muted">
-                        <img 
-                          src={accessory.image_url} 
-                          alt={accessory.nom}
-                          className="w-full h-full object-contain"
-                        />
+                          );
+                        })}
                       </div>
                     )}
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-lg mb-2 flex items-center gap-2">
-                            {accessory.nom}
-                            {accessory.accessory_options && accessory.accessory_options.length > 0 && (
-                              <Badge variant="outline" className="text-xs">
-                                <Package className="h-3 w-3 mr-1" />
-                                {accessory.accessory_options.length}
-                              </Badge>
-                            )}
-                          </CardTitle>
-                          {accessory.marque && (
-                            <p className="text-sm text-muted-foreground mb-2">
-                              {accessory.marque}
-                            </p>
-                          )}
-                          {accessory.categories && (
-                            <Badge variant="secondary" className="mb-2">
-                              {accessory.categories.nom}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex gap-1">
-                          <div 
-                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
-                            title={accessory.available_in_shop ? "Retirer de la boutique" : "Ajouter à la boutique"}
-                            onClick={() => handleToggleShopAvailability(accessory.id, accessory.available_in_shop || false)}
-                          >
-                            <Store className={`h-4 w-4 ${accessory.available_in_shop ? 'text-primary' : 'text-muted-foreground'}`} />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEdit(accessory)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteId(accessory.id)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                      {accessory.description && (
-                        <CardDescription className="line-clamp-2">
-                          {accessory.description}
-                        </CardDescription>
-                      )}
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2 text-sm">
-                        {accessory.prix_reference && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Prix achat HT:</span>
-                            <span className="font-medium">
-                              {accessory.prix_reference.toFixed(2)} €
-                            </span>
-                          </div>
-                        )}
-                        {accessory.prix_vente_ttc && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Prix vente TTC:</span>
-                            <span className="font-medium">
-                              {accessory.prix_vente_ttc.toFixed(2)} €
-                            </span>
-                          </div>
-                        )}
-                        {accessory.marge_pourcent !== null && accessory.marge_pourcent !== undefined && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Marge:</span>
-                            <span className="font-medium">
-                              {accessory.marge_pourcent.toFixed(1)} %
-                            </span>
-                          </div>
-                        )}
-                        {accessory.puissance_watts && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Puissance:</span>
-                            <span>{accessory.puissance_watts} W</span>
-                          </div>
-                        )}
-                        {accessory.intensite_amperes && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Intensité:</span>
-                            <span>{accessory.intensite_amperes} A</span>
-                          </div>
-                        )}
-                        {accessory.fournisseur && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Fournisseur:</span>
-                            <span>{accessory.fournisseur}</span>
-                          </div>
-                        )}
-                        {accessory.url_produit && (
-                          <div>
-                            <a
-                              href={accessory.url_produit}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline text-sm"
-                            >
-                              Voir le produit
-                            </a>
-                          </div>
-                        )}
-                        
-                        {/* Options collapsible */}
-                        {accessory.accessory_options && accessory.accessory_options.length > 0 && (
-                          <Collapsible
-                            open={expandedOptions.has(accessory.id)}
-                            onOpenChange={() => {
-                              setExpandedOptions(prev => {
-                                const newSet = new Set(prev);
-                                if (newSet.has(accessory.id)) {
-                                  newSet.delete(accessory.id);
-                                } else {
-                                  newSet.add(accessory.id);
-                                }
-                                return newSet;
-                              });
-                            }}
-                            className="pt-3 border-t"
-                          >
-                            <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
-                              {expandedOptions.has(accessory.id) ? (
-                                <ChevronDown className="h-4 w-4" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4" />
-                              )}
-                              <Package className="h-4 w-4" />
-                              Options ({accessory.accessory_options.length})
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="mt-2">
-                              <div className="bg-muted/30 rounded-md p-2 space-y-1.5">
-                                {accessory.accessory_options.map((option) => (
-                                  <div key={option.id} className="text-xs space-y-0.5 border-b border-border/50 pb-1.5 last:border-0 last:pb-0">
-                                    <div className="font-medium">{option.nom}</div>
-                                    <div className="flex gap-3 text-muted-foreground">
-                                      {option.prix_reference !== null && option.prix_reference !== undefined && (
-                                        <span>Achat: {option.prix_reference.toFixed(2)} €</span>
-                                      )}
-                                      {option.marge_pourcent !== null && option.marge_pourcent !== undefined && (
-                                        <span>Marge: {option.marge_pourcent.toFixed(1)} %</span>
-                                      )}
-                                      {option.prix_vente_ttc !== null && option.prix_vente_ttc !== undefined && (
-                                        <span>Vente: {option.prix_vente_ttc.toFixed(2)} €</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        )}
-                        
-                        {/* Gestion du stock */}
-                        <div className="pt-3 border-t mt-3">
-                          <StockStatusManager
-                            accessoryId={accessory.id}
-                            accessoryName={accessory.nom}
-                            currentStatus={accessory.stock_status || 'in_stock'}
-                            currentQuantity={accessory.stock_quantity || 0}
-                            deliveryDate={accessory.delivery_date}
-                            trackingNumber={accessory.tracking_number}
-                            onStatusChange={loadAccessories}
-                          />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {groupedAccessories().map(([mainCategoryName, categoryGroup]) => {
+                const isMainExpanded = expandedMainCategories.has(mainCategoryName);
+                return (
+                  <div key={mainCategoryName} className="space-y-4">
+                    {/* En-tête de catégorie principale */}
+                    <div
+                      className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg cursor-pointer hover:bg-primary/15 transition-colors flex items-center justify-between"
+                      onClick={() => toggleMainCategory(mainCategoryName)}
+                    >
+                      <h2 className="text-xl font-bold text-primary flex items-center gap-2">
+                        {isMainExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                        {mainCategoryName}
+                        <span className="text-sm font-normal text-muted-foreground ml-2">
+                          ({Array.from(categoryGroup.subGroups.values()).reduce((sum, items) => sum + items.length, 0)}{" "}
+                          articles)
+                        </span>
+                      </h2>
+                    </div>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer cet accessoire du catalogue ?
-              Cette action est irréversible.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && handleDelete(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                    {/* Sous-catégories en grille */}
+                    {isMainExpanded && (
+                      <div className="space-y-4 pl-4 animate-fade-in">
+                        {Array.from(categoryGroup.subGroups.entries()).map(([subCategoryName, categoryAccessories]) => {
+                          const subKey = `${mainCategoryName}-${subCategoryName}`;
+                          const isSubExpanded = expandedSubCategories.has(subKey);
+                          return (
+                            <div key={subCategoryName} className="space-y-2">
+                              <h3
+                                className="text-lg font-semibold text-muted-foreground border-b pb-1 cursor-pointer hover:text-foreground transition-colors flex items-center gap-2"
+                                onClick={() => toggleSubCategory(mainCategoryName, subCategoryName)}
+                              >
+                                {isSubExpanded ? (
+                                  <ChevronDown className="h-4 w-4" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4" />
+                                )}
+                                {subCategoryName} ({categoryAccessories.length})
+                              </h3>
+                              {isSubExpanded && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
+                                  {categoryAccessories.map((accessory) => (
+                                    <Card
+                                      key={accessory.id}
+                                      draggable
+                                      onDragStart={(e) => e.dataTransfer.setData("accessoryId", accessory.id)}
+                                      className="cursor-move overflow-hidden"
+                                    >
+                                      {accessory.image_url && (
+                                        <div className="w-full h-48 bg-muted">
+                                          <img
+                                            src={accessory.image_url}
+                                            alt={accessory.nom}
+                                            className="w-full h-full object-contain"
+                                          />
+                                        </div>
+                                      )}
+                                      <CardHeader>
+                                        <div className="flex items-start justify-between">
+                                          <div className="flex-1">
+                                            <CardTitle className="text-lg mb-2 flex items-center gap-2">
+                                              {accessory.nom}
+                                              {accessory.accessory_options &&
+                                                accessory.accessory_options.length > 0 && (
+                                                  <Badge variant="outline" className="text-xs">
+                                                    <Package className="h-3 w-3 mr-1" />
+                                                    {accessory.accessory_options.length}
+                                                  </Badge>
+                                                )}
+                                            </CardTitle>
+                                            {accessory.marque && (
+                                              <p className="text-sm text-muted-foreground mb-2">{accessory.marque}</p>
+                                            )}
+                                            {accessory.categories && (
+                                              <Badge variant="secondary" className="mb-2">
+                                                {accessory.categories.nom}
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <div className="flex gap-1">
+                                            <div
+                                              className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                                              title={
+                                                accessory.available_in_shop
+                                                  ? "Retirer de la boutique"
+                                                  : "Ajouter à la boutique"
+                                              }
+                                              onClick={() =>
+                                                handleToggleShopAvailability(
+                                                  accessory.id,
+                                                  accessory.available_in_shop || false,
+                                                )
+                                              }
+                                            >
+                                              <Store
+                                                className={`h-4 w-4 ${accessory.available_in_shop ? "text-primary" : "text-muted-foreground"}`}
+                                              />
+                                            </div>
+                                            <Button variant="ghost" size="icon" onClick={() => handleEdit(accessory)}>
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              onClick={() => setDeleteId(accessory.id)}
+                                              className="text-destructive hover:text-destructive"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                        {accessory.description && (
+                                          <CardDescription className="line-clamp-2">
+                                            {accessory.description}
+                                          </CardDescription>
+                                        )}
+                                      </CardHeader>
+                                      <CardContent>
+                                        <div className="space-y-2 text-sm">
+                                          {accessory.prix_reference && (
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">Prix achat HT:</span>
+                                              <span className="font-medium">
+                                                {accessory.prix_reference.toFixed(2)} €
+                                              </span>
+                                            </div>
+                                          )}
+                                          {accessory.prix_vente_ttc && (
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">Prix vente TTC:</span>
+                                              <span className="font-medium">
+                                                {accessory.prix_vente_ttc.toFixed(2)} €
+                                              </span>
+                                            </div>
+                                          )}
+                                          {accessory.marge_pourcent !== null &&
+                                            accessory.marge_pourcent !== undefined && (
+                                              <div className="flex justify-between">
+                                                <span className="text-muted-foreground">Marge:</span>
+                                                <span className="font-medium">
+                                                  {accessory.marge_pourcent.toFixed(1)} %
+                                                </span>
+                                              </div>
+                                            )}
+                                          {accessory.puissance_watts && (
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">Puissance:</span>
+                                              <span>{accessory.puissance_watts} W</span>
+                                            </div>
+                                          )}
+                                          {accessory.intensite_amperes && (
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">Intensité:</span>
+                                              <span>{accessory.intensite_amperes} A</span>
+                                            </div>
+                                          )}
+                                          {accessory.fournisseur && (
+                                            <div className="flex justify-between">
+                                              <span className="text-muted-foreground">Fournisseur:</span>
+                                              <span>{accessory.fournisseur}</span>
+                                            </div>
+                                          )}
+                                          {accessory.url_produit && (
+                                            <div>
+                                              <a
+                                                href={accessory.url_produit}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-primary hover:underline text-sm"
+                                              >
+                                                Voir le produit
+                                              </a>
+                                            </div>
+                                          )}
 
-      <AccessoryCatalogFormDialog
-        isOpen={isFormOpen}
-        onClose={handleFormClose}
-        onSuccess={handleFormSuccess}
-        accessory={selectedAccessory}
-      />
+                                          {/* Options collapsible */}
+                                          {accessory.accessory_options && accessory.accessory_options.length > 0 && (
+                                            <Collapsible
+                                              open={expandedOptions.has(accessory.id)}
+                                              onOpenChange={() => {
+                                                setExpandedOptions((prev) => {
+                                                  const newSet = new Set(prev);
+                                                  if (newSet.has(accessory.id)) {
+                                                    newSet.delete(accessory.id);
+                                                  } else {
+                                                    newSet.add(accessory.id);
+                                                  }
+                                                  return newSet;
+                                                });
+                                              }}
+                                              className="pt-3 border-t"
+                                            >
+                                              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full">
+                                                {expandedOptions.has(accessory.id) ? (
+                                                  <ChevronDown className="h-4 w-4" />
+                                                ) : (
+                                                  <ChevronRight className="h-4 w-4" />
+                                                )}
+                                                <Package className="h-4 w-4" />
+                                                Options ({accessory.accessory_options.length})
+                                              </CollapsibleTrigger>
+                                              <CollapsibleContent className="mt-2">
+                                                <div className="bg-muted/30 rounded-md p-2 space-y-1.5">
+                                                  {accessory.accessory_options.map((option) => (
+                                                    <div
+                                                      key={option.id}
+                                                      className="text-xs space-y-0.5 border-b border-border/50 pb-1.5 last:border-0 last:pb-0"
+                                                    >
+                                                      <div className="font-medium">{option.nom}</div>
+                                                      <div className="flex gap-3 text-muted-foreground">
+                                                        {option.prix_reference !== null &&
+                                                          option.prix_reference !== undefined && (
+                                                            <span>Achat: {option.prix_reference.toFixed(2)} €</span>
+                                                          )}
+                                                        {option.marge_pourcent !== null &&
+                                                          option.marge_pourcent !== undefined && (
+                                                            <span>Marge: {option.marge_pourcent.toFixed(1)} %</span>
+                                                          )}
+                                                        {option.prix_vente_ttc !== null &&
+                                                          option.prix_vente_ttc !== undefined && (
+                                                            <span>Vente: {option.prix_vente_ttc.toFixed(2)} €</span>
+                                                          )}
+                                                      </div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </CollapsibleContent>
+                                            </Collapsible>
+                                          )}
 
-      <CategoryManagementDialog
-        isOpen={isCategoryManagementOpen}
-        onClose={() => setIsCategoryManagementOpen(false)}
-        onSuccess={() => {
-          loadCategories();
-          loadAccessories();
-        }}
-        categories={categories}
-      />
+                                          {/* Gestion du stock */}
+                                          <div className="pt-3 border-t mt-3">
+                                            <StockStatusManager
+                                              accessoryId={accessory.id}
+                                              accessoryName={accessory.nom}
+                                              currentStatus={accessory.stock_status || "in_stock"}
+                                              currentQuantity={accessory.stock_quantity || 0}
+                                              deliveryDate={accessory.delivery_date}
+                                              trackingNumber={accessory.tracking_number}
+                                              onStatusChange={loadAccessories}
+                                            />
+                                          </div>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-      <AccessoryImportExportDialog
-        isOpen={isImportExportOpen}
-        onClose={() => setIsImportExportOpen(false)}
-        onSuccess={loadAccessories}
-        categories={categories}
-      />
+          <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Êtes-vous sûr de vouloir supprimer cet accessoire du catalogue ? Cette action est irréversible.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteId && handleDelete(deleteId)}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Supprimer
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AccessoryCatalogFormDialog
+            isOpen={isFormOpen}
+            onClose={handleFormClose}
+            onSuccess={handleFormSuccess}
+            accessory={selectedAccessory}
+          />
+
+          <CategoryManagementDialog
+            isOpen={isCategoryManagementOpen}
+            onClose={() => setIsCategoryManagementOpen(false)}
+            onSuccess={() => {
+              loadCategories();
+              loadAccessories();
+            }}
+            categories={categories}
+          />
+
+          <AccessoryImportExportDialog
+            isOpen={isImportExportOpen}
+            onClose={() => setIsImportExportOpen(false)}
+            onSuccess={loadAccessories}
+            categories={categories}
+          />
         </CardContent>
       </Card>
     </div>
