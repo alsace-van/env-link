@@ -44,9 +44,13 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
   const [isCancelling, setIsCancelling] = useState(false);
   const [isRescanningVIN, setIsRescanningVIN] = useState(false);
   const [isRescanningImmat, setIsRescanningImmat] = useState(false);
+  const [isRescanningMarque, setIsRescanningMarque] = useState(false);
+  const [isRescanningModele, setIsRescanningModele] = useState(false);
   const [lastImageFile, setLastImageFile] = useState<File | null>(null);
   const [showVINZoneSelector, setShowVINZoneSelector] = useState(false);
   const [showImmatZoneSelector, setShowImmatZoneSelector] = useState(false);
+  const [showMarqueZoneSelector, setShowMarqueZoneSelector] = useState(false);
+  const [showModeleZoneSelector, setShowModeleZoneSelector] = useState(false);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef(false);
@@ -248,7 +252,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         }));
 
         toast.success(`VIN détecté: ${detectedVIN}`);
-        
+
         // ✅ Rouvrir la modale de confirmation pour voir la mise à jour
         setShowConfirmationModal(true);
       } else {
@@ -359,7 +363,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
         }));
 
         toast.success(`Immatriculation détectée: ${detectedImmat}`);
-        
+
         // ✅ Rouvrir la modale de confirmation pour voir la mise à jour
         setShowConfirmationModal(true);
       } else {
@@ -380,6 +384,208 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
       setShowConfirmationModal(true);
     } finally {
       setIsRescanningImmat(false);
+      setProgress(0);
+    }
+  };
+
+  /**
+   * Ouvrir le sélecteur de zone pour la marque
+   */
+  const startMarqueZoneSelection = () => {
+    if (!imagePreview) {
+      toast.error("Image originale non disponible");
+      return;
+    }
+    setShowMarqueZoneSelector(true);
+  };
+
+  /**
+   * Scan de la marque sur la zone sélectionnée
+   */
+  const processMarqueZone = async (zoneCanvas: HTMLCanvasElement) => {
+    setShowMarqueZoneSelector(false);
+    setIsRescanningMarque(true);
+    setProgress(0);
+
+    try {
+      console.log("🔍 Rescan marque sur zone sélectionnée...");
+      setProgress(10);
+
+      // Agrandir la zone
+      const zoomedCanvas = document.createElement("canvas");
+      zoomedCanvas.width = zoneCanvas.width * 3.0;
+      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      const zoomedCtx = zoomedCanvas.getContext("2d");
+
+      if (!zoomedCtx) throw new Error("Canvas context error");
+
+      zoomedCtx.imageSmoothingEnabled = true;
+      zoomedCtx.imageSmoothingQuality = "high";
+      zoomedCtx.drawImage(zoneCanvas, 0, 0, zoomedCanvas.width, zoomedCanvas.height);
+
+      setProgress(20);
+
+      // Prétraitement
+      preprocessStrategy2(zoomedCanvas);
+      setProgress(40);
+
+      // Convertir en blob
+      const zoneBlob = await new Promise<Blob>((resolve, reject) => {
+        zoomedCanvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Conversion échouée"));
+        }, "image/png");
+      });
+
+      setProgress(50);
+
+      // OCR
+      const result = await Tesseract.recognize(zoneBlob, "fra", {
+        logger: (m: any) => {
+          if (m.status === "recognizing text") {
+            setProgress(50 + Math.round(m.progress * 40));
+          }
+        },
+      });
+
+      console.log("📄 Texte OCR détecté pour marque:", result.data.text);
+
+      // Extraire la marque (prendre les premiers mots significatifs)
+      const detectedMarque = result.data.text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 2)
+        .find((line) => /^[A-Z]/i.test(line)); // Ligne commençant par une majuscule
+
+      if (detectedMarque) {
+        console.log("✅ Marque rescannée:", detectedMarque);
+
+        setExtractedData((prev) => ({
+          ...prev,
+          marque: detectedMarque.toUpperCase(),
+        }));
+
+        setEditedData((prev) => ({
+          ...prev,
+          marque: detectedMarque.toUpperCase(),
+        }));
+
+        toast.success(`Marque détectée: ${detectedMarque}`);
+        setShowConfirmationModal(true);
+      } else {
+        console.warn("⚠️ Marque non détectée après rescan");
+        toast.warning("Marque non détectée. Sélectionnez la zone du champ D.1");
+        setShowConfirmationModal(true);
+      }
+
+      setProgress(100);
+    } catch (error) {
+      console.error("Erreur rescan marque:", error);
+      toast.error("Erreur lors du rescan de la marque");
+      setShowConfirmationModal(true);
+    } finally {
+      setIsRescanningMarque(false);
+      setProgress(0);
+    }
+  };
+
+  /**
+   * Ouvrir le sélecteur de zone pour le modèle
+   */
+  const startModeleZoneSelection = () => {
+    if (!imagePreview) {
+      toast.error("Image originale non disponible");
+      return;
+    }
+    setShowModeleZoneSelector(true);
+  };
+
+  /**
+   * Scan du modèle sur la zone sélectionnée
+   */
+  const processModeleZone = async (zoneCanvas: HTMLCanvasElement) => {
+    setShowModeleZoneSelector(false);
+    setIsRescanningModele(true);
+    setProgress(0);
+
+    try {
+      console.log("🔍 Rescan modèle sur zone sélectionnée...");
+      setProgress(10);
+
+      // Agrandir la zone
+      const zoomedCanvas = document.createElement("canvas");
+      zoomedCanvas.width = zoneCanvas.width * 3.0;
+      zoomedCanvas.height = zoneCanvas.height * 3.0;
+      const zoomedCtx = zoomedCanvas.getContext("2d");
+
+      if (!zoomedCtx) throw new Error("Canvas context error");
+
+      zoomedCtx.imageSmoothingEnabled = true;
+      zoomedCtx.imageSmoothingQuality = "high";
+      zoomedCtx.drawImage(zoneCanvas, 0, 0, zoomedCanvas.width, zoomedCanvas.height);
+
+      setProgress(20);
+
+      // Prétraitement
+      preprocessStrategy2(zoomedCanvas);
+      setProgress(40);
+
+      // Convertir en blob
+      const zoneBlob = await new Promise<Blob>((resolve, reject) => {
+        zoomedCanvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Conversion échouée"));
+        }, "image/png");
+      });
+
+      setProgress(50);
+
+      // OCR
+      const result = await Tesseract.recognize(zoneBlob, "fra", {
+        logger: (m: any) => {
+          if (m.status === "recognizing text") {
+            setProgress(50 + Math.round(m.progress * 40));
+          }
+        },
+      });
+
+      console.log("📄 Texte OCR détecté pour modèle:", result.data.text);
+
+      // Extraire le modèle (prendre les premiers mots significatifs)
+      const detectedModele = result.data.text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 2)
+        .find((line) => /^[A-Z0-9]/i.test(line)); // Ligne commençant par une majuscule ou chiffre
+
+      if (detectedModele) {
+        console.log("✅ Modèle rescanné:", detectedModele);
+
+        setExtractedData((prev) => ({
+          ...prev,
+          denominationCommerciale: detectedModele,
+        }));
+
+        setEditedData((prev) => ({
+          ...prev,
+          denominationCommerciale: detectedModele,
+        }));
+
+        toast.success(`Modèle détecté: ${detectedModele}`);
+        setShowConfirmationModal(true);
+      } else {
+        console.warn("⚠️ Modèle non détecté après rescan");
+        toast.warning("Modèle non détecté. Sélectionnez la zone du champ D.3");
+        setShowConfirmationModal(true);
+      }
+
+      setProgress(100);
+    } catch (error) {
+      console.error("Erreur rescan modèle:", error);
+      toast.error("Erreur lors du rescan du modèle");
+      setShowConfirmationModal(true);
+    } finally {
+      setIsRescanningModele(false);
       setProgress(0);
     }
   };
@@ -570,7 +776,7 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
 
       setExtractedData(finalData);
       setEditedData(finalData);
-      
+
       // Ouvrir automatiquement le modal de vérification après le scan
       setShowConfirmationModal(true);
 
@@ -1063,6 +1269,8 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           }}
           onRescanVIN={startVINZoneSelection}
           onRescanImmat={startImmatZoneSelection}
+          onRescanMarque={startMarqueZoneSelection}
+          onRescanModele={startModeleZoneSelection}
         />
       )}
 
@@ -1085,6 +1293,28 @@ const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScan
           onCancel={() => setShowImmatZoneSelector(false)}
           title="Sélectionner la zone de l'immatriculation"
           hint="Dessinez un rectangle autour du champ A (immatriculation)"
+        />
+      )}
+
+      {/* Sélecteur de zone pour la marque */}
+      {showMarqueZoneSelector && imagePreview && (
+        <ImageZoneSelector
+          imageUrl={imagePreview}
+          onZoneSelected={processMarqueZone}
+          onCancel={() => setShowMarqueZoneSelector(false)}
+          title="Sélectionner la zone de la marque"
+          hint="Dessinez un rectangle autour du champ D.1 (Marque)"
+        />
+      )}
+
+      {/* Sélecteur de zone pour le modèle */}
+      {showModeleZoneSelector && imagePreview && (
+        <ImageZoneSelector
+          imageUrl={imagePreview}
+          onZoneSelected={processModeleZone}
+          onCancel={() => setShowModeleZoneSelector(false)}
+          title="Sélectionner la zone du modèle"
+          hint="Dessinez un rectangle autour du champ D.3 (Dénomination commerciale)"
         />
       )}
     </>
