@@ -20,7 +20,9 @@ import {
   EyeOff, 
   Edit2,
   AlertCircle,
-  Info
+  Info,
+  XCircle,
+  ScanLine
 } from "lucide-react";
 import { type VehicleRegistrationData } from "@/lib/registrationCardParser";
 
@@ -29,54 +31,58 @@ interface ScanConfirmationModalProps {
   onClose: () => void;
   scannedData: VehicleRegistrationData;
   onConfirm: (confirmedData: VehicleRegistrationData) => void;
+  onRescanVIN?: () => void;
+  onRescanImmat?: () => void;
+  onRescanMarque?: () => void;
+  onRescanModele?: () => void;
 }
 
 /**
- * Modal de confirmation des données scannées
+ * Modal de confirmation des données scannées - VERSION COMPLÈTE
  * 
- * OBJECTIF : Empêcher les erreurs silencieuses de l'OCR
- * 
- * FONCTIONNEMENT :
- * 1. S'ouvre automatiquement après chaque scan
- * 2. Affiche le VIN caractère par caractère
- * 3. Bloque la validation tant que le VIN n'est pas confirmé
- * 4. Permet de corriger facilement les erreurs détectées
- * 
- * SÉCURITÉ :
- * - Le bouton "Valider" est désactivé tant que le VIN n'est pas vérifié
- * - Alerte visuelle très présente sur le VIN
- * - Aide à la vérification (confusions courantes 0/O, 1/I, etc.)
+ * Affiche les 8 champs avec :
+ * - Statut de détection (Détecté / Non détecté)
+ * - Boutons Rescan pour VIN, Immat, Marque, Modèle
+ * - Vérification obligatoire du VIN
+ * - Mode édition pour tous les champs
  */
 export const ScanConfirmationModal = ({
   isOpen,
   onClose,
   scannedData,
   onConfirm,
+  onRescanVIN,
+  onRescanImmat,
+  onRescanMarque,
+  onRescanModele,
 }: ScanConfirmationModalProps) => {
   // État local pour l'édition
   const [editedData, setEditedData] = useState<VehicleRegistrationData>(scannedData);
   
   // États de vérification
   const [vinVerified, setVinVerified] = useState(false);
-  const [immatVerified, setImmatVerified] = useState(false);
   const [showVinHelp, setShowVinHelp] = useState(false);
   
   // Mode édition pour chaque champ
   const [editingVin, setEditingVin] = useState(false);
   const [editingImmat, setEditingImmat] = useState(false);
+  const [editingMarque, setEditingMarque] = useState(false);
+  const [editingModele, setEditingModele] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
+  const [editingMasseVide, setEditingMasseVide] = useState(false);
+  const [editingPTAC, setEditingPTAC] = useState(false);
+  const [editingGenre, setEditingGenre] = useState(false);
 
   // Réinitialiser quand les données changent
   useState(() => {
     setEditedData(scannedData);
     setVinVerified(false);
-    setImmatVerified(false);
   });
 
   const handleFieldChange = (field: keyof VehicleRegistrationData, value: any) => {
     setEditedData(prev => ({ ...prev, [field]: value }));
-    // Réinitialiser la vérification si le champ modifié est le VIN ou l'immat
+    // Réinitialiser la vérification si le VIN est modifié
     if (field === 'numeroChassisVIN') setVinVerified(false);
-    if (field === 'immatriculation') setImmatVerified(false);
   };
 
   const handleConfirm = () => {
@@ -87,12 +93,33 @@ export const ScanConfirmationModal = ({
     onClose();
   };
 
+  // Helper pour afficher le statut de détection
+  const getDetectionStatus = (value: any) => {
+    const isDetected = value !== undefined && value !== null && value !== "";
+    
+    if (isDetected) {
+      return (
+        <Badge className="bg-green-100 text-green-800 border-green-300">
+          <CheckCircle2 className="h-3 w-3 mr-1" />
+          Détecté
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge variant="outline" className="border-red-300 text-red-700">
+          <XCircle className="h-3 w-3 mr-1" />
+          Non détecté
+        </Badge>
+      );
+    }
+  };
+
   const vinLength = editedData.numeroChassisVIN?.length || 0;
   const isVinValid = vinLength === 17;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -104,7 +131,63 @@ export const ScanConfirmationModal = ({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* SECTION VIN - LA PLUS IMPORTANTE */}
+          {/* ============================================ */}
+          {/* SECTION 1 : IMMATRICULATION */}
+          {/* ============================================ */}
+          <div className="space-y-2 p-4 border rounded-lg bg-slate-50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Label className="text-base font-semibold">Immatriculation</Label>
+                {getDetectionStatus(editedData.immatriculation)}
+              </div>
+              <div className="flex gap-2">
+                {onRescanImmat && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      onClose();
+                      onRescanImmat();
+                    }}
+                  >
+                    <ScanLine className="h-4 w-4 mr-2" />
+                    Rescan
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingImmat(!editingImmat)}
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  {editingImmat ? "Annuler" : "Modifier"}
+                </Button>
+              </div>
+            </div>
+
+            {!editingImmat && editedData.immatriculation ? (
+              <div className="text-2xl font-bold font-mono tracking-wider p-3 bg-white border-2 border-blue-300 rounded text-center">
+                {editedData.immatriculation}
+              </div>
+            ) : editingImmat ? (
+              <Input
+                value={editedData.immatriculation || ""}
+                onChange={(e) => handleFieldChange('immatriculation', e.target.value.toUpperCase())}
+                className="text-xl font-mono tracking-wider"
+                placeholder="AA-123-BB"
+              />
+            ) : (
+              <div className="text-center p-3 text-gray-500 italic">
+                Non détecté - Cliquez sur "Modifier" pour saisir manuellement
+              </div>
+            )}
+          </div>
+
+          {/* ============================================ */}
+          {/* SECTION 2 : VIN (CRITIQUE) */}
+          {/* ============================================ */}
           {editedData.numeroChassisVIN && (
             <div className="space-y-3">
               {/* Alerte de vérification obligatoire */}
@@ -127,10 +210,27 @@ export const ScanConfirmationModal = ({
 
               <div className="p-4 border-2 border-orange-300 rounded-lg bg-white">
                 <div className="flex items-center justify-between mb-3">
-                  <Label className="text-base font-semibold text-orange-900">
-                    Numéro de châssis (VIN)
-                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-semibold text-orange-900">
+                      Numéro de châssis (VIN)
+                    </Label>
+                    {getDetectionStatus(editedData.numeroChassisVIN)}
+                  </div>
                   <div className="flex gap-2">
+                    {onRescanVIN && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          onClose();
+                          onRescanVIN();
+                        }}
+                      >
+                        <ScanLine className="h-4 w-4 mr-2" />
+                        Rescan
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -161,7 +261,7 @@ export const ScanConfirmationModal = ({
                   </div>
                 </div>
 
-                {/* Affichage du VIN en mode lecture */}
+                {/* Affichage du VIN */}
                 {!editingVin ? (
                   <>
                     {/* Caractères séparés visuellement */}
@@ -300,133 +400,289 @@ export const ScanConfirmationModal = ({
 
           <Separator />
 
-          {/* SECTION IMMATRICULATION */}
-          {editedData.immatriculation && (
-            <div className="space-y-2">
+          {/* ============================================ */}
+          {/* SECTION 3 : MARQUE & MODÈLE */}
+          {/* ============================================ */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* MARQUE */}
+            <div className="space-y-2 p-4 border rounded-lg bg-slate-50">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-semibold">Immatriculation</Label>
-                {!editingImmat ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEditingImmat(true)}
-                  >
-                    <Edit2 className="h-4 w-4 mr-2" />
-                    Modifier
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEditingImmat(false)}
-                  >
-                    Annuler
-                  </Button>
-                )}
-              </div>
-
-              {!editingImmat ? (
                 <div className="flex items-center gap-2">
-                  <div className="text-2xl font-bold font-mono tracking-wider p-3 bg-blue-50 border-2 border-blue-300 rounded">
-                    {editedData.immatriculation}
-                  </div>
-                  {!immatVerified && (
+                  <Label className="text-sm font-semibold">Marque</Label>
+                  {getDetectionStatus(editedData.marque)}
+                </div>
+                <div className="flex gap-2">
+                  {onRescanMarque && editedData.marque && (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => setImmatVerified(true)}
+                      onClick={() => {
+                        onClose();
+                        onRescanMarque();
+                      }}
                     >
-                      <CheckCircle2 className="h-4 w-4 mr-2" />
-                      Vérifier
+                      <ScanLine className="h-3 w-3 mr-1" />
+                      Rescan
                     </Button>
                   )}
-                  {immatVerified && (
-                    <Badge className="bg-green-500">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Vérifié
-                    </Badge>
-                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingMarque(!editingMarque)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
                 </div>
-              ) : (
-                <Input
-                  value={editedData.immatriculation}
-                  onChange={(e) => handleFieldChange('immatriculation', e.target.value.toUpperCase())}
-                  className="text-xl font-mono tracking-wider"
-                  placeholder="AA-123-BB"
-                />
-              )}
-            </div>
-          )}
+              </div>
 
-          {/* AUTRES CHAMPS */}
-          <Separator />
-          
-          <div className="grid grid-cols-2 gap-4">
-            {editedData.marque && (
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Marque</Label>
+              {!editingMarque && editedData.marque ? (
+                <div className="font-semibold text-lg p-2 bg-white border rounded">
+                  {editedData.marque}
+                </div>
+              ) : editingMarque ? (
                 <Input
-                  value={editedData.marque}
+                  value={editedData.marque || ""}
                   onChange={(e) => handleFieldChange('marque', e.target.value)}
                   className="font-semibold"
                 />
-              </div>
-            )}
+              ) : (
+                <div className="text-center p-2 text-gray-500 text-sm italic">
+                  Non détecté
+                </div>
+              )}
+            </div>
 
-            {editedData.denominationCommerciale && (
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold">Modèle</Label>
+            {/* MODÈLE */}
+            <div className="space-y-2 p-4 border rounded-lg bg-slate-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Modèle</Label>
+                  {getDetectionStatus(editedData.denominationCommerciale)}
+                </div>
+                <div className="flex gap-2">
+                  {onRescanModele && editedData.denominationCommerciale && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        onClose();
+                        onRescanModele();
+                      }}
+                    >
+                      <ScanLine className="h-3 w-3 mr-1" />
+                      Rescan
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingModele(!editingModele)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+
+              {!editingModele && editedData.denominationCommerciale ? (
+                <div className="font-semibold text-lg p-2 bg-white border rounded">
+                  {editedData.denominationCommerciale}
+                </div>
+              ) : editingModele ? (
                 <Input
-                  value={editedData.denominationCommerciale}
+                  value={editedData.denominationCommerciale || ""}
                   onChange={(e) => handleFieldChange('denominationCommerciale', e.target.value)}
                 />
-              </div>
-            )}
+              ) : (
+                <div className="text-center p-2 text-gray-500 text-sm italic">
+                  Non détecté
+                </div>
+              )}
+            </div>
+          </div>
 
-            {editedData.datePremiereImmatriculation && (
-              <div className="space-y-2">
+          <Separator />
+
+          {/* ============================================ */}
+          {/* SECTION 4 : AUTRES CHAMPS */}
+          {/* ============================================ */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* DATE 1ÈRE IMMAT */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
                 <Label className="text-sm font-semibold">Date 1ère immatriculation</Label>
-                <Input
-                  value={editedData.datePremiereImmatriculation}
-                  onChange={(e) => handleFieldChange('datePremiereImmatriculation', e.target.value)}
-                />
+                {getDetectionStatus(editedData.datePremiereImmatriculation)}
               </div>
-            )}
+              {!editingDate && editedData.datePremiereImmatriculation ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded">
+                    {editedData.datePremiereImmatriculation}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingDate(!editingDate)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingDate ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editedData.datePremiereImmatriculation || ""}
+                    onChange={(e) => handleFieldChange('datePremiereImmatriculation', e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingDate(false)}
+                  >
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté - <button onClick={() => setEditingDate(true)} className="underline">Saisir</button>
+                </div>
+              )}
+            </div>
 
-            {editedData.masseVide && (
-              <div className="space-y-2">
+            {/* MASSE À VIDE */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
                 <Label className="text-sm font-semibold">Masse à vide (kg)</Label>
-                <Input
-                  type="number"
-                  value={editedData.masseVide}
-                  onChange={(e) => handleFieldChange('masseVide', parseInt(e.target.value) || undefined)}
-                />
+                {getDetectionStatus(editedData.masseVide)}
               </div>
-            )}
+              {!editingMasseVide && editedData.masseVide ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">
+                    {editedData.masseVide} kg
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingMasseVide(!editingMasseVide)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingMasseVide ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={editedData.masseVide || ""}
+                    onChange={(e) => handleFieldChange('masseVide', parseInt(e.target.value) || undefined)}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingMasseVide(false)}
+                  >
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté - <button onClick={() => setEditingMasseVide(true)} className="underline">Saisir</button>
+                </div>
+              )}
+            </div>
 
-            {editedData.masseEnChargeMax && (
-              <div className="space-y-2">
+            {/* PTAC */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
                 <Label className="text-sm font-semibold">PTAC (kg)</Label>
-                <Input
-                  type="number"
-                  value={editedData.masseEnChargeMax}
-                  onChange={(e) => handleFieldChange('masseEnChargeMax', parseInt(e.target.value) || undefined)}
-                />
+                {getDetectionStatus(editedData.masseEnChargeMax)}
               </div>
-            )}
+              {!editingPTAC && editedData.masseEnChargeMax ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">
+                    {editedData.masseEnChargeMax} kg
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingPTAC(!editingPTAC)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingPTAC ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={editedData.masseEnChargeMax || ""}
+                    onChange={(e) => handleFieldChange('masseEnChargeMax', parseInt(e.target.value) || undefined)}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingPTAC(false)}
+                  >
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté - <button onClick={() => setEditingPTAC(true)} className="underline">Saisir</button>
+                </div>
+              )}
+            </div>
 
-            {editedData.genreNational && (
-              <div className="space-y-2">
+            {/* GENRE */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
                 <Label className="text-sm font-semibold">Genre</Label>
-                <Input
-                  value={editedData.genreNational}
-                  onChange={(e) => handleFieldChange('genreNational', e.target.value)}
-                />
+                {getDetectionStatus(editedData.genreNational)}
               </div>
-            )}
+              {!editingGenre && editedData.genreNational ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded">
+                    {editedData.genreNational}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingGenre(!editingGenre)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingGenre ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editedData.genreNational || ""}
+                    onChange={(e) => handleFieldChange('genreNational', e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingGenre(false)}
+                  >
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté - <button onClick={() => setEditingGenre(true)} className="underline">Saisir</button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Message d'avertissement si VIN non vérifié */}
