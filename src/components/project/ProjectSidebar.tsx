@@ -25,24 +25,24 @@ export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="project" className="flex-1 p-4 space-y-4 m-0 overflow-auto">
+        <TabsContent value="project" className="flex-1 p-4 space-y-2 m-0 overflow-auto">
           <div>
-            <h3 className="font-semibold mb-3">Tâches à faire</h3>
+            <h3 className="font-semibold mb-2">Tâches à faire</h3>
             <ProjectTodoList projectId={projectId} />
           </div>
-          <div>
-            <h3 className="font-semibold mb-3">Notes</h3>
+          <div className="pt-2">
+            <h3 className="font-semibold mb-2">Notes</h3>
             <ProjectNotes projectId={projectId} />
           </div>
         </TabsContent>
 
-        <TabsContent value="global" className="flex-1 p-4 space-y-4 m-0 overflow-auto">
+        <TabsContent value="global" className="flex-1 p-4 space-y-2 m-0 overflow-auto">
           <div>
-            <h3 className="font-semibold mb-3">Toutes les tâches</h3>
+            <h3 className="font-semibold mb-2">Toutes les tâches</h3>
             <GlobalTodoList />
           </div>
-          <div>
-            <h3 className="font-semibold mb-3">Toutes les notes</h3>
+          <div className="pt-2">
+            <h3 className="font-semibold mb-2">Toutes les notes</h3>
             <GlobalNotes />
           </div>
         </TabsContent>
