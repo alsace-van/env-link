@@ -120,7 +120,7 @@ export const GlobalNotes = () => {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col h-full space-y-3">
       {/* Filtres */}
       <div className="space-y-2">
         <Select value={selectedProject} onValueChange={setSelectedProject}>
@@ -149,8 +149,8 @@ export const GlobalNotes = () => {
       </div>
 
       {/* Liste des notes */}
-      <ScrollArea className="h-[350px]">
-        <div className="space-y-2">
+      <ScrollArea className="flex-1">
+        <div className="space-y-2 pr-4">
           {notes.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               {showArchived ? "Aucune note archivée" : "Aucune note"}
