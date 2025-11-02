@@ -134,7 +134,7 @@ export const ProjectNotes = ({ projectId }: ProjectNotesProps) => {
   }
 
   return (
-    <div className="flex flex-col h-full space-y-3">
+    <div className="space-y-3">
       {/* Bouton pour afficher/masquer l'historique */}
       <div className="flex items-center justify-between">
         <Button
@@ -175,75 +175,73 @@ export const ProjectNotes = ({ projectId }: ProjectNotesProps) => {
       )}
 
       {/* Liste des notes */}
-      <ScrollArea className="flex-1">
-        <div className="space-y-2 pr-4">
-          {notes.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              {showArchived ? "Aucune note archivée" : "Aucune note"}
-            </p>
-          ) : (
-            notes.map((note) => (
-              <Card key={note.id} className={showArchived ? "opacity-60" : ""}>
-                <CardHeader className="pb-2 space-y-1">
-                  {editingNote?.id === note.id ? (
-                    <Input
-                      value={editingNote.title}
-                      onChange={(e) => setEditingNote({ ...editingNote, title: e.target.value })}
-                    />
-                  ) : (
-                    <>
-                      <CardTitle className="text-sm flex justify-between items-start">
-                        <span className="flex-1">{note.title}</span>
-                        <div className="flex gap-1">
-                          {!showArchived && (
-                            <>
-                              <Button variant="ghost" size="sm" onClick={() => archiveNote(note.id)} title="Solder">
-                                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => setEditingNote(note)}>
-                                Modifier
-                              </Button>
-                            </>
-                          )}
-                          {showArchived && (
-                            <Button variant="ghost" size="sm" onClick={() => restoreNote(note.id)} title="Restaurer">
-                              Restaurer
+      <div className="space-y-2">
+        {notes.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {showArchived ? "Aucune note archivée" : "Aucune note"}
+          </p>
+        ) : (
+          notes.map((note) => (
+            <Card key={note.id} className={showArchived ? "opacity-60" : ""}>
+              <CardHeader className="pb-2 space-y-1">
+                {editingNote?.id === note.id ? (
+                  <Input
+                    value={editingNote.title}
+                    onChange={(e) => setEditingNote({ ...editingNote, title: e.target.value })}
+                  />
+                ) : (
+                  <>
+                    <CardTitle className="text-sm flex justify-between items-start">
+                      <span className="flex-1">{note.title}</span>
+                      <div className="flex gap-1">
+                        {!showArchived && (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => archiveNote(note.id)} title="Solder">
+                              <CheckCircle2 className="h-4 w-4 text-green-600" />
                             </Button>
-                          )}
-                          <Button variant="ghost" size="sm" onClick={() => deleteNote(note.id)}>
-                            <Trash2 className="h-4 w-4" />
+                            <Button variant="ghost" size="sm" onClick={() => setEditingNote(note)}>
+                              Modifier
+                            </Button>
+                          </>
+                        )}
+                        {showArchived && (
+                          <Button variant="ghost" size="sm" onClick={() => restoreNote(note.id)} title="Restaurer">
+                            Restaurer
                           </Button>
-                        </div>
-                      </CardTitle>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        <span>{formatDate(note.updated_at || note.created_at)}</span>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => deleteNote(note.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                    </>
-                  )}
-                </CardHeader>
-                <CardContent className="pt-2">
-                  {editingNote?.id === note.id ? (
-                    <>
-                      <Textarea
-                        value={editingNote.content || ""}
-                        onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
-                        rows={3}
-                      />
-                      <Button size="sm" onClick={updateNote} className="mt-2">
-                        <Save className="h-4 w-4 mr-2" />
-                        Enregistrer
-                      </Button>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.content}</p>
-                  )}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
-      </ScrollArea>
+                    </CardTitle>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatDate(note.updated_at || note.created_at)}</span>
+                    </div>
+                  </>
+                )}
+              </CardHeader>
+              <CardContent className="pt-2">
+                {editingNote?.id === note.id ? (
+                  <>
+                    <Textarea
+                      value={editingNote.content || ""}
+                      onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
+                      rows={3}
+                    />
+                    <Button size="sm" onClick={updateNote} className="mt-2">
+                      <Save className="h-4 w-4 mr-2" />
+                      Enregistrer
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.content}</p>
+                )}
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
     </div>
   );
 };
