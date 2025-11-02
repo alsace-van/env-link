@@ -25,27 +25,27 @@ export const ProjectSidebar = ({ projectId }: ProjectSidebarProps) => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="project" className="flex-1 p-4 space-y-0 m-0 overflow-auto flex flex-col">
-          <div className="flex-shrink-0 mb-2">
-            <h3 className="font-semibold mb-2">Tâches à faire</h3>
-            <ProjectTodoList projectId={projectId} />
-          </div>
-          <div className="flex-1 flex flex-col mt-2 min-h-0">
-            <h3 className="font-semibold mb-2 flex-shrink-0">Notes</h3>
-            <div className="flex-1 min-h-0">
+        <TabsContent value="project" className="flex-1 m-0 overflow-hidden">
+          <div className="h-full overflow-auto p-4 space-y-4">
+            <div>
+              <h3 className="font-semibold mb-3">Tâches à faire</h3>
+              <ProjectTodoList projectId={projectId} />
+            </div>
+            <div>
+              <h3 className="font-semibold mb-3">Notes</h3>
               <ProjectNotes projectId={projectId} />
             </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="global" className="flex-1 p-4 space-y-0 m-0 overflow-auto flex flex-col">
-          <div className="flex-shrink-0 mb-2">
-            <h3 className="font-semibold mb-2">Toutes les tâches</h3>
-            <GlobalTodoList />
-          </div>
-          <div className="flex-1 flex flex-col mt-2 min-h-0">
-            <h3 className="font-semibold mb-2 flex-shrink-0">Toutes les notes</h3>
-            <div className="flex-1 min-h-0">
+        <TabsContent value="global" className="flex-1 m-0 overflow-hidden">
+          <div className="h-full overflow-auto p-4 space-y-4">
+            <div>
+              <h3 className="font-semibold mb-3">Toutes les tâches</h3>
+              <GlobalTodoList />
+            </div>
+            <div>
+              <h3 className="font-semibold mb-3">Toutes les notes</h3>
               <GlobalNotes />
             </div>
           </div>
