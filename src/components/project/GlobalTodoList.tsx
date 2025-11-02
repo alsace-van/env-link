@@ -22,28 +22,20 @@ interface Todo {
   created_at: string;
 }
 
-interface ProjectTodoListProps {
-  projectId: string | null;
-}
-
-export const ProjectTodoList = ({ projectId }: ProjectTodoListProps) => {
+export const GlobalTodoList = () => {
+  const projectId = null; // Global todos don't need a specific project
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState("");
   const [dueDate, setDueDate] = useState<Date>();
 
   useEffect(() => {
-    if (projectId) {
-      loadTodos();
-    }
-  }, [projectId]);
+    loadTodos();
+  }, []);
 
   const loadTodos = async () => {
-    if (!projectId) return;
-
     const { data, error } = await supabase
       .from("project_todos")
       .select("*")
-      .eq("project_id", projectId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -54,21 +46,9 @@ export const ProjectTodoList = ({ projectId }: ProjectTodoListProps) => {
   };
 
   const addTodo = async () => {
-    if (!newTodo.trim() || !projectId) return;
+    if (!newTodo.trim()) return;
 
-    const { error } = await supabase.from("project_todos").insert({
-      project_id: projectId,
-      title: newTodo,
-      due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,
-    });
-
-    if (error) {
-      toast.error("Erreur lors de l'ajout");
-    } else {
-      setNewTodo("");
-      setDueDate(undefined);
-      loadTodos();
-    }
+    toast.error("Veuillez sélectionner un projet pour ajouter une tâche");
   };
 
   const toggleTodo = async (id: string, completed: boolean) => {
@@ -82,9 +62,6 @@ export const ProjectTodoList = ({ projectId }: ProjectTodoListProps) => {
     if (!error) loadTodos();
   };
 
-  if (!projectId) {
-    return <p className="text-sm text-muted-foreground p-4">Sélectionnez un projet</p>;
-  }
 
   return (
     <div className="space-y-2">
