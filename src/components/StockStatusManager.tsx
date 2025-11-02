@@ -1,11 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  Package, 
-  PackageX, 
-  Truck,
-  Edit
-} from "lucide-react";
+import { Package, PackageX, Truck, Edit, Calendar, Clipboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,24 +12,23 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-type StockStatus = 'in_stock' | 'on_order' | 'out_of_stock';
+type StockStatus = "in_stock" | "on_order" | "out_of_stock";
 
 interface StockStatusManagerProps {
   accessoryId: string;
+  accessoryName: string; // 🆕 Ajout du nom de l'accessoire
   currentStatus: StockStatus;
   currentQuantity: number | null;
   deliveryDate?: string | null;
   trackingNumber?: string | null;
   onStatusChange?: () => void;
+  projectId?: string | null; // 🆕 Pour créer la tâche dans le bon projet
 }
 
 const stockStatusConfig = {
@@ -63,39 +57,119 @@ const stockStatusConfig = {
 
 export default function StockStatusManager({
   accessoryId,
+  accessoryName,
   currentStatus,
   currentQuantity,
   deliveryDate,
   trackingNumber,
   onStatusChange,
+  projectId,
 }: StockStatusManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false); // 🆕 Modal spécifique commande
   const [selectedStatus, setSelectedStatus] = useState<StockStatus>(currentStatus);
   const [quantity, setQuantity] = useState(currentQuantity?.toString() || "0");
   const [newDeliveryDate, setNewDeliveryDate] = useState(deliveryDate || "");
   const [newTrackingNumber, setNewTrackingNumber] = useState(trackingNumber || "");
+  const [orderNotes, setOrderNotes] = useState(""); // 🆕 Notes de commande
+  const [addToPlanning, setAddToPlanning] = useState(true); // 🆕 Checkbox planning
   const [isUpdating, setIsUpdating] = useState(false);
 
   const currentConfig = stockStatusConfig[currentStatus];
   const CurrentIcon = currentConfig.icon;
 
+  // 🆕 Ouvrir automatiquement la modal quand on passe en "commande"
   const handleQuickStatusChange = async (newStatus: StockStatus) => {
     if (newStatus === currentStatus) return;
-    
+
+    // Si on passe en "commande", ouvrir la modal spécifique
+    if (newStatus === "on_order") {
+      setSelectedStatus(newStatus);
+      setNewDeliveryDate("");
+      setNewTrackingNumber("");
+      setOrderNotes("");
+      setAddToPlanning(true);
+      setIsOrderModalOpen(true);
+      return;
+    }
+
+    // Pour les autres statuts, changement direct
     setIsUpdating(true);
     try {
       const { error } = await supabase
-        .from('accessories_catalog')
-        .update({ stock_status: newStatus })
-        .eq('id', accessoryId);
+        .from("accessories_catalog")
+        .update({
+          stock_status: newStatus,
+          delivery_date: null, // Réinitialiser si on quitte "commande"
+          tracking_number: null,
+        })
+        .eq("id", accessoryId);
 
       if (error) throw error;
 
       toast.success(`Statut changé en "${stockStatusConfig[newStatus].label}"`);
       onStatusChange?.();
     } catch (error: any) {
-      console.error('Erreur lors du changement de statut:', error);
+      console.error("Erreur lors du changement de statut:", error);
       toast.error("Erreur lors du changement de statut");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // 🆕 Gérer la validation de la modal de commande
+  const handleOrderConfirm = async () => {
+    setIsUpdating(true);
+    try {
+      // 1. Mettre à jour le statut de l'accessoire
+      const updateData: any = {
+        stock_status: "on_order",
+        delivery_date: newDeliveryDate || null,
+        tracking_number: newTrackingNumber || null,
+      };
+
+      const { error: accessoryError } = await supabase
+        .from("accessories_catalog")
+        .update(updateData)
+        .eq("id", accessoryId);
+
+      if (accessoryError) throw accessoryError;
+
+      // 2. Créer une tâche dans le planning si demandé
+      if (addToPlanning && newDeliveryDate && projectId) {
+        const deliveryDateTime = new Date(newDeliveryDate);
+        deliveryDateTime.setHours(14, 0, 0, 0); // Par défaut à 14h
+
+        const taskData = {
+          project_id: projectId,
+          title: `📦 Livraison : ${accessoryName}`,
+          description: orderNotes
+            ? `${orderNotes}${newTrackingNumber ? `\n\nSuivi: ${newTrackingNumber}` : ""}`
+            : newTrackingNumber
+              ? `Numéro de suivi: ${newTrackingNumber}`
+              : "",
+          due_date: deliveryDateTime.toISOString(),
+          completed: false,
+          priority: "medium",
+        };
+
+        const { error: todoError } = await supabase.from("project_todos").insert(taskData);
+
+        if (todoError) {
+          console.error("Erreur lors de la création de la tâche:", todoError);
+          toast.warning("Accessoire mis à jour mais erreur lors de la création de la tâche planning");
+        } else {
+          toast.success("Commande enregistrée et ajoutée au planning !");
+        }
+      } else {
+        toast.success("Commande enregistrée !");
+      }
+
+      setIsOrderModalOpen(false);
+      onStatusChange?.();
+    } catch (error: any) {
+      console.error("Erreur lors de la mise à jour:", error);
+      toast.error("Erreur lors de l'enregistrement");
     } finally {
       setIsUpdating(false);
     }
@@ -110,15 +184,16 @@ export default function StockStatusManager({
       };
 
       // Ajouter les champs conditionnels selon le statut
-      if (selectedStatus === 'on_order') {
+      if (selectedStatus === "on_order") {
         updateData.delivery_date = newDeliveryDate || null;
         updateData.tracking_number = newTrackingNumber || null;
+      } else {
+        // Réinitialiser les champs si on quitte "commande"
+        updateData.delivery_date = null;
+        updateData.tracking_number = null;
       }
 
-      const { error } = await supabase
-        .from('accessories_catalog')
-        .update(updateData)
-        .eq('id', accessoryId);
+      const { error } = await supabase.from("accessories_catalog").update(updateData).eq("id", accessoryId);
 
       if (error) throw error;
 
@@ -126,7 +201,7 @@ export default function StockStatusManager({
       setIsDialogOpen(false);
       onStatusChange?.();
     } catch (error: any) {
-      console.error('Erreur lors de la mise à jour:', error);
+      console.error("Erreur lors de la mise à jour:", error);
       toast.error("Erreur lors de la mise à jour");
     } finally {
       setIsUpdating(false);
@@ -150,14 +225,14 @@ export default function StockStatusManager({
               const config = stockStatusConfig[status];
               const Icon = config.icon;
               const isActive = status === currentStatus;
-              
+
               return (
                 <Tooltip key={status}>
                   <TooltipTrigger asChild>
                     <Button
                       variant={isActive ? "default" : "ghost"}
                       size="sm"
-                      className={`h-8 w-8 p-0 ${isActive ? config.color : ''}`}
+                      className={`h-8 w-8 p-0 ${isActive ? config.color : ""}`}
                       onClick={() => handleQuickStatusChange(status)}
                       disabled={isUpdating || isActive}
                     >
@@ -171,15 +246,10 @@ export default function StockStatusManager({
               );
             })}
           </div>
-          
+
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={openDialog}
-              >
+              <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={openDialog}>
                 <Edit className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -198,16 +268,114 @@ export default function StockStatusManager({
               Qté: {currentQuantity}
             </Badge>
           )}
+          {/* 🆕 Badge date de livraison */}
+          {deliveryDate && currentStatus === "on_order" && (
+            <Badge variant="outline" className="whitespace-nowrap bg-blue-50 text-blue-700 border-blue-300">
+              <Calendar className="h-3 w-3 mr-1" />
+              {new Date(deliveryDate).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+            </Badge>
+          )}
         </div>
       </div>
 
+      {/* 🆕 MODAL SPÉCIFIQUE COMMANDE */}
+      <Dialog open={isOrderModalOpen} onOpenChange={setIsOrderModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>📦 Commande en cours</DialogTitle>
+            <DialogDescription>
+              Renseignez les informations de livraison pour <strong>{accessoryName}</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="orderDeliveryDate" className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Date de livraison estimée
+              </Label>
+              <Input
+                id="orderDeliveryDate"
+                type="date"
+                value={newDeliveryDate}
+                onChange={(e) => setNewDeliveryDate(e.target.value)}
+                placeholder="Laisser vide si inconnue"
+              />
+              <p className="text-xs text-muted-foreground">
+                Vous pourrez renseigner cette date plus tard via le bouton ⚙️
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="orderTrackingNumber" className="flex items-center gap-2">
+                <Clipboard className="h-4 w-4" />
+                Numéro de suivi (optionnel)
+              </Label>
+              <Input
+                id="orderTrackingNumber"
+                placeholder="Ex: 1Z999AA10123456784"
+                value={newTrackingNumber}
+                onChange={(e) => setNewTrackingNumber(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="orderNotes">Notes (optionnelles)</Label>
+              <Textarea
+                id="orderNotes"
+                placeholder="Informations supplémentaires sur la commande..."
+                value={orderNotes}
+                onChange={(e) => setOrderNotes(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            {/* 🆕 CHECKBOX PLANNING */}
+            {projectId && newDeliveryDate && (
+              <div className="flex items-start space-x-2 rounded-lg border p-3 bg-muted/50">
+                <Checkbox
+                  id="addToPlanning"
+                  checked={addToPlanning}
+                  onCheckedChange={(checked) => setAddToPlanning(checked as boolean)}
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <label
+                    htmlFor="addToPlanning"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    Ajouter au planning du projet
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Crée automatiquement une tâche "📦 Livraison : {accessoryName}" à la date indiquée
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!projectId && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                ⚠️ Aucun projet sélectionné : la tâche ne pourra pas être ajoutée au planning
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsOrderModalOpen(false)} disabled={isUpdating}>
+              Annuler
+            </Button>
+            <Button onClick={handleOrderConfirm} disabled={isUpdating}>
+              {isUpdating ? "Enregistrement..." : "Confirmer la commande"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL GESTION AVANCÉE (existante) */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gestion avancée du stock</DialogTitle>
-            <DialogDescription>
-              Modifiez le statut et les détails de suivi pour cet accessoire
-            </DialogDescription>
+            <DialogDescription>Modifiez le statut et les détails de suivi pour cet accessoire</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
@@ -219,12 +387,12 @@ export default function StockStatusManager({
                   const config = stockStatusConfig[status];
                   const Icon = config.icon;
                   const isSelected = status === selectedStatus;
-                  
+
                   return (
                     <Button
                       key={status}
                       variant={isSelected ? "default" : "outline"}
-                      className={`justify-start ${isSelected ? config.color : ''}`}
+                      className={`justify-start ${isSelected ? config.color : ""}`}
                       onClick={() => setSelectedStatus(status)}
                     >
                       <Icon className="h-4 w-4 mr-2" />
@@ -248,7 +416,7 @@ export default function StockStatusManager({
             </div>
 
             {/* Champs conditionnels pour commande */}
-            {selectedStatus === 'on_order' && (
+            {selectedStatus === "on_order" && (
               <>
                 <div className="space-y-2">
                   <Label htmlFor="deliveryDate">Date de livraison</Label>
@@ -278,14 +446,10 @@ export default function StockStatusManager({
                 <p className="font-semibold">Informations actuelles :</p>
                 {deliveryDate && (
                   <p className="text-muted-foreground">
-                    Date de livraison : {new Date(deliveryDate).toLocaleDateString('fr-FR')}
+                    Date de livraison : {new Date(deliveryDate).toLocaleDateString("fr-FR")}
                   </p>
                 )}
-                {trackingNumber && (
-                  <p className="text-muted-foreground">
-                    Suivi : {trackingNumber}
-                  </p>
-                )}
+                {trackingNumber && <p className="text-muted-foreground">Suivi : {trackingNumber}</p>}
               </div>
             )}
           </div>
