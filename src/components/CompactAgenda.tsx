@@ -42,7 +42,6 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   // Utiliser le contexte pour les données synchronisées
   const { todos, supplierExpenses, monthlyCharges, appointments, setCurrentProjectId, refreshData } = useProjectData();
 
-  // Mettre à jour le projectId dans le contexte quand il change
   useEffect(() => {
     setCurrentProjectId(projectId);
   }, [projectId, setCurrentProjectId]);
@@ -99,28 +98,20 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     };
   };
 
-  const goToPreviousDay = () => {
-    setCurrentDate(addDays(currentDate, -1));
-  };
-
-  const goToNextDay = () => {
-    setCurrentDate(addDays(currentDate, 1));
-  };
-
-  const goToToday = () => {
-    setCurrentDate(new Date());
-  };
+  const goToPreviousDay = () => setCurrentDate(addDays(currentDate, -1));
+  const goToNextDay = () => setCurrentDate(addDays(currentDate, 1));
+  const goToToday = () => setCurrentDate(new Date());
 
   const getAppointmentStatusColor = (status: string) => {
     switch (status) {
       case "confirmed":
-        return "bg-green-500/20 text-green-700 border-green-500/30";
+        return "bg-green-500/20 text-green-700";
       case "pending":
-        return "bg-orange-500/20 text-orange-700 border-orange-500/30";
+        return "bg-orange-500/20 text-orange-700";
       case "cancelled":
-        return "bg-red-500/20 text-red-700 border-red-500/30";
+        return "bg-red-500/20 text-red-700";
       default:
-        return "bg-gray-500/20 text-gray-700 border-gray-500/30";
+        return "bg-gray-500/20 text-gray-700";
     }
   };
 
@@ -142,152 +133,95 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     }
   };
 
-  const handleModalSuccess = () => {
-    refreshData?.();
-  };
+  const handleModalSuccess = () => refreshData?.();
 
   const isToday = isSameDay(currentDate, new Date());
 
-  // Générer les heures de 7h à 22h
-  const hours = Array.from({ length: 16 }, (_, i) => i + 7);
+  // Heures en 2 colonnes : seulement aujourd'hui de 8h à 20h
+  const leftColumnHours = [8, 9, 10, 11, 12, 13, 14]; // Colonne gauche (matin + début après-midi)
+  const rightColumnHours = [15, 16, 17, 18, 19, 20]; // Colonne droite (après-midi + soir)
 
-  // Vue horaire journalière
-  const HourlyView = () => {
+  const HourCell = ({ date, hour, label }: { date: Date; hour: number; label: string }) => {
+    const items = getItemsForHour(date, hour);
+    const hasItems = items.todos.length > 0 || items.expenses.length > 0 || items.appointments.length > 0;
+    const totalItems = items.todos.length + items.expenses.length + items.appointments.length;
+
     return (
-      <div className="space-y-0">
-        {hours.map((hour) => {
-          const itemsForHour = getItemsForHour(currentDate, hour);
-          const hasItems =
-            itemsForHour.todos.length > 0 || itemsForHour.expenses.length > 0 || itemsForHour.appointments.length > 0;
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <div
+            className={`relative p-1.5 rounded-lg transition-all cursor-pointer min-h-[40px] ${
+              hasItems ? "bg-blue-50/50 border border-blue-200/50 hover:border-blue-300" : "hover:bg-gray-50/50"
+            }`}
+          >
+            <div className="text-xs font-medium text-gray-600 mb-1">{label}</div>
 
-          return (
-            <ContextMenu key={hour}>
-              <ContextMenuTrigger>
-                <div
-                  className={`flex border-b border-gray-200 hover:bg-blue-50/30 transition-colors min-h-[60px] ${
-                    hasItems ? "bg-blue-50/10" : ""
-                  }`}
-                >
-                  {/* Colonne heure */}
-                  <div className="w-16 flex-shrink-0 border-r border-gray-200 p-2 text-center">
-                    <span className="text-sm font-semibold text-gray-600">{hour}:00</span>
+            {/* Événements (affichage compact) */}
+            {hasItems && (
+              <div className="space-y-0.5">
+                {items.todos.slice(0, 1).map((todo) => (
+                  <div
+                    key={todo.id}
+                    className="flex items-center gap-1"
+                    onClick={() => toggleTodoComplete(todo.id, todo.completed)}
+                  >
+                    <CheckCircle2
+                      className={`h-2.5 w-2.5 ${todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"}`}
+                    />
+                    <span
+                      className={`text-[10px] truncate ${todo.completed ? "line-through text-gray-500" : "text-gray-900"}`}
+                    >
+                      {todo.title}
+                    </span>
                   </div>
+                ))}
 
-                  {/* Colonne contenu */}
-                  <div className="flex-1 p-2 space-y-1.5">
-                    {/* Tâches */}
-                    {itemsForHour.todos.map((todo) => (
-                      <div
-                        key={todo.id}
-                        className={`group p-1.5 rounded-md bg-purple-50 border border-purple-200 hover:shadow-sm transition-all cursor-pointer ${
-                          todo.completed ? "opacity-60" : ""
-                        }`}
-                        onClick={() => toggleTodoComplete(todo.id, todo.completed)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2
-                            className={`h-3.5 w-3.5 flex-shrink-0 ${
-                              todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
-                            }`}
-                          />
-                          <span
-                            className={`text-xs font-medium ${
-                              todo.completed ? "line-through text-gray-500" : "text-gray-900"
-                            }`}
-                          >
-                            {todo.title}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className="ml-auto text-[10px] px-1.5 py-0 h-4 bg-purple-100 text-purple-700 border-purple-300"
-                          >
-                            Tâche
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Rendez-vous */}
-                    {itemsForHour.appointments.map((appointment) => (
-                      <div
-                        key={appointment.id}
-                        className="p-1.5 rounded-md bg-blue-50 border border-blue-200 hover:shadow-sm transition-all"
-                      >
-                        <div className="flex items-center gap-2">
-                          <UserCircle className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                          <span className="text-xs font-medium text-gray-900">{appointment.client_name}</span>
-                          {appointment.description && (
-                            <span className="text-[10px] text-gray-500 truncate">- {appointment.description}</span>
-                          )}
-                          <Badge
-                            className={`ml-auto text-[10px] px-1.5 py-0 h-4 ${getAppointmentStatusColor(
-                              appointment.status,
-                            )}`}
-                          >
-                            RDV
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Dépenses fournisseurs */}
-                    {itemsForHour.expenses.map((expense) => (
-                      <div
-                        key={expense.id}
-                        className="p-1.5 rounded-md bg-orange-50 border border-orange-200 hover:shadow-sm transition-all"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Package className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
-                          <span className="text-xs font-medium text-gray-900">{expense.product_name}</span>
-                          <span className="text-xs font-bold text-orange-700">{expense.total_amount.toFixed(2)} €</span>
-                          <Badge
-                            variant="outline"
-                            className="ml-auto text-[10px] px-1.5 py-0 h-4 bg-orange-100 text-orange-700 border-orange-300"
-                          >
-                            Fournisseur
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-
-                    {/* Message si aucun élément */}
-                    {!hasItems && (
-                      <div className="text-xs text-gray-400 italic py-2 text-center">Clic droit pour ajouter</div>
-                    )}
+                {items.appointments.slice(0, 1).map((apt) => (
+                  <div key={apt.id} className="flex items-center gap-1">
+                    <UserCircle className="h-2.5 w-2.5 text-blue-600" />
+                    <span className="text-[10px] text-gray-900 truncate">{apt.client_name}</span>
                   </div>
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="w-56">
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
-                  <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
-                  <span>Ajouter une tâche</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
-                  <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
-                  <span>Ajouter une note</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
-                  <Package className="mr-2 h-4 w-4 text-orange-600" />
-                  <span>Ajouter une dépense fournisseur</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
-                  <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
-                  <span>Ajouter un rendez-vous client</span>
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          );
-        })}
-      </div>
+                ))}
+
+                {items.expenses.slice(0, 1).map((exp) => (
+                  <div key={exp.id} className="flex items-center gap-1">
+                    <Package className="h-2.5 w-2.5 text-orange-600" />
+                    <span className="text-[10px] text-gray-900 truncate">{exp.product_name}</span>
+                  </div>
+                ))}
+
+                {totalItems > 2 && <div className="text-[9px] text-gray-500 text-center">+{totalItems - 2}</div>}
+              </div>
+            )}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
+            <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+            <span>Ajouter une tâche</span>
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
+            <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
+            <span>Ajouter une note</span>
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
+            <Package className="mr-2 h-4 w-4 text-orange-600" />
+            <span>Ajouter une dépense fournisseur</span>
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
+            <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
+            <span>Ajouter un rendez-vous client</span>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     );
   };
 
-  // Vue mensuelle améliorée avec cases plus grandes
+  // Vue mensuelle (inchangée)
   const MonthView = () => {
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
     const firstDayOfWeek = getDay(monthStart);
     const startPadding = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
 
@@ -344,44 +278,31 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         key={todo.id}
                         className="flex items-center gap-1.5 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded"
                       >
-                        <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                        <CheckCircle2 className="h-3 w-3" />
                         <span className="truncate">{todo.title}</span>
                       </div>
                     ))}
-
-                    {dayAppointments.slice(0, 1).map((appointment) => (
+                    {dayAppointments.slice(0, 1).map((apt) => (
                       <div
-                        key={appointment.id}
+                        key={apt.id}
                         className="flex items-center gap-1.5 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
                       >
-                        <UserCircle className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{appointment.client_name}</span>
+                        <UserCircle className="h-3 w-3" />
+                        <span className="truncate">{apt.client_name}</span>
                       </div>
                     ))}
-
-                    {dayExpenses.slice(0, 1).map((expense) => (
+                    {dayExpenses.slice(0, 1).map((exp) => (
                       <div
-                        key={expense.id}
+                        key={exp.id}
                         className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded"
                       >
-                        <Package className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{expense.product_name}</span>
+                        <Package className="h-3 w-3" />
+                        <span className="truncate">{exp.product_name}</span>
                       </div>
                     ))}
-
-                    {dayCharges.slice(0, 1).map((charge) => (
-                      <div
-                        key={charge.id}
-                        className="flex items-center gap-1.5 text-xs bg-red-100 text-red-800 px-2 py-1 rounded"
-                      >
-                        <Euro className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{charge.nom_charge}</span>
-                      </div>
-                    ))}
-
                     {totalEvents > 2 && (
                       <div className="text-[10px] text-center text-gray-600 bg-gray-100 rounded px-1 py-0.5">
-                        +{totalEvents - 2} autre{totalEvents - 2 > 1 ? "s" : ""}
+                        +{totalEvents - 2}
                       </div>
                     )}
                   </div>
@@ -398,12 +319,12 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
   return (
     <>
-      <Card className="w-full shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-white/90 border-gray-200/50">
+      <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-white/90 border-gray-200/50">
         <CardHeader
           className="pb-3 cursor-pointer hover:bg-gray-50/50 transition-colors"
           onClick={() => setIsMonthViewOpen(true)}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-gray-700">📅 Agenda</h3>
               <Maximize2 className="h-3.5 w-3.5 text-gray-400" />
@@ -411,6 +332,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             <Button
               variant="ghost"
               size="sm"
+              className="h-7 text-xs"
               onClick={(e) => {
                 e.stopPropagation();
                 goToToday();
@@ -420,11 +342,22 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             </Button>
           </div>
 
-          <div className="flex items-center justify-between mt-2">
+          {/* En-tête du jour */}
+          <div className="text-center">
+            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              {format(currentDate, "EEEE", { locale: fr })}
+            </div>
+            <div className={`text-3xl font-bold ${isToday ? "text-blue-600" : "text-gray-900"}`}>
+              {format(currentDate, "d")}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">{format(currentDate, "MMMM yyyy", { locale: fr })}</div>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 mt-2">
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation();
                 goToPreviousDay();
@@ -432,19 +365,10 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="text-center">
-              <div className={`text-4xl font-bold ${isToday ? "text-blue-600" : "text-gray-900"}`}>
-                {format(currentDate, "d")}
-              </div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-gray-600">
-                {format(currentDate, "EEEE", { locale: fr })}
-              </div>
-              <div className="text-xs text-gray-500">{format(currentDate, "MMMM yyyy", { locale: fr })}</div>
-            </div>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation();
                 goToNextDay();
@@ -455,43 +379,56 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           </div>
         </CardHeader>
 
-        <CardContent className="p-0 max-h-[calc(100vh-350px)] overflow-y-auto">
-          <HourlyView />
+        <CardContent className="p-3 space-y-2">
+          {/* Grille des heures en 2 colonnes (aujourd'hui uniquement) */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Colonne 1 : Matin + début après-midi (8h-14h) */}
+            <div className="space-y-1">
+              {leftColumnHours.map((hour) => (
+                <HourCell key={`left-${hour}`} date={currentDate} hour={hour} label={`${hour}h`} />
+              ))}
+            </div>
 
-          {/* Charges mensuelles affichées en bas */}
+            {/* Colonne 2 : Après-midi + soir (15h-20h) */}
+            <div className="space-y-1">
+              {rightColumnHours.map((hour) => (
+                <HourCell key={`right-${hour}`} date={currentDate} hour={hour} label={`${hour}h`} />
+              ))}
+            </div>
+          </div>
+
+          {/* Charges mensuelles */}
           {chargesForDay.length > 0 && (
-            <div className="border-t-2 border-red-200 bg-red-50/30 p-3 space-y-2">
-              <h4 className="text-xs font-semibold text-red-700 flex items-center gap-1">
-                <Euro className="h-3 w-3" />
-                Charges mensuelles du jour
+            <div className="border-t-2 border-red-200 bg-red-50/30 p-2 space-y-1 mt-2">
+              <h4 className="text-[10px] font-semibold text-red-700 flex items-center gap-1">
+                <Euro className="h-2.5 w-2.5" />
+                Charges mensuelles
               </h4>
               {chargesForDay.map((charge) => (
-                <div key={charge.id} className="p-2 rounded-lg bg-white border border-red-200 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-900">{charge.nom_charge}</span>
-                    <span className="text-xs font-bold text-red-700">{charge.montant.toFixed(2)} €</span>
-                  </div>
+                <div key={charge.id} className="flex items-center justify-between text-[10px]">
+                  <span className="text-gray-900 truncate">{charge.nom_charge}</span>
+                  <span className="font-bold text-red-700">{charge.montant.toFixed(2)}€</span>
                 </div>
               ))}
             </div>
           )}
 
           {/* Légende */}
-          <div className="flex items-center justify-center gap-3 py-3 border-t text-[10px] text-gray-500">
-            <div className="flex items-center gap-1">
-              <div className="h-2 w-2 bg-purple-400 rounded-full" />
+          <div className="flex items-center justify-center gap-2 pt-2 border-t text-[9px] text-gray-500">
+            <div className="flex items-center gap-0.5">
+              <div className="h-1.5 w-1.5 bg-purple-400 rounded-full" />
               <span>Tâches</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="h-2 w-2 bg-blue-600 rounded-full" />
+            <div className="flex items-center gap-0.5">
+              <div className="h-1.5 w-1.5 bg-blue-600 rounded-full" />
               <span>RDV</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="h-2 w-2 bg-orange-600 rounded-full" />
+            <div className="flex items-center gap-0.5">
+              <div className="h-1.5 w-1.5 bg-orange-600 rounded-full" />
               <span>Dép.</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="h-2 w-2 bg-red-600 rounded-full" />
+            <div className="flex items-center gap-0.5">
+              <div className="h-1.5 w-1.5 bg-red-600 rounded-full" />
               <span>Charges</span>
             </div>
           </div>
@@ -527,7 +464,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         </DialogContent>
       </Dialog>
 
-      {/* Modales d'ajout - Utilise les modales existantes avec les bonnes props */}
+      {/* Modales */}
       <AddTaskModal
         isOpen={isAddTaskOpen}
         onClose={() => setIsAddTaskOpen(false)}
@@ -536,7 +473,6 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         selectedDate={currentDate}
         selectedHour={selectedHour}
       />
-
       <AddNoteModal
         isOpen={isAddNoteOpen}
         onClose={() => setIsAddNoteOpen(false)}
@@ -545,7 +481,6 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         selectedDate={currentDate}
         selectedHour={selectedHour}
       />
-
       <AddSupplierExpenseModal
         isOpen={isAddExpenseOpen}
         onClose={() => setIsAddExpenseOpen(false)}
@@ -554,7 +489,6 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         selectedDate={currentDate}
         selectedHour={selectedHour}
       />
-
       <AddAppointmentModal
         isOpen={isAddAppointmentOpen}
         onClose={() => setIsAddAppointmentOpen(false)}
