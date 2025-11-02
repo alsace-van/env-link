@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Package, PackageX, Truck, Edit, Calendar, Clipboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,13 +22,12 @@ type StockStatus = "in_stock" | "on_order" | "out_of_stock";
 
 interface StockStatusManagerProps {
   accessoryId: string;
-  accessoryName: string; // 🆕 Ajout du nom de l'accessoire
+  accessoryName: string;
   currentStatus: StockStatus;
   currentQuantity: number | null;
   deliveryDate?: string | null;
   trackingNumber?: string | null;
   onStatusChange?: () => void;
-  projectId?: string | null; // 🆕 Pour créer la tâche dans le bon projet
 }
 
 const stockStatusConfig = {
@@ -63,22 +62,21 @@ export default function StockStatusManager({
   deliveryDate,
   trackingNumber,
   onStatusChange,
-  projectId,
 }: StockStatusManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false); // 🆕 Modal spécifique commande
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<StockStatus>(currentStatus);
   const [quantity, setQuantity] = useState(currentQuantity?.toString() || "0");
   const [newDeliveryDate, setNewDeliveryDate] = useState(deliveryDate || "");
   const [newTrackingNumber, setNewTrackingNumber] = useState(trackingNumber || "");
-  const [orderNotes, setOrderNotes] = useState(""); // 🆕 Notes de commande
-  const [addToPlanning, setAddToPlanning] = useState(true); // 🆕 Checkbox planning
+  const [orderNotes, setOrderNotes] = useState("");
+  const [addToPlanning, setAddToPlanning] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const currentConfig = stockStatusConfig[currentStatus];
   const CurrentIcon = currentConfig.icon;
 
-  // 🆕 Ouvrir automatiquement la modal quand on passe en "commande"
+  // Ouvrir automatiquement la modal quand on passe en "commande"
   const handleQuickStatusChange = async (newStatus: StockStatus) => {
     if (newStatus === currentStatus) return;
 
@@ -100,7 +98,7 @@ export default function StockStatusManager({
         .from("accessories_catalog")
         .update({
           stock_status: newStatus,
-          delivery_date: null, // Réinitialiser si on quitte "commande"
+          delivery_date: null,
           tracking_number: null,
         })
         .eq("id", accessoryId);
@@ -117,7 +115,7 @@ export default function StockStatusManager({
     }
   };
 
-  // 🆕 Gérer la validation de la modal de commande
+  // Gérer la validation de la modal de commande
   const handleOrderConfirm = async () => {
     setIsUpdating(true);
     try {
@@ -135,13 +133,22 @@ export default function StockStatusManager({
 
       if (accessoryError) throw accessoryError;
 
-      // 2. Créer une tâche dans le planning si demandé
-      if (addToPlanning && newDeliveryDate && projectId) {
+      // 2. Créer une tâche GLOBALE dans le planning si demandé
+      if (addToPlanning && newDeliveryDate) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          toast.error("Utilisateur non connecté");
+          return;
+        }
+
         const deliveryDateTime = new Date(newDeliveryDate);
         deliveryDateTime.setHours(14, 0, 0, 0); // Par défaut à 14h
 
         const taskData = {
-          project_id: projectId,
+          user_id: user.id,
           title: `📦 Livraison : ${accessoryName}`,
           description: orderNotes
             ? `${orderNotes}${newTrackingNumber ? `\n\nSuivi: ${newTrackingNumber}` : ""}`
@@ -151,15 +158,17 @@ export default function StockStatusManager({
           due_date: deliveryDateTime.toISOString(),
           completed: false,
           priority: "medium",
+          task_type: "delivery",
+          accessory_id: accessoryId,
         };
 
-        const { error: todoError } = await supabase.from("project_todos").insert(taskData);
+        const { error: todoError } = await supabase.from("global_todos").insert(taskData);
 
         if (todoError) {
           console.error("Erreur lors de la création de la tâche:", todoError);
           toast.warning("Accessoire mis à jour mais erreur lors de la création de la tâche planning");
         } else {
-          toast.success("Commande enregistrée et ajoutée au planning !");
+          toast.success("Commande enregistrée et ajoutée au planning global !");
         }
       } else {
         toast.success("Commande enregistrée !");
@@ -188,7 +197,6 @@ export default function StockStatusManager({
         updateData.delivery_date = newDeliveryDate || null;
         updateData.tracking_number = newTrackingNumber || null;
       } else {
-        // Réinitialiser les champs si on quitte "commande"
         updateData.delivery_date = null;
         updateData.tracking_number = null;
       }
@@ -268,7 +276,6 @@ export default function StockStatusManager({
               Qté: {currentQuantity}
             </Badge>
           )}
-          {/* 🆕 Badge date de livraison */}
           {deliveryDate && currentStatus === "on_order" && (
             <Badge variant="outline" className="whitespace-nowrap bg-blue-50 text-blue-700 border-blue-300">
               <Calendar className="h-3 w-3 mr-1" />
@@ -278,7 +285,7 @@ export default function StockStatusManager({
         </div>
       </div>
 
-      {/* 🆕 MODAL SPÉCIFIQUE COMMANDE */}
+      {/* MODAL COMMANDE */}
       <Dialog open={isOrderModalOpen} onOpenChange={setIsOrderModalOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -330,9 +337,9 @@ export default function StockStatusManager({
               />
             </div>
 
-            {/* 🆕 CHECKBOX PLANNING */}
-            {projectId && newDeliveryDate && (
-              <div className="flex items-start space-x-2 rounded-lg border p-3 bg-muted/50">
+            {/* CHECKBOX PLANNING GLOBAL */}
+            {newDeliveryDate && (
+              <div className="flex items-start space-x-2 rounded-lg border p-3 bg-blue-50">
                 <Checkbox
                   id="addToPlanning"
                   checked={addToPlanning}
@@ -343,18 +350,12 @@ export default function StockStatusManager({
                     htmlFor="addToPlanning"
                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                   >
-                    Ajouter au planning du projet
+                    Ajouter au planning global
                   </label>
                   <p className="text-xs text-muted-foreground">
-                    Crée automatiquement une tâche "📦 Livraison : {accessoryName}" à la date indiquée
+                    Crée une tâche "📦 Livraison : {accessoryName}" dans le planning partagé entre tous vos projets
                   </p>
                 </div>
-              </div>
-            )}
-
-            {!projectId && (
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                ⚠️ Aucun projet sélectionné : la tâche ne pourra pas être ajoutée au planning
               </div>
             )}
           </div>
@@ -370,7 +371,7 @@ export default function StockStatusManager({
         </DialogContent>
       </Dialog>
 
-      {/* MODAL GESTION AVANCÉE (existante) */}
+      {/* MODAL GESTION AVANCÉE */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
