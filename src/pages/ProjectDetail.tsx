@@ -549,6 +549,27 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
   );
 };
 
+// Style CSS pour l'animation horizontale pure de la sidebar
+const sidebarStyle = document.createElement("style");
+sidebarStyle.textContent = `
+  @keyframes slideInFromLeft {
+    from {
+      transform: translateY(-50%) translateX(-100%);
+    }
+    to {
+      transform: translateY(-50%) translateX(0);
+    }
+  }
+  
+  .sidebar-slide-in {
+    animation: slideInFromLeft 500ms ease-out;
+  }
+`;
+if (!document.head.querySelector("#sidebar-animation-style")) {
+  sidebarStyle.id = "sidebar-animation-style";
+  document.head.appendChild(sidebarStyle);
+}
+
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -831,8 +852,8 @@ const ProjectDetail = () => {
           {/* Overlay TRANSPARENT */}
           <div className="fixed inset-0 z-40 transition-opacity" onClick={() => setIsProjectInfoSidebarOpen(false)} />
 
-          {/* Sidebar à GAUCHE avec hauteur limitée */}
-          <div className="fixed left-0 top-1/2 -translate-y-1/2 z-50 w-[500px] max-h-[85vh] bg-card border-r-2 border-blue-200 dark:border-blue-800 shadow-2xl rounded-r-xl overflow-hidden animate-in slide-in-from-left duration-300">
+          {/* Sidebar à GAUCHE avec hauteur limitée - Animation horizontale pure */}
+          <div className="sidebar-slide-in fixed left-0 top-1/2 -translate-y-1/2 z-50 w-[500px] max-h-[85vh] bg-card border-r-2 border-blue-200 dark:border-blue-800 shadow-2xl rounded-r-xl overflow-hidden">
             <div className="flex flex-col h-full">
               {/* Header */}
               <div className="flex items-center justify-between p-4 border-b bg-blue-50 dark:bg-blue-950/30">
