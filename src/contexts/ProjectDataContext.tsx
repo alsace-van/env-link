@@ -1,7 +1,8 @@
 // ============================================================================
-// FICHIER 3 : ProjectDataContext.tsx
+// FICHIER CORRIGÉ : ProjectDataContext.tsx
 // EMPLACEMENT : src/contexts/ProjectDataContext.tsx
 // ACTION : REMPLACER le fichier existant par celui-ci
+// CORRECTION : Charge maintenant les tâches globales (livraisons) en plus des tâches du projet
 // ============================================================================
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
@@ -14,14 +15,14 @@ interface Todo {
   title: string;
   completed: boolean;
   due_date: string | null;
-  project_id?: string | null; // 🆕 Optionnel car les tâches globales n'ont pas de project_id
+  project_id?: string | null;
   created_at: string;
   updated_at: string;
   priority: string;
-  is_global?: boolean; // 🆕 Marqueur pour identifier les tâches globales
-  task_type?: string; // 🆕 Type de tâche (delivery, appointment, etc.)
-  accessory_id?: string | null; // 🆕 Lien vers accessoire (pour les livraisons)
-  description?: string | null; // 🆕 Description
+  is_global?: boolean; // Marqueur pour identifier les tâches globales
+  task_type?: string; // Type de tâche (delivery, appointment, etc.)
+  accessory_id?: string | null; // Lien vers accessoire (pour les livraisons)
+  description?: string | null;
 }
 
 interface ProjectNote {
@@ -110,6 +111,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
 
   // Channels pour les subscriptions
   const [todosChannel, setTodosChannel] = useState<RealtimeChannel | null>(null);
+  const [globalTodosChannel, setGlobalTodosChannel] = useState<RealtimeChannel | null>(null);
   const [notesChannel, setNotesChannel] = useState<RealtimeChannel | null>(null);
   const [expensesChannel, setExpensesChannel] = useState<RealtimeChannel | null>(null);
   const [chargesChannel, setChargesChannel] = useState<RealtimeChannel | null>(null);
@@ -128,23 +130,60 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     }
   };
 
+  // 🔥 CORRECTION : Charge maintenant les tâches du projet ET les tâches globales
   const loadTodos = async () => {
     if (!currentProjectId) {
       setTodos([]);
       return;
     }
 
-    const { data, error } = await supabase
+    // Récupérer l'utilisateur pour filtrer les tâches globales
+    const { data: user } = await supabase.auth.getUser();
+    if (!user.user) return;
+
+    // 1. Charger les tâches du projet
+    const { data: projectTodos, error: projectError } = await supabase
       .from("project_todos")
       .select("*")
       .eq("project_id", currentProjectId)
       .order("due_date", { ascending: true });
 
-    if (error) {
-      console.error("Error loading project todos:", error);
-    } else {
-      setTodos(data || []);
+    if (projectError) {
+      console.error("Error loading project todos:", projectError);
+      return;
     }
+
+    // 2. Charger les tâches globales (project_id = null)
+    const { data: globalTodos, error: globalError } = await supabase
+      .from("project_todos")
+      .select("*")
+      .is("project_id", null)
+      .eq("user_id", user.user.id)
+      .order("due_date", { ascending: true });
+
+    if (globalError) {
+      console.error("Error loading global todos:", globalError);
+    }
+
+    // 3. Combiner les deux listes et marquer les tâches globales
+    const projectTodosWithFlag = (projectTodos || []).map((todo) => ({
+      ...todo,
+      is_global: false,
+    }));
+
+    const globalTodosWithFlag = (globalTodos || []).map((todo) => ({
+      ...todo,
+      is_global: true,
+    }));
+
+    // 4. Fusionner et trier par date
+    const allTodos = [...projectTodosWithFlag, ...globalTodosWithFlag].sort((a, b) => {
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    });
+
+    setTodos(allTodos);
   };
 
   const loadNotes = async () => {
@@ -235,6 +274,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
 
     // Nettoyer les anciennes subscriptions
     todosChannel?.unsubscribe();
+    globalTodosChannel?.unsubscribe();
     notesChannel?.unsubscribe();
     chargesChannel?.unsubscribe();
     appointmentsChannel?.unsubscribe();
@@ -260,6 +300,37 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
         .subscribe();
       setTodosChannel(todosSubscription);
     }
+
+    // 🔥 NOUVEAU : Subscription pour les tâches globales (tous les projets)
+    let globalTodosSubscription: RealtimeChannel | null = null;
+    const setupGlobalTodosSubscription = async () => {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) return;
+
+      globalTodosSubscription = supabase
+        .channel(`global-todos-${user.user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "project_todos",
+            filter: `user_id=eq.${user.user.id}`,
+          },
+          (payload) => {
+            console.log("Global todos change:", payload);
+            // Vérifier si c'est une tâche globale (project_id = null)
+            const record = payload.new as any;
+            if (!record.project_id || record.project_id === null) {
+              loadTodos();
+            }
+          },
+        )
+        .subscribe();
+      setGlobalTodosChannel(globalTodosSubscription);
+    };
+
+    setupGlobalTodosSubscription();
 
     // Subscription pour les notes (si un projet est sélectionné)
     let notesSubscription: RealtimeChannel | null = null;
@@ -330,6 +401,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     // Cleanup
     return () => {
       todosSubscription?.unsubscribe();
+      globalTodosSubscription?.unsubscribe();
       notesSubscription?.unsubscribe();
       chargesSubscription?.unsubscribe();
       appointmentsSubscription?.unsubscribe();
