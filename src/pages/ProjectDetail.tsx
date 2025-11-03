@@ -512,7 +512,7 @@ const ProjectDetail = () => {
               </Card>
 
               {/* Agenda Compact */}
-              <div className="w-80">
+              <div className="w-80 ml-auto">
                 <CompactAgenda projectId={project?.id || null} />
               </div>
             </div>
