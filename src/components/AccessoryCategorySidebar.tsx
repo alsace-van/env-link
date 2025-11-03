@@ -351,12 +351,11 @@ const AccessoryCategorySidebar = ({
                 className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10 flex-shrink-0"
                 title="Supprimer"
               >
-                <Trash2 className="h-3 w-3 text-destructive" />
+              <Trash2 className="h-3 w-3 text-destructive" />
               </Button>
-            </>
+            </div>
           )}
         </div>
-      </div>
 
       {/* Formulaire d'ajout de sous-catégorie */}
       {showAddSub === category.id && (
