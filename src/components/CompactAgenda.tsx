@@ -964,6 +964,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
               </ContextMenuItem>
             </ContextMenuContent>
           </ContextMenu>
+        );
           })}
         </div>
       </div>
