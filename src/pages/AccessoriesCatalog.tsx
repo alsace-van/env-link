@@ -101,7 +101,7 @@ const AccessoriesCatalog = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto p-4 max-w-7xl">
+      <div className="container mx-auto p-4 max-w-6xl">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" onClick={() => navigate("/dashboard")}>
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -131,83 +131,81 @@ const AccessoriesCatalog = () => {
           </Button>
         </div>
 
-        <div className="max-w-6xl mx-auto">
-          {loading ? (
-            <div className="text-center py-12">Chargement...</div>
-          ) : filteredAccessories.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground mb-4">
-                  {searchTerm || selectedCategories.length > 0
-                    ? "Aucun accessoire trouvé"
-                    : "Aucun accessoire dans le catalogue"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Ajoutez des accessoires depuis vos projets avec le bouton "Ajouter au catalogue"
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredAccessories.map((accessory) => {
-                const category = getCategoryFromName(accessory.nom);
-                return (
-                  <Card key={accessory.id}>
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-lg mb-2">{accessory.nom}</CardTitle>
-                          {category && (
-                            <Badge variant="secondary" className="mb-2">
-                              {category}
-                            </Badge>
-                          )}
+        {loading ? (
+          <div className="text-center py-12">Chargement...</div>
+        ) : filteredAccessories.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground mb-4">
+                {searchTerm || selectedCategories.length > 0
+                  ? "Aucun accessoire trouvé"
+                  : "Aucun accessoire dans le catalogue"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Ajoutez des accessoires depuis vos projets avec le bouton "Ajouter au catalogue"
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredAccessories.map((accessory) => {
+              const category = getCategoryFromName(accessory.nom);
+              return (
+                <Card key={accessory.id}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg mb-2">{accessory.nom}</CardTitle>
+                        {category && (
+                          <Badge variant="secondary" className="mb-2">
+                            {category}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteId(accessory.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {accessory.description && <CardDescription>{accessory.description}</CardDescription>}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      {accessory.prix_reference && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Prix de référence:</span>
+                          <span className="font-medium">{accessory.prix_reference.toFixed(2)} €</span>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDeleteId(accessory.id)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      {accessory.description && <CardDescription>{accessory.description}</CardDescription>}
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2 text-sm">
-                        {accessory.prix_reference && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Prix de référence:</span>
-                            <span className="font-medium">{accessory.prix_reference.toFixed(2)} €</span>
-                          </div>
-                        )}
-                        {accessory.fournisseur && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Fournisseur:</span>
-                            <span>{accessory.fournisseur}</span>
-                          </div>
-                        )}
-                        {accessory.url_produit && (
-                          <div>
-                            <a
-                              href={accessory.url_produit}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline"
-                            >
-                              Voir le produit
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                      )}
+                      {accessory.fournisseur && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Fournisseur:</span>
+                          <span>{accessory.fournisseur}</span>
+                        </div>
+                      )}
+                      {accessory.url_produit && (
+                        <div>
+                          <a
+                            href={accessory.url_produit}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            Voir le produit
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
         <AccessoryCategorySidebar
           selectedCategories={selectedCategories}
