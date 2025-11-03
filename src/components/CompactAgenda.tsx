@@ -305,8 +305,8 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
                 {items.deliveries.slice(0, 1).map((delivery) => (
                   <div key={delivery.id} className="flex items-center gap-1">
-                    <Truck className="h-2.5 w-2.5 text-emerald-600" />
-                    <span className="text-[10px] font-semibold text-emerald-700">Livraison:</span>
+                    <Truck className="h-2.5 w-2.5 text-gray-700 dark:text-gray-300" />
+                    <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">Livraison:</span>
                     <span className="text-[10px] text-foreground truncate">{delivery.nom || "Sans nom"}</span>
                   </div>
                 ))}
@@ -447,31 +447,31 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.todos.slice(0, 3).map((todo) => (
                           <div
                             key={todo.id}
-                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
                           >
-                            <CheckCircle2 className="h-3 w-3" />
-                            <span className="font-semibold">Tâche:</span>
-                            <span className="truncate">{todo.title}</span>
+                            <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
                           </div>
                         ))}
                         {dayItems.appointments.slice(0, 2).map((apt) => (
                           <div
                             key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 text-blue-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 px-2 py-1 rounded"
                           >
-                            <UserCircle className="h-3 w-3" />
-                            <span className="font-semibold">RDV:</span>
-                            <span className="truncate">{apt.client_name}</span>
+                            <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-blue-800 dark:text-blue-400">RDV:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
                           </div>
                         ))}
                         {dayItems.expenses.slice(0, 2).map((exp) => (
                           <div
                             key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 text-orange-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
                           >
-                            <Package className="h-3 w-3" />
-                            <span className="font-semibold">Dép:</span>
-                            <span className="truncate">{exp.product_name}</span>
+                            <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-orange-800 dark:text-orange-400">Dép:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
                           </div>
                         ))}
                         {dayItems.deliveries.slice(0, 2).map((delivery) => (
@@ -479,8 +479,8 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             key={delivery.id}
                             className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 px-2 py-1 rounded"
                           >
-                            <Truck className="h-3 w-3 text-emerald-700" />
-                            <span className="font-semibold text-emerald-800">Livr:</span>
+                            <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-emerald-800 dark:text-emerald-400">Livr:</span>
                             <span className="truncate text-foreground dark:text-gray-100">
                               {delivery.nom || "Accessoire sans nom"}
                             </span>
@@ -499,31 +499,31 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.todos.slice(0, 1).map((todo) => (
                           <div
                             key={todo.id}
-                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
                           >
-                            <CheckCircle2 className="h-3 w-3" />
-                            <span className="font-semibold">Tâche:</span>
-                            <span className="truncate">{todo.title}</span>
+                            <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
                           </div>
                         ))}
                         {dayItems.appointments.slice(0, 1).map((apt) => (
                           <div
                             key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 text-blue-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 px-2 py-1 rounded"
                           >
-                            <UserCircle className="h-3 w-3" />
-                            <span className="font-semibold">RDV:</span>
-                            <span className="truncate">{apt.client_name}</span>
+                            <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-blue-800 dark:text-blue-400">RDV:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
                           </div>
                         ))}
                         {dayItems.expenses.slice(0, 1).map((exp) => (
                           <div
                             key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 text-orange-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
                           >
-                            <Package className="h-3 w-3" />
-                            <span className="font-semibold">Dép:</span>
-                            <span className="truncate">{exp.product_name}</span>
+                            <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-orange-800 dark:text-orange-400">Dép:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
                           </div>
                         ))}
                         {dayItems.deliveries.slice(0, 1).map((delivery) => (
@@ -531,8 +531,8 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             key={delivery.id}
                             className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 px-2 py-1 rounded"
                           >
-                            <Truck className="h-3 w-3 text-emerald-700" />
-                            <span className="font-semibold text-emerald-800">Livr:</span>
+                            <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                            <span className="font-semibold text-emerald-800 dark:text-emerald-400">Livr:</span>
                             <span className="truncate text-foreground dark:text-gray-100">
                               {delivery.nom || "Accessoire sans nom"}
                             </span>
