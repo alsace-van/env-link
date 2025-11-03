@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Dialog,
   DialogContent,
@@ -92,6 +91,8 @@ const ProjectDetail = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false); // État pour l'overlay du calendrier
+  const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false); // État pour l'overlay des infos projet
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
   const [editFormData, setEditFormData] = useState({
@@ -284,6 +285,14 @@ const ProjectDetail = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setIsProjectInfoOpen(true)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Infos Projet
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setIsCalendarOpen(true)}>
+                <Package className="h-4 w-4 mr-2" />
+                Agenda
+              </Button>
               <Button variant="default" size="sm" onClick={() => navigate("/shop")}>
                 <ShoppingBag className="h-4 w-4 mr-2" />
                 Boutique
@@ -312,211 +321,6 @@ const ProjectDetail = () => {
         <div className="flex gap-6">
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
-            <div className="mb-6 flex gap-6">
-              {/* Informations du Projet */}
-              <Card
-                className={`transition-all duration-300 ${isProjectInfoCollapsed ? "w-16 overflow-hidden" : "w-fit"}`}
-              >
-                {isProjectInfoCollapsed ? (
-                  // Version repliée : bouton vertical
-                  <div className="h-full flex items-center justify-center p-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsProjectInfoCollapsed(false)}
-                      className="h-auto w-full p-2 flex flex-col items-center gap-2"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                      <div
-                        className="writing-mode-vertical text-xs font-semibold whitespace-nowrap"
-                        style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-                      >
-                        Infos
-                      </div>
-                    </Button>
-                  </div>
-                ) : (
-                  // Version dépliée : contenu complet
-                  <>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between gap-8">
-                        <CardTitle className="text-base">Informations du Projet</CardTitle>
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={handleEditDimensions}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Modifier
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIsProjectInfoCollapsed(true)}
-                            className="h-8 w-8 p-0 rounded-full"
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-4">
-                        {/* Informations générales */}
-                        <div className="space-y-1.5">
-                          <h4 className="text-xs font-semibold text-muted-foreground mb-2">Informations générales</h4>
-                          {project.nom_projet && (
-                            <div className="flex gap-2 text-xs">
-                              <span className="text-muted-foreground shrink-0">Nom du projet :</span>
-                              <p className="font-medium">{project.nom_projet}</p>
-                            </div>
-                          )}
-                          {project.numero_chassis && (
-                            <div className="flex gap-2 text-xs">
-                              <span className="text-muted-foreground shrink-0">N° de châssis :</span>
-                              <p className="font-medium">{project.numero_chassis}</p>
-                            </div>
-                          )}
-                          {project.immatriculation && (
-                            <div className="flex gap-2 text-xs">
-                              <span className="text-muted-foreground shrink-0">Immatriculation :</span>
-                              <p className="font-medium">{project.immatriculation}</p>
-                            </div>
-                          )}
-                          {project.type_mine && (
-                            <div className="flex gap-2 text-xs">
-                              <span className="text-muted-foreground shrink-0">Type mine :</span>
-                              <p className="font-medium">{project.type_mine}</p>
-                            </div>
-                          )}
-                          {project.date_mise_circulation && (
-                            <div className="flex gap-2 text-xs">
-                              <span className="text-muted-foreground shrink-0">Date de circulation :</span>
-                              <p className="font-medium">
-                                {new Date(project.date_mise_circulation).toLocaleDateString("fr-FR")}
-                              </p>
-                            </div>
-                          )}
-                          {(project.marque_custom || project.modele_custom) && (
-                            <div className="flex gap-2 text-xs">
-                              <span className="text-muted-foreground shrink-0">Véhicule :</span>
-                              <p className="font-medium">
-                                {project.marque_custom} {project.modele_custom}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Contact */}
-                        {(project.adresse_proprietaire ||
-                          project.telephone_proprietaire ||
-                          project.email_proprietaire) && (
-                          <div className="space-y-1.5">
-                            <h4 className="text-xs font-semibold text-muted-foreground mb-2">Contact</h4>
-                            {project.adresse_proprietaire && (
-                              <div className="flex gap-2 text-xs">
-                                <span className="text-muted-foreground shrink-0">Adresse :</span>
-                                <p className="font-medium">{project.adresse_proprietaire}</p>
-                              </div>
-                            )}
-                            {project.telephone_proprietaire && (
-                              <div className="flex gap-2 text-xs">
-                                <span className="text-muted-foreground shrink-0">Téléphone :</span>
-                                <p className="font-medium">{project.telephone_proprietaire}</p>
-                              </div>
-                            )}
-                            {project.email_proprietaire && (
-                              <div className="flex gap-2 text-xs">
-                                <span className="text-muted-foreground shrink-0">Email :</span>
-                                <p className="font-medium">{project.email_proprietaire}</p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Dimensions totales */}
-                        {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
-                          <div className="space-y-1.5">
-                            <h4 className="text-xs font-semibold text-muted-foreground mb-2">Dimensions totales</h4>
-                            <div className="space-y-1">
-                              {project.longueur_mm && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">L :</span>
-                                  <p className="font-medium">{project.longueur_mm} mm</p>
-                                </div>
-                              )}
-                              {project.largeur_mm && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">l :</span>
-                                  <p className="font-medium">{project.largeur_mm} mm</p>
-                                </div>
-                              )}
-                              {project.hauteur_mm && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">H :</span>
-                                  <p className="font-medium">{project.hauteur_mm} mm</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Surface utile */}
-                        {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
-                          <div className="space-y-1.5">
-                            <h4 className="text-xs font-semibold text-primary mb-2">Surface utile</h4>
-                            <div className="space-y-1">
-                              {project.longueur_chargement_mm && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">L utile :</span>
-                                  <p className="font-medium">{project.longueur_chargement_mm} mm</p>
-                                </div>
-                              )}
-                              {project.largeur_chargement_mm && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">l utile :</span>
-                                  <p className="font-medium">{project.largeur_chargement_mm} mm</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Poids */}
-                        {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
-                          <div className="space-y-1.5">
-                            <h4 className="text-xs font-semibold text-muted-foreground mb-2">Poids</h4>
-                            <div className="space-y-1">
-                              {project.poids_vide_kg && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">Vide :</span>
-                                  <p className="font-medium">{project.poids_vide_kg} kg</p>
-                                </div>
-                              )}
-                              {project.charge_utile_kg && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">Charge :</span>
-                                  <p className="font-medium">{project.charge_utile_kg} kg</p>
-                                </div>
-                              )}
-                              {project.ptac_kg && (
-                                <div className="flex gap-2 text-xs">
-                                  <span className="text-muted-foreground shrink-0">PTAC :</span>
-                                  <p className="font-medium">{project.ptac_kg} kg</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </>
-                )}
-              </Card>
-
-              {/* Agenda Compact */}
-              <div className="w-80 ml-auto mr-4">
-                <CompactAgenda projectId={project?.id || null} />
-              </div>
-            </div>
-
             <Tabs defaultValue="photos" className="w-full">
               <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
                 <TabsTrigger value="photos" className="gap-2">
@@ -958,6 +762,187 @@ const ProjectDetail = () => {
               <Button onClick={handleSaveDimensions}>Enregistrer</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog pour les Informations du Projet (petite fenêtre à gauche avec overlay) */}
+      <Dialog open={isProjectInfoOpen} onOpenChange={setIsProjectInfoOpen}>
+        <DialogContent className="max-w-fit p-0 left-4 translate-x-0 top-1/2 -translate-y-1/2">
+          <Card className="w-fit border-0 shadow-none">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-8">
+                <CardTitle className="text-base">Informations du Projet</CardTitle>
+                <Button variant="outline" size="sm" onClick={handleEditDimensions}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Modifier
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-4">
+                {/* Informations générales */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Informations générales</h4>
+                  {project.nom_projet && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Nom du projet :</span>
+                      <p className="font-medium">{project.nom_projet}</p>
+                    </div>
+                  )}
+                  {project.numero_chassis && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">N° de châssis :</span>
+                      <p className="font-medium">{project.numero_chassis}</p>
+                    </div>
+                  )}
+                  {project.immatriculation && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Immatriculation :</span>
+                      <p className="font-medium">{project.immatriculation}</p>
+                    </div>
+                  )}
+                  {project.type_mine && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Type mine :</span>
+                      <p className="font-medium">{project.type_mine}</p>
+                    </div>
+                  )}
+                  {project.date_mise_circulation && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Date de circulation :</span>
+                      <p className="font-medium">{new Date(project.date_mise_circulation).toLocaleDateString("fr-FR")}</p>
+                    </div>
+                  )}
+                  {(project.marque_custom || project.modele_custom) && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Véhicule :</span>
+                      <p className="font-medium">
+                        {project.marque_custom} {project.modele_custom}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Informations du propriétaire */}
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Propriétaire</h4>
+                  <div className="flex gap-2 text-xs">
+                    <span className="text-muted-foreground shrink-0">Nom :</span>
+                    <p className="font-medium">{project.nom_proprietaire}</p>
+                  </div>
+                  {project.adresse_proprietaire && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Adresse :</span>
+                      <p className="font-medium">{project.adresse_proprietaire}</p>
+                    </div>
+                  )}
+                  {project.telephone_proprietaire && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Téléphone :</span>
+                      <p className="font-medium">{project.telephone_proprietaire}</p>
+                    </div>
+                  )}
+                  {project.email_proprietaire && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Email :</span>
+                      <p className="font-medium">{project.email_proprietaire}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dimensions et poids */}
+                {(project.longueur_mm ||
+                  project.largeur_mm ||
+                  project.hauteur_mm ||
+                  project.longueur_chargement_mm ||
+                  project.largeur_chargement_mm ||
+                  project.poids_vide_kg ||
+                  project.charge_utile_kg ||
+                  project.ptac_kg) && (
+                  <div className="space-y-1.5">
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-2">Dimensions & Poids</h4>
+                    {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
+                      <div className="space-y-1.5 border-l-2 border-blue-200 dark:border-blue-800 pl-2">
+                        <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400">
+                          Dimensions totales
+                        </p>
+                        {project.longueur_mm && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">Longueur :</span>
+                            <p className="font-medium">{project.longueur_mm} mm</p>
+                          </div>
+                        )}
+                        {project.largeur_mm && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">Largeur :</span>
+                            <p className="font-medium">{project.largeur_mm} mm</p>
+                          </div>
+                        )}
+                        {project.hauteur_mm && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">Hauteur :</span>
+                            <p className="font-medium">{project.hauteur_mm} mm</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
+                      <div className="space-y-1.5 border-l-2 border-orange-200 dark:border-orange-800 pl-2">
+                        <p className="text-[10px] font-semibold text-orange-700 dark:text-orange-400">
+                          Surface utile
+                        </p>
+                        {project.longueur_chargement_mm && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">Longueur :</span>
+                            <p className="font-medium">{project.longueur_chargement_mm} mm</p>
+                          </div>
+                        )}
+                        {project.largeur_chargement_mm && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">Largeur :</span>
+                            <p className="font-medium">{project.largeur_chargement_mm} mm</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
+                      <div className="space-y-1.5 border-l-2 border-green-200 dark:border-green-800 pl-2">
+                        <p className="text-[10px] font-semibold text-green-700 dark:text-green-400">Poids</p>
+                        {project.poids_vide_kg && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">À vide :</span>
+                            <p className="font-medium">{project.poids_vide_kg} kg</p>
+                          </div>
+                        )}
+                        {project.charge_utile_kg && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">Charge utile :</span>
+                            <p className="font-medium">{project.charge_utile_kg} kg</p>
+                          </div>
+                        )}
+                        {project.ptac_kg && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">PTAC :</span>
+                            <p className="font-medium">{project.ptac_kg} kg</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog pour le Calendrier (overlay) */}
+      <Dialog open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+        <DialogContent className="max-w-md p-0">
+          <CompactAgenda projectId={project?.id || null} />
         </DialogContent>
       </Dialog>
     </div>
