@@ -15,6 +15,7 @@ import {
   UserCircle,
   StickyNote,
   Calendar,
+  Truck,
 } from "lucide-react";
 import {
   format,
@@ -55,7 +56,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [selectedHour, setSelectedHour] = useState<number>(9);
 
   // Utiliser le contexte pour les données synchronisées
-  const { todos, supplierExpenses, monthlyCharges, appointments, setCurrentProjectId, refreshData } = useProjectData();
+  const { todos, supplierExpenses, monthlyCharges, appointments, accessoryDeliveries, setCurrentProjectId, refreshData } = useProjectData();
 
   useEffect(() => {
     setCurrentProjectId(projectId);
@@ -93,11 +94,16 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       isSameDay(parseISO(appointment.appointment_date), date),
     );
 
+    const deliveriesForDate = accessoryDeliveries.filter((delivery) =>
+      delivery.delivery_date && isSameDay(parseISO(delivery.delivery_date), date),
+    );
+
     return {
       todos: todosForDate,
       expenses: expensesForDate,
       charges: chargesForDate,
       appointments: appointmentsForDate,
+      deliveries: deliveriesForDate,
     };
   };
 
@@ -380,7 +386,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             const dayItems = getItemsForDate(day);
             const isCurrentDay = isSameDay(day, currentTime);
             const isSelectedDay = isSameDay(day, currentDate);
-            const totalEvents = dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length;
+            const totalEvents = dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length + dayItems.deliveries.length;
 
             return (
               <div
@@ -436,6 +442,15 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             <span className="truncate">{exp.product_name}</span>
                           </div>
                         ))}
+                        {dayItems.deliveries.slice(0, 2).map((delivery) => (
+                          <div
+                            key={delivery.id}
+                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-800 px-2 py-1 rounded"
+                          >
+                            <Truck className="h-3 w-3" />
+                            <span className="truncate">{delivery.nom}</span>
+                          </div>
+                        ))}
                         {totalEvents > 7 && (
                           <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
                             +{totalEvents - 7} événements
@@ -470,6 +485,15 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                           >
                             <Package className="h-3 w-3" />
                             <span className="truncate">{exp.product_name}</span>
+                          </div>
+                        ))}
+                        {dayItems.deliveries.slice(0, 1).map((delivery) => (
+                          <div
+                            key={delivery.id}
+                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-800 px-2 py-1 rounded"
+                          >
+                            <Truck className="h-3 w-3" />
+                            <span className="truncate">{delivery.nom}</span>
                           </div>
                         ))}
                         {totalEvents > 3 && (
@@ -625,6 +649,10 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             <div className="flex items-center gap-0.5">
               <div className="h-1.5 w-1.5 bg-orange-600 rounded-full" />
               <span>Dép.</span>
+            </div>
+            <div className="flex items-center gap-0.5">
+              <div className="h-1.5 w-1.5 bg-emerald-600 rounded-full" />
+              <span>Livr.</span>
             </div>
             <div className="flex items-center gap-0.5">
               <div className="h-1.5 w-1.5 bg-red-600 rounded-full" />
