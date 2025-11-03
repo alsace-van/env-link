@@ -350,26 +350,21 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const DailyViewInModal = () => {
     const dayItems = getItemsForDate(currentDate);
     const allHours = Array.from({ length: 14 }, (_, i) => i + 8); // 8h à 21h
-    
+
     // Événements sans heure précise ou pour résumé global
-    const totalEvents = dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length + dayItems.deliveries.length;
+    const totalEvents =
+      dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length + dayItems.deliveries.length;
 
     return (
       <div className="space-y-4">
         {/* En-tête avec bouton retour */}
         <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowDailyViewInModal(false)}
-          >
+          <Button variant="outline" size="sm" onClick={() => setShowDailyViewInModal(false)}>
             <ChevronLeft className="h-4 w-4 mr-2" />
             Retour au mois
           </Button>
 
-          <h3 className="text-lg font-semibold">
-            {format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}
-          </h3>
+          <h3 className="text-lg font-semibold">{format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}</h3>
 
           <Button
             variant="ghost"
@@ -470,101 +465,103 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         isCurrentHour
                           ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
                           : hasItems
-                            ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
-                            : "border-gray-200 dark:border-gray-700"
+                            ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5 hover:bg-blue-500/15 hover:border-blue-500"
+                            : "border-gray-200 dark:border-gray-700 hover:bg-accent/50 hover:border-gray-400"
                       }`}
                     >
                       <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
                         {hour}h00
                       </div>
 
-                  {hasItems && (
-                    <div className="space-y-2">
-                      {items.todos.map((todo) => (
-                        <div
-                          key={todo.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/20 dark:bg-purple-500/30"
-                          onClick={() => toggleTodoComplete(todo.id, todo.completed)}
-                        >
-                          <CheckCircle2
-                            className={`h-4 w-4 flex-shrink-0 ${
-                              todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
-                            }`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-purple-800 dark:text-purple-400">Tâche</div>
+                      {hasItems && (
+                        <div className="space-y-2">
+                          {items.todos.map((todo) => (
                             <div
-                              className={`text-sm truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
+                              key={todo.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/20 dark:bg-purple-500/30"
+                              onClick={() => toggleTodoComplete(todo.id, todo.completed)}
                             >
-                              {todo.title}
+                              <CheckCircle2
+                                className={`h-4 w-4 flex-shrink-0 ${
+                                  todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
+                                }`}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-purple-800 dark:text-purple-400">Tâche</div>
+                                <div
+                                  className={`text-sm truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
+                                >
+                                  {todo.title}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      ))}
+                          ))}
 
-                      {items.appointments.map((apt) => (
-                        <div
-                          key={apt.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/20 dark:bg-green-500/30"
-                        >
-                          <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">
-                              Rendez-vous
+                          {items.appointments.map((apt) => (
+                            <div
+                              key={apt.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/20 dark:bg-green-500/30"
+                            >
+                              <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-green-800 dark:text-green-400">
+                                  Rendez-vous
+                                </div>
+                                <div className="text-sm truncate">{apt.client_name}</div>
+                              </div>
                             </div>
-                            <div className="text-sm truncate">{apt.client_name}</div>
-                          </div>
-                        </div>
-                      ))}
+                          ))}
 
-                      {items.expenses.map((exp) => (
-                        <div
-                          key={exp.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/20 dark:bg-red-500/30"
-                        >
-                          <Package className="h-4 w-4 flex-shrink-0 text-red-600" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-red-800 dark:text-red-400">Dépense</div>
-                            <div className="text-sm truncate">{exp.product_name}</div>
-                          </div>
-                        </div>
-                      ))}
+                          {items.expenses.map((exp) => (
+                            <div
+                              key={exp.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/20 dark:bg-red-500/30"
+                            >
+                              <Package className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-red-800 dark:text-red-400">Dépense</div>
+                                <div className="text-sm truncate">{exp.product_name}</div>
+                              </div>
+                            </div>
+                          ))}
 
-                      {items.deliveries.map((delivery) => (
-                        <div
-                          key={delivery.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/20 dark:bg-orange-500/30"
-                        >
-                          <Truck className="h-4 w-4 flex-shrink-0 text-orange-600" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-orange-800 dark:text-orange-400">Livraison</div>
-                            <div className="text-sm truncate">{delivery.nom || "Sans nom"}</div>
-                          </div>
+                          {items.deliveries.map((delivery) => (
+                            <div
+                              key={delivery.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/20 dark:bg-orange-500/30"
+                            >
+                              <Truck className="h-4 w-4 flex-shrink-0 text-orange-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-orange-800 dark:text-orange-400">
+                                  Livraison
+                                </div>
+                                <div className="text-sm truncate">{delivery.nom || "Sans nom"}</div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="w-56">
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
-                  <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
-                  <span>Ajouter une tâche</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
-                  <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
-                  <span>Ajouter une note</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
-                  <Package className="mr-2 h-4 w-4 text-red-600" />
-                  <span>Ajouter une dépense fournisseur</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
-                  <UserCircle className="mr-2 h-4 w-4 text-green-600" />
-                  <span>Ajouter un rendez-vous</span>
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="w-56">
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
+                      <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                      <span>Ajouter une tâche</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
+                      <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
+                      <span>Ajouter une note</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
+                      <Package className="mr-2 h-4 w-4 text-red-600" />
+                      <span>Ajouter une dépense fournisseur</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
+                      <UserCircle className="mr-2 h-4 w-4 text-green-600" />
+                      <span>Ajouter un rendez-vous</span>
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
           </div>
@@ -588,101 +585,103 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         isCurrentHour
                           ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
                           : hasItems
-                            ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
-                        : "border-gray-200 dark:border-gray-700"
-                  }`}
-                >
-                  <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
-                    {hour}h00
-                  </div>
+                            ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5 hover:bg-blue-500/15 hover:border-blue-500"
+                            : "border-gray-200 dark:border-gray-700 hover:bg-accent/50 hover:border-gray-400"
+                      }`}
+                    >
+                      <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                        {hour}h00
+                      </div>
 
-                  {hasItems && (
-                    <div className="space-y-2">
-                      {items.todos.map((todo) => (
-                        <div
-                          key={todo.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/20 dark:bg-purple-500/30"
-                          onClick={() => toggleTodoComplete(todo.id, todo.completed)}
-                        >
-                          <CheckCircle2
-                            className={`h-4 w-4 flex-shrink-0 ${
-                              todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
-                            }`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-purple-800 dark:text-purple-400">Tâche</div>
+                      {hasItems && (
+                        <div className="space-y-2">
+                          {items.todos.map((todo) => (
                             <div
-                              className={`text-sm truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
+                              key={todo.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/20 dark:bg-purple-500/30"
+                              onClick={() => toggleTodoComplete(todo.id, todo.completed)}
                             >
-                              {todo.title}
+                              <CheckCircle2
+                                className={`h-4 w-4 flex-shrink-0 ${
+                                  todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
+                                }`}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-purple-800 dark:text-purple-400">Tâche</div>
+                                <div
+                                  className={`text-sm truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
+                                >
+                                  {todo.title}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      ))}
+                          ))}
 
-                      {items.appointments.map((apt) => (
-                        <div
-                          key={apt.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/20 dark:bg-green-500/30"
-                        >
-                          <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">
-                              Rendez-vous
+                          {items.appointments.map((apt) => (
+                            <div
+                              key={apt.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/20 dark:bg-green-500/30"
+                            >
+                              <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-green-800 dark:text-green-400">
+                                  Rendez-vous
+                                </div>
+                                <div className="text-sm truncate">{apt.client_name}</div>
+                              </div>
                             </div>
-                            <div className="text-sm truncate">{apt.client_name}</div>
-                          </div>
-                        </div>
-                      ))}
+                          ))}
 
-                      {items.expenses.map((exp) => (
-                        <div
-                          key={exp.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/20 dark:bg-red-500/30"
-                        >
-                          <Package className="h-4 w-4 flex-shrink-0 text-red-600" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-red-800 dark:text-red-400">Dépense</div>
-                            <div className="text-sm truncate">{exp.product_name}</div>
-                          </div>
-                        </div>
-                      ))}
+                          {items.expenses.map((exp) => (
+                            <div
+                              key={exp.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/20 dark:bg-red-500/30"
+                            >
+                              <Package className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-red-800 dark:text-red-400">Dépense</div>
+                                <div className="text-sm truncate">{exp.product_name}</div>
+                              </div>
+                            </div>
+                          ))}
 
-                      {items.deliveries.map((delivery) => (
-                        <div
-                          key={delivery.id}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/20 dark:bg-orange-500/30"
-                        >
-                          <Truck className="h-4 w-4 flex-shrink-0 text-orange-600" />
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-orange-800 dark:text-orange-400">Livraison</div>
-                            <div className="text-sm truncate">{delivery.nom || "Sans nom"}</div>
-                          </div>
+                          {items.deliveries.map((delivery) => (
+                            <div
+                              key={delivery.id}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/20 dark:bg-orange-500/30"
+                            >
+                              <Truck className="h-4 w-4 flex-shrink-0 text-orange-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm text-orange-800 dark:text-orange-400">
+                                  Livraison
+                                </div>
+                                <div className="text-sm truncate">{delivery.nom || "Sans nom"}</div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="w-56">
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
-                  <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
-                  <span>Ajouter une tâche</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
-                  <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
-                  <span>Ajouter une note</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
-                  <Package className="mr-2 h-4 w-4 text-red-600" />
-                  <span>Ajouter une dépense fournisseur</span>
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
-                  <UserCircle className="mr-2 h-4 w-4 text-green-600" />
-                  <span>Ajouter un rendez-vous</span>
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="w-56">
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
+                      <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                      <span>Ajouter une tâche</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
+                      <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
+                      <span>Ajouter une note</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
+                      <Package className="mr-2 h-4 w-4 text-red-600" />
+                      <span>Ajouter une dépense fournisseur</span>
+                    </ContextMenuItem>
+                    <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
+                      <UserCircle className="mr-2 h-4 w-4 text-green-600" />
+                      <span>Ajouter un rendez-vous</span>
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               );
             })}
           </div>
@@ -752,7 +751,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             >
               <HelpCircle className="h-4 w-4 text-muted-foreground" />
             </Button>
-            
+
             <Button
               variant="outline"
               size="sm"
@@ -807,7 +806,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20 shadow-md"
                         : isSelectedDay
                           ? "border-gray-800 dark:border-gray-200 border-4 bg-card"
-                          : "border-gray-200 bg-card hover:border-gray-300 hover:shadow"
+                          : "border-gray-200 bg-card hover:border-gray-400 dark:hover:border-gray-500 hover:bg-accent/30 hover:shadow-md"
                     }`}
                     onClick={() => {
                       setCurrentDate(day);
@@ -820,151 +819,151 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                       {format(day, "d")}
                     </div>
 
-                {totalEvents > 0 && (
-                  <div className="space-y-1">
-                    {monthCellSize === "large" ? (
-                      // Mode agrandi : afficher les détails
-                      <>
-                        {dayItems.todos.slice(0, 3).map((todo) => (
-                          <div
-                            key={todo.id}
-                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
-                          >
-                            <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
-                          </div>
-                        ))}
-                        {dayItems.appointments.slice(0, 2).map((apt) => (
-                          <div
-                            key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
-                          >
-                            <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
-                          </div>
-                        ))}
-                        {dayItems.expenses.slice(0, 2).map((exp) => (
-                          <div
-                            key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
-                          >
-                            <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
-                          </div>
-                        ))}
-                        {dayItems.deliveries.slice(0, 2).map((delivery) => (
-                          <div
-                            key={delivery.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
-                          >
-                            <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">
-                              {delivery.nom || "Accessoire sans nom"}
-                            </span>
-                          </div>
-                        ))}
+                    {totalEvents > 0 && (
+                      <div className="space-y-1">
+                        {monthCellSize === "large" ? (
+                          // Mode agrandi : afficher les détails
+                          <>
+                            {dayItems.todos.slice(0, 3).map((todo) => (
+                              <div
+                                key={todo.id}
+                                className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
+                              >
+                                <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
+                              </div>
+                            ))}
+                            {dayItems.appointments.slice(0, 2).map((apt) => (
+                              <div
+                                key={apt.id}
+                                className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
+                              >
+                                <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
+                              </div>
+                            ))}
+                            {dayItems.expenses.slice(0, 2).map((exp) => (
+                              <div
+                                key={exp.id}
+                                className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
+                              >
+                                <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
+                              </div>
+                            ))}
+                            {dayItems.deliveries.slice(0, 2).map((delivery) => (
+                              <div
+                                key={delivery.id}
+                                className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
+                              >
+                                <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">
+                                  {delivery.nom || "Accessoire sans nom"}
+                                </span>
+                              </div>
+                            ))}
 
-                        {totalEvents > 7 && (
-                          <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
-                            +{totalEvents - 7} événements
-                          </div>
+                            {totalEvents > 7 && (
+                              <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
+                                +{totalEvents - 7} événements
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          // Mode normal : afficher seulement les 2 premiers
+                          <>
+                            {dayItems.todos.slice(0, 1).map((todo) => (
+                              <div
+                                key={todo.id}
+                                className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
+                              >
+                                <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
+                              </div>
+                            ))}
+                            {dayItems.appointments.slice(0, 1).map((apt) => (
+                              <div
+                                key={apt.id}
+                                className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
+                              >
+                                <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
+                              </div>
+                            ))}
+                            {dayItems.expenses.slice(0, 1).map((exp) => (
+                              <div
+                                key={exp.id}
+                                className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
+                              >
+                                <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
+                              </div>
+                            ))}
+                            {dayItems.deliveries.slice(0, 1).map((delivery) => (
+                              <div
+                                key={delivery.id}
+                                className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
+                              >
+                                <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
+                                <span className="truncate text-foreground dark:text-gray-100">
+                                  {delivery.nom || "Accessoire sans nom"}
+                                </span>
+                              </div>
+                            ))}
+                            {totalEvents > 3 && (
+                              <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
+                                +{totalEvents - 3}
+                              </div>
+                            )}
+                          </>
                         )}
-                      </>
-                    ) : (
-                      // Mode normal : afficher seulement les 2 premiers
-                      <>
-                        {dayItems.todos.slice(0, 1).map((todo) => (
+                      </div>
+                    )}
+
+                    {/* Charges mensuelles */}
+                    {dayItems.charges.length > 0 && (
+                      <div className="mt-1 pt-1 border-t border-red-400/50 dark:border-red-600/50">
+                        {dayItems.charges.slice(0, monthCellSize === "large" ? 3 : 1).map((charge) => (
                           <div
-                            key={todo.id}
-                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
+                            key={charge.id}
+                            className="flex items-center justify-between text-[10px] text-red-600 dark:text-red-400"
                           >
-                            <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
+                            <span className="truncate">{charge.nom_charge}</span>
+                            <span className="font-bold">{charge.montant.toFixed(0)}€</span>
                           </div>
                         ))}
-                        {dayItems.appointments.slice(0, 1).map((apt) => (
-                          <div
-                            key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
-                          >
-                            <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
-                          </div>
-                        ))}
-                        {dayItems.expenses.slice(0, 1).map((exp) => (
-                          <div
-                            key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
-                          >
-                            <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
-                          </div>
-                        ))}
-                        {dayItems.deliveries.slice(0, 1).map((delivery) => (
-                          <div
-                            key={delivery.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
-                          >
-                            <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
-                            <span className="truncate text-foreground dark:text-gray-100">
-                              {delivery.nom || "Accessoire sans nom"}
-                            </span>
-                          </div>
-                        ))}
-                        {totalEvents > 3 && (
-                          <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
-                            +{totalEvents - 3}
-                          </div>
-                        )}
-                      </>
+                      </div>
                     )}
                   </div>
-                )}
-
-                {/* Charges mensuelles */}
-                {dayItems.charges.length > 0 && (
-                  <div className="mt-1 pt-1 border-t border-red-400/50 dark:border-red-600/50">
-                    {dayItems.charges.slice(0, monthCellSize === "large" ? 3 : 1).map((charge) => (
-                      <div
-                        key={charge.id}
-                        className="flex items-center justify-between text-[10px] text-red-600 dark:text-red-400"
-                      >
-                        <span className="truncate">{charge.nom_charge}</span>
-                        <span className="font-bold">{charge.montant.toFixed(0)}€</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="w-56">
-              <ContextMenuItem onClick={() => handleContextMenu(9, "task", day)}>
-                <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
-                <span>Ajouter une tâche</span>
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => handleContextMenu(9, "note", day)}>
-                <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
-                <span>Ajouter une note</span>
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => handleContextMenu(9, "expense", day)}>
-                <Package className="mr-2 h-4 w-4 text-red-600" />
-                <span>Ajouter une dépense fournisseur</span>
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => handleContextMenu(9, "appointment", day)}>
-                <UserCircle className="mr-2 h-4 w-4 text-green-600" />
-                <span>Ajouter un rendez-vous</span>
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </ContextMenu>
-        );
+                </ContextMenuTrigger>
+                <ContextMenuContent className="w-56">
+                  <ContextMenuItem onClick={() => handleContextMenu(9, "task", day)}>
+                    <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                    <span>Ajouter une tâche</span>
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => handleContextMenu(9, "note", day)}>
+                    <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
+                    <span>Ajouter une note</span>
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => handleContextMenu(9, "expense", day)}>
+                    <Package className="mr-2 h-4 w-4 text-red-600" />
+                    <span>Ajouter une dépense fournisseur</span>
+                  </ContextMenuItem>
+                  <ContextMenuItem onClick={() => handleContextMenu(9, "appointment", day)}>
+                    <UserCircle className="mr-2 h-4 w-4 text-green-600" />
+                    <span>Ajouter un rendez-vous</span>
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            );
           })}
         </div>
       </div>
@@ -1134,7 +1133,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Le jour d'aujourd'hui avec fond bleu</div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 p-2 rounded-lg border-4 border-gray-800 dark:border-gray-200">
               <div className="h-4 w-4 bg-gray-800 dark:bg-gray-200 rounded-full flex-shrink-0" />
               <div>
@@ -1142,7 +1141,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Contour gras noir/blanc</div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 p-2 rounded-lg bg-purple-500/10 dark:bg-purple-500/20">
               <div className="h-4 w-4 bg-purple-600 rounded-full flex-shrink-0" />
               <div>
@@ -1150,7 +1149,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Tâches et actions à réaliser</div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 p-2 rounded-lg bg-green-500/10 dark:bg-green-500/20">
               <div className="h-4 w-4 bg-green-600 rounded-full flex-shrink-0" />
               <div>
@@ -1158,7 +1157,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Rendez-vous clients</div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 p-2 rounded-lg bg-red-500/10 dark:bg-red-500/20">
               <div className="h-4 w-4 bg-red-600 rounded-full flex-shrink-0" />
               <div>
@@ -1166,7 +1165,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Dépenses fournisseurs et charges mensuelles</div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3 p-2 rounded-lg bg-orange-500/10 dark:bg-orange-500/20">
               <div className="h-4 w-4 bg-orange-600 rounded-full flex-shrink-0" />
               <div>
