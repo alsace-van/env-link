@@ -426,7 +426,7 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
   }
 
   return (
-    <Card className="w-full h-[calc(100vh-16rem)] sticky top-4 transition-all duration-300 ease-in-out">
+    <Card className="w-64 h-[calc(100vh-16rem)] sticky top-4 transition-all duration-300 ease-in-out">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Catégories</CardTitle>
