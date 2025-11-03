@@ -49,6 +49,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [monthCellSize, setMonthCellSize] = useState<"normal" | "large">("normal"); // Taille des cases du mois
   const [currentTime, setCurrentTime] = useState(new Date()); // Pour rafraîchir l'heure actuelle
   const [isLegendOpen, setIsLegendOpen] = useState(false); // Modal de légende des couleurs
+  const [showDailyViewInModal, setShowDailyViewInModal] = useState(false); // Afficher le planning journalier dans la modal
 
   // États pour les modales
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -342,6 +343,247 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     );
   };
 
+  // Composant pour afficher le planning journalier dans la modal mensuelle
+  const DailyViewInModal = () => {
+    const dayItems = getItemsForDate(currentDate);
+    const allHours = Array.from({ length: 14 }, (_, i) => i + 8); // 8h à 21h
+
+    return (
+      <div className="space-y-4">
+        {/* En-tête avec bouton retour */}
+        <div className="flex items-center justify-between">
+          <Button variant="outline" size="sm" onClick={() => setShowDailyViewInModal(false)}>
+            <ChevronLeft className="h-4 w-4 mr-2" />
+            Retour au mois
+          </Button>
+
+          <h3 className="text-lg font-semibold">{format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}</h3>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 rounded-full"
+            onClick={() => setIsLegendOpen(true)}
+            title="Voir la légende des couleurs"
+          >
+            <HelpCircle className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </div>
+
+        {/* Planning journalier sur 2 colonnes */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* Colonne gauche : 8h-14h */}
+          <div className="space-y-2">
+            {allHours.slice(0, 7).map((hour) => {
+              const items = getItemsForHour(currentDate, hour);
+              const hasItems =
+                items.todos.length > 0 ||
+                items.expenses.length > 0 ||
+                items.appointments.length > 0 ||
+                items.deliveries.length > 0;
+              const isCurrentHour = isSameDay(currentDate, currentTime) && hour === currentTime.getHours();
+
+              return (
+                <div
+                  key={hour}
+                  className={`p-3 rounded-lg border transition-all ${
+                    isCurrentHour
+                      ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
+                      : hasItems
+                        ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
+                        : "border-gray-200 dark:border-gray-700"
+                  }`}
+                >
+                  <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                    {hour}h00
+                  </div>
+
+                  {hasItems && (
+                    <div className="space-y-2">
+                      {items.todos.map((todo) => (
+                        <div
+                          key={todo.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/20 dark:bg-purple-500/30"
+                          onClick={() => toggleTodoComplete(todo.id, todo.completed)}
+                        >
+                          <CheckCircle2
+                            className={`h-4 w-4 flex-shrink-0 ${
+                              todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
+                            }`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-purple-800 dark:text-purple-400">Tâche</div>
+                            <div
+                              className={`text-sm truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
+                            >
+                              {todo.title}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {items.appointments.map((apt) => (
+                        <div
+                          key={apt.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/20 dark:bg-green-500/30"
+                        >
+                          <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">Rendez-vous</div>
+                            <div className="text-sm truncate">{apt.client_name}</div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {items.expenses.map((exp) => (
+                        <div
+                          key={exp.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/20 dark:bg-red-500/30"
+                        >
+                          <Package className="h-4 w-4 flex-shrink-0 text-red-600" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-red-800 dark:text-red-400">Dépense</div>
+                            <div className="text-sm truncate">{exp.product_name}</div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {items.deliveries.map((delivery) => (
+                        <div
+                          key={delivery.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/20 dark:bg-orange-500/30"
+                        >
+                          <Truck className="h-4 w-4 flex-shrink-0 text-orange-600" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-orange-800 dark:text-orange-400">Livraison</div>
+                            <div className="text-sm truncate">{delivery.nom || "Sans nom"}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Colonne droite : 15h-21h */}
+          <div className="space-y-2">
+            {allHours.slice(7).map((hour) => {
+              const items = getItemsForHour(currentDate, hour);
+              const hasItems =
+                items.todos.length > 0 ||
+                items.expenses.length > 0 ||
+                items.appointments.length > 0 ||
+                items.deliveries.length > 0;
+              const isCurrentHour = isSameDay(currentDate, currentTime) && hour === currentTime.getHours();
+
+              return (
+                <div
+                  key={hour}
+                  className={`p-3 rounded-lg border transition-all ${
+                    isCurrentHour
+                      ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
+                      : hasItems
+                        ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
+                        : "border-gray-200 dark:border-gray-700"
+                  }`}
+                >
+                  <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                    {hour}h00
+                  </div>
+
+                  {hasItems && (
+                    <div className="space-y-2">
+                      {items.todos.map((todo) => (
+                        <div
+                          key={todo.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/20 dark:bg-purple-500/30"
+                          onClick={() => toggleTodoComplete(todo.id, todo.completed)}
+                        >
+                          <CheckCircle2
+                            className={`h-4 w-4 flex-shrink-0 ${
+                              todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
+                            }`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-purple-800 dark:text-purple-400">Tâche</div>
+                            <div
+                              className={`text-sm truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
+                            >
+                              {todo.title}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {items.appointments.map((apt) => (
+                        <div
+                          key={apt.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/20 dark:bg-green-500/30"
+                        >
+                          <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">Rendez-vous</div>
+                            <div className="text-sm truncate">{apt.client_name}</div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {items.expenses.map((exp) => (
+                        <div
+                          key={exp.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/20 dark:bg-red-500/30"
+                        >
+                          <Package className="h-4 w-4 flex-shrink-0 text-red-600" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-red-800 dark:text-red-400">Dépense</div>
+                            <div className="text-sm truncate">{exp.product_name}</div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {items.deliveries.map((delivery) => (
+                        <div
+                          key={delivery.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/20 dark:bg-orange-500/30"
+                        >
+                          <Truck className="h-4 w-4 flex-shrink-0 text-orange-600" />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-orange-800 dark:text-orange-400">Livraison</div>
+                            <div className="text-sm truncate">{delivery.nom || "Sans nom"}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Charges mensuelles du jour */}
+        {dayItems.charges.length > 0 && (
+          <div className="border-t-2 border-red-200 dark:border-red-800 bg-red-50/30 dark:bg-red-950/30 p-3 rounded-lg">
+            <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 flex items-center gap-2 mb-2">
+              <Euro className="h-4 w-4" />
+              Charges mensuelles
+            </h4>
+            <div className="space-y-1">
+              {dayItems.charges.map((charge) => (
+                <div key={charge.id} className="flex items-center justify-between text-sm">
+                  <span className="text-foreground truncate">{charge.nom_charge}</span>
+                  <span className="font-bold text-red-600 dark:text-red-400">{charge.montant.toFixed(2)}€</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Composant pour la vue mensuelle
   const MonthView = () => {
     const monthStart = startOfMonth(currentDate);
@@ -375,23 +617,35 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             </Button>
           </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setMonthCellSize(monthCellSize === "normal" ? "large" : "normal")}
-          >
-            {monthCellSize === "normal" ? (
-              <>
-                <Maximize2 className="h-4 w-4 mr-2" />
-                Agrandir les cases
-              </>
-            ) : (
-              <>
-                <Minimize2 className="h-4 w-4 mr-2" />
-                Réduire les cases
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 rounded-full"
+              onClick={() => setIsLegendOpen(true)}
+              title="Voir la légende des couleurs"
+            >
+              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMonthCellSize(monthCellSize === "normal" ? "large" : "normal")}
+            >
+              {monthCellSize === "normal" ? (
+                <>
+                  <Maximize2 className="h-4 w-4 mr-2" />
+                  Agrandir les cases
+                </>
+              ) : (
+                <>
+                  <Minimize2 className="h-4 w-4 mr-2" />
+                  Réduire les cases
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* Calendrier mensuel */}
@@ -431,8 +685,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 }`}
                 onClick={() => {
                   setCurrentDate(day);
-                  setIsMonthViewOpen(false);
-                  setIsExpanded(true); // Ouvrir en mode étendu
+                  setShowDailyViewInModal(true); // Afficher le planning journalier
                 }}
               >
                 <div
@@ -699,14 +952,25 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       </Card>
 
       {/* Modal Vue Mensuelle */}
-      <Dialog open={isMonthViewOpen} onOpenChange={setIsMonthViewOpen}>
+      <Dialog
+        open={isMonthViewOpen}
+        onOpenChange={(open) => {
+          setIsMonthViewOpen(open);
+          if (!open) {
+            // Réinitialiser la vue journalière quand on ferme la modal
+            setShowDailyViewInModal(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl">
-              📅 Planning Mensuel - {format(currentDate, "MMMM yyyy", { locale: fr })}
+              {showDailyViewInModal
+                ? `📅 Planning Journalier - ${format(currentDate, "d MMMM yyyy", { locale: fr })}`
+                : `📅 Planning Mensuel - ${format(currentDate, "MMMM yyyy", { locale: fr })}`}
             </DialogTitle>
           </DialogHeader>
-          <MonthView />
+          {showDailyViewInModal ? <DailyViewInModal /> : <MonthView />}
         </DialogContent>
       </Dialog>
 
