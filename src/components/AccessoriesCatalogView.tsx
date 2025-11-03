@@ -418,7 +418,7 @@ const AccessoriesCatalogView = () => {
                             <div key={subKey}>
                               {group.subGroups.size > 1 && (
                                 <div
-                                  className="flex items-center gap-2 mb-3 cursor-pointer hover:bg-accent/30 p-2 rounded"
+                                  className="flex items-center gap-2 mb-3 cursor-pointer hover:bg-blue-500/10 dark:hover:bg-blue-500/15 p-2 rounded"
                                   onClick={() => toggleSubCategory(mainCategoryName, subCategoryName)}
                                 >
                                   {isSubExpanded ? (
@@ -499,7 +499,7 @@ const AccessoriesCatalogView = () => {
                                               </div>
                                               <div className="flex gap-1 flex-shrink-0">
                                                 <div
-                                                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                                                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-500/10 cursor-pointer"
                                                   title={
                                                     accessory.available_in_shop
                                                       ? "Retirer de la boutique"
@@ -621,7 +621,7 @@ const AccessoriesCatalogView = () => {
                                                 </div>
                                                 <div className="flex gap-1">
                                                   <div
-                                                    className="flex items-center gap-1 px-2 py-1 rounded hover:bg-accent cursor-pointer"
+                                                    className="flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-500/10 cursor-pointer"
                                                     title={
                                                       accessory.available_in_shop
                                                         ? "Retirer de la boutique"
