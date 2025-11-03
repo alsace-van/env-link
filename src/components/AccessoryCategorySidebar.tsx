@@ -411,20 +411,22 @@ const AccessoryCategorySidebar = ({ selectedCategories, onCategoryChange }: Acce
 
   if (isCollapsed) {
     return (
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => setIsCollapsed(false)}
-        className="fixed left-4 top-[450px] z-50"
-        title="Afficher les catégories"
-      >
-        <PanelLeft className="h-4 w-4" />
-      </Button>
+      <div className="w-16 flex-shrink-0">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setIsCollapsed(false)}
+          className="sticky top-4"
+          title="Afficher les catégories"
+        >
+          <PanelLeft className="h-4 w-4" />
+        </Button>
+      </div>
     );
   }
 
   return (
-    <Card className="w-80 h-[calc(100vh-24rem)] fixed left-4 top-[450px] z-40 shadow-lg">
+    <Card className="w-full h-[calc(100vh-16rem)] sticky top-4 transition-all duration-300 ease-in-out">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Catégories</CardTitle>

@@ -126,32 +126,15 @@ const AccessoriesCatalog = () => {
           </div>
         </div>
 
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-1">Dimensions totales</p>
-                <p className="text-lg font-semibold">-</p>
-              </div>
-              <div className="text-center border-x">
-                <p className="text-sm text-muted-foreground mb-1">Surface utile</p>
-                <p className="text-lg font-semibold">-</p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-1">Poids</p>
-                <p className="text-lg font-semibold">-</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex gap-4">
-          <AccessoryCategorySidebar
-            selectedCategories={selectedCategories}
-            onCategoryChange={setSelectedCategories}
-          />
+        <div className="flex gap-6">
+          <div className="w-80 flex-shrink-0">
+            <AccessoryCategorySidebar
+              selectedCategories={selectedCategories}
+              onCategoryChange={setSelectedCategories}
+            />
+          </div>
           
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
 
           {loading ? (
             <div className="text-center py-12">Chargement...</div>
