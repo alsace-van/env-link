@@ -313,14 +313,13 @@ const AccessoriesCatalogView = () => {
   };
 
   return (
-    <div className="relative">
+    <div className="flex w-full">
       <AccessoryCategorySidebar
         selectedCategories={selectedCategories}
         onCategoryChange={setSelectedCategories}
-        onAccessoryDrop={handleAccessoryDrop}
       />
 
-      <Card className="ml-96">
+      <Card className="flex-1">
         <CardHeader>
           <CardTitle>Catalogue d'Accessoires</CardTitle>
           <CardDescription>Votre catalogue personnel partagé entre tous vos projets</CardDescription>

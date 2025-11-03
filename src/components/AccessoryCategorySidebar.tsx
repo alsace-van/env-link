@@ -28,8 +28,8 @@ interface Category {
 interface AccessoryCategorySidebarProps {
   selectedCategories: string[];
   onCategoryChange: (categories: string[]) => void;
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const AccessoryCategorySidebar = ({
@@ -51,10 +51,8 @@ const AccessoryCategorySidebar = ({
   const [editParentId, setEditParentId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      loadCategories();
-    }
-  }, [isOpen]);
+    loadCategories();
+  }, []);
 
   const loadCategories = async () => {
     const { data, error } = await supabase.from("categories").select("*").order("nom");
@@ -416,108 +414,122 @@ const AccessoryCategorySidebar = ({
     );
   };
 
+  const content = (
+    <div className="h-full flex flex-col">
+      <div className="px-6 py-4 border-b">
+        {showAddRoot ? (
+          <div className="flex flex-col gap-2">
+            <Input
+              placeholder="Nom de la catégorie"
+              value={newCategoryName}
+              onChange={(e) => {
+                e.stopPropagation();
+                setNewCategoryName(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddRootCategory();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setShowAddRoot(false);
+                  setNewCategoryName("");
+                  setNewCategoryParentId(null);
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="h-8 text-sm"
+              autoFocus
+              autoComplete="off"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Parent:</span>
+              <Select
+                value={newCategoryParentId || "root"}
+                onValueChange={(value) => setNewCategoryParentId(value === "root" ? null : value)}
+              >
+                <SelectTrigger className="h-8 text-sm flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="root">Racine</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={handleAddRootCategory} className="h-8 flex-1" title="Ajouter">
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setShowAddRoot(false);
+                  setNewCategoryName("");
+                  setNewCategoryParentId(null);
+                }}
+                className="h-8 flex-1"
+                title="Annuler"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => setShowAddRoot(true)} className="w-full">
+            <Plus className="h-4 w-4 mr-2" />
+            Nouvelle catégorie
+          </Button>
+        )}
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="px-6 py-4 group">
+          {categories.filter((cat) => !cat.parent_id).length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">Aucune catégorie</p>
+          ) : (
+            categories.filter((cat) => !cat.parent_id).map((cat) => renderCategory(cat))
+          )}
+        </div>
+      </ScrollArea>
+
+      {selectedCategories.length > 0 && (
+        <div className="border-t px-6 py-4">
+          <Button variant="outline" size="sm" onClick={() => onCategoryChange([])} className="w-full">
+            Effacer les filtres ({selectedCategories.length})
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
-      <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent side="left" className="w-[350px] sm:w-[400px] p-0 overflow-hidden">
-          <SheetHeader className="px-6 py-4 border-b">
-            <SheetTitle>Catégories</SheetTitle>
-          </SheetHeader>
-
-          <div className="h-[calc(100vh-80px)] flex flex-col">
-            <div className="px-6 py-4 border-b">
-              {showAddRoot ? (
-                <div className="flex flex-col gap-2">
-                  <Input
-                    placeholder="Nom de la catégorie"
-                    value={newCategoryName}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      setNewCategoryName(e.target.value);
-                    }}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddRootCategory();
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        setShowAddRoot(false);
-                        setNewCategoryName("");
-                        setNewCategoryParentId(null);
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-8 text-sm"
-                    autoFocus
-                    autoComplete="off"
-                  />
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">Parent:</span>
-                    <Select
-                      value={newCategoryParentId || "root"}
-                      onValueChange={(value) => setNewCategoryParentId(value === "root" ? null : value)}
-                    >
-                      <SelectTrigger className="h-8 text-sm flex-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="root">Racine</SelectItem>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.nom}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" onClick={handleAddRootCategory} className="h-8 flex-1" title="Ajouter">
-                      <Check className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setShowAddRoot(false);
-                        setNewCategoryName("");
-                        setNewCategoryParentId(null);
-                      }}
-                      className="h-8 flex-1"
-                      title="Annuler"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button variant="outline" size="sm" onClick={() => setShowAddRoot(true)} className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nouvelle catégorie
-                </Button>
-              )}
+      {isOpen !== undefined && onClose ? (
+        <Sheet open={isOpen} onOpenChange={onClose}>
+          <SheetContent side="left" className="w-[350px] sm:w-[400px] p-0 overflow-hidden">
+            <SheetHeader className="px-6 py-4 border-b">
+              <SheetTitle>Catégories</SheetTitle>
+            </SheetHeader>
+            <div className="h-[calc(100vh-80px)]">
+              {content}
             </div>
-
-            <ScrollArea className="flex-1">
-              <div className="px-6 py-4 group">
-                {categories.filter((cat) => !cat.parent_id).length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">Aucune catégorie</p>
-                ) : (
-                  categories.filter((cat) => !cat.parent_id).map((cat) => renderCategory(cat))
-                )}
-              </div>
-            </ScrollArea>
-
-            {selectedCategories.length > 0 && (
-              <div className="border-t px-6 py-4">
-                <Button variant="outline" size="sm" onClick={() => onCategoryChange([])} className="w-full">
-                  Effacer les filtres ({selectedCategories.length})
-                </Button>
-              </div>
-            )}
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <div className="w-80 flex-shrink-0 border-r bg-card sticky top-4 h-[calc(100vh-2rem)] transition-all duration-300 ease-in-out">
+          <div className="px-6 py-4 border-b">
+            <h3 className="font-semibold text-lg">Catégories</h3>
           </div>
-        </SheetContent>
-      </Sheet>
+          {content}
+        </div>
+      )}
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
