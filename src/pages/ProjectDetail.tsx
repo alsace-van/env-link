@@ -126,10 +126,10 @@ const AgendaWidget = ({ projectId, onClick }: AgendaWidgetProps) => {
         <div className="flex items-center gap-3">
           {/* Date et heure */}
           <div className="flex flex-col items-center justify-center min-w-[60px]">
-            <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400 mb-1" />
-            <div className="text-xs font-bold text-foreground">{format(currentTime, "d MMM", { locale: fr })}</div>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock className="h-3 w-3" />
+            <Calendar className="h-6 w-6 text-blue-600 dark:text-blue-400 mb-1" />
+            <div className="text-sm font-bold text-foreground">{format(currentTime, "d MMM", { locale: fr })}</div>
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Clock className="h-4 w-4" />
               {format(currentTime, "HH:mm")}
             </div>
           </div>
@@ -148,28 +148,28 @@ const AgendaWidget = ({ projectId, onClick }: AgendaWidgetProps) => {
                   const isDelivery = "nom" in event && "delivery_date" in event;
 
                   return (
-                    <div key={index} className="flex items-center gap-1.5 text-xs">
+                    <div key={index} className="flex items-center gap-1.5 text-sm">
                       {isTodo && (
                         <>
-                          <CheckCircle2 className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                          <CheckCircle2 className="h-4 w-4 text-purple-500 flex-shrink-0" />
                           <span className="truncate">{event.title}</span>
                         </>
                       )}
                       {isAppointment && (
                         <>
-                          <UserCircle className="h-3 w-3 text-green-600 flex-shrink-0" />
+                          <UserCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
                           <span className="truncate">{event.client_name}</span>
                         </>
                       )}
                       {isExpense && (
                         <>
-                          <Package className="h-3 w-3 text-red-600 flex-shrink-0" />
+                          <Package className="h-4 w-4 text-red-600 flex-shrink-0" />
                           <span className="truncate">{event.product_name}</span>
                         </>
                       )}
                       {isDelivery && (
                         <>
-                          <Truck className="h-3 w-3 text-orange-600 flex-shrink-0" />
+                          <Truck className="h-4 w-4 text-orange-600 flex-shrink-0" />
                           <span className="truncate">{event.nom}</span>
                         </>
                       )}
@@ -178,15 +178,162 @@ const AgendaWidget = ({ projectId, onClick }: AgendaWidgetProps) => {
                 })}
               </div>
             ) : (
-              <div className="text-xs text-muted-foreground">Aucun événement aujourd'hui</div>
+              <div className="text-sm text-muted-foreground">Aucun événement aujourd'hui</div>
             )}
           </div>
 
           {/* Indicateur cliquable */}
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </CardContent>
     </Card>
+  );
+};
+
+// Composant CalendarDropdown qui se déplie vers le bas
+interface CalendarDropdownProps {
+  projectId: string | null;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps) => {
+  const { todos, appointments, supplierExpenses, accessoryDeliveries, setCurrentProjectId } = useProjectData();
+  const [currentDate] = useState(new Date());
+
+  useEffect(() => {
+    setCurrentProjectId(projectId);
+  }, [projectId, setCurrentProjectId]);
+
+  if (!isOpen) return null;
+
+  // Récupérer les événements du jour pour chaque heure
+  const today = new Date();
+  const hours = Array.from({ length: 14 }, (_, i) => i + 8); // 8h à 21h
+
+  const getEventsForHour = (hour: number) => {
+    const events: any[] = [];
+
+    // Filtrer les tâches
+    todos
+      .filter((t) => {
+        if (!t.due_date) return false;
+        const date = parseISO(t.due_date);
+        return isSameDay(date, today) && date.getHours() === hour;
+      })
+      .forEach((t) => events.push({ ...t, type: "todo" }));
+
+    // Filtrer les rendez-vous
+    appointments
+      .filter((a) => {
+        if (!a.date) return false;
+        const date = parseISO(a.date);
+        return isSameDay(date, today) && date.getHours() === hour;
+      })
+      .forEach((a) => events.push({ ...a, type: "appointment" }));
+
+    // Filtrer les dépenses
+    supplierExpenses
+      .filter((e) => {
+        if (!e.order_date) return false;
+        const date = parseISO(e.order_date);
+        return isSameDay(date, today) && date.getHours() === hour;
+      })
+      .forEach((e) => events.push({ ...e, type: "expense" }));
+
+    // Filtrer les livraisons
+    accessoryDeliveries
+      .filter((d) => {
+        if (!d.delivery_date) return false;
+        const date = parseISO(d.delivery_date);
+        return isSameDay(date, today) && date.getHours() === hour;
+      })
+      .forEach((d) => events.push({ ...d, type: "delivery" }));
+
+    return events;
+  };
+
+  return (
+    <div className="absolute top-full right-0 mt-2 z-50 w-96 max-h-[600px] overflow-y-auto">
+      <Card className="shadow-lg border-2 border-blue-200 dark:border-blue-800">
+        <CardHeader className="pb-3 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div>
+                <div className="font-semibold text-base">Planning du jour</div>
+                <div className="text-xs text-muted-foreground">
+                  {format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}
+                </div>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <ChevronUp className="h-5 w-5" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-3">
+          <div className="space-y-1">
+            {hours.map((hour) => {
+              const events = getEventsForHour(hour);
+              const currentHour = new Date().getHours();
+              const isCurrentHour = hour === currentHour && isSameDay(today, new Date());
+
+              return (
+                <div
+                  key={hour}
+                  className={`p-2 rounded-md border ${
+                    isCurrentHour
+                      ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700"
+                      : "border-border"
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="font-semibold text-sm min-w-[50px]">{hour}h00</div>
+                    <div className="flex-1">
+                      {events.length > 0 ? (
+                        <div className="space-y-1">
+                          {events.map((event, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5 text-xs">
+                              {event.type === "todo" && (
+                                <>
+                                  <CheckCircle2 className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                                  <span className="truncate">{event.title}</span>
+                                </>
+                              )}
+                              {event.type === "appointment" && (
+                                <>
+                                  <UserCircle className="h-3 w-3 text-green-600 flex-shrink-0" />
+                                  <span className="truncate">{event.client_name}</span>
+                                </>
+                              )}
+                              {event.type === "expense" && (
+                                <>
+                                  <Package className="h-3 w-3 text-red-600 flex-shrink-0" />
+                                  <span className="truncate">{event.product_name}</span>
+                                </>
+                              )}
+                              {event.type === "delivery" && (
+                                <>
+                                  <Truck className="h-3 w-3 text-orange-600 flex-shrink-0" />
+                                  <span className="truncate">{event.nom}</span>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">-</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
@@ -204,6 +351,7 @@ const ProjectDetail = () => {
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false); // État pour l'overlay du calendrier
   const [isProjectInfoOpen, setIsProjectInfoOpen] = useState(false); // État pour l'overlay des infos projet
+  const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false); // État pour le dropdown du calendrier
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
   const [editFormData, setEditFormData] = useState({
@@ -229,108 +377,92 @@ const ProjectDetail = () => {
   });
 
   useEffect(() => {
-    if (id) {
-      loadProject();
-    }
+    const fetchProject = async () => {
+      if (!id) return;
 
-    // Écouter les changements en temps réel sur la table projects
-    const channel = supabase
-      .channel("project-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "projects",
-          filter: `id=eq.${id}`,
-        },
-        (payload) => {
-          console.log("🔄 Changement détecté dans le projet:", payload);
-          // Recharger les données du projet quand il y a un changement
-          loadProject();
-          // Forcer le rechargement du canvas 2D
-          setLayoutCanvasKey((prev) => prev + 1);
-        },
-      )
-      .subscribe();
+      try {
+        // Récupérer le projet avec les infos du véhicule
+        const { data: projectData, error: projectError } = await supabase
+          .from("projects")
+          .select(
+            `
+            *,
+            vehicles_catalog (
+              marque,
+              modele
+            )
+          `,
+          )
+          .eq("id", id)
+          .single();
 
-    return () => {
-      supabase.removeChannel(channel);
+        if (projectError) {
+          console.error("Erreur lors de la récupération du projet:", projectError);
+          toast.error("Erreur lors du chargement du projet");
+          return;
+        }
+
+        setProject(projectData);
+      } catch (error) {
+        console.error("Erreur:", error);
+        toast.error("Une erreur est survenue");
+      } finally {
+        setIsLoading(false);
+      }
     };
+
+    const fetchUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setUser(user);
+    };
+
+    fetchProject();
+    fetchUser();
   }, [id]);
 
-  const loadProject = async () => {
-    if (!id) return;
+  const handlePhotoUploaded = () => {
+    setPhotoRefresh((prev) => prev + 1);
+  };
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      navigate("/auth");
-      return;
-    }
-
-    setUser(user);
-
-    const { data, error } = await supabase
-      .from("projects")
-      .select(
-        `
-        *,
-        vehicles_catalog (
-          marque,
-          modele
-        )
-      `,
-      )
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .single();
-
-    setIsLoading(false);
-
-    if (error) {
-      toast.error("Erreur lors du chargement du projet");
-      navigate("/dashboard");
-      return;
-    }
-
-    setProject(data);
+  const handleExpenseAdded = () => {
+    setExpenseRefresh((prev) => prev + 1);
   };
 
   const handleEditDimensions = () => {
-    if (project) {
-      setEditFormData({
-        nom_projet: project.nom_projet || "",
-        numero_chassis: project.numero_chassis || "",
-        immatriculation: project.immatriculation || "",
-        type_mine: project.type_mine || "",
-        date_mise_circulation: project.date_mise_circulation || "",
-        marque_custom: project.marque_custom || project.vehicles_catalog?.marque || "",
-        modele_custom: project.modele_custom || project.vehicles_catalog?.modele || "",
-        nom_proprietaire: project.nom_proprietaire || "",
-        adresse_proprietaire: project.adresse_proprietaire || "",
-        telephone_proprietaire: project.telephone_proprietaire || "",
-        email_proprietaire: project.email_proprietaire || "",
-        longueur_mm: project.longueur_mm?.toString() || "",
-        largeur_mm: project.largeur_mm?.toString() || "",
-        hauteur_mm: project.hauteur_mm?.toString() || "",
-        longueur_chargement_mm: project.longueur_chargement_mm?.toString() || "",
-        largeur_chargement_mm: project.largeur_chargement_mm?.toString() || "",
-        poids_vide_kg: project.poids_vide_kg?.toString() || "",
-        charge_utile_kg: project.charge_utile_kg?.toString() || "",
-        ptac_kg: project.ptac_kg?.toString() || "",
-      });
-      setIsEditDimensionsOpen(true);
-    }
+    if (!project) return;
+
+    setEditFormData({
+      nom_projet: project.nom_projet || "",
+      numero_chassis: project.numero_chassis || "",
+      immatriculation: project.immatriculation || "",
+      type_mine: project.type_mine || "",
+      date_mise_circulation: project.date_mise_circulation || "",
+      marque_custom: project.marque_custom || "",
+      modele_custom: project.modele_custom || "",
+      nom_proprietaire: project.nom_proprietaire || "",
+      adresse_proprietaire: project.adresse_proprietaire || "",
+      telephone_proprietaire: project.telephone_proprietaire || "",
+      email_proprietaire: project.email_proprietaire || "",
+      longueur_mm: project.longueur_mm?.toString() || "",
+      largeur_mm: project.largeur_mm?.toString() || "",
+      hauteur_mm: project.hauteur_mm?.toString() || "",
+      longueur_chargement_mm: project.longueur_chargement_mm?.toString() || "",
+      largeur_chargement_mm: project.largeur_chargement_mm?.toString() || "",
+      poids_vide_kg: project.poids_vide_kg?.toString() || "",
+      charge_utile_kg: project.charge_utile_kg?.toString() || "",
+      ptac_kg: project.ptac_kg?.toString() || "",
+    });
+
+    setIsEditDimensionsOpen(true);
   };
 
   const handleSaveDimensions = async () => {
     if (!project) return;
 
-    const { error } = await supabase
-      .from("projects")
-      .update({
+    try {
+      const updateData: any = {
         nom_projet: editFormData.nom_projet || null,
         numero_chassis: editFormData.numero_chassis || null,
         immatriculation: editFormData.immatriculation || null,
@@ -338,7 +470,7 @@ const ProjectDetail = () => {
         date_mise_circulation: editFormData.date_mise_circulation || null,
         marque_custom: editFormData.marque_custom || null,
         modele_custom: editFormData.modele_custom || null,
-        nom_proprietaire: editFormData.nom_proprietaire,
+        nom_proprietaire: editFormData.nom_proprietaire || project.nom_proprietaire,
         adresse_proprietaire: editFormData.adresse_proprietaire || null,
         telephone_proprietaire: editFormData.telephone_proprietaire || null,
         email_proprietaire: editFormData.email_proprietaire || null,
@@ -352,16 +484,38 @@ const ProjectDetail = () => {
         poids_vide_kg: editFormData.poids_vide_kg ? parseInt(editFormData.poids_vide_kg) : null,
         charge_utile_kg: editFormData.charge_utile_kg ? parseInt(editFormData.charge_utile_kg) : null,
         ptac_kg: editFormData.ptac_kg ? parseInt(editFormData.ptac_kg) : null,
-      })
-      .eq("id", project.id);
+      };
 
-    if (error) {
-      toast.error("Erreur lors de la mise à jour");
-      console.error(error);
-    } else {
+      const { error } = await supabase.from("projects").update(updateData).eq("id", project.id);
+
+      if (error) throw error;
+
       toast.success("Informations mises à jour");
       setIsEditDimensionsOpen(false);
-      loadProject();
+
+      // Recharger le projet
+      const { data: updatedProject } = await supabase
+        .from("projects")
+        .select(
+          `
+          *,
+          vehicles_catalog (
+            marque,
+            modele
+          )
+        `,
+        )
+        .eq("id", project.id)
+        .single();
+
+      if (updatedProject) {
+        setProject(updatedProject);
+        setLayout3DKey((prev) => prev + 1);
+        setLayoutCanvasKey((prev) => prev + 1);
+      }
+    } catch (error) {
+      console.error("Erreur:", error);
+      toast.error("Erreur lors de la mise à jour");
     }
   };
 
@@ -387,17 +541,6 @@ const ProjectDetail = () => {
               Retour
             </Button>
 
-            {/* Bouton Infos Projet - Rond à gauche */}
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 rounded-full"
-              onClick={() => setIsProjectInfoOpen(true)}
-              title="Informations du Projet"
-            >
-              <FileText className="h-5 w-5" />
-            </Button>
-
             <img src={logo} alt="Alsace Van Création" className="h-20 w-auto object-contain" />
             <div className="flex-1">
               <h1 className="text-xl font-bold">{project.nom_proprietaire}</h1>
@@ -408,8 +551,18 @@ const ProjectDetail = () => {
               )}
             </div>
 
-            {/* Widget Agenda Compact */}
-            <AgendaWidget projectId={project?.id || null} onClick={() => setIsCalendarOpen(true)} />
+            {/* Widget Agenda Compact avec dropdown */}
+            <div className="relative">
+              <AgendaWidget
+                projectId={project?.id || null}
+                onClick={() => setIsCalendarDropdownOpen(!isCalendarDropdownOpen)}
+              />
+              <CalendarDropdown
+                projectId={project?.id || null}
+                isOpen={isCalendarDropdownOpen}
+                onClose={() => setIsCalendarDropdownOpen(false)}
+              />
+            </div>
 
             <div className="flex items-center gap-2">
               <Button variant="default" size="sm" onClick={() => navigate("/shop")}>
@@ -436,7 +589,20 @@ const ProjectDetail = () => {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      {/* Bouton Informations Projet sous l'entête */}
+      <div className="container mx-auto px-4 pt-4">
+        <Button
+          variant="default"
+          size="sm"
+          className="bg-blue-600 hover:bg-blue-700"
+          onClick={() => setIsProjectInfoOpen(true)}
+        >
+          <FileText className="h-4 w-4 mr-2" />
+          Informations du Projet
+        </Button>
+      </div>
+
+      <main className="container mx-auto px-4 py-4">
         <div className="flex gap-6">
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
@@ -454,7 +620,7 @@ const ProjectDetail = () => {
                   <FileText className="h-4 w-4 text-blue-600" />
                   <span className="hidden sm:inline">Documents</span>
                 </TabsTrigger>
-                <TabsTrigger value="accessories" className="gap-2">
+                <TabsTrigger value="catalog" className="gap-2">
                   <Package className="h-4 w-4 text-orange-600" />
                   <span className="hidden sm:inline">Catalogue</span>
                 </TabsTrigger>
@@ -468,249 +634,142 @@ const ProjectDetail = () => {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="photos">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Photos</CardTitle>
-                    <CardDescription>Gérez vos photos de projet et d'inspiration</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <PhotosTab projectId={project.id} />
-                  </CardContent>
-                </Card>
+              <TabsContent value="photos" className="mt-6">
+                <PhotosTab projectId={project.id} refresh={photoRefresh} />
               </TabsContent>
 
-              <TabsContent value="expenses">
-                <Tabs defaultValue="liste" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 mb-4">
-                    <TabsTrigger value="liste">Liste des Dépenses</TabsTrigger>
-                    <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="liste">
-                    <div className="flex gap-6">
-                      <div className="flex-1">
-                        <Card>
-                          <CardContent className="pt-6">
-                            <ExpensesList
-                              projectId={project.id}
-                              onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
-                            />
-                          </CardContent>
-                        </Card>
-                      </div>
-
-                      <div
-                        className={`transition-all duration-300 ${isSummaryOpen ? "w-[500px]" : "w-0"} overflow-hidden`}
-                      >
-                        <div className="w-[500px]">
-                          <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <Button
-                      onClick={() => setIsSummaryOpen(!isSummaryOpen)}
-                      className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
-                      size="icon"
-                      title="Récapitulatif des dépenses"
-                    >
-                      <Receipt className={`h-6 w-6 transition-transform ${isSummaryOpen ? "rotate-180" : ""}`} />
-                    </Button>
-                  </TabsContent>
-
-                  <TabsContent value="bilan">
-                    <BilanComptable
-                      projectId={project.id}
-                      projectName={project.nom_projet || project.nom_proprietaire}
-                    />
-                  </TabsContent>
-                </Tabs>
+              <TabsContent value="expenses" className="mt-6 space-y-6">
+                <ExpensesSummary projectId={project.id} />
+                <ExpensesList projectId={project.id} refresh={expenseRefresh} />
               </TabsContent>
 
-              <TabsContent value="documents">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Documents Administratifs</CardTitle>
-                    <CardDescription>Certificats, factures et documents du projet</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <DocumentsUpload projectId={project.id} />
-                  </CardContent>
-                </Card>
+              <TabsContent value="documents" className="mt-6">
+                <DocumentsUpload projectId={project.id} />
               </TabsContent>
 
-              <TabsContent value="accessories">
-                <AccessoriesCatalogView />
+              <TabsContent value="catalog" className="mt-6">
+                <AccessoriesCatalogView projectId={project.id} />
               </TabsContent>
 
-              <TabsContent value="notices">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle>Base de Notices</CardTitle>
-                      <CardDescription>Notices partagées entre tous les utilisateurs</CardDescription>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <NoticeUploadDialog onSuccess={() => setPhotoRefresh((prev) => prev + 1)} />
-                    <NoticesList refreshTrigger={photoRefresh} />
-                  </CardContent>
-                </Card>
+              <TabsContent value="notices" className="mt-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Notices techniques</h2>
+                    <NoticeUploadDialog projectId={project.id} />
+                  </div>
+                  <NoticesList projectId={project.id} />
+                </div>
               </TabsContent>
 
-              <TabsContent value="technical">
-                <Tabs
-                  defaultValue="layout"
-                  className="w-full"
-                  onValueChange={(value) => {
-                    // Force le rechargement de la vue 3D quand on y accède
-                    if (value === "3d") {
-                      setLayout3DKey((prev) => prev + 1);
-                    }
-                  }}
-                >
-                  <TabsList className="grid w-full grid-cols-4">
+              <TabsContent value="technical" className="mt-6">
+                <Tabs defaultValue="electrical" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+                    <TabsTrigger value="electrical">Schéma électrique</TabsTrigger>
+                    <TabsTrigger value="cable">Section de câble</TabsTrigger>
+                    <TabsTrigger value="energy">Bilan énergétique</TabsTrigger>
                     <TabsTrigger value="layout">Aménagement</TabsTrigger>
-                    <TabsTrigger value="3d">Vue 3D</TabsTrigger>
-                    <TabsTrigger value="schema">Schémas</TabsTrigger>
-                    <TabsTrigger value="electrical">Câbles & Énergie</TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="layout">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Aménagement et Poids</CardTitle>
-                        <CardDescription>Planifiez votre aménagement et suivez la charge du véhicule</CardDescription>
-                      </CardHeader>
-                      <CardContent>
+                  <TabsContent value="electrical" className="mt-6">
+                    <TechnicalCanvas projectId={project.id} />
+                  </TabsContent>
+
+                  <TabsContent value="cable" className="mt-6">
+                    <CableSectionCalculator />
+                  </TabsContent>
+
+                  <TabsContent value="energy" className="mt-6">
+                    <EnergyBalance projectId={project.id} />
+                  </TabsContent>
+
+                  <TabsContent value="layout" className="mt-6">
+                    <Tabs defaultValue="2d" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="2d">Plan 2D</TabsTrigger>
+                        <TabsTrigger value="3d">Vue 3D</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="2d" className="mt-6">
                         <LayoutCanvas
                           key={layoutCanvasKey}
                           projectId={project.id}
-                          vehicleLength={project.longueur_mm}
-                          vehicleWidth={project.largeur_mm}
-                          loadAreaLength={project.longueur_chargement_mm}
-                          loadAreaWidth={project.largeur_chargement_mm}
-                          maxLoad={project.charge_utile_kg}
+                          vehicleLength={project.longueur_chargement_mm || 0}
+                          vehicleWidth={project.largeur_chargement_mm || 0}
                         />
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
+                      </TabsContent>
 
-                  <TabsContent value="3d">
-                    <Layout3DView
-                      key={layout3DKey}
-                      projectId={project.id}
-                      loadAreaLength={project.longueur_chargement_mm || 3000}
-                      loadAreaWidth={project.largeur_chargement_mm || 1800}
-                      loadAreaHeight={project.hauteur_mm || 1800}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="schema">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Canevas de Schémas Techniques</CardTitle>
-                        <CardDescription>Créez vos schémas électriques et techniques</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <TechnicalCanvas
+                      <TabsContent value="3d" className="mt-6">
+                        <Layout3DView
+                          key={layout3DKey}
                           projectId={project.id}
-                          onExpenseAdded={() => setExpenseRefresh((prev) => prev + 1)}
+                          vehicleLength={project.longueur_chargement_mm || 0}
+                          vehicleWidth={project.largeur_chargement_mm || 0}
+                          vehicleHeight={project.hauteur_mm || 0}
                         />
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="electrical">
-                    <div className="space-y-6">
-                      <CableSectionCalculator />
-                      <EnergyBalance projectId={project.id} refreshTrigger={expenseRefresh} />
-                    </div>
+                      </TabsContent>
+                    </Tabs>
                   </TabsContent>
                 </Tabs>
               </TabsContent>
             </Tabs>
           </div>
-
-          {/* Sidebar en overlay */}
-          <ProjectSidebar projectId={project.id} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         </div>
       </main>
 
-      {/* Dialog de modification des informations du projet */}
+      {/* Sidebar pour les notes et tâches */}
+      <ProjectSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} projectId={project?.id || null} />
+
+      {/* Dialog pour modifier les dimensions et infos du projet */}
       <Dialog open={isEditDimensionsOpen} onOpenChange={setIsEditDimensionsOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Modifier les informations du projet</DialogTitle>
-            <DialogDescription>Modifiez toutes les informations relatives au projet et au véhicule</DialogDescription>
+            <DialogDescription>
+              Modifiez les dimensions du véhicule et les informations du propriétaire
+            </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-6">
-            {/* Informations générales du projet */}
+            {/* Section Informations générales */}
             <div className="space-y-4">
-              <h3 className="text-sm font-semibold">Informations générales</h3>
-              <div className="space-y-2">
-                <Label htmlFor="nom_projet">Nom du projet</Label>
-                <Input
-                  id="nom_projet"
-                  value={editFormData.nom_projet}
-                  onChange={(e) => setEditFormData({ ...editFormData, nom_projet: e.target.value })}
-                  placeholder="Nom du projet"
-                />
-              </div>
-            </div>
-
-            {/* Informations du véhicule */}
-            <div className="space-y-4 pt-4 border-t">
-              <h3 className="text-sm font-semibold">Informations du véhicule</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="marque_custom">Marque</Label>
+              <h3 className="text-lg font-semibold border-b pb-2">Informations générales</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="nom_projet">Nom du projet</Label>
                   <Input
-                    id="marque_custom"
-                    value={editFormData.marque_custom}
-                    onChange={(e) => setEditFormData({ ...editFormData, marque_custom: e.target.value })}
-                    placeholder="Marque"
+                    id="nom_projet"
+                    value={editFormData.nom_projet}
+                    onChange={(e) => setEditFormData({ ...editFormData, nom_projet: e.target.value })}
+                    placeholder="Ex: Aménagement fourgon"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="modele_custom">Modèle</Label>
-                  <Input
-                    id="modele_custom"
-                    value={editFormData.modele_custom}
-                    onChange={(e) => setEditFormData({ ...editFormData, modele_custom: e.target.value })}
-                    placeholder="Modèle"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="numero_chassis">N° de châssis</Label>
+                <div>
+                  <Label htmlFor="numero_chassis">Numéro de châssis (VIN)</Label>
                   <Input
                     id="numero_chassis"
                     value={editFormData.numero_chassis}
                     onChange={(e) => setEditFormData({ ...editFormData, numero_chassis: e.target.value })}
-                    placeholder="VF1XXXXXX"
+                    placeholder="Ex: VF3LCYHZPHS123456"
                   />
                 </div>
-                <div className="space-y-2">
+                <div>
                   <Label htmlFor="immatriculation">Immatriculation</Label>
                   <Input
                     id="immatriculation"
                     value={editFormData.immatriculation}
                     onChange={(e) => setEditFormData({ ...editFormData, immatriculation: e.target.value })}
-                    placeholder="AA-123-BB"
+                    placeholder="Ex: AB-123-CD"
                   />
                 </div>
-                <div className="space-y-2">
+                <div>
                   <Label htmlFor="type_mine">Type mine</Label>
                   <Input
                     id="type_mine"
                     value={editFormData.type_mine}
                     onChange={(e) => setEditFormData({ ...editFormData, type_mine: e.target.value })}
-                    placeholder="Type mine"
+                    placeholder="Ex: VP1234567890"
                   />
                 </div>
-                <div className="space-y-2">
+                <div>
                   <Label htmlFor="date_mise_circulation">Date de mise en circulation</Label>
                   <Input
                     id="date_mise_circulation"
@@ -719,14 +778,32 @@ const ProjectDetail = () => {
                     onChange={(e) => setEditFormData({ ...editFormData, date_mise_circulation: e.target.value })}
                   />
                 </div>
+                <div>
+                  <Label htmlFor="marque_custom">Marque (personnalisée)</Label>
+                  <Input
+                    id="marque_custom"
+                    value={editFormData.marque_custom}
+                    onChange={(e) => setEditFormData({ ...editFormData, marque_custom: e.target.value })}
+                    placeholder="Ex: Citroën"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modele_custom">Modèle (personnalisé)</Label>
+                  <Input
+                    id="modele_custom"
+                    value={editFormData.modele_custom}
+                    onChange={(e) => setEditFormData({ ...editFormData, modele_custom: e.target.value })}
+                    placeholder="Ex: Jumper L3H2"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Informations du propriétaire */}
-            <div className="space-y-4 pt-4 border-t">
-              <h3 className="text-sm font-semibold">Informations du propriétaire</h3>
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2">
+            {/* Section Propriétaire */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold border-b pb-2">Informations du propriétaire</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
                   <Label htmlFor="nom_proprietaire">Nom du propriétaire *</Label>
                   <Input
                     id="nom_proprietaire"
@@ -736,7 +813,26 @@ const ProjectDetail = () => {
                     required
                   />
                 </div>
-                <div className="space-y-2">
+                <div>
+                  <Label htmlFor="telephone_proprietaire">Téléphone</Label>
+                  <Input
+                    id="telephone_proprietaire"
+                    value={editFormData.telephone_proprietaire}
+                    onChange={(e) => setEditFormData({ ...editFormData, telephone_proprietaire: e.target.value })}
+                    placeholder="Ex: 06 12 34 56 78"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="email_proprietaire">Email</Label>
+                  <Input
+                    id="email_proprietaire"
+                    type="email"
+                    value={editFormData.email_proprietaire}
+                    onChange={(e) => setEditFormData({ ...editFormData, email_proprietaire: e.target.value })}
+                    placeholder="email@exemple.fr"
+                  />
+                </div>
+                <div>
                   <Label htmlFor="adresse_proprietaire">Adresse</Label>
                   <Input
                     id="adresse_proprietaire"
@@ -745,136 +841,107 @@ const ProjectDetail = () => {
                     placeholder="Adresse complète"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="telephone_proprietaire">Téléphone</Label>
-                    <Input
-                      id="telephone_proprietaire"
-                      value={editFormData.telephone_proprietaire}
-                      onChange={(e) => setEditFormData({ ...editFormData, telephone_proprietaire: e.target.value })}
-                      placeholder="06 12 34 56 78"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email_proprietaire">Email</Label>
-                    <Input
-                      id="email_proprietaire"
-                      type="email"
-                      value={editFormData.email_proprietaire}
-                      onChange={(e) => setEditFormData({ ...editFormData, email_proprietaire: e.target.value })}
-                      placeholder="email@exemple.com"
-                    />
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Dimensions totales */}
-            <div className="space-y-4 pt-4 border-t">
-              <h3 className="text-sm font-semibold">Dimensions totales du véhicule</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="longueur_mm">Longueur (mm)</Label>
+            {/* Section Dimensions */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold border-b pb-2">Dimensions du véhicule</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="longueur">Longueur totale (mm)</Label>
                   <Input
-                    id="longueur_mm"
+                    id="longueur"
                     type="number"
                     value={editFormData.longueur_mm}
                     onChange={(e) => setEditFormData({ ...editFormData, longueur_mm: e.target.value })}
-                    placeholder="5000"
+                    placeholder="Ex: 5413"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="largeur_mm">Largeur (mm)</Label>
+                <div>
+                  <Label htmlFor="largeur">Largeur totale (mm)</Label>
                   <Input
-                    id="largeur_mm"
+                    id="largeur"
                     type="number"
                     value={editFormData.largeur_mm}
                     onChange={(e) => setEditFormData({ ...editFormData, largeur_mm: e.target.value })}
-                    placeholder="2000"
+                    placeholder="Ex: 2050"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="hauteur_mm">Hauteur (mm)</Label>
+                <div>
+                  <Label htmlFor="hauteur">Hauteur totale (mm)</Label>
                   <Input
-                    id="hauteur_mm"
+                    id="hauteur"
                     type="number"
                     value={editFormData.hauteur_mm}
                     onChange={(e) => setEditFormData({ ...editFormData, hauteur_mm: e.target.value })}
-                    placeholder="2500"
+                    placeholder="Ex: 2524"
                   />
                 </div>
               </div>
-            </div>
 
-            {/* Surface utile de chargement */}
-            <div className="space-y-4 pt-4 border-t">
-              <h3 className="text-sm font-semibold text-primary">Surface utile de chargement</h3>
-              <p className="text-xs text-muted-foreground">
-                Ces dimensions représentent l'espace réellement utilisable pour l'aménagement, sans les passages de
-                roues, la cabine, etc.
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="longueur_chargement_mm">Longueur utile (mm)</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="longueur_chargement">Longueur utile (mm)</Label>
                   <Input
-                    id="longueur_chargement_mm"
+                    id="longueur_chargement"
                     type="number"
                     value={editFormData.longueur_chargement_mm}
                     onChange={(e) => setEditFormData({ ...editFormData, longueur_chargement_mm: e.target.value })}
-                    placeholder="3000"
+                    placeholder="Ex: 3705"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="largeur_chargement_mm">Largeur utile (mm)</Label>
+                <div>
+                  <Label htmlFor="largeur_chargement">Largeur utile (mm)</Label>
                   <Input
-                    id="largeur_chargement_mm"
+                    id="largeur_chargement"
                     type="number"
                     value={editFormData.largeur_chargement_mm}
                     onChange={(e) => setEditFormData({ ...editFormData, largeur_chargement_mm: e.target.value })}
-                    placeholder="1800"
+                    placeholder="Ex: 1870"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Poids */}
-            <div className="space-y-4 pt-4 border-t">
-              <h3 className="text-sm font-semibold">Poids du véhicule</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="poids_vide_kg">Poids à vide (kg)</Label>
+            {/* Section Poids */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold border-b pb-2">Poids</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="poids_vide">Poids à vide (kg)</Label>
                   <Input
-                    id="poids_vide_kg"
+                    id="poids_vide"
                     type="number"
                     value={editFormData.poids_vide_kg}
                     onChange={(e) => setEditFormData({ ...editFormData, poids_vide_kg: e.target.value })}
-                    placeholder="2000"
+                    placeholder="Ex: 2100"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="charge_utile_kg">Charge utile (kg)</Label>
+                <div>
+                  <Label htmlFor="charge_utile">Charge utile (kg)</Label>
                   <Input
-                    id="charge_utile_kg"
+                    id="charge_utile"
                     type="number"
                     value={editFormData.charge_utile_kg}
                     onChange={(e) => setEditFormData({ ...editFormData, charge_utile_kg: e.target.value })}
-                    placeholder="1000"
+                    placeholder="Ex: 1400"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ptac_kg">PTAC (kg)</Label>
+                <div>
+                  <Label htmlFor="ptac">PTAC (kg)</Label>
                   <Input
-                    id="ptac_kg"
+                    id="ptac"
                     type="number"
                     value={editFormData.ptac_kg}
                     onChange={(e) => setEditFormData({ ...editFormData, ptac_kg: e.target.value })}
-                    placeholder="3000"
+                    placeholder="Ex: 3500"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-4">
+            <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsEditDimensionsOpen(false)}>
                 Annuler
               </Button>
@@ -884,12 +951,15 @@ const ProjectDetail = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog pour les Informations du Projet (petite fenêtre à gauche avec overlay) */}
+      {/* Dialog pour afficher les infos projet (overlay à gauche) */}
       <Dialog open={isProjectInfoOpen} onOpenChange={setIsProjectInfoOpen}>
-        <DialogContent className="max-w-fit p-0 left-4 translate-x-0 top-1/2 -translate-y-1/2">
-          <Card className="w-fit border-0 shadow-none">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between gap-8">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Informations du Projet</DialogTitle>
+          </DialogHeader>
+          <Card className="border-none shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div className="flex items-center gap-2">
                 <CardTitle className="text-base">Informations du Projet</CardTitle>
                 <Button variant="outline" size="sm" onClick={handleEditDimensions}>
                   <Edit className="h-4 w-4 mr-2" />
