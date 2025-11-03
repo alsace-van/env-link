@@ -48,7 +48,7 @@ import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
-import { CompactAgenda } from "@/components/CompactAgenda";
+import CompactAgenda from "@/components/CompactAgenda";
 import logo from "@/assets/logo.png";
 
 interface Project {
