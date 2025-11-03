@@ -108,7 +108,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   };
 
   const getItemsForHour = (date: Date, hour: number) => {
-    const { todos, expenses, appointments } = getItemsForDate(date);
+    const { todos, expenses, appointments, deliveries } = getItemsForDate(date);
 
     return {
       todos: todos.filter((todo) => {
@@ -124,6 +124,11 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       appointments: appointments.filter((appointment) => {
         const appointmentDate = parseISO(appointment.appointment_date);
         return appointmentDate.getHours() === hour;
+      }),
+      deliveries: deliveries.filter((delivery) => {
+        if (!delivery.delivery_date) return false;
+        const deliveryDate = parseISO(delivery.delivery_date);
+        return deliveryDate.getHours() === hour;
       }),
     };
   };
@@ -209,8 +214,8 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
   const HourCell = ({ date, hour, label }: { date: Date; hour: number; label: string }) => {
     const items = getItemsForHour(date, hour);
-    const hasItems = items.todos.length > 0 || items.expenses.length > 0 || items.appointments.length > 0;
-    const totalItems = items.todos.length + items.expenses.length + items.appointments.length;
+    const hasItems = items.todos.length > 0 || items.expenses.length > 0 || items.appointments.length > 0 || items.deliveries.length > 0;
+    const totalItems = items.todos.length + items.expenses.length + items.appointments.length + items.deliveries.length;
     const currentHour = currentTime.getHours(); // Utiliser currentTime
     const isCurrentHour = isToday && hour === currentHour;
 
@@ -283,6 +288,14 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   <div key={exp.id} className="flex items-center gap-1">
                     <Package className="h-2.5 w-2.5 text-orange-600" />
                     <span className="text-[10px] text-foreground truncate">{exp.product_name}</span>
+                  </div>
+                ))}
+
+                {items.deliveries.slice(0, 1).map((delivery) => (
+                  <div key={delivery.id} className="flex items-center gap-1">
+                    <Truck className="h-2.5 w-2.5 text-emerald-600" />
+                    <span className="text-[10px] font-semibold text-emerald-700">Livraison:</span>
+                    <span className="text-[10px] text-foreground truncate">{delivery.nom}</span>
                   </div>
                 ))}
 
@@ -421,6 +434,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 px-2 py-1 rounded"
                           >
                             <CheckCircle2 className="h-3 w-3" />
+                            <span className="font-semibold">Tâche:</span>
                             <span className="truncate">{todo.title}</span>
                           </div>
                         ))}
@@ -430,6 +444,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 text-blue-800 px-2 py-1 rounded"
                           >
                             <UserCircle className="h-3 w-3" />
+                            <span className="font-semibold">RDV:</span>
                             <span className="truncate">{apt.client_name}</span>
                           </div>
                         ))}
@@ -439,6 +454,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 text-orange-800 px-2 py-1 rounded"
                           >
                             <Package className="h-3 w-3" />
+                            <span className="font-semibold">Dép:</span>
                             <span className="truncate">{exp.product_name}</span>
                           </div>
                         ))}
@@ -448,6 +464,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-800 px-2 py-1 rounded"
                           >
                             <Truck className="h-3 w-3" />
+                            <span className="font-semibold">Livr:</span>
                             <span className="truncate">{delivery.nom}</span>
                           </div>
                         ))}
@@ -466,6 +483,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 px-2 py-1 rounded"
                           >
                             <CheckCircle2 className="h-3 w-3" />
+                            <span className="font-semibold">Tâche:</span>
                             <span className="truncate">{todo.title}</span>
                           </div>
                         ))}
@@ -475,6 +493,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 text-blue-800 px-2 py-1 rounded"
                           >
                             <UserCircle className="h-3 w-3" />
+                            <span className="font-semibold">RDV:</span>
                             <span className="truncate">{apt.client_name}</span>
                           </div>
                         ))}
@@ -484,6 +503,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 text-orange-800 px-2 py-1 rounded"
                           >
                             <Package className="h-3 w-3" />
+                            <span className="font-semibold">Dép:</span>
                             <span className="truncate">{exp.product_name}</span>
                           </div>
                         ))}
@@ -493,6 +513,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-800 px-2 py-1 rounded"
                           >
                             <Truck className="h-3 w-3" />
+                            <span className="font-semibold">Livr:</span>
                             <span className="truncate">{delivery.nom}</span>
                           </div>
                         ))}
