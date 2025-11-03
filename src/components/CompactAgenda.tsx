@@ -246,7 +246,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 ? "bg-blue-500/20 dark:bg-blue-500/30 border-2 border-blue-600 dark:border-blue-500 dark:border-blue-600 shadow-md"
                 : hasItems
                   ? "bg-blue-500/10 dark:bg-blue-500/20 border border-blue-400/50 dark:border-blue-600/50 hover:border-blue-400 dark:hover:border-blue-600"
-                  : "hover:bg-accent/50 border border-transparent"
+                  : "hover:bg-blue-50 dark:hover:bg-blue-950/30 border border-transparent"
             }`}
             onClick={(e) => e.stopPropagation()}
           >
@@ -466,7 +466,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                           ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
                           : hasItems
                             ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5 hover:bg-blue-500/15 hover:border-blue-500"
-                            : "border-gray-200 dark:border-gray-700 hover:bg-accent/50 hover:border-gray-400"
+                            : "border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-gray-400"
                       }`}
                     >
                       <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
@@ -586,7 +586,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                           ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
                           : hasItems
                             ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5 hover:bg-blue-500/15 hover:border-blue-500"
-                            : "border-gray-200 dark:border-gray-700 hover:bg-accent/50 hover:border-gray-400"
+                            : "border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-gray-400"
                       }`}
                     >
                       <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
@@ -806,7 +806,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20 shadow-md"
                         : isSelectedDay
                           ? "border-gray-800 dark:border-gray-200 border-4 bg-card"
-                          : "border-gray-200 bg-card hover:border-gray-400 dark:hover:border-gray-500 hover:bg-accent/30 hover:shadow-md"
+                          : "border-gray-200 bg-card hover:border-gray-400 dark:hover:border-gray-500 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:shadow-md"
                     }`}
                     onClick={() => {
                       setCurrentDate(day);
@@ -975,7 +975,10 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   return (
     <>
       <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-card dark:bg-card border-border/50">
-        <CardHeader className="pb-3 cursor-pointer hover:bg-accent/50 transition-colors" onClick={handleCardClick}>
+        <CardHeader
+          className="pb-3 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+          onClick={handleCardClick}
+        >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold text-foreground">📅 Agenda</h3>
@@ -1085,7 +1088,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 rounded-full hover:bg-accent"
+              className="h-6 w-6 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-950/30"
               onClick={(e) => {
                 e.stopPropagation();
                 setIsLegendOpen(true);
