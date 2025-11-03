@@ -207,8 +207,8 @@ const AccessoriesCatalogView = () => {
       toast.error("Erreur lors du chargement du catalogue");
       console.error(error);
     } else {
-      setAccessories((data as Accessory[]) || []);
-      setFilteredAccessories((data as Accessory[]) || []);
+      setAccessories(data || []);
+      setFilteredAccessories(data || []);
     }
     setLoading(false);
   };
@@ -313,11 +313,11 @@ const AccessoriesCatalogView = () => {
 
   return (
     <div className="relative">
-      {/* Bouton flottant pour ouvrir la sidebar */}
+      {/* Bouton flottant pour ouvrir la sidebar - reste visible en scrollant */}
       <Button
         onClick={() => setIsSidebarOpen(true)}
         size="icon"
-        className="fixed left-4 top-[420px] z-40 rounded-full h-12 w-12 shadow-lg"
+        className="fixed left-4 top-1/2 -translate-y-1/2 z-40 rounded-full h-12 w-12 shadow-lg"
         title="Ouvrir les catégories"
       >
         <ChevronRight className="h-5 w-5" />
