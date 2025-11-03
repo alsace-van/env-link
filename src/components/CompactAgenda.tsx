@@ -295,7 +295,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   <div key={delivery.id} className="flex items-center gap-1">
                     <Truck className="h-2.5 w-2.5 text-emerald-600" />
                     <span className="text-[10px] font-semibold text-emerald-700">Livraison:</span>
-                    <span className="text-[10px] text-foreground truncate">{delivery.nom}</span>
+                    <span className="text-[10px] text-foreground truncate">{delivery.nom || "Sans nom"}</span>
                   </div>
                 ))}
 
@@ -465,9 +465,10 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                           >
                             <Truck className="h-3 w-3" />
                             <span className="font-semibold">Livr:</span>
-                            <span className="truncate">{delivery.nom}</span>
+                            <span className="truncate">{delivery.nom || "Accessoire sans nom"}</span>
                           </div>
                         ))}
+
                         {totalEvents > 7 && (
                           <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
                             +{totalEvents - 7} événements
@@ -514,7 +515,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                           >
                             <Truck className="h-3 w-3" />
                             <span className="font-semibold">Livr:</span>
-                            <span className="truncate">{delivery.nom}</span>
+                            <span className="truncate">{delivery.nom || "Accessoire sans nom"}</span>
                           </div>
                         ))}
                         {totalEvents > 3 && (
