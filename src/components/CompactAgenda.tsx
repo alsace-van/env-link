@@ -40,7 +40,7 @@ interface CompactAgendaProps {
   projectId: string | null;
 }
 
-export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
+const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isExpanded, setIsExpanded] = useState(false); // Mode réduit (4h) vs journée complète (13h)
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false);
