@@ -678,3 +678,5 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     </>
   );
 };
+
+export default CompactAgenda;
