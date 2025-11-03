@@ -207,8 +207,8 @@ const AccessoriesCatalogView = () => {
       toast.error("Erreur lors du chargement du catalogue");
       console.error(error);
     } else {
-      setAccessories((data as Accessory[]) || []);
-      setFilteredAccessories((data as Accessory[]) || []);
+      setAccessories(data || []);
+      setFilteredAccessories(data || []);
     }
     setLoading(false);
   };
@@ -313,6 +313,24 @@ const AccessoriesCatalogView = () => {
 
   return (
     <div className="relative">
+      {/* Bouton flottant pour ouvrir la sidebar */}
+      <Button
+        onClick={() => setIsSidebarOpen(true)}
+        size="icon"
+        className="fixed left-4 top-24 z-40 rounded-full h-12 w-12 shadow-lg"
+        title="Ouvrir les catégories"
+      >
+        <ChevronRight className="h-5 w-5" />
+        {selectedCategories.length > 0 && (
+          <Badge
+            variant="destructive"
+            className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+          >
+            {selectedCategories.length}
+          </Badge>
+        )}
+      </Button>
+
       <AccessoryCategorySidebar
         selectedCategories={selectedCategories}
         onCategoryChange={setSelectedCategories}
@@ -336,15 +354,6 @@ const AccessoriesCatalogView = () => {
                 className="pl-10"
               />
             </div>
-            <Button variant="outline" onClick={() => setIsSidebarOpen(true)} className="flex items-center gap-2">
-              <Filter className="h-4 w-4" />
-              Catégories
-              {selectedCategories.length > 0 && (
-                <Badge variant="secondary" className="ml-1">
-                  {selectedCategories.length}
-                </Badge>
-              )}
-            </Button>
             <div className="flex gap-1 border rounded-md p-1">
               <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("list")}>
                 <LayoutList className="h-4 w-4" />
@@ -386,7 +395,7 @@ const AccessoriesCatalogView = () => {
                 return (
                   <div key={mainCategoryName} className="border rounded-lg overflow-hidden">
                     <div
-                      className="bg-accent/50 p-4 cursor-pointer flex items-center justify-between hover:bg-accent/70 transition-colors"
+                      className="bg-primary/10 border-l-4 border-primary px-4 py-3 rounded-r-lg cursor-pointer hover:bg-primary/15 transition-colors flex items-center justify-between"
                       onClick={() => toggleMainCategory(mainCategoryName)}
                     >
                       <div className="flex items-center gap-3">
