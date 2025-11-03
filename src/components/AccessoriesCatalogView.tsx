@@ -207,8 +207,8 @@ const AccessoriesCatalogView = () => {
       toast.error("Erreur lors du chargement du catalogue");
       console.error(error);
     } else {
-      setAccessories((data || []) as Accessory[]);
-      setFilteredAccessories((data || []) as Accessory[]);
+      setAccessories(data || []);
+      setFilteredAccessories(data || []);
     }
     setLoading(false);
   };
@@ -317,7 +317,7 @@ const AccessoriesCatalogView = () => {
       <Button
         onClick={() => setIsSidebarOpen(true)}
         size="icon"
-        className="fixed left-4 top-24 z-40 rounded-full h-12 w-12 shadow-lg"
+        className="fixed left-4 top-[420px] z-40 rounded-full h-12 w-12 shadow-lg"
         title="Ouvrir les catégories"
       >
         <ChevronRight className="h-5 w-5" />
@@ -387,7 +387,7 @@ const AccessoriesCatalogView = () => {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-6 ml-16">
               {Array.from(groupedAccessories()).map(([mainCategoryName, group]) => {
                 const isMainExpanded = expandedMainCategories.has(mainCategoryName);
                 const totalCount = Array.from(group.subGroups.values()).reduce((acc, items) => acc + items.length, 0);
