@@ -773,11 +773,18 @@ const ProjectDetail = () => {
                   setIsMonthViewOpen(true);
                 }}
               />
-              <CalendarDropdown
-                projectId={project?.id || null}
-                isOpen={isCalendarDropdownOpen}
-                onClose={() => setIsCalendarDropdownOpen(false)}
-              />
+
+              {/* Overlay transparent pour fermer au clic extérieur */}
+              {isCalendarDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsCalendarDropdownOpen(false)} />
+                  <CalendarDropdown
+                    projectId={project?.id || null}
+                    isOpen={isCalendarDropdownOpen}
+                    onClose={() => setIsCalendarDropdownOpen(false)}
+                  />
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -818,17 +825,14 @@ const ProjectDetail = () => {
         </Button>
       </div>
 
-      {/* Sidebar Informations Projet - glisse depuis la droite, hauteur limitée */}
+      {/* Sidebar Informations Projet - glisse depuis la GAUCHE vers la DROITE */}
       {isProjectInfoSidebarOpen && (
         <>
-          {/* Overlay */}
-          <div
-            className="fixed inset-0 bg-black/50 z-40 transition-opacity"
-            onClick={() => setIsProjectInfoSidebarOpen(false)}
-          />
+          {/* Overlay TRANSPARENT */}
+          <div className="fixed inset-0 z-40 transition-opacity" onClick={() => setIsProjectInfoSidebarOpen(false)} />
 
-          {/* Sidebar à droite avec hauteur limitée */}
-          <div className="fixed right-0 top-1/2 -translate-y-1/2 z-50 w-[500px] max-h-[85vh] bg-card border-l-2 border-blue-200 dark:border-blue-800 shadow-2xl rounded-l-xl overflow-hidden animate-in slide-in-from-right duration-300">
+          {/* Sidebar à GAUCHE avec hauteur limitée */}
+          <div className="fixed left-0 top-1/2 -translate-y-1/2 z-50 w-[500px] max-h-[85vh] bg-card border-r-2 border-blue-200 dark:border-blue-800 shadow-2xl rounded-r-xl overflow-hidden animate-in slide-in-from-left duration-300">
             <div className="flex flex-col h-full">
               {/* Header */}
               <div className="flex items-center justify-between p-4 border-b bg-blue-50 dark:bg-blue-950/30">
