@@ -451,16 +451,16 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
           return (
             <div
               key={index}
-              className={`min-h-[100px] p-2 border rounded-lg ${
+              className={`min-h-[120px] p-2 border rounded-lg transition-all hover:shadow-md hover:scale-105 cursor-pointer ${
                 isTodayDay
                   ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700"
                   : isCurrentMonthDay
-                    ? "bg-card border-border"
+                    ? "bg-card border-border hover:border-blue-200"
                     : "bg-muted/30 border-muted"
               }`}
             >
               <div
-                className={`text-sm font-semibold mb-1 ${
+                className={`text-sm font-semibold mb-2 ${
                   isTodayDay
                     ? "text-blue-600 dark:text-blue-400"
                     : isCurrentMonthDay
@@ -473,28 +473,71 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
 
               {events.total > 0 && (
                 <div className="space-y-1">
-                  {events.todos.length > 0 && (
-                    <div className="flex items-center gap-1 text-xs">
+                  {/* Afficher les tâches */}
+                  {events.todos.slice(0, 2).map((todo, idx) => (
+                    <div
+                      key={`todo-${idx}`}
+                      className="flex items-center gap-1 text-xs bg-purple-50 dark:bg-purple-950/30 px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                      title={todo.title}
+                    >
                       <CheckCircle2 className="h-3 w-3 text-purple-500 flex-shrink-0" />
-                      <span className="text-purple-600 dark:text-purple-400">{events.todos.length}</span>
+                      <span className="truncate text-purple-700 dark:text-purple-300">{todo.title}</span>
+                    </div>
+                  ))}
+                  {events.todos.length > 2 && (
+                    <div className="text-xs text-purple-600 dark:text-purple-400 pl-4">
+                      +{events.todos.length - 2} autres
                     </div>
                   )}
-                  {events.appointments.length > 0 && (
-                    <div className="flex items-center gap-1 text-xs">
+
+                  {/* Afficher les rendez-vous */}
+                  {events.appointments.slice(0, 2).map((appointment, idx) => (
+                    <div
+                      key={`appt-${idx}`}
+                      className="flex items-center gap-1 text-xs bg-green-50 dark:bg-green-950/30 px-1.5 py-0.5 rounded hover:bg-green-100 dark:hover:bg-green-900/40"
+                      title={appointment.client_name}
+                    >
                       <UserCircle className="h-3 w-3 text-green-600 flex-shrink-0" />
-                      <span className="text-green-600 dark:text-green-400">{events.appointments.length}</span>
+                      <span className="truncate text-green-700 dark:text-green-300">{appointment.client_name}</span>
+                    </div>
+                  ))}
+                  {events.appointments.length > 2 && (
+                    <div className="text-xs text-green-600 dark:text-green-400 pl-4">
+                      +{events.appointments.length - 2} autres
                     </div>
                   )}
-                  {events.expenses.length > 0 && (
-                    <div className="flex items-center gap-1 text-xs">
+
+                  {/* Afficher les dépenses */}
+                  {events.expenses.slice(0, 2).map((expense, idx) => (
+                    <div
+                      key={`expense-${idx}`}
+                      className="flex items-center gap-1 text-xs bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/40"
+                      title={expense.product_name}
+                    >
                       <Package className="h-3 w-3 text-red-600 flex-shrink-0" />
-                      <span className="text-red-600 dark:text-red-400">{events.expenses.length}</span>
+                      <span className="truncate text-red-700 dark:text-red-300">{expense.product_name}</span>
+                    </div>
+                  ))}
+                  {events.expenses.length > 2 && (
+                    <div className="text-xs text-red-600 dark:text-red-400 pl-4">
+                      +{events.expenses.length - 2} autres
                     </div>
                   )}
-                  {events.deliveries.length > 0 && (
-                    <div className="flex items-center gap-1 text-xs">
+
+                  {/* Afficher les livraisons */}
+                  {events.deliveries.slice(0, 2).map((delivery, idx) => (
+                    <div
+                      key={`delivery-${idx}`}
+                      className="flex items-center gap-1 text-xs bg-orange-50 dark:bg-orange-950/30 px-1.5 py-0.5 rounded hover:bg-orange-100 dark:hover:bg-orange-900/40"
+                      title={delivery.nom}
+                    >
                       <Truck className="h-3 w-3 text-orange-600 flex-shrink-0" />
-                      <span className="text-orange-600 dark:text-orange-400">{events.deliveries.length}</span>
+                      <span className="truncate text-orange-700 dark:text-orange-300">{delivery.nom}</span>
+                    </div>
+                  ))}
+                  {events.deliveries.length > 2 && (
+                    <div className="text-xs text-orange-600 dark:text-orange-400 pl-4">
+                      +{events.deliveries.length - 2} autres
                     </div>
                   )}
                 </div>
