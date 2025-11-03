@@ -315,7 +315,7 @@ const ProjectDetail = () => {
             <div className="mb-6 flex gap-6">
               {/* Informations du Projet */}
               <Card
-                className={`transition-all duration-300 ${isProjectInfoCollapsed ? "w-16 overflow-hidden" : "flex-1"}`}
+                className={`transition-all duration-300 ${isProjectInfoCollapsed ? "w-16 overflow-hidden" : "w-fit"}`}
               >
                 {isProjectInfoCollapsed ? (
                   // Version repliée : bouton vertical
@@ -358,7 +358,7 @@ const ProjectDetail = () => {
                       </div>
                     </CardHeader>
                     <CardContent className="pt-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-4">
                         {/* Informations générales */}
                         <div className="space-y-1.5">
                           <h4 className="text-xs font-semibold text-muted-foreground mb-2">Informations générales</h4>
