@@ -207,8 +207,9 @@ const AccessoriesCatalogView = () => {
       toast.error("Erreur lors du chargement du catalogue");
       console.error(error);
     } else {
-      setAccessories(data || []);
-      setFilteredAccessories(data || []);
+      const typedData = (data || []) as Accessory[];
+      setAccessories(typedData);
+      setFilteredAccessories(typedData);
     }
     setLoading(false);
   };
