@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Euro, Package, StickyNote, UserCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Euro, Package, StickyNote, UserCircle, Truck } from "lucide-react";
 import { format, addDays, isSameDay, parseISO, setHours, getHours } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
@@ -39,6 +39,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
     supplierExpenses, 
     monthlyCharges, 
     appointments,
+    accessoryDeliveries,
     setCurrentProjectId 
   } = useProjectData();
 
@@ -88,11 +89,16 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
       }
     );
 
+    const deliveriesForDay = accessoryDeliveries.filter(
+      (delivery) => delivery.delivery_date && isSameDay(parseISO(delivery.delivery_date), date)
+    );
+
     return { 
       todos: todosForHour, 
       expenses: hour === 8 ? expensesForDay : [], // Afficher les dépenses uniquement à 8h
       charges: hour === 8 ? chargesForDay : [], // Afficher les charges uniquement à 8h
-      appointments: appointmentsForHour 
+      appointments: appointmentsForHour,
+      deliveries: hour === 9 ? deliveriesForDay : [] // Afficher les livraisons à 9h
     };
   };
 
@@ -197,7 +203,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
           {/* Planning par heure */}
           <div className="space-y-1 max-h-[600px] overflow-y-auto">
             {workingHours.map((hour) => {
-              const { todos: todosForHour, expenses, charges, appointments: appointmentsForHour } = 
+              const { todos: todosForHour, expenses, charges, appointments: appointmentsForHour, deliveries } = 
                 getItemsForDateAndHour(currentDate, hour);
 
               return (
@@ -207,7 +213,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                   >
                     <div
                       className={`p-3 rounded-lg border-2 hover:border-blue-300 transition-all min-h-[60px] ${
-                        todosForHour.length > 0 || expenses.length > 0 || charges.length > 0 || appointmentsForHour.length > 0
+                        todosForHour.length > 0 || expenses.length > 0 || charges.length > 0 || appointmentsForHour.length > 0 || deliveries.length > 0
                           ? "bg-white border-gray-200"
                           : "bg-gray-50/50 border-gray-100"
                       }`}
@@ -353,6 +359,41 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                               </div>
                             </div>
                           ))}
+
+                          {/* Livraisons d'accessoires */}
+                          {deliveries.map((delivery) => (
+                            <div
+                              key={delivery.id}
+                              className="p-2 rounded-lg backdrop-blur-sm bg-white border border-emerald-200 shadow-sm hover:shadow-md transition-all"
+                            >
+                              <div className="flex items-start gap-2">
+                                <Truck className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-medium text-gray-900 leading-tight">
+                                    {delivery.nom}
+                                  </p>
+                                  {delivery.fournisseur && (
+                                    <p className="text-[10px] text-gray-500 mt-0.5">
+                                      {delivery.fournisseur}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-1 mt-1">
+                                    {delivery.tracking_number && (
+                                      <span className="text-[10px] text-gray-600">
+                                        Suivi: {delivery.tracking_number}
+                                      </span>
+                                    )}
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] px-1 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    >
+                                      Livraison
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -398,6 +439,10 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
             <div className="flex items-center gap-2">
               <UserCircle className="h-4 w-4 text-blue-600" />
               <span className="text-xs text-gray-600">Rendez-vous</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Truck className="h-4 w-4 text-emerald-600" />
+              <span className="text-xs text-gray-600">Livraisons</span>
             </div>
           </div>
         </CardContent>

@@ -74,12 +74,22 @@ interface ClientAppointment {
   updated_at: string;
 }
 
+interface AccessoryDelivery {
+  id: string;
+  nom: string;
+  delivery_date: string;
+  fournisseur: string | null;
+  stock_status: string | null;
+  tracking_number: string | null;
+}
+
 interface ProjectDataContextType {
   todos: Todo[];
   notes: ProjectNote[];
   supplierExpenses: SupplierExpense[];
   monthlyCharges: MonthlyCharge[];
   appointments: ClientAppointment[];
+  accessoryDeliveries: AccessoryDelivery[];
   isLoading: boolean;
   refreshData: () => Promise<void>;
   currentProjectId: string | null;
@@ -107,6 +117,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
   const [supplierExpenses, setSupplierExpenses] = useState<SupplierExpense[]>([]);
   const [monthlyCharges, setMonthlyCharges] = useState<MonthlyCharge[]>([]);
   const [appointments, setAppointments] = useState<ClientAppointment[]>([]);
+  const [accessoryDeliveries, setAccessoryDeliveries] = useState<AccessoryDelivery[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Channels pour les subscriptions
@@ -116,12 +127,13 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
   const [expensesChannel, setExpensesChannel] = useState<RealtimeChannel | null>(null);
   const [chargesChannel, setChargesChannel] = useState<RealtimeChannel | null>(null);
   const [appointmentsChannel, setAppointmentsChannel] = useState<RealtimeChannel | null>(null);
+  const [accessoriesChannel, setAccessoriesChannel] = useState<RealtimeChannel | null>(null);
 
   // Chargement des données
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      await Promise.all([loadTodos(), loadNotes(), loadSupplierExpenses(), loadMonthlyCharges(), loadAppointments()]);
+      await Promise.all([loadTodos(), loadNotes(), loadSupplierExpenses(), loadMonthlyCharges(), loadAppointments(), loadAccessoryDeliveries()]);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Erreur lors du chargement des données");
@@ -267,6 +279,24 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     }
   };
 
+  const loadAccessoryDeliveries = async () => {
+    const { data: user } = await supabase.auth.getUser();
+    if (!user.user) return;
+
+    const { data, error } = await supabase
+      .from("accessories_catalog")
+      .select("id, nom, delivery_date, fournisseur, stock_status, tracking_number")
+      .eq("user_id", user.user.id)
+      .not("delivery_date", "is", null)
+      .order("delivery_date", { ascending: true });
+
+    if (error) {
+      console.error("Error loading accessory deliveries:", error);
+    } else {
+      setAccessoryDeliveries(data || []);
+    }
+  };
+
   // Configuration des subscriptions en temps réel
   useEffect(() => {
     // Charger les données initiales
@@ -278,6 +308,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     notesChannel?.unsubscribe();
     chargesChannel?.unsubscribe();
     appointmentsChannel?.unsubscribe();
+    accessoriesChannel?.unsubscribe();
 
     // Subscription pour les todos de projet (si un projet est sélectionné)
     let todosSubscription: RealtimeChannel | null = null;
@@ -398,6 +429,33 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
       setAppointmentsChannel(appointmentsSubscription);
     }
 
+    // Subscription pour les accessoires avec date de livraison
+    let accessoriesSubscription: RealtimeChannel | null = null;
+    const setupAccessoriesSubscription = async () => {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) return;
+
+      accessoriesSubscription = supabase
+        .channel(`accessories-${user.user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "accessories_catalog",
+            filter: `user_id=eq.${user.user.id}`,
+          },
+          (payload) => {
+            console.log("Accessories change:", payload);
+            loadAccessoryDeliveries();
+          },
+        )
+        .subscribe();
+      setAccessoriesChannel(accessoriesSubscription);
+    };
+
+    setupAccessoriesSubscription();
+
     // Cleanup
     return () => {
       todosSubscription?.unsubscribe();
@@ -405,6 +463,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
       notesSubscription?.unsubscribe();
       chargesSubscription?.unsubscribe();
       appointmentsSubscription?.unsubscribe();
+      accessoriesSubscription?.unsubscribe();
     };
   }, [currentProjectId]);
 
@@ -451,6 +510,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     supplierExpenses,
     monthlyCharges,
     appointments,
+    accessoryDeliveries,
     isLoading,
     refreshData,
     currentProjectId,
