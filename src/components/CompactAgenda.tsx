@@ -56,7 +56,15 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [selectedHour, setSelectedHour] = useState<number>(9);
 
   // Utiliser le contexte pour les données synchronisées
-  const { todos, supplierExpenses, monthlyCharges, appointments, accessoryDeliveries, setCurrentProjectId, refreshData } = useProjectData();
+  const {
+    todos,
+    supplierExpenses,
+    monthlyCharges,
+    appointments,
+    accessoryDeliveries,
+    setCurrentProjectId,
+    refreshData,
+  } = useProjectData();
 
   useEffect(() => {
     setCurrentProjectId(projectId);
@@ -94,8 +102,8 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       isSameDay(parseISO(appointment.appointment_date), date),
     );
 
-    const deliveriesForDate = accessoryDeliveries.filter((delivery) =>
-      delivery.delivery_date && isSameDay(parseISO(delivery.delivery_date), date),
+    const deliveriesForDate = accessoryDeliveries.filter(
+      (delivery) => delivery.delivery_date && isSameDay(parseISO(delivery.delivery_date), date),
     );
 
     return {
@@ -214,7 +222,11 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
   const HourCell = ({ date, hour, label }: { date: Date; hour: number; label: string }) => {
     const items = getItemsForHour(date, hour);
-    const hasItems = items.todos.length > 0 || items.expenses.length > 0 || items.appointments.length > 0 || items.deliveries.length > 0;
+    const hasItems =
+      items.todos.length > 0 ||
+      items.expenses.length > 0 ||
+      items.appointments.length > 0 ||
+      items.deliveries.length > 0;
     const totalItems = items.todos.length + items.expenses.length + items.appointments.length + items.deliveries.length;
     const currentHour = currentTime.getHours(); // Utiliser currentTime
     const isCurrentHour = isToday && hour === currentHour;
@@ -399,7 +411,11 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             const dayItems = getItemsForDate(day);
             const isCurrentDay = isSameDay(day, currentTime);
             const isSelectedDay = isSameDay(day, currentDate);
-            const totalEvents = dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length + dayItems.deliveries.length;
+            const totalEvents =
+              dayItems.todos.length +
+              dayItems.expenses.length +
+              dayItems.appointments.length +
+              dayItems.deliveries.length;
 
             return (
               <div
@@ -461,11 +477,13 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.deliveries.slice(0, 2).map((delivery) => (
                           <div
                             key={delivery.id}
-                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 px-2 py-1 rounded"
                           >
-                            <Truck className="h-3 w-3" />
-                            <span className="font-semibold">Livr:</span>
-                            <span className="truncate">{delivery.nom || "Accessoire sans nom"}</span>
+                            <Truck className="h-3 w-3 text-emerald-700" />
+                            <span className="font-semibold text-emerald-800">Livr:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">
+                              {delivery.nom || "Accessoire sans nom"}
+                            </span>
                           </div>
                         ))}
 
@@ -511,11 +529,13 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.deliveries.slice(0, 1).map((delivery) => (
                           <div
                             key={delivery.id}
-                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 text-emerald-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 px-2 py-1 rounded"
                           >
-                            <Truck className="h-3 w-3" />
-                            <span className="font-semibold">Livr:</span>
-                            <span className="truncate">{delivery.nom || "Accessoire sans nom"}</span>
+                            <Truck className="h-3 w-3 text-emerald-700" />
+                            <span className="font-semibold text-emerald-800">Livr:</span>
+                            <span className="truncate text-foreground dark:text-gray-100">
+                              {delivery.nom || "Accessoire sans nom"}
+                            </span>
                           </div>
                         ))}
                         {totalEvents > 3 && (
