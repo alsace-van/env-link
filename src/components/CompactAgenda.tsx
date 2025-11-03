@@ -161,8 +161,11 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     }
   };
 
-  const handleContextMenu = (hour: number, action: string) => {
+  const handleContextMenu = (hour: number, action: string, date?: Date) => {
     setSelectedHour(hour);
+    if (date) {
+      setCurrentDate(date);
+    }
     switch (action) {
       case "task":
         setIsAddTaskOpen(true);
@@ -347,17 +350,26 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const DailyViewInModal = () => {
     const dayItems = getItemsForDate(currentDate);
     const allHours = Array.from({ length: 14 }, (_, i) => i + 8); // 8h à 21h
+    
+    // Événements sans heure précise ou pour résumé global
+    const totalEvents = dayItems.todos.length + dayItems.expenses.length + dayItems.appointments.length + dayItems.deliveries.length;
 
     return (
       <div className="space-y-4">
         {/* En-tête avec bouton retour */}
         <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" onClick={() => setShowDailyViewInModal(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDailyViewInModal(false)}
+          >
             <ChevronLeft className="h-4 w-4 mr-2" />
             Retour au mois
           </Button>
 
-          <h3 className="text-lg font-semibold">{format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}</h3>
+          <h3 className="text-lg font-semibold">
+            {format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}
+          </h3>
 
           <Button
             variant="ghost"
@@ -369,6 +381,73 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             <HelpCircle className="h-4 w-4 text-muted-foreground" />
           </Button>
         </div>
+
+        {/* Résumé des événements du jour */}
+        {totalEvents > 0 && (
+          <div className="bg-muted/30 dark:bg-muted/20 rounded-lg p-3 space-y-2">
+            <h4 className="text-sm font-semibold text-muted-foreground mb-2">
+              📋 Événements de la journée ({totalEvents})
+            </h4>
+            <div className="grid grid-cols-2 gap-2">
+              {dayItems.todos.map((todo) => (
+                <div
+                  key={todo.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/20 dark:bg-purple-500/30 text-xs"
+                  onClick={() => toggleTodoComplete(todo.id, todo.completed)}
+                >
+                  <CheckCircle2
+                    className={`h-3 w-3 flex-shrink-0 ${
+                      todo.completed ? "text-green-600 fill-green-600" : "text-purple-500"
+                    }`}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche: </span>
+                    <span className={todo.completed ? "line-through text-muted-foreground" : ""}>{todo.title}</span>
+                  </div>
+                </div>
+              ))}
+
+              {dayItems.appointments.map((apt) => (
+                <div
+                  key={apt.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded bg-green-500/20 dark:bg-green-500/30 text-xs"
+                >
+                  <UserCircle className="h-3 w-3 flex-shrink-0 text-green-600" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-green-800 dark:text-green-400">RDV: </span>
+                    <span>{apt.client_name}</span>
+                  </div>
+                </div>
+              ))}
+
+              {dayItems.expenses.map((exp) => (
+                <div
+                  key={exp.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded bg-red-500/20 dark:bg-red-500/30 text-xs"
+                >
+                  <Package className="h-3 w-3 flex-shrink-0 text-red-600" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-red-800 dark:text-red-400">Dép: </span>
+                    <span>{exp.product_name}</span>
+                  </div>
+                </div>
+              ))}
+
+              {dayItems.deliveries.map((delivery) => (
+                <div
+                  key={delivery.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded bg-orange-500/20 dark:bg-orange-500/30 text-xs"
+                >
+                  <Truck className="h-3 w-3 flex-shrink-0 text-orange-600" />
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-orange-800 dark:text-orange-400">Livr: </span>
+                    <span>{delivery.nom || "Sans nom"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Planning journalier sur 2 colonnes */}
         <div className="grid grid-cols-2 gap-3">
@@ -384,19 +463,20 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
               const isCurrentHour = isSameDay(currentDate, currentTime) && hour === currentTime.getHours();
 
               return (
-                <div
-                  key={hour}
-                  className={`p-3 rounded-lg border transition-all ${
-                    isCurrentHour
-                      ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
-                      : hasItems
-                        ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
-                        : "border-gray-200 dark:border-gray-700"
-                  }`}
-                >
-                  <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
-                    {hour}h00
-                  </div>
+                <ContextMenu key={hour}>
+                  <ContextMenuTrigger asChild>
+                    <div
+                      className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                        isCurrentHour
+                          ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
+                          : hasItems
+                            ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
+                            : "border-gray-200 dark:border-gray-700"
+                      }`}
+                    >
+                      <div className={`font-semibold mb-2 ${isCurrentHour ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                        {hour}h00
+                      </div>
 
                   {hasItems && (
                     <div className="space-y-2">
@@ -429,7 +509,9 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         >
                           <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
                           <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">Rendez-vous</div>
+                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">
+                              Rendez-vous
+                            </div>
                             <div className="text-sm truncate">{apt.client_name}</div>
                           </div>
                         </div>
@@ -463,6 +545,26 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                     </div>
                   )}
                 </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-56">
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
+                  <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                  <span>Ajouter une tâche</span>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
+                  <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
+                  <span>Ajouter une note</span>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
+                  <Package className="mr-2 h-4 w-4 text-red-600" />
+                  <span>Ajouter une dépense fournisseur</span>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
+                  <UserCircle className="mr-2 h-4 w-4 text-green-600" />
+                  <span>Ajouter un rendez-vous</span>
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
               );
             })}
           </div>
@@ -479,13 +581,14 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
               const isCurrentHour = isSameDay(currentDate, currentTime) && hour === currentTime.getHours();
 
               return (
-                <div
-                  key={hour}
-                  className={`p-3 rounded-lg border transition-all ${
-                    isCurrentHour
-                      ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
-                      : hasItems
-                        ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
+                <ContextMenu key={hour}>
+                  <ContextMenuTrigger asChild>
+                    <div
+                      className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                        isCurrentHour
+                          ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20"
+                          : hasItems
+                            ? "border-blue-400/50 dark:border-blue-600/50 bg-blue-500/5"
                         : "border-gray-200 dark:border-gray-700"
                   }`}
                 >
@@ -524,7 +627,9 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         >
                           <UserCircle className="h-4 w-4 flex-shrink-0 text-green-600" />
                           <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">Rendez-vous</div>
+                            <div className="font-semibold text-sm text-green-800 dark:text-green-400">
+                              Rendez-vous
+                            </div>
                             <div className="text-sm truncate">{apt.client_name}</div>
                           </div>
                         </div>
@@ -558,6 +663,26 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                     </div>
                   )}
                 </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-56">
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "task")}>
+                  <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                  <span>Ajouter une tâche</span>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "note")}>
+                  <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
+                  <span>Ajouter une note</span>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
+                  <Package className="mr-2 h-4 w-4 text-red-600" />
+                  <span>Ajouter une dépense fournisseur</span>
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
+                  <UserCircle className="mr-2 h-4 w-4 text-green-600" />
+                  <span>Ajouter un rendez-vous</span>
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
               );
             })}
           </div>
@@ -627,7 +752,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             >
               <HelpCircle className="h-4 w-4 text-muted-foreground" />
             </Button>
-
+            
             <Button
               variant="outline"
               size="sm"
@@ -674,25 +799,26 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
               dayItems.deliveries.length;
 
             return (
-              <div
-                key={day.toISOString()}
-                className={`border rounded-lg transition-all cursor-pointer ${cellClass} ${
-                  isCurrentDay
-                    ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20 shadow-md"
-                    : isSelectedDay
-                      ? "border-gray-800 dark:border-gray-200 border-4 bg-card"
-                      : "border-gray-200 bg-card hover:border-gray-300 hover:shadow"
-                }`}
-                onClick={() => {
-                  setCurrentDate(day);
-                  setShowDailyViewInModal(true); // Afficher le planning journalier
-                }}
-              >
-                <div
-                  className={`text-sm font-semibold mb-2 ${isCurrentDay ? "text-blue-600 dark:text-blue-400" : "text-foreground"}`}
-                >
-                  {format(day, "d")}
-                </div>
+              <ContextMenu key={day.toISOString()}>
+                <ContextMenuTrigger asChild>
+                  <div
+                    className={`border rounded-lg transition-all cursor-pointer ${cellClass} ${
+                      isCurrentDay
+                        ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20 shadow-md"
+                        : isSelectedDay
+                          ? "border-gray-800 dark:border-gray-200 border-4 bg-card"
+                          : "border-gray-200 bg-card hover:border-gray-300 hover:shadow"
+                    }`}
+                    onClick={() => {
+                      setCurrentDate(day);
+                      setShowDailyViewInModal(true); // Afficher le planning journalier
+                    }}
+                  >
+                    <div
+                      className={`text-sm font-semibold mb-2 ${isCurrentDay ? "text-blue-600 dark:text-blue-400" : "text-foreground"}`}
+                    >
+                      {format(day, "d")}
+                    </div>
 
                 {totalEvents > 0 && (
                   <div className="space-y-1">
@@ -818,7 +944,26 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   </div>
                 )}
               </div>
-            );
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-56">
+              <ContextMenuItem onClick={() => handleContextMenu(9, "task", day)}>
+                <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                <span>Ajouter une tâche</span>
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleContextMenu(9, "note", day)}>
+                <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
+                <span>Ajouter une note</span>
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleContextMenu(9, "expense", day)}>
+                <Package className="mr-2 h-4 w-4 text-red-600" />
+                <span>Ajouter une dépense fournisseur</span>
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => handleContextMenu(9, "appointment", day)}>
+                <UserCircle className="mr-2 h-4 w-4 text-green-600" />
+                <span>Ajouter un rendez-vous</span>
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
           })}
         </div>
       </div>
@@ -962,7 +1107,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           }
         }}
       >
-        <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
+        <DialogContent className={`${showDailyViewInModal ? "max-w-5xl" : "max-w-7xl"} max-h-[95vh] overflow-y-auto`}>
           <DialogHeader>
             <DialogTitle className="text-xl">
               {showDailyViewInModal
@@ -988,7 +1133,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Le jour d'aujourd'hui avec fond bleu</div>
               </div>
             </div>
-
+            
             <div className="flex items-center gap-3 p-2 rounded-lg border-4 border-gray-800 dark:border-gray-200">
               <div className="h-4 w-4 bg-gray-800 dark:bg-gray-200 rounded-full flex-shrink-0" />
               <div>
@@ -996,7 +1141,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Contour gras noir/blanc</div>
               </div>
             </div>
-
+            
             <div className="flex items-center gap-3 p-2 rounded-lg bg-purple-500/10 dark:bg-purple-500/20">
               <div className="h-4 w-4 bg-purple-600 rounded-full flex-shrink-0" />
               <div>
@@ -1004,7 +1149,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Tâches et actions à réaliser</div>
               </div>
             </div>
-
+            
             <div className="flex items-center gap-3 p-2 rounded-lg bg-green-500/10 dark:bg-green-500/20">
               <div className="h-4 w-4 bg-green-600 rounded-full flex-shrink-0" />
               <div>
@@ -1012,7 +1157,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Rendez-vous clients</div>
               </div>
             </div>
-
+            
             <div className="flex items-center gap-3 p-2 rounded-lg bg-red-500/10 dark:bg-red-500/20">
               <div className="h-4 w-4 bg-red-600 rounded-full flex-shrink-0" />
               <div>
@@ -1020,7 +1165,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 <div className="text-xs text-muted-foreground">Dépenses fournisseurs et charges mensuelles</div>
               </div>
             </div>
-
+            
             <div className="flex items-center gap-3 p-2 rounded-lg bg-orange-500/10 dark:bg-orange-500/20">
               <div className="h-4 w-4 bg-orange-600 rounded-full flex-shrink-0" />
               <div>
