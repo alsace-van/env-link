@@ -56,9 +56,18 @@ import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
-import CompactAgenda from "@/components/CompactAgenda";
 import logo from "@/assets/logo.png";
-import { format, isSameDay, parseISO } from "date-fns";
+import {
+  format,
+  isSameDay,
+  parseISO,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  getDay,
+  addDays,
+  addMonths,
+} from "date-fns";
 import { fr } from "date-fns/locale";
 import { useProjectData } from "@/contexts/ProjectDataContext";
 
@@ -353,6 +362,151 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
   );
 };
 
+// Composant Vue Mensuelle Simple pour le double-clic
+interface MonthViewProps {
+  projectId: string | null;
+}
+
+const SimpleMonthView = ({ projectId }: MonthViewProps) => {
+  const { todos, appointments, supplierExpenses, accessoryDeliveries, setCurrentProjectId } = useProjectData();
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  useEffect(() => {
+    setCurrentProjectId(projectId);
+  }, [projectId, setCurrentProjectId]);
+
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+  // Ajouter les jours du mois précédent pour compléter la première semaine
+  const firstDayOfWeek = getDay(monthStart);
+  const previousMonthDays = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+  const startDate = addDays(monthStart, -previousMonthDays);
+
+  // Ajouter les jours du mois suivant pour compléter la dernière semaine
+  const lastDayOfWeek = getDay(monthEnd);
+  const nextMonthDays = lastDayOfWeek === 0 ? 0 : 7 - lastDayOfWeek;
+  const endDate = addDays(monthEnd, nextMonthDays);
+
+  const allDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+  const getEventsForDate = (date: Date) => {
+    const todosForDate = todos.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), date));
+    const appointmentsForDate = appointments.filter((a) => a.date && isSameDay(parseISO(a.date), date));
+    const expensesForDate = supplierExpenses.filter((e) => e.order_date && isSameDay(parseISO(e.order_date), date));
+    const deliveriesForDate = accessoryDeliveries.filter(
+      (d) => d.delivery_date && isSameDay(parseISO(d.delivery_date), date),
+    );
+    return {
+      todos: todosForDate,
+      appointments: appointmentsForDate,
+      expenses: expensesForDate,
+      deliveries: deliveriesForDate,
+      total: todosForDate.length + appointmentsForDate.length + expensesForDate.length + deliveriesForDate.length,
+    };
+  };
+
+  const goToPreviousMonth = () => setCurrentDate(addMonths(currentDate, -1));
+  const goToNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const goToToday = () => setCurrentDate(new Date());
+
+  const isToday = (date: Date) => isSameDay(date, new Date());
+  const isCurrentMonth = (date: Date) => date.getMonth() === currentDate.getMonth();
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold">{format(currentDate, "MMMM yyyy", { locale: fr })}</h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={goToToday}>
+            Aujourd'hui
+          </Button>
+          <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={goToNextMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Jours de la semaine */}
+      <div className="grid grid-cols-7 gap-2 mb-2">
+        {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => (
+          <div key={day} className="text-center text-sm font-semibold text-muted-foreground p-2">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {/* Grille des jours */}
+      <div className="grid grid-cols-7 gap-2">
+        {allDays.map((day, index) => {
+          const events = getEventsForDate(day);
+          const isCurrentMonthDay = isCurrentMonth(day);
+          const isTodayDay = isToday(day);
+
+          return (
+            <div
+              key={index}
+              className={`min-h-[100px] p-2 border rounded-lg ${
+                isTodayDay
+                  ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700"
+                  : isCurrentMonthDay
+                    ? "bg-card border-border"
+                    : "bg-muted/30 border-muted"
+              }`}
+            >
+              <div
+                className={`text-sm font-semibold mb-1 ${
+                  isTodayDay
+                    ? "text-blue-600 dark:text-blue-400"
+                    : isCurrentMonthDay
+                      ? "text-foreground"
+                      : "text-muted-foreground"
+                }`}
+              >
+                {format(day, "d")}
+              </div>
+
+              {events.total > 0 && (
+                <div className="space-y-1">
+                  {events.todos.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs">
+                      <CheckCircle2 className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                      <span className="text-purple-600 dark:text-purple-400">{events.todos.length}</span>
+                    </div>
+                  )}
+                  {events.appointments.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs">
+                      <UserCircle className="h-3 w-3 text-green-600 flex-shrink-0" />
+                      <span className="text-green-600 dark:text-green-400">{events.appointments.length}</span>
+                    </div>
+                  )}
+                  {events.expenses.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs">
+                      <Package className="h-3 w-3 text-red-600 flex-shrink-0" />
+                      <span className="text-red-600 dark:text-red-400">{events.expenses.length}</span>
+                    </div>
+                  )}
+                  {events.deliveries.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs">
+                      <Truck className="h-3 w-3 text-orange-600 flex-shrink-0" />
+                      <span className="text-orange-600 dark:text-orange-400">{events.deliveries.length}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -365,9 +519,9 @@ const ProjectDetail = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false); // État pour l'overlay du calendrier complet
   const [isProjectInfoSidebarOpen, setIsProjectInfoSidebarOpen] = useState(false); // État pour la sidebar des infos projet
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false); // État pour le dropdown du calendrier
+  const [isMonthViewOpen, setIsMonthViewOpen] = useState(false); // État pour la vue mensuelle directe
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
   const [editFormData, setEditFormData] = useState({
@@ -574,7 +728,7 @@ const ProjectDetail = () => {
                 onClick={() => setIsCalendarDropdownOpen(!isCalendarDropdownOpen)}
                 onDoubleClick={() => {
                   setIsCalendarDropdownOpen(false);
-                  setIsCalendarOpen(true);
+                  setIsMonthViewOpen(true);
                 }}
               />
               <CalendarDropdown
@@ -1148,10 +1302,13 @@ const ProjectDetail = () => {
         </SheetContent>
       </Sheet>
 
-      {/* Dialog pour le Calendrier complet (double-clic) */}
-      <Dialog open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-        <DialogContent className="max-w-md p-0">
-          <CompactAgenda projectId={project?.id || null} />
+      {/* Dialog Planning Mensuel (double-clic sur le widget) */}
+      <Dialog open={isMonthViewOpen} onOpenChange={setIsMonthViewOpen}>
+        <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>📅 Planning Mensuel</DialogTitle>
+          </DialogHeader>
+          <SimpleMonthView projectId={project?.id || null} />
         </DialogContent>
       </Dialog>
     </div>
