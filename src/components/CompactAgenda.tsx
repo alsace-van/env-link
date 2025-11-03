@@ -974,7 +974,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
   return (
     <>
-      <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-white/90 border-border/50">
+      <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-card dark:bg-card border-border/50">
         <CardHeader className="pb-3 cursor-pointer hover:bg-accent/50 transition-colors" onClick={handleCardClick}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
