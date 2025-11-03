@@ -1,12 +1,12 @@
 // ============================================================================
-// FICHIER 2 : StockStatusManager.tsx
+// FICHIER : StockStatusManager.tsx
 // EMPLACEMENT : src/components/StockStatusManager.tsx
-// ACTION : REMPLACER le fichier existant par celui-ci
+// Ajout de la modification rapide de quantité avec confirmation
 // ============================================================================
 
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Package, PackageX, Truck, Edit, Calendar, Clipboard } from "lucide-react";
+import { Package, PackageX, Truck, Edit, Calendar, Clipboard, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,6 +16,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,8 +89,69 @@ export default function StockStatusManager({
   const [addToPlanning, setAddToPlanning] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // États pour la modification rapide de quantité
+  const [isEditingQuantity, setIsEditingQuantity] = useState(false);
+  const [tempQuantity, setTempQuantity] = useState(currentQuantity?.toString() || "0");
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
   const currentConfig = stockStatusConfig[currentStatus];
   const CurrentIcon = currentConfig.icon;
+
+  // Ouvrir le mode édition de quantité
+  const handleQuantityClick = () => {
+    setTempQuantity(currentQuantity?.toString() || "0");
+    setIsEditingQuantity(true);
+  };
+
+  // Annuler l'édition de quantité
+  const handleCancelQuantityEdit = () => {
+    setIsEditingQuantity(false);
+    setTempQuantity(currentQuantity?.toString() || "0");
+  };
+
+  // Demander confirmation avant de sauvegarder
+  const handleQuantitySubmit = () => {
+    const newQty = parseInt(tempQuantity) || 0;
+    const oldQty = currentQuantity || 0;
+
+    if (newQty === oldQty) {
+      // Pas de changement
+      setIsEditingQuantity(false);
+      return;
+    }
+
+    setShowConfirmDialog(true);
+  };
+
+  // Confirmer et sauvegarder la nouvelle quantité
+  const handleConfirmQuantityChange = async () => {
+    setIsUpdating(true);
+    setShowConfirmDialog(false);
+
+    try {
+      const newQty = parseInt(tempQuantity) || 0;
+
+      const { error } = await supabase
+        .from("accessories_catalog")
+        .update({ stock_quantity: newQty })
+        .eq("id", accessoryId);
+
+      if (error) throw error;
+
+      const oldQty = currentQuantity || 0;
+      const diff = newQty - oldQty;
+      const sign = diff > 0 ? "+" : "";
+
+      toast.success(`Quantité mise à jour : ${oldQty} → ${newQty} (${sign}${diff})`);
+      setIsEditingQuantity(false);
+      onStatusChange?.();
+    } catch (error: any) {
+      console.error("Erreur lors de la mise à jour de la quantité:", error);
+      toast.error("Erreur lors de la mise à jour de la quantité");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   // Ouvrir automatiquement la modal quand on passe en "commande"
   const handleQuickStatusChange = async (newStatus: StockStatus) => {
@@ -235,9 +306,9 @@ export default function StockStatusManager({
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <TooltipProvider>
-          <div className="flex items-center gap-1 rounded-lg border p-1">
+          <div className="flex items-center gap-1">
             {(Object.keys(stockStatusConfig) as StockStatus[]).map((status) => {
               const config = stockStatusConfig[status];
               const Icon = config.icon;
@@ -251,7 +322,7 @@ export default function StockStatusManager({
                       size="sm"
                       className={`h-8 w-8 p-0 ${isActive ? config.color : ""}`}
                       onClick={() => handleQuickStatusChange(status)}
-                      disabled={isUpdating || isActive}
+                      disabled={isUpdating}
                     >
                       <Icon className="h-4 w-4" />
                     </Button>
@@ -280,11 +351,53 @@ export default function StockStatusManager({
           <Badge variant={currentConfig.badgeVariant} className="whitespace-nowrap">
             {currentConfig.label}
           </Badge>
-          {currentQuantity !== null && (
-            <Badge variant="outline" className="whitespace-nowrap">
+
+          {/* Badge de quantité - Cliquable pour édition rapide */}
+          {isEditingQuantity ? (
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                min="0"
+                value={tempQuantity}
+                onChange={(e) => setTempQuantity(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleQuantitySubmit();
+                  if (e.key === "Escape") handleCancelQuantityEdit();
+                }}
+                className="h-7 w-20 text-xs"
+                autoFocus
+                disabled={isUpdating}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                onClick={handleQuantitySubmit}
+                disabled={isUpdating}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={handleCancelQuantityEdit}
+                disabled={isUpdating}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Badge
+              variant="outline"
+              className="whitespace-nowrap cursor-pointer hover:bg-accent transition-colors"
+              onClick={handleQuantityClick}
+              title="Cliquer pour modifier la quantité"
+            >
               Qté: {currentQuantity}
             </Badge>
           )}
+
           {deliveryDate && currentStatus === "on_order" && (
             <Badge variant="outline" className="whitespace-nowrap bg-blue-50 text-blue-700 border-blue-300">
               <Calendar className="h-3 w-3 mr-1" />
@@ -293,6 +406,51 @@ export default function StockStatusManager({
           )}
         </div>
       </div>
+
+      {/* DIALOG DE CONFIRMATION DE MODIFICATION DE QUANTITÉ */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la modification</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-2">
+                <p>
+                  Voulez-vous modifier la quantité en stock pour <strong>{accessoryName}</strong> ?
+                </p>
+                <div className="bg-muted p-3 rounded-md">
+                  <div className="flex items-center justify-center gap-4 text-lg">
+                    <span className="text-muted-foreground">{currentQuantity || 0}</span>
+                    <span>→</span>
+                    <span className="font-bold text-primary">{parseInt(tempQuantity) || 0}</span>
+                  </div>
+                  {(() => {
+                    const diff = (parseInt(tempQuantity) || 0) - (currentQuantity || 0);
+                    return (
+                      <p className="text-center mt-2 text-sm">
+                        {diff > 0 ? (
+                          <span className="text-green-600">
+                            +{diff} unité{Math.abs(diff) > 1 ? "s" : ""}
+                          </span>
+                        ) : (
+                          <span className="text-red-600">
+                            {diff} unité{Math.abs(diff) > 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </p>
+                    );
+                  })()}
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelQuantityEdit}>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmQuantityChange} disabled={isUpdating}>
+              {isUpdating ? "Mise à jour..." : "Confirmer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* MODAL COMMANDE */}
       <Dialog open={isOrderModalOpen} onOpenChange={setIsOrderModalOpen}>
