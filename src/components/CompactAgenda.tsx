@@ -251,7 +251,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className={`text-xs font-medium mb-1 ${isCurrentHour ? "text-blue-600 dark:text-blue-400 font-bold" : "text-muted-foreground"}`}
+              className={`text-xs font-medium mb-1 ${isCurrentHour ? "text-blue-600 dark:text-blue-400 font-bold" : "text-foreground"}`}
             >
               {label}
               {isCurrentHour && <span className="ml-1 text-[9px]">●</span>}
@@ -989,7 +989,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs"
+              className="h-7 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-white"
               onClick={(e) => {
                 e.stopPropagation();
                 goToToday();
@@ -1001,7 +1001,9 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
           {/* En-tête du jour */}
           <div className="text-center">
-            <div className={`text-sm font-semibold ${isToday ? "text-blue-600" : "text-foreground"}`}>
+            <div
+              className={`text-sm font-semibold ${isToday ? "text-blue-600 dark:text-blue-400" : "text-gray-900 dark:text-gray-100"}`}
+            >
               {format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}
             </div>
           </div>
