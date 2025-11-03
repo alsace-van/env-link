@@ -16,6 +16,7 @@ import {
   StickyNote,
   Calendar,
   Truck,
+  HelpCircle,
 } from "lucide-react";
 import {
   format,
@@ -47,6 +48,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false);
   const [monthCellSize, setMonthCellSize] = useState<"normal" | "large">("normal"); // Taille des cases du mois
   const [currentTime, setCurrentTime] = useState(new Date()); // Pour rafraîchir l'heure actuelle
+  const [isLegendOpen, setIsLegendOpen] = useState(false); // Modal de légende des couleurs
 
   // États pour les modales
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -291,14 +293,14 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
                 {items.appointments.slice(0, 1).map((apt) => (
                   <div key={apt.id} className="flex items-center gap-1">
-                    <UserCircle className="h-2.5 w-2.5 text-blue-600" />
+                    <UserCircle className="h-2.5 w-2.5 text-green-600" />
                     <span className="text-[10px] text-foreground truncate">{apt.client_name}</span>
                   </div>
                 ))}
 
                 {items.expenses.slice(0, 1).map((exp) => (
                   <div key={exp.id} className="flex items-center gap-1">
-                    <Package className="h-2.5 w-2.5 text-orange-600" />
+                    <Package className="h-2.5 w-2.5 text-red-600" />
                     <span className="text-[10px] text-foreground truncate">{exp.product_name}</span>
                   </div>
                 ))}
@@ -306,7 +308,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 {items.deliveries.slice(0, 1).map((delivery) => (
                   <div key={delivery.id} className="flex items-center gap-1">
                     <Truck className="h-2.5 w-2.5 text-gray-700 dark:text-gray-300" />
-                    <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">Livraison:</span>
+                    <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-400">Livraison:</span>
                     <span className="text-[10px] text-foreground truncate">{delivery.nom || "Sans nom"}</span>
                   </div>
                 ))}
@@ -328,11 +330,11 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             <span>Ajouter une note</span>
           </ContextMenuItem>
           <ContextMenuItem onClick={() => handleContextMenu(hour, "expense")}>
-            <Package className="mr-2 h-4 w-4 text-orange-600" />
+            <Package className="mr-2 h-4 w-4 text-red-600" />
             <span>Ajouter une dépense fournisseur</span>
           </ContextMenuItem>
           <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
-            <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
+            <UserCircle className="mr-2 h-4 w-4 text-green-600" />
             <span>Ajouter un rendez-vous</span>
           </ContextMenuItem>
         </ContextMenuContent>
@@ -424,7 +426,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   isCurrentDay
                     ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20 shadow-md"
                     : isSelectedDay
-                      ? "border-purple-500 dark:border-purple-600 bg-purple-500/10 dark:bg-purple-500/20"
+                      ? "border-gray-800 dark:border-gray-200 border-4 bg-card"
                       : "border-gray-200 bg-card hover:border-gray-300 hover:shadow"
                 }`}
                 onClick={() => {
@@ -457,30 +459,30 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.appointments.slice(0, 2).map((apt) => (
                           <div
                             key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
                           >
                             <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-blue-800 dark:text-blue-400">RDV:</span>
+                            <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
                             <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
                           </div>
                         ))}
                         {dayItems.expenses.slice(0, 2).map((exp) => (
                           <div
                             key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
                           >
                             <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-orange-800 dark:text-orange-400">Dép:</span>
+                            <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
                             <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
                           </div>
                         ))}
                         {dayItems.deliveries.slice(0, 2).map((delivery) => (
                           <div
                             key={delivery.id}
-                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
                           >
                             <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-emerald-800 dark:text-emerald-400">Livr:</span>
+                            <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
                             <span className="truncate text-foreground dark:text-gray-100">
                               {delivery.nom || "Accessoire sans nom"}
                             </span>
@@ -509,30 +511,30 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.appointments.slice(0, 1).map((apt) => (
                           <div
                             key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
                           >
                             <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-blue-800 dark:text-blue-400">RDV:</span>
+                            <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
                             <span className="truncate text-foreground dark:text-gray-100">{apt.client_name}</span>
                           </div>
                         ))}
                         {dayItems.expenses.slice(0, 1).map((exp) => (
                           <div
                             key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
                           >
                             <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-orange-800 dark:text-orange-400">Dép:</span>
+                            <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
                             <span className="truncate text-foreground dark:text-gray-100">{exp.product_name}</span>
                           </div>
                         ))}
                         {dayItems.deliveries.slice(0, 1).map((delivery) => (
                           <div
                             key={delivery.id}
-                            className="flex items-center gap-1.5 text-xs bg-emerald-500/20 dark:bg-emerald-500/30 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
                           >
                             <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                            <span className="font-semibold text-emerald-800 dark:text-emerald-400">Livr:</span>
+                            <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
                             <span className="truncate text-foreground dark:text-gray-100">
                               {delivery.nom || "Accessoire sans nom"}
                             </span>
@@ -678,28 +680,20 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             </div>
           )}
 
-          {/* Légende */}
-          <div className="flex items-center justify-center gap-2 pt-2 border-t text-[9px] text-muted-foreground">
-            <div className="flex items-center gap-0.5">
-              <div className="h-1.5 w-1.5 bg-purple-400 rounded-full" />
-              <span>Tâches</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="h-1.5 w-1.5 bg-blue-600 rounded-full" />
-              <span>RDV</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="h-1.5 w-1.5 bg-orange-600 rounded-full" />
-              <span>Dép.</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="h-1.5 w-1.5 bg-emerald-600 rounded-full" />
-              <span>Livr.</span>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <div className="h-1.5 w-1.5 bg-red-600 rounded-full" />
-              <span>Charges</span>
-            </div>
+          {/* Bouton d'aide pour la légende */}
+          <div className="flex items-center justify-center pt-2 border-t">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 rounded-full hover:bg-accent"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsLegendOpen(true);
+              }}
+              title="Voir la légende des couleurs"
+            >
+              <HelpCircle className="h-4 w-4 text-muted-foreground" />
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -713,6 +707,64 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
             </DialogTitle>
           </DialogHeader>
           <MonthView />
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Légende des couleurs */}
+      <Dialog open={isLegendOpen} onOpenChange={setIsLegendOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg">🎨 Légende des couleurs</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-blue-500/10 dark:bg-blue-500/20">
+              <div className="h-4 w-4 bg-blue-600 rounded-full flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-sm">Jour actuel</div>
+                <div className="text-xs text-muted-foreground">Le jour d'aujourd'hui avec fond bleu</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-2 rounded-lg border-4 border-gray-800 dark:border-gray-200">
+              <div className="h-4 w-4 bg-gray-800 dark:bg-gray-200 rounded-full flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-sm">Case sélectionnée</div>
+                <div className="text-xs text-muted-foreground">Contour gras noir/blanc</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-purple-500/10 dark:bg-purple-500/20">
+              <div className="h-4 w-4 bg-purple-600 rounded-full flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-sm">Tâche</div>
+                <div className="text-xs text-muted-foreground">Tâches et actions à réaliser</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-green-500/10 dark:bg-green-500/20">
+              <div className="h-4 w-4 bg-green-600 rounded-full flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-sm">Rendez-vous</div>
+                <div className="text-xs text-muted-foreground">Rendez-vous clients</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-red-500/10 dark:bg-red-500/20">
+              <div className="h-4 w-4 bg-red-600 rounded-full flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-sm">Dépense</div>
+                <div className="text-xs text-muted-foreground">Dépenses fournisseurs et charges mensuelles</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-orange-500/10 dark:bg-orange-500/20">
+              <div className="h-4 w-4 bg-orange-600 rounded-full flex-shrink-0" />
+              <div>
+                <div className="font-semibold text-sm">Livraison</div>
+                <div className="text-xs text-muted-foreground">Livraisons d'accessoires commandés</div>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
