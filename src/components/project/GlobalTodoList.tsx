@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Trash2, Plus, Calendar as CalendarIcon } from "lucide-react";
+import { Trash2, Plus, Calendar as CalendarIcon, History, ListTodo } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -20,6 +20,7 @@ interface Todo {
   priority: string;
   due_date: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export const GlobalTodoList = () => {
@@ -27,13 +28,23 @@ export const GlobalTodoList = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState("");
   const [dueDate, setDueDate] = useState<Date>();
+  const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
     loadTodos();
   }, []);
 
   const loadTodos = async () => {
-    const { data, error } = await supabase.from("project_todos").select("*").order("created_at", { ascending: false });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("project_todos")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error(error);
@@ -60,13 +71,14 @@ export const GlobalTodoList = () => {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <div className="space-y-2">
         <Input
-          placeholder="Nouvelle tâche..."
+          placeholder="Sélectionnez un projet pour ajouter une tâche..."
           value={newTodo}
           onChange={(e) => setNewTodo(e.target.value)}
           onKeyPress={(e) => e.key === "Enter" && addTodo()}
+          disabled
         />
         <div className="flex gap-2">
           <Popover>
@@ -74,6 +86,7 @@ export const GlobalTodoList = () => {
               <Button
                 variant="outline"
                 className={cn("flex-1 justify-start text-left font-normal", !dueDate && "text-muted-foreground")}
+                disabled
               >
                 <CalendarIcon className="h-4 w-4 mr-2" />
                 {dueDate ? format(dueDate, "PPP", { locale: fr }) : "Date limite"}
@@ -89,35 +102,68 @@ export const GlobalTodoList = () => {
               />
             </PopoverContent>
           </Popover>
-          <Button size="icon" onClick={addTodo}>
+          <Button size="icon" onClick={addTodo} disabled>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
+      {/* Bouton pour basculer entre actives et historique */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">
+          {showCompleted ? "Historique des tâches" : "Toutes les tâches actives"}
+        </h3>
+        <Button variant="outline" size="sm" onClick={() => setShowCompleted(!showCompleted)} className="gap-2">
+          {showCompleted ? (
+            <>
+              <ListTodo className="h-4 w-4" />
+              Tâches actives
+            </>
+          ) : (
+            <>
+              <History className="h-4 w-4" />
+              Historique
+            </>
+          )}
+        </Button>
+      </div>
+
       <div className="space-y-2">
-        {todos.map((todo) => (
-          <div key={todo.id} className="flex flex-col gap-1 p-3 rounded-lg border">
-            <div className="flex items-center gap-2">
-              <Checkbox checked={todo.completed} onCheckedChange={() => toggleTodo(todo.id, todo.completed)} />
-              <span className={`flex-1 text-sm ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
-                {todo.title}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => deleteTodo(todo.id)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
+        {todos
+          .filter((todo) => (showCompleted ? todo.completed : !todo.completed))
+          .map((todo) => (
+            <div key={todo.id} className="flex flex-col gap-1 p-3 rounded-lg border">
+              <div className="flex items-center gap-2">
+                <Checkbox checked={todo.completed} onCheckedChange={() => toggleTodo(todo.id, todo.completed)} />
+                <span className={`flex-1 text-sm ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
+                  {todo.title}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => deleteTodo(todo.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 ml-6 text-xs text-muted-foreground">
+                {todo.due_date && (
+                  <Badge variant={new Date(todo.due_date) < new Date() && !todo.completed ? "destructive" : "outline"}>
+                    <CalendarIcon className="h-3 w-3 mr-1" />
+                    {format(new Date(todo.due_date), "dd MMM yyyy", { locale: fr })}
+                  </Badge>
+                )}
+                {todo.completed ? (
+                  <span className="text-green-600 dark:text-green-400 font-medium">
+                    ✓ Validée le {format(new Date(todo.updated_at), "dd/MM/yyyy à HH:mm", { locale: fr })}
+                  </span>
+                ) : (
+                  <span>Créée le {format(new Date(todo.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}</span>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2 ml-6 text-xs text-muted-foreground">
-              {todo.due_date && (
-                <Badge variant={new Date(todo.due_date) < new Date() && !todo.completed ? "destructive" : "outline"}>
-                  <CalendarIcon className="h-3 w-3 mr-1" />
-                  {format(new Date(todo.due_date), "dd MMM yyyy", { locale: fr })}
-                </Badge>
-              )}
-              <span>Créé le {format(new Date(todo.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}</span>
-            </div>
-          </div>
-        ))}
+          ))}
+        {todos.filter((todo) => (showCompleted ? todo.completed : !todo.completed)).length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            {showCompleted ? "Aucune tâche accomplie" : "Aucune tâche active"}
+          </p>
+        )}
       </div>
     </div>
   );
