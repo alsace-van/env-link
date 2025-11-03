@@ -353,62 +353,61 @@ const AccessoryCategorySidebar = ({
               >
                 <Trash2 className="h-3 w-3 text-destructive" />
               </Button>
-            </>
+            </div>
           )}
         </div>
-      </div>
 
-      {/* Formulaire d'ajout de sous-catégorie */}
-      {showAddSub === category.id && (
-        <div className="flex items-center gap-2 p-2" style={{ paddingLeft: `${(level + 1) * 1.5 + 0.5}rem` }}>
-          <Input
-            placeholder="Nom de la sous-catégorie"
-            value={newSubCategoryName}
-            onChange={(e) => {
-              e.stopPropagation();
-              setNewSubCategoryName(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddSubCategory(category.id);
-              } else if (e.key === "Escape") {
-                e.preventDefault();
+        {/* Formulaire d'ajout de sous-catégorie */}
+        {showAddSub === category.id && (
+          <div className="flex items-center gap-2 p-2" style={{ paddingLeft: `${(level + 1) * 1.5 + 0.5}rem` }}>
+            <Input
+              placeholder="Nom de la sous-catégorie"
+              value={newSubCategoryName}
+              onChange={(e) => {
+                e.stopPropagation();
+                setNewSubCategoryName(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddSubCategory(category.id);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setShowAddSub(null);
+                  setNewSubCategoryName("");
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="h-7 text-sm"
+              autoFocus
+              autoComplete="off"
+            />
+            <Button size="sm" onClick={() => handleAddSubCategory(category.id)} className="h-7 w-7 p-0" title="Ajouter">
+              <Check className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
                 setShowAddSub(null);
                 setNewSubCategoryName("");
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="h-7 text-sm"
-            autoFocus
-            autoComplete="off"
-          />
-          <Button size="sm" onClick={() => handleAddSubCategory(category.id)} className="h-7 w-7 p-0" title="Ajouter">
-            <Check className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setShowAddSub(null);
-              setNewSubCategoryName("");
-            }}
-            className="h-7 w-7 p-0"
-            title="Annuler"
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
+              }}
+              className="h-7 w-7 p-0"
+              title="Annuler"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
 
-      {/* Sous-catégories */}
-      {isExpanded && hasSubcategories && (
-        <div className="group">{subcategories.map((sub) => renderCategory(sub, level + 1))}</div>
-      )}
-    </div>
-  );
-};
+        {/* Sous-catégories */}
+        {isExpanded && hasSubcategories && (
+          <div className="group">{subcategories.map((sub) => renderCategory(sub, level + 1))}</div>
+        )}
+      </div>
+    );
+  };
 
 return (
   <>
