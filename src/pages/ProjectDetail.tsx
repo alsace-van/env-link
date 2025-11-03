@@ -561,8 +561,21 @@ sidebarStyle.textContent = `
     }
   }
   
+  @keyframes slideOutToLeft {
+    from {
+      transform: translateY(-50%) translateX(0);
+    }
+    to {
+      transform: translateY(-50%) translateX(-100%);
+    }
+  }
+  
   .sidebar-slide-in {
     animation: slideInFromLeft 500ms ease-out;
+  }
+  
+  .sidebar-slide-out {
+    animation: slideOutToLeft 400ms ease-in;
   }
 `;
 if (!document.head.querySelector("#sidebar-animation-style")) {
@@ -583,6 +596,7 @@ const ProjectDetail = () => {
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
   const [isProjectInfoSidebarOpen, setIsProjectInfoSidebarOpen] = useState(false); // État pour la sidebar des infos projet
+  const [isProjectInfoSidebarClosing, setIsProjectInfoSidebarClosing] = useState(false); // État pour l'animation de fermeture
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false); // État pour le dropdown du calendrier
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false); // État pour la vue mensuelle directe
   const [layout3DKey, setLayout3DKey] = useState(0);
@@ -661,6 +675,15 @@ const ProjectDetail = () => {
 
   const handleExpenseAdded = () => {
     setExpenseRefresh((prev) => prev + 1);
+  };
+
+  // Fonction pour fermer la sidebar avec animation
+  const handleCloseProjectInfoSidebar = () => {
+    setIsProjectInfoSidebarClosing(true);
+    setTimeout(() => {
+      setIsProjectInfoSidebarOpen(false);
+      setIsProjectInfoSidebarClosing(false);
+    }, 400); // Durée de l'animation de sortie
   };
 
   const handleEditDimensions = () => {
@@ -839,7 +862,13 @@ const ProjectDetail = () => {
           variant="default"
           size="icon"
           className="h-12 w-12 rounded-full bg-blue-600 hover:bg-blue-700"
-          onClick={() => setIsProjectInfoSidebarOpen(!isProjectInfoSidebarOpen)}
+          onClick={() => {
+            if (isProjectInfoSidebarOpen) {
+              handleCloseProjectInfoSidebar();
+            } else {
+              setIsProjectInfoSidebarOpen(true);
+            }
+          }}
           title="Informations du Projet"
         >
           <FileText className="h-5 w-5" />
@@ -850,10 +879,12 @@ const ProjectDetail = () => {
       {isProjectInfoSidebarOpen && (
         <>
           {/* Overlay TRANSPARENT */}
-          <div className="fixed inset-0 z-40 transition-opacity" onClick={() => setIsProjectInfoSidebarOpen(false)} />
+          <div className="fixed inset-0 z-40 transition-opacity" onClick={handleCloseProjectInfoSidebar} />
 
           {/* Sidebar à GAUCHE avec hauteur limitée - Animation horizontale pure */}
-          <div className="sidebar-slide-in fixed left-0 top-1/2 -translate-y-1/2 z-50 w-[500px] max-h-[85vh] bg-card border-r-2 border-blue-200 dark:border-blue-800 shadow-2xl rounded-r-xl overflow-hidden">
+          <div
+            className={`${isProjectInfoSidebarClosing ? "sidebar-slide-out" : "sidebar-slide-in"} fixed left-0 top-1/2 -translate-y-1/2 z-50 w-[500px] max-h-[85vh] bg-card border-r-2 border-blue-200 dark:border-blue-800 shadow-2xl rounded-r-xl overflow-hidden`}
+          >
             <div className="flex flex-col h-full">
               {/* Header */}
               <div className="flex items-center justify-between p-4 border-b bg-blue-50 dark:bg-blue-950/30">
@@ -863,7 +894,7 @@ const ProjectDetail = () => {
                     <Edit className="h-4 w-4 mr-2" />
                     Modifier
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => setIsProjectInfoSidebarOpen(false)}>
+                  <Button variant="ghost" size="icon" onClick={handleCloseProjectInfoSidebar}>
                     <X className="h-5 w-5" />
                   </Button>
                 </div>
