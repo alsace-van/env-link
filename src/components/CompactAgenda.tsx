@@ -133,9 +133,9 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       case "pending":
         return "bg-orange-500/20 text-orange-700";
       case "cancelled":
-        return "bg-red-500/20 text-red-700";
+        return "bg-red-500/20 text-red-600 dark:text-red-400";
       default:
-        return "bg-gray-500/20 text-gray-700";
+        return "bg-gray-500/20 text-foreground";
     }
   };
 
@@ -214,14 +214,16 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           <div
             className={`relative p-1.5 rounded-lg transition-all cursor-pointer min-h-[40px] ${
               isCurrentHour
-                ? "bg-blue-100/80 border-2 border-blue-400 shadow-md"
+                ? "bg-blue-500/20 dark:bg-blue-500/30 border-2 border-blue-600 dark:border-blue-500 dark:border-blue-600 shadow-md"
                 : hasItems
-                  ? "bg-blue-50/50 border border-blue-200/50 hover:border-blue-300"
-                  : "hover:bg-gray-50/50 border border-transparent"
+                  ? "bg-blue-500/10 dark:bg-blue-500/20 border border-blue-400/50 dark:border-blue-600/50 hover:border-blue-400 dark:hover:border-blue-600"
+                  : "hover:bg-accent/50 border border-transparent"
             }`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className={`text-xs font-medium mb-1 ${isCurrentHour ? "text-blue-700 font-bold" : "text-gray-600"}`}>
+            <div
+              className={`text-xs font-medium mb-1 ${isCurrentHour ? "text-blue-600 dark:text-blue-400 font-bold" : "text-muted-foreground"}`}
+            >
               {label}
               {isCurrentHour && <span className="ml-1 text-[9px]">●</span>}
             </div>
@@ -233,7 +235,9 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   <div
                     key={todo.id}
                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${
-                      todo.is_global ? "bg-blue-100/70 border border-blue-300/50" : ""
+                      todo.is_global
+                        ? "bg-blue-500/15 dark:bg-blue-500/25 border border-blue-400/50 dark:border-blue-600/50"
+                        : ""
                     }`}
                     onClick={() => toggleTodoComplete(todo.id, todo.completed)}
                   >
@@ -247,12 +251,15 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                       }`}
                     />
                     {todo.is_global && (
-                      <Badge variant="outline" className="h-3 text-[8px] px-1 bg-blue-50 text-blue-700 border-blue-300">
+                      <Badge
+                        variant="outline"
+                        className="h-3 text-[8px] px-1 bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-300"
+                      >
                         🌍
                       </Badge>
                     )}
                     <span
-                      className={`text-[10px] truncate ${todo.completed ? "line-through text-gray-500" : "text-gray-900"}`}
+                      className={`text-[10px] truncate ${todo.completed ? "line-through text-muted-foreground" : "text-foreground"}`}
                     >
                       {todo.title}
                     </span>
@@ -262,18 +269,20 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 {items.appointments.slice(0, 1).map((apt) => (
                   <div key={apt.id} className="flex items-center gap-1">
                     <UserCircle className="h-2.5 w-2.5 text-blue-600" />
-                    <span className="text-[10px] text-gray-900 truncate">{apt.client_name}</span>
+                    <span className="text-[10px] text-foreground truncate">{apt.client_name}</span>
                   </div>
                 ))}
 
                 {items.expenses.slice(0, 1).map((exp) => (
                   <div key={exp.id} className="flex items-center gap-1">
                     <Package className="h-2.5 w-2.5 text-orange-600" />
-                    <span className="text-[10px] text-gray-900 truncate">{exp.product_name}</span>
+                    <span className="text-[10px] text-foreground truncate">{exp.product_name}</span>
                   </div>
                 ))}
 
-                {totalItems > 2 && <div className="text-[9px] text-gray-500 text-center">+{totalItems - 2}</div>}
+                {totalItems > 2 && (
+                  <div className="text-[9px] text-muted-foreground text-center">+{totalItems - 2}</div>
+                )}
               </div>
             )}
           </div>
@@ -356,14 +365,14 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         <div className="grid grid-cols-7 gap-2">
           {/* En-têtes des jours */}
           {["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"].map((day) => (
-            <div key={day} className="text-center text-sm font-semibold text-gray-600 p-2">
+            <div key={day} className="text-center text-sm font-semibold text-muted-foreground p-2">
               {day}
             </div>
           ))}
 
           {/* Jours vides au début */}
           {emptyDays.map((i) => (
-            <div key={`empty-${i}`} className="border border-gray-100 rounded-lg bg-gray-50/30" />
+            <div key={`empty-${i}`} className="border border-border rounded-lg bg-muted/30" />
           ))}
 
           {/* Jours du mois */}
@@ -378,10 +387,10 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                 key={day.toISOString()}
                 className={`border rounded-lg transition-all cursor-pointer ${cellClass} ${
                   isCurrentDay
-                    ? "border-blue-500 bg-blue-50/50 shadow-md"
+                    ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20 shadow-md"
                     : isSelectedDay
-                      ? "border-purple-400 bg-purple-50/30"
-                      : "border-gray-200 bg-white hover:border-gray-300 hover:shadow"
+                      ? "border-purple-500 dark:border-purple-600 bg-purple-500/10 dark:bg-purple-500/20"
+                      : "border-gray-200 bg-card hover:border-gray-300 hover:shadow"
                 }`}
                 onClick={() => {
                   setCurrentDate(day);
@@ -389,7 +398,9 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                   setIsExpanded(true); // Ouvrir en mode étendu
                 }}
               >
-                <div className={`text-sm font-semibold mb-2 ${isCurrentDay ? "text-blue-700" : "text-gray-700"}`}>
+                <div
+                  className={`text-sm font-semibold mb-2 ${isCurrentDay ? "text-blue-600 dark:text-blue-400" : "text-foreground"}`}
+                >
                   {format(day, "d")}
                 </div>
 
@@ -401,7 +412,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.todos.slice(0, 3).map((todo) => (
                           <div
                             key={todo.id}
-                            className="flex items-center gap-1.5 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 px-2 py-1 rounded"
                           >
                             <CheckCircle2 className="h-3 w-3" />
                             <span className="truncate">{todo.title}</span>
@@ -410,7 +421,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.appointments.slice(0, 2).map((apt) => (
                           <div
                             key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 text-blue-800 px-2 py-1 rounded"
                           >
                             <UserCircle className="h-3 w-3" />
                             <span className="truncate">{apt.client_name}</span>
@@ -419,14 +430,14 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.expenses.slice(0, 2).map((exp) => (
                           <div
                             key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 text-orange-800 px-2 py-1 rounded"
                           >
                             <Package className="h-3 w-3" />
                             <span className="truncate">{exp.product_name}</span>
                           </div>
                         ))}
                         {totalEvents > 7 && (
-                          <div className="text-[10px] text-center text-gray-600 bg-gray-100 rounded px-1 py-0.5">
+                          <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
                             +{totalEvents - 7} événements
                           </div>
                         )}
@@ -437,7 +448,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.todos.slice(0, 1).map((todo) => (
                           <div
                             key={todo.id}
-                            className="flex items-center gap-1.5 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 text-purple-800 px-2 py-1 rounded"
                           >
                             <CheckCircle2 className="h-3 w-3" />
                             <span className="truncate">{todo.title}</span>
@@ -446,7 +457,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.appointments.slice(0, 1).map((apt) => (
                           <div
                             key={apt.id}
-                            className="flex items-center gap-1.5 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-blue-500/20 dark:bg-blue-500/30 text-blue-800 px-2 py-1 rounded"
                           >
                             <UserCircle className="h-3 w-3" />
                             <span className="truncate">{apt.client_name}</span>
@@ -455,14 +466,14 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                         {dayItems.expenses.slice(0, 1).map((exp) => (
                           <div
                             key={exp.id}
-                            className="flex items-center gap-1.5 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded"
+                            className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 text-orange-800 px-2 py-1 rounded"
                           >
                             <Package className="h-3 w-3" />
                             <span className="truncate">{exp.product_name}</span>
                           </div>
                         ))}
                         {totalEvents > 3 && (
-                          <div className="text-[10px] text-center text-gray-600 bg-gray-100 rounded px-1 py-0.5">
+                          <div className="text-[10px] text-center text-muted-foreground bg-gray-100 rounded px-1 py-0.5">
                             +{totalEvents - 3}
                           </div>
                         )}
@@ -473,9 +484,12 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
                 {/* Charges mensuelles */}
                 {dayItems.charges.length > 0 && (
-                  <div className="mt-1 pt-1 border-t border-red-200">
+                  <div className="mt-1 pt-1 border-t border-red-400/50 dark:border-red-600/50">
                     {dayItems.charges.slice(0, monthCellSize === "large" ? 3 : 1).map((charge) => (
-                      <div key={charge.id} className="flex items-center justify-between text-[10px] text-red-700">
+                      <div
+                        key={charge.id}
+                        className="flex items-center justify-between text-[10px] text-red-600 dark:text-red-400"
+                      >
                         <span className="truncate">{charge.nom_charge}</span>
                         <span className="font-bold">{charge.montant.toFixed(0)}€</span>
                       </div>
@@ -494,17 +508,17 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
   return (
     <>
-      <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-white/90 border-gray-200/50">
-        <CardHeader className="pb-3 cursor-pointer hover:bg-gray-50/50 transition-colors" onClick={handleCardClick}>
+      <Card className="w-full max-w-md shadow-lg hover:shadow-xl transition-all backdrop-blur-xl bg-white/90 border-border/50">
+        <CardHeader className="pb-3 cursor-pointer hover:bg-accent/50 transition-colors" onClick={handleCardClick}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-gray-700">📅 Agenda</h3>
+              <h3 className="text-sm font-semibold text-foreground">📅 Agenda</h3>
               {isExpanded ? (
-                <Minimize2 className="h-3.5 w-3.5 text-gray-400" />
+                <Minimize2 className="h-3.5 w-3.5 text-muted-foreground/60" />
               ) : (
-                <Maximize2 className="h-3.5 w-3.5 text-gray-400" />
+                <Maximize2 className="h-3.5 w-3.5 text-muted-foreground/60" />
               )}
-              <Calendar className="h-3.5 w-3.5 text-gray-400" />
+              <Calendar className="h-3.5 w-3.5 text-muted-foreground/60" />
             </div>
             <Button
               variant="ghost"
@@ -521,7 +535,7 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
           {/* En-tête du jour */}
           <div className="text-center">
-            <div className={`text-sm font-semibold ${isToday ? "text-blue-600" : "text-gray-900"}`}>
+            <div className={`text-sm font-semibold ${isToday ? "text-blue-600" : "text-foreground"}`}>
               {format(currentDate, "EEEE d MMMM yyyy", { locale: fr })}
             </div>
           </div>
@@ -591,15 +605,15 @@ export const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
               </h4>
               {chargesForDay.map((charge) => (
                 <div key={charge.id} className="flex items-center justify-between text-[10px]">
-                  <span className="text-gray-900 truncate">{charge.nom_charge}</span>
-                  <span className="font-bold text-red-700">{charge.montant.toFixed(2)}€</span>
+                  <span className="text-foreground truncate">{charge.nom_charge}</span>
+                  <span className="font-bold text-red-600 dark:text-red-400">{charge.montant.toFixed(2)}€</span>
                 </div>
               ))}
             </div>
           )}
 
           {/* Légende */}
-          <div className="flex items-center justify-center gap-2 pt-2 border-t text-[9px] text-gray-500">
+          <div className="flex items-center justify-center gap-2 pt-2 border-t text-[9px] text-muted-foreground">
             <div className="flex items-center gap-0.5">
               <div className="h-1.5 w-1.5 bg-purple-400 rounded-full" />
               <span>Tâches</span>
