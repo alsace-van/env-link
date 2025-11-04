@@ -76,15 +76,15 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
           new Set(
             vehicles
               .filter((v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension)
-              .map((v) => v.dimension!)
-          )
+              .map((v) => v.dimension!),
+          ),
         ).sort()
       : [];
 
   const matchingVehicle =
     selectedMarque && selectedModele && selectedDimension
       ? vehicles.find(
-          (v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension === selectedDimension
+          (v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension === selectedDimension,
         )
       : null;
 
@@ -158,7 +158,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
   const handleDimensionChange = (dimension: string) => {
     setSelectedDimension(dimension);
     const vehicle = vehicles.find(
-      (v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension === dimension
+      (v) => v.marque === selectedMarque && v.modele === selectedModele && v.dimension === dimension,
     );
     setSelectedVehicle(vehicle || null);
     if (vehicle) {
@@ -232,9 +232,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
         // Essayer aussi de trouver le modèle
         if (data.denominationCommerciale) {
           const modeleNormalized = normalize(data.denominationCommerciale);
-          const availableModelesForMarque = vehicles
-            .filter((v) => v.marque === foundMarque)
-            .map((v) => v.modele);
+          const availableModelesForMarque = vehicles.filter((v) => v.marque === foundMarque).map((v) => v.modele);
           const foundModele = Array.from(new Set(availableModelesForMarque)).find((m) => {
             const mNorm = normalize(m);
             return mNorm.includes(modeleNormalized) || modeleNormalized.includes(mNorm);
@@ -334,19 +332,16 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
         return;
       }
 
-      // Use signed URL with 24 hour expiration for project photos
-      const { data: signedUrlData, error: urlError } = await supabase.storage
-        .from("project-photos")
-        .createSignedUrl(filePath, 86400); // 24 hours
+      // Use public URL (permanent, no expiration)
+      const { data: publicUrlData } = supabase.storage.from("project-photos").getPublicUrl(filePath);
 
-      if (urlError || !signedUrlData) {
+      if (!publicUrlData) {
         toast.error("Erreur lors de la création de l'URL de la photo");
-        console.error(urlError);
         setIsLoading(false);
         return;
       }
 
-      photoUrl = signedUrlData.signedUrl;
+      photoUrl = publicUrlData.publicUrl;
     }
 
     const projectData = {
@@ -399,136 +394,113 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
   return (
     <>
-    <Card className="h-fit sticky top-4">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Plus className="h-5 w-5" />
-          Nouveau Projet
-        </CardTitle>
-        <CardDescription>Créez un nouveau projet d'aménagement</CardDescription>
-        <Button
-          type="button"
-          variant={showScanner ? "outline" : "default"}
-          onClick={() => setShowScanner(!showScanner)}
-          className="w-full mt-4"
-        >
-          <Scan className="h-4 w-4 mr-2" />
-          {showScanner ? "Masquer le scanner" : "Scanner une carte grise"}
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {showScanner && <VehicleRegistrationScanner onDataExtracted={handleScannedData} />}
+      <Card className="h-fit sticky top-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            Nouveau Projet
+          </CardTitle>
+          <CardDescription>Créez un nouveau projet d'aménagement</CardDescription>
+          <Button
+            type="button"
+            variant={showScanner ? "outline" : "default"}
+            onClick={() => setShowScanner(!showScanner)}
+            className="w-full mt-4"
+          >
+            <Scan className="h-4 w-4 mr-2" />
+            {showScanner ? "Masquer le scanner" : "Scanner une carte grise"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {showScanner && <VehicleRegistrationScanner onDataExtracted={handleScannedData} />}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
 
-            <div className="space-y-2">
-              <Label htmlFor="nom_projet">Nom du projet</Label>
-              <Input id="nom_projet" name="nom_projet" disabled={isLoading} placeholder="Aménagement camping-car" />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="nom_projet">Nom du projet</Label>
+                <Input id="nom_projet" name="nom_projet" disabled={isLoading} placeholder="Aménagement camping-car" />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="photo_projet">Photo du projet</Label>
-              <Input id="photo_projet" type="file" accept="image/*" onChange={handlePhotoChange} disabled={isLoading} />
-              {photoPreview && (
-                <div className="mt-2">
-                  <img src={photoPreview} alt="Aperçu" className="w-full h-32 object-cover rounded-lg" />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4 pt-4 border-t">
-            <h3 className="text-sm font-semibold text-muted-foreground">Informations Propriétaire</h3>
-
-            <div className="space-y-2">
-              <Label htmlFor="nom_proprietaire">Nom du propriétaire *</Label>
-              <Input
-                id="nom_proprietaire"
-                name="nom_proprietaire"
-                required
-                disabled={isLoading}
-                placeholder="Jean Dupont"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="adresse_proprietaire">Adresse</Label>
-              <Input
-                id="adresse_proprietaire"
-                name="adresse_proprietaire"
-                disabled={isLoading}
-                placeholder="123 rue de la Paix, 75000 Paris"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="telephone_proprietaire">Téléphone</Label>
-              <Input
-                id="telephone_proprietaire"
-                name="telephone_proprietaire"
-                type="tel"
-                disabled={isLoading}
-                placeholder="06 12 34 56 78"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email_proprietaire">Email</Label>
-              <Input
-                id="email_proprietaire"
-                name="email_proprietaire"
-                type="email"
-                disabled={isLoading}
-                placeholder="contact@example.com"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-4 pt-4 border-t">
-            <h3 className="text-sm font-semibold text-muted-foreground">Informations Véhicule</h3>
-
-            <div className="space-y-2">
-              <Label htmlFor="marque">Marque *</Label>
-              <div className="flex gap-2">
-                <Select value={selectedMarque} onValueChange={handleMarqueChange} required disabled={isLoading}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Sélectionnez une marque" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableMarques.map((marque) => (
-                      <SelectItem key={marque} value={marque}>
-                        {marque}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={handleRescanMarque}
+              <div className="space-y-2">
+                <Label htmlFor="photo_projet">Photo du projet</Label>
+                <Input
+                  id="photo_projet"
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
                   disabled={isLoading}
-                  title="Re-scanner la carte grise"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
+                />
+                {photoPreview && (
+                  <div className="mt-2">
+                    <img src={photoPreview} alt="Aperçu" className="w-full h-32 object-cover rounded-lg" />
+                  </div>
+                )}
               </div>
             </div>
 
-            {selectedMarque && (
+            <div className="space-y-4 pt-4 border-t">
+              <h3 className="text-sm font-semibold text-muted-foreground">Informations Propriétaire</h3>
+
               <div className="space-y-2">
-                <Label htmlFor="modele">Modèle *</Label>
+                <Label htmlFor="nom_proprietaire">Nom du propriétaire *</Label>
+                <Input
+                  id="nom_proprietaire"
+                  name="nom_proprietaire"
+                  required
+                  disabled={isLoading}
+                  placeholder="Jean Dupont"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="adresse_proprietaire">Adresse</Label>
+                <Input
+                  id="adresse_proprietaire"
+                  name="adresse_proprietaire"
+                  disabled={isLoading}
+                  placeholder="123 rue de la Paix, 75000 Paris"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="telephone_proprietaire">Téléphone</Label>
+                <Input
+                  id="telephone_proprietaire"
+                  name="telephone_proprietaire"
+                  type="tel"
+                  disabled={isLoading}
+                  placeholder="06 12 34 56 78"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email_proprietaire">Email</Label>
+                <Input
+                  id="email_proprietaire"
+                  name="email_proprietaire"
+                  type="email"
+                  disabled={isLoading}
+                  placeholder="contact@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t">
+              <h3 className="text-sm font-semibold text-muted-foreground">Informations Véhicule</h3>
+
+              <div className="space-y-2">
+                <Label htmlFor="marque">Marque *</Label>
                 <div className="flex gap-2">
-                  <Select value={selectedModele} onValueChange={handleModeleChange} required disabled={isLoading}>
+                  <Select value={selectedMarque} onValueChange={handleMarqueChange} required disabled={isLoading}>
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Sélectionnez un modèle" />
+                      <SelectValue placeholder="Sélectionnez une marque" />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableModeles.map((modele) => (
-                        <SelectItem key={modele} value={modele}>
-                          {modele}
+                      {availableMarques.map((marque) => (
+                        <SelectItem key={marque} value={marque}>
+                          {marque}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -537,7 +509,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                     type="button"
                     variant="outline"
                     size="icon"
-                    onClick={handleRescanModele}
+                    onClick={handleRescanMarque}
                     disabled={isLoading}
                     title="Re-scanner la carte grise"
                   >
@@ -545,247 +517,277 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                   </Button>
                 </div>
               </div>
-            )}
 
-            {selectedMarque && selectedModele && availableDimensions.length > 0 && (
-              <div className="space-y-2">
-                <Label htmlFor="dimension">Dimensions (L×H) *</Label>
-                <Select value={selectedDimension} onValueChange={handleDimensionChange} required disabled={isLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionnez les dimensions" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableDimensions.map((dimension) => (
-                      <SelectItem key={dimension} value={dimension}>
-                        {dimension}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Champs de carte grise - TOUJOURS VISIBLES si des données OCR ont été scannées OU si marque+modèle sélectionnés */}
-            {(scannedData || (selectedMarque && selectedModele)) && (
-              <>
+              {selectedMarque && (
                 <div className="space-y-2">
-                  <Label htmlFor="numero_chassis">Numéro de chassis (VIN - 17 car.)</Label>
-                  <Input
-                    id="numero_chassis"
-                    name="numero_chassis"
-                    value={manualNumeroChassis}
-                    onChange={(e) => setManualNumeroChassis(e.target.value)}
-                    disabled={isLoading}
-                    placeholder="VF1234567890ABCDE"
-                    maxLength={17}
-                  />
-                  {manualNumeroChassis && manualNumeroChassis.length > 0 && manualNumeroChassis.length !== 17 && (
-                    <p className="text-xs text-yellow-600">
-                      ⚠️ Le VIN doit faire 17 caractères ({manualNumeroChassis.length}/17)
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="immatriculation">Immatriculation</Label>
-                  <Input
-                    id="immatriculation"
-                    name="immatriculation"
-                    value={manualImmatriculation}
-                    onChange={(e) => setManualImmatriculation(e.target.value)}
-                    disabled={isLoading}
-                    placeholder="AB-123-CD"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="date_mise_circulation">Date de mise en circulation</Label>
-                  <Input
-                    id="date_mise_circulation"
-                    name="date_mise_circulation"
-                    type="date"
-                    value={manualDateMiseCirculation}
-                    onChange={(e) => setManualDateMiseCirculation(e.target.value)}
-                    disabled={isLoading}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="type_mine">Type mine</Label>
-                  <Input
-                    id="type_mine"
-                    name="type_mine"
-                    value={manualTypeMine}
-                    onChange={(e) => setManualTypeMine(e.target.value)}
-                    disabled={isLoading}
-                    placeholder="CTTE, VASP, Ambulance..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="custom_poids_vide">Poids à vide (kg)</Label>
-                    <Input
-                      id="custom_poids_vide"
-                      type="number"
-                      value={customPoidsVide}
-                      onChange={(e) => setCustomPoidsVide(e.target.value)}
+                  <Label htmlFor="modele">Modèle *</Label>
+                  <div className="flex gap-2">
+                    <Select value={selectedModele} onValueChange={handleModeleChange} required disabled={isLoading}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Sélectionnez un modèle" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableModeles.map((modele) => (
+                          <SelectItem key={modele} value={modele}>
+                            {modele}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleRescanModele}
                       disabled={isLoading}
-                      placeholder="1800"
+                      title="Re-scanner la carte grise"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {selectedMarque && selectedModele && availableDimensions.length > 0 && (
+                <div className="space-y-2">
+                  <Label htmlFor="dimension">Dimensions (L×H) *</Label>
+                  <Select value={selectedDimension} onValueChange={handleDimensionChange} required disabled={isLoading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionnez les dimensions" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableDimensions.map((dimension) => (
+                        <SelectItem key={dimension} value={dimension}>
+                          {dimension}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Champs de carte grise - TOUJOURS VISIBLES si des données OCR ont été scannées OU si marque+modèle sélectionnés */}
+              {(scannedData || (selectedMarque && selectedModele)) && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="numero_chassis">Numéro de chassis (VIN - 17 car.)</Label>
+                    <Input
+                      id="numero_chassis"
+                      name="numero_chassis"
+                      value={manualNumeroChassis}
+                      onChange={(e) => setManualNumeroChassis(e.target.value)}
+                      disabled={isLoading}
+                      placeholder="VF1234567890ABCDE"
+                      maxLength={17}
+                    />
+                    {manualNumeroChassis && manualNumeroChassis.length > 0 && manualNumeroChassis.length !== 17 && (
+                      <p className="text-xs text-yellow-600">
+                        ⚠️ Le VIN doit faire 17 caractères ({manualNumeroChassis.length}/17)
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="immatriculation">Immatriculation</Label>
+                    <Input
+                      id="immatriculation"
+                      name="immatriculation"
+                      value={manualImmatriculation}
+                      onChange={(e) => setManualImmatriculation(e.target.value)}
+                      disabled={isLoading}
+                      placeholder="AB-123-CD"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="custom_ptac">PTAC (kg)</Label>
+                    <Label htmlFor="date_mise_circulation">Date de mise en circulation</Label>
                     <Input
-                      id="custom_ptac"
-                      type="number"
-                      value={customPtac}
-                      onChange={(e) => setCustomPtac(e.target.value)}
+                      id="date_mise_circulation"
+                      name="date_mise_circulation"
+                      type="date"
+                      value={manualDateMiseCirculation}
+                      onChange={(e) => setManualDateMiseCirculation(e.target.value)}
                       disabled={isLoading}
-                      placeholder="3000"
                     />
                   </div>
-                </div>
-              </>
-            )}
 
-            {matchingVehicle && (
-              <div className="p-4 bg-muted/50 rounded-lg text-sm">
-                <div className="flex gap-6 justify-between">
-                  {/* Dimensions totales */}
-                  <div className="flex-1">
-                    <h4 className="font-semibold mb-2">Dimensions totales</h4>
-                    <div className="space-y-1">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">L :</span>
-                        <span className="font-medium">{matchingVehicle.longueur_mm} mm</span>
-                      </div>
-                      {matchingVehicle.largeur_mm && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">l :</span>
-                          <span className="font-medium">{matchingVehicle.largeur_mm} mm</span>
-                        </div>
-                      )}
-                      {matchingVehicle.hauteur_mm && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">H :</span>
-                          <span className="font-medium">{matchingVehicle.hauteur_mm} mm</span>
-                        </div>
-                      )}
+                  <div className="space-y-2">
+                    <Label htmlFor="type_mine">Type mine</Label>
+                    <Input
+                      id="type_mine"
+                      name="type_mine"
+                      value={manualTypeMine}
+                      onChange={(e) => setManualTypeMine(e.target.value)}
+                      disabled={isLoading}
+                      placeholder="CTTE, VASP, Ambulance..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="custom_poids_vide">Poids à vide (kg)</Label>
+                      <Input
+                        id="custom_poids_vide"
+                        type="number"
+                        value={customPoidsVide}
+                        onChange={(e) => setCustomPoidsVide(e.target.value)}
+                        disabled={isLoading}
+                        placeholder="1800"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="custom_ptac">PTAC (kg)</Label>
+                      <Input
+                        id="custom_ptac"
+                        type="number"
+                        value={customPtac}
+                        onChange={(e) => setCustomPtac(e.target.value)}
+                        disabled={isLoading}
+                        placeholder="3000"
+                      />
                     </div>
                   </div>
+                </>
+              )}
 
-                  {/* Surface utile */}
-                  {(matchingVehicle.longueur_mm || matchingVehicle.largeur_mm) && (
+              {matchingVehicle && (
+                <div className="p-4 bg-muted/50 rounded-lg text-sm">
+                  <div className="flex gap-6 justify-between">
+                    {/* Dimensions totales */}
                     <div className="flex-1">
-                      <h4 className="font-semibold mb-2 text-blue-600">Surface utile</h4>
+                      <h4 className="font-semibold mb-2">Dimensions totales</h4>
                       <div className="space-y-1">
-                        {matchingVehicle.longueur_mm && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">L utile :</span>
-                            <span className="font-medium">{matchingVehicle.longueur_mm} mm</span>
-                          </div>
-                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">L :</span>
+                          <span className="font-medium">{matchingVehicle.longueur_mm} mm</span>
+                        </div>
                         {matchingVehicle.largeur_mm && (
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">l utile :</span>
+                            <span className="text-muted-foreground">l :</span>
                             <span className="font-medium">{matchingVehicle.largeur_mm} mm</span>
                           </div>
                         )}
+                        {matchingVehicle.hauteur_mm && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">H :</span>
+                            <span className="font-medium">{matchingVehicle.hauteur_mm} mm</span>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
 
-                  {/* Poids */}
-                  {(matchingVehicle.poids_vide_kg || matchingVehicle.charge_utile_kg || matchingVehicle.ptac_kg) && (
-                    <div className="flex-1">
-                      <h4 className="font-semibold mb-2">Poids</h4>
-                      <div className="space-y-1">
-                        {matchingVehicle.poids_vide_kg && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Vide :</span>
-                            <span className="font-medium">{matchingVehicle.poids_vide_kg} kg</span>
-                          </div>
-                        )}
-                        {matchingVehicle.charge_utile_kg && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Charge :</span>
-                            <span className="font-medium">{matchingVehicle.charge_utile_kg} kg</span>
-                          </div>
-                        )}
-                        {matchingVehicle.ptac_kg && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">PTAC :</span>
-                            <span className="font-medium">{matchingVehicle.ptac_kg} kg</span>
-                          </div>
-                        )}
+                    {/* Surface utile */}
+                    {(matchingVehicle.longueur_mm || matchingVehicle.largeur_mm) && (
+                      <div className="flex-1">
+                        <h4 className="font-semibold mb-2 text-blue-600">Surface utile</h4>
+                        <div className="space-y-1">
+                          {matchingVehicle.longueur_mm && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">L utile :</span>
+                              <span className="font-medium">{matchingVehicle.longueur_mm} mm</span>
+                            </div>
+                          )}
+                          {matchingVehicle.largeur_mm && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">l utile :</span>
+                              <span className="font-medium">{matchingVehicle.largeur_mm} mm</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+
+                    {/* Poids */}
+                    {(matchingVehicle.poids_vide_kg || matchingVehicle.charge_utile_kg || matchingVehicle.ptac_kg) && (
+                      <div className="flex-1">
+                        <h4 className="font-semibold mb-2">Poids</h4>
+                        <div className="space-y-1">
+                          {matchingVehicle.poids_vide_kg && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Vide :</span>
+                              <span className="font-medium">{matchingVehicle.poids_vide_kg} kg</span>
+                            </div>
+                          )}
+                          {matchingVehicle.charge_utile_kg && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Charge :</span>
+                              <span className="font-medium">{matchingVehicle.charge_utile_kg} kg</span>
+                            </div>
+                          )}
+                          {matchingVehicle.ptac_kg && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">PTAC :</span>
+                              <span className="font-medium">{matchingVehicle.ptac_kg} kg</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Création..." : "Créer le projet"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Dialogue de création de marque */}
+      <AlertDialog open={showCreateMarqueDialog} onOpenChange={setShowCreateMarqueDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Marque non trouvée</AlertDialogTitle>
+            <AlertDialogDescription>
+              La marque "{newMarqueToCreate}" n'existe pas dans le catalogue. Voulez-vous l'ajouter ?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label htmlFor="new_marque">Nom de la marque</Label>
+            <Input
+              id="new_marque"
+              value={newMarqueToCreate}
+              onChange={(e) => setNewMarqueToCreate(e.target.value)}
+              placeholder="Ex: Peugeot"
+              className="mt-2"
+            />
           </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCreateMarque}>Ajouter la marque</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Création..." : "Créer le projet"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-
-    {/* Dialogue de création de marque */}
-    <AlertDialog open={showCreateMarqueDialog} onOpenChange={setShowCreateMarqueDialog}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Marque non trouvée</AlertDialogTitle>
-          <AlertDialogDescription>
-            La marque "{newMarqueToCreate}" n'existe pas dans le catalogue. Voulez-vous l'ajouter ?
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="py-4">
-          <Label htmlFor="new_marque">Nom de la marque</Label>
-          <Input
-            id="new_marque"
-            value={newMarqueToCreate}
-            onChange={(e) => setNewMarqueToCreate(e.target.value)}
-            placeholder="Ex: Peugeot"
-            className="mt-2"
-          />
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction onClick={handleCreateMarque}>Ajouter la marque</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-
-    {/* Dialogue de création de modèle */}
-    <AlertDialog open={showCreateModeleDialog} onOpenChange={setShowCreateModeleDialog}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Modèle non trouvé</AlertDialogTitle>
-          <AlertDialogDescription>
-            Le modèle "{newModeleToCreate}" n'existe pas dans le catalogue pour la marque {selectedMarque}. Voulez-vous l'ajouter ?
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="py-4">
-          <Label htmlFor="new_modele">Nom du modèle</Label>
-          <Input
-            id="new_modele"
-            value={newModeleToCreate}
-            onChange={(e) => setNewModeleToCreate(e.target.value)}
-            placeholder="Ex: Boxer"
-            className="mt-2"
-          />
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction onClick={handleCreateModele}>Ajouter le modèle</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+      {/* Dialogue de création de modèle */}
+      <AlertDialog open={showCreateModeleDialog} onOpenChange={setShowCreateModeleDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Modèle non trouvé</AlertDialogTitle>
+            <AlertDialogDescription>
+              Le modèle "{newModeleToCreate}" n'existe pas dans le catalogue pour la marque {selectedMarque}.
+              Voulez-vous l'ajouter ?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Label htmlFor="new_modele">Nom du modèle</Label>
+            <Input
+              id="new_modele"
+              value={newModeleToCreate}
+              onChange={(e) => setNewModeleToCreate(e.target.value)}
+              placeholder="Ex: Boxer"
+              className="mt-2"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCreateModele}>Ajouter le modèle</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
