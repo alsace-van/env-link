@@ -130,7 +130,7 @@ const AgendaWidget = ({ projectId, onClick, onDoubleClick }: AgendaWidgetProps) 
 
   return (
     <Card
-      className="cursor-pointer hover:bg-accent/50 transition-colors border-blue-200 dark:border-blue-800"
+      className="cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors border-blue-200 dark:border-blue-800"
       onClick={onClick}
       onDoubleClick={onDoubleClick}
     >
