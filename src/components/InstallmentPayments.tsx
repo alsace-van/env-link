@@ -158,15 +158,15 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
   );
 
   return (
-    <Card className="max-w-md">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">Paiements Échelonnés</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-1.5">
         {installments.length > 0 && (
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {installments.map((installment) => (
-              <div key={installment.id} className="border rounded p-2 hover:bg-muted/50 text-xs space-y-1">
+              <div key={installment.id} className="border rounded p-1.5 hover:bg-muted/50 text-xs space-y-0.5">
                 <div className="flex items-start justify-between">
                   <div className="font-medium truncate flex-1">{installment.nom_paiement}</div>
                   <div className="flex gap-0.5 flex-shrink-0">
@@ -196,7 +196,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                 </div>
               </div>
             ))}
-            <div className="flex justify-between pt-2 border-t-2 font-bold text-xs">
+            <div className="flex justify-between pt-1.5 border-t-2 font-bold text-xs">
               <span>Total restant :</span>
               <span className="text-orange-600">{totalRestant.toFixed(2)} €</span>
             </div>
@@ -204,7 +204,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
         )}
 
         {!isAdding ? (
-          <Button onClick={() => setIsAdding(true)} className="w-full h-8 text-xs" variant="outline">
+          <Button onClick={() => setIsAdding(true)} className="w-full h-7 text-xs" variant="outline">
             <Plus className="h-3 w-3 mr-1" />
             Ajouter
           </Button>

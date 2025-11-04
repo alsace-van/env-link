@@ -222,12 +222,12 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   const remaining = totalSales - totalPaid;
 
   return (
-    <Card className="max-w-lg">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Paiements</CardTitle>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Paiements</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="space-y-1 text-xs border-b pb-2">
+      <CardContent className="space-y-1.5">
+        <div className="space-y-0.5 text-xs border-b pb-1.5">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Total ventes TTC:</span>
             <span className="font-semibold">{totalSales.toFixed(2)} €</span>
@@ -236,7 +236,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
             <span className="text-muted-foreground">Total payé:</span>
             <span className="font-semibold text-green-600">{totalPaid.toFixed(2)} €</span>
           </div>
-          <div className="flex justify-between text-sm font-bold pt-1 border-t">
+          <div className="flex justify-between text-xs font-bold pt-0.5 border-t">
             <span>Reste:</span>
             <span className={remaining <= 0 ? "text-green-600" : "text-primary"}>
               {remaining.toFixed(2)} €
@@ -245,9 +245,9 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
         </div>
 
         {transactions.length > 0 && (
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between py-1 px-2 hover:bg-muted/50 rounded text-xs border-b">
+              <div key={transaction.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-xs border-b">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1">
                     <span className={transaction.type_paiement === "acompte" ? "text-orange-600 font-medium" : "text-blue-600 font-medium"}>

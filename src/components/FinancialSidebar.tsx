@@ -23,13 +23,13 @@ export const FinancialSidebar = ({
 }: FinancialSidebarProps) => {
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-[450px] sm:w-[500px] sm:max-w-[500px]">
+      <SheetContent side="right" className="w-[360px] sm:w-[400px] sm:max-w-[400px]">
         <SheetHeader>
-          <SheetTitle>Gestion Financière - {projectName}</SheetTitle>
+          <SheetTitle className="text-base">Gestion Financière - {projectName}</SheetTitle>
         </SheetHeader>
         
-        <ScrollArea className="h-[calc(100vh-80px)] pr-4">
-          <div className="space-y-6 mt-4">
+        <ScrollArea className="h-[calc(100vh-80px)] pr-3">
+          <div className="space-y-4 mt-3">
             <PaymentTransactions 
               currentProjectId={projectId}
               totalSales={totalSales}

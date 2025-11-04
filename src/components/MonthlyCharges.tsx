@@ -138,15 +138,15 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
   const totalCharges = charges.reduce((sum, charge) => sum + charge.montant, 0);
 
   return (
-    <Card className="max-w-md">
+    <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">Charges Mensuelles</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-1.5">
         {charges.length > 0 && (
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {charges.map((charge) => (
-              <div key={charge.id} className="flex items-center justify-between py-1 px-2 hover:bg-muted/50 rounded text-xs border-b">
+              <div key={charge.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-xs border-b">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{charge.nom_charge}</div>
                   <div className="text-muted-foreground">
@@ -176,7 +176,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
                 </div>
               </div>
             ))}
-            <div className="flex justify-between pt-2 border-t-2 font-bold text-xs">
+            <div className="flex justify-between pt-1.5 border-t-2 font-bold text-xs">
               <span>Total :</span>
               <span className="text-destructive">{totalCharges.toFixed(2)} €</span>
             </div>
@@ -184,7 +184,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
         )}
 
         {!isAdding ? (
-          <Button onClick={() => setIsAdding(true)} className="w-full h-8 text-xs" variant="outline">
+          <Button onClick={() => setIsAdding(true)} className="w-full h-7 text-xs" variant="outline">
             <Plus className="h-3 w-3 mr-1" />
             Ajouter
           </Button>
