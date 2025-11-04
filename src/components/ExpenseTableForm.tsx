@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Save, X, Upload, FileText, Trash2 } from "lucide-react";
+import { Plus, Save, X, Upload, FileText, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 interface ExpenseTableFormProps {
@@ -70,7 +70,13 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const removeRow = (id: string) => {
-    setRows(rows.filter((row) => row.id !== id));
+    const filteredRows = rows.filter((row) => row.id !== id);
+    // S'assurer qu'il reste toujours au moins une ligne vide
+    if (filteredRows.length === 0) {
+      addNewRow();
+    } else {
+      setRows(filteredRows);
+    }
   };
 
   const updateRow = (id: string, field: keyof ExpenseRow, value: string | File) => {
@@ -105,6 +111,12 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   const removeInvoice = (rowId: string) => {
     setRows(rows.map((row) => (row.id === rowId ? { ...row, facture_file: undefined, facture_url: undefined } : row)));
+  };
+
+  const resetTable = () => {
+    setRows([]);
+    // Ajouter une ligne vide immédiatement après
+    setTimeout(() => addNewRow(), 0);
   };
 
   const saveRows = async () => {
@@ -479,6 +491,10 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         </div>
 
         <div className="flex gap-2 mt-4">
+          <Button onClick={resetTable} variant="outline" size="sm" disabled={rows.length === 0}>
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Réinitialiser
+          </Button>
           <Button onClick={saveRows} size="sm" disabled={rows.length === 0}>
             <Save className="h-4 w-4 mr-2" />
             Enregistrer tout ({rows.length})
