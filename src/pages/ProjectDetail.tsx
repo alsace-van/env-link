@@ -284,10 +284,8 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
 
     return (
       <div
-        className={`p-2 rounded-md border transition-all cursor-pointer ${
-          isCurrentHour
-            ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-950/50"
-            : "border-border hover:bg-accent hover:border-accent-foreground/20"
+        className={`p-2 rounded-md border transition-all cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 dark:hover:border-blue-700 ${
+          isCurrentHour ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700" : "border-border"
         }`}
       >
         <div className="flex items-start gap-2">
