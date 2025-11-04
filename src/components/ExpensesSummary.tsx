@@ -133,43 +133,43 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle>
-              <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>Total Achats (HT)</span>
+              <span style={{ fontSize: "12px", fontWeight: "600", display: "block" }}>Total Achats (HT)</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
+          <CardContent className="pb-3">
+            <div className="text-xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle>
-              <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>Total Ventes (TTC)</span>
+              <span style={{ fontSize: "12px", fontWeight: "600", display: "block" }}>Total Ventes (TTC)</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
+          <CardContent className="pb-3">
+            <div className="text-xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle>
-              <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>Marge Nette (HT)</span>
+              <span style={{ fontSize: "12px", fontWeight: "600", display: "block" }}>Marge Nette (HT)</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
+          <CardContent className="pb-3">
+            <div className="text-xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
             {totalExpenses > 0 && (
-              <div className="text-sm text-muted-foreground mt-1">
+              <div className="text-xs text-muted-foreground mt-1">
                 {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
               </div>
             )}
-            <div className="text-xs text-muted-foreground mt-2">TVA 20% déduite</div>
+            <div className="text-xs text-muted-foreground mt-1">TVA 20% déduite</div>
           </CardContent>
         </Card>
       </div>
