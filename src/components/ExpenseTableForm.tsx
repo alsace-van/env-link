@@ -286,8 +286,19 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       return;
     }
 
-    // Add parsed rows to existing rows
-    setRows([...rows, ...newRows]);
+    // Check if first row is empty (only default values)
+    const isFirstRowEmpty = rows.length === 1 && 
+      !rows[0].nom_accessoire && 
+      !rows[0].fournisseur && 
+      !rows[0].prix_vente_ttc;
+
+    // Replace empty first row or add to existing rows
+    if (isFirstRowEmpty) {
+      setRows(newRows);
+    } else {
+      setRows([...rows, ...newRows]);
+    }
+    
     toast.success(`${newRows.length} ligne(s) ajoutée(s) depuis Excel`);
   };
 
