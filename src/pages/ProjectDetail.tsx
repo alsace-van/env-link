@@ -1271,8 +1271,8 @@ const ProjectDetail = () => {
             {/* Contenu scrollable - ExpensesSummary */}
             <div className="flex-1 overflow-y-auto p-4">
               <ExpensesSummary 
-                currentProjectId={project.id} 
-                onPaymentChange={() => setExpenseRefresh(prev => prev + 1)}
+                projectId={project.id} 
+                refreshTrigger={expenseRefresh}
               />
             </div>
           </div>
