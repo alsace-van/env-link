@@ -244,7 +244,7 @@ const CustomKitConfigDialog = ({
     setCategoryInstances((prev) => prev.filter((inst) => inst.id !== instanceId));
   };
 
-  const updateInstanceAccessory = (instanceId: string, accessoryId: string) => {
+  const updateInstanceAccessory = (instanceId: string, accessoryId: string | undefined) => {
     setCategoryInstances((prev) =>
       prev.map((inst) =>
         inst.id === instanceId
@@ -253,6 +253,7 @@ const CustomKitConfigDialog = ({
               accessoryId,
               quantity: 1,
               selectedOptions: [],
+              color: undefined, // Reset color when changing accessory
             }
           : inst,
       ),
@@ -467,15 +468,17 @@ const CustomKitConfigDialog = ({
                                     <div className="space-y-1">
                                       <Label className="text-xs">Accessoire</Label>
                                       <Select
-                                        value={instance.accessoryId || ""}
-                                        onValueChange={(value) => updateInstanceAccessory(instance.id, value)}
+                                        value={instance.accessoryId || "none"}
+                                        onValueChange={(value) =>
+                                          updateInstanceAccessory(instance.id, value === "none" ? undefined : value)
+                                        }
                                       >
                                         <SelectTrigger>
                                           <SelectValue placeholder="Sélectionner un accessoire..." />
                                         </SelectTrigger>
                                         <SelectContent className="max-w-[400px]">
-                                          {/* Option vide pour désélectionner */}
-                                          <SelectItem value="">-</SelectItem>
+                                          {/* Option pour désélectionner */}
+                                          <SelectItem value="none">-</SelectItem>
                                           {categoryAccessories.map((accessory) => (
                                             <SelectItem
                                               key={accessory.id}
