@@ -2,6 +2,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import PaymentTransactions from "@/components/PaymentTransactions";
 import { MonthlyCharges } from "@/components/MonthlyCharges";
 import { InstallmentPayments } from "@/components/InstallmentPayments";
+import { AnnualCharts } from "@/components/AnnualCharts";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface FinancialSidebarProps {
@@ -39,6 +40,8 @@ export const FinancialSidebar = ({
             <MonthlyCharges projectId={projectId} />
 
             <InstallmentPayments projectId={projectId} />
+
+            <AnnualCharts projectId={projectId} />
           </div>
         </ScrollArea>
       </SheetContent>
