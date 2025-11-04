@@ -34,6 +34,10 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   useEffect(() => {
     loadFournisseurs();
+    // Ajouter une ligne vide au démarrage pour permettre la saisie immédiate
+    if (rows.length === 0) {
+      addNewRow();
+    }
   }, [projectId]);
 
   const loadFournisseurs = async () => {
@@ -70,7 +74,23 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const updateRow = (id: string, field: keyof ExpenseRow, value: string | File) => {
-    setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
+    const updatedRows = rows.map((row) => (row.id === id ? { ...row, [field]: value } : row));
+    setRows(updatedRows);
+
+    // Vérifier si la dernière ligne a été modifiée et contient des données
+    const lastRow = updatedRows[updatedRows.length - 1];
+    if (lastRow && lastRow.id === id) {
+      // Si on modifie la dernière ligne et qu'elle a au moins un champ rempli, ajouter une nouvelle ligne vide
+      const hasData =
+        lastRow.nom_accessoire.trim() !== "" ||
+        lastRow.fournisseur.trim() !== "" ||
+        lastRow.prix_vente_ttc.trim() !== "";
+
+      if (hasData) {
+        // Vérifier qu'il n'y a pas déjà une ligne vide à la fin
+        addNewRow();
+      }
+    }
   };
 
   const handleFileSelect = async (rowId: string, file: File | null) => {
@@ -305,22 +325,22 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       </CardHeader>
       <CardContent>
         <div
-          className="border rounded-lg overflow-x-auto bg-background"
+          className="border-2 border-gray-400 rounded-lg overflow-x-auto bg-background"
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           tabIndex={0}
         >
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/80">
-                <TableHead className="min-w-[180px] font-semibold border-r">Nom</TableHead>
-                <TableHead className="min-w-[140px] font-semibold border-r">Fournisseur</TableHead>
-                <TableHead className="min-w-[150px] font-semibold border-r">Date dépense</TableHead>
-                <TableHead className="min-w-[150px] font-semibold border-r">Date paiement</TableHead>
-                <TableHead className="min-w-[120px] font-semibold border-r">Statut</TableHead>
-                <TableHead className="min-w-[130px] font-semibold border-r">Délai</TableHead>
-                <TableHead className="min-w-[100px] font-semibold border-r">Montant TTC</TableHead>
-                <TableHead className="min-w-[100px] font-semibold border-r">Facture</TableHead>
+              <TableRow className="bg-muted/80 border-b-2 border-gray-400">
+                <TableHead className="min-w-[180px] font-semibold border-r-2 border-gray-400">Nom</TableHead>
+                <TableHead className="min-w-[140px] font-semibold border-r-2 border-gray-400">Fournisseur</TableHead>
+                <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">Date dépense</TableHead>
+                <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">Date paiement</TableHead>
+                <TableHead className="min-w-[120px] font-semibold border-r-2 border-gray-400">Statut</TableHead>
+                <TableHead className="min-w-[130px] font-semibold border-r-2 border-gray-400">Délai</TableHead>
+                <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Montant TTC</TableHead>
+                <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Facture</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -328,13 +348,13 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                    Cliquez ici et collez vos données (Ctrl+V ou Cmd+V)
+                    Commencez à saisir dans les champs ci-dessus ou collez vos données (Ctrl+V ou Cmd+V)
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="border-r">
+                  <TableRow key={row.id} className="border-b border-gray-300">
+                    <TableCell className="border-r-2 border-gray-300">
                       <Input
                         value={row.nom_accessoire}
                         onChange={(e) => updateRow(row.id, "nom_accessoire", e.target.value)}
@@ -342,7 +362,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell className="border-r">
+                    <TableCell className="border-r-2 border-gray-300">
                       <Input
                         value={row.fournisseur}
                         onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
@@ -356,7 +376,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         ))}
                       </datalist>
                     </TableCell>
-                    <TableCell className="border-r">
+                    <TableCell className="border-r-2 border-gray-300">
                       <Input
                         type="datetime-local"
                         value={row.date_achat}
@@ -364,7 +384,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell className="border-r">
+                    <TableCell className="border-r-2 border-gray-300">
                       <Input
                         type="datetime-local"
                         value={row.date_paiement}
@@ -372,7 +392,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell className="border-r">
+                    <TableCell className="border-r-2 border-gray-300">
                       <Select
                         value={row.statut_paiement}
                         onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
@@ -386,7 +406,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell className="border-r">
+                    <TableCell className="border-r-2 border-gray-300">
                       <Select
                         value={row.delai_paiement}
                         onValueChange={(value) => updateRow(row.id, "delai_paiement", value)}
@@ -400,7 +420,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell className="border-r">
+                    <TableCell className="border-r-2 border-gray-300">
                       <Input
                         type="number"
                         step="0.01"
@@ -411,7 +431,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell className="border-r">
+                    <TableCell className="border-r-2 border-gray-300">
                       <div className="flex items-center gap-1">
                         {row.facture_file || row.facture_url ? (
                           <div className="flex items-center gap-1">
@@ -459,10 +479,6 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         </div>
 
         <div className="flex gap-2 mt-4">
-          <Button onClick={addNewRow} variant="outline" size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter une ligne
-          </Button>
           <Button onClick={saveRows} size="sm" disabled={rows.length === 0}>
             <Save className="h-4 w-4 mr-2" />
             Enregistrer tout ({rows.length})
