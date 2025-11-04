@@ -124,19 +124,56 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   };
 
   const loadTotalSales = async () => {
+    // Récupérer tous les projets de l'utilisateur
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const { data: projectsData, error: projectsError } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("user_id", userData.user.id);
+
+    if (projectsError) {
+      console.error("Error loading projects:", projectsError);
+      return;
+    }
+
+    const projectIds = (projectsData || []).map(p => p.id);
+
+    // Charger les dépenses de TOUS les projets avec leurs prix de vente TTC
     const { data, error } = await supabase
       .from("project_expenses")
-      .select("prix_vente_ttc, quantite")
-      .eq("project_id", projectId);
+      .select("id, prix_vente_ttc, quantite")
+      .in("project_id", projectIds);
 
     if (error) {
       console.error("Error loading total sales:", error);
       return;
     }
 
-    const total = (data || []).reduce((sum, item) => {
+    // Calculer le total des accessoires principaux
+    let total = (data || []).reduce((sum, item) => {
       return sum + (item.prix_vente_ttc || 0) * item.quantite;
     }, 0);
+
+    // Ajouter le prix des options sélectionnées pour chaque dépense
+    for (const expense of (data || [])) {
+      const { data: selectedOptions } = await supabase
+        .from("expense_selected_options")
+        .select(`
+          accessory_options!inner(
+            prix_vente_ttc
+          )
+        `)
+        .eq("expense_id", expense.id);
+
+      if (selectedOptions && selectedOptions.length > 0) {
+        const optionsTotal = selectedOptions.reduce((sum, opt: any) => {
+          return sum + (opt.accessory_options?.prix_vente_ttc || 0);
+        }, 0);
+        total += optionsTotal * expense.quantite;
+      }
+    }
 
     setTotalSales(total);
   };
