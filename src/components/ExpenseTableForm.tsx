@@ -100,7 +100,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         return;
       }
       if (!row.fournisseur.trim()) {
-        toast.error("Le fournisseur est requis pour toutes les dépenses fournisseurs");
+        toast.error("Le fournisseur est requis pour toutes les factures fournisseurs");
         return;
       }
       if (!row.prix_vente_ttc || parseFloat(row.prix_vente_ttc) <= 0) {
@@ -305,7 +305,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ajouter des dépenses fournisseurs</CardTitle>
+        <CardTitle>Ajouter des factures fournisseurs</CardTitle>
         <p className="text-sm text-muted-foreground mt-1">
           💡 Astuce : Vous pouvez coller directement depuis Excel (Ctrl+V / Cmd+V)
         </p>
