@@ -116,17 +116,16 @@ const AgendaWidget = ({ projectId, onClick, onDoubleClick }: AgendaWidgetProps) 
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date());
-    }, 60000); // Mise à jour toutes les minutes
+    }, 10000); // Mise à jour toutes les 10 secondes pour plus de précision
     return () => clearInterval(interval);
   }, []);
 
   // Récupérer les événements du jour
-  const today = new Date();
   const todayEvents = [
-    ...todos.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), today)),
-    ...appointments.filter((a) => a.appointment_date && isSameDay(parseISO(a.appointment_date), today)),
-    ...supplierExpenses.filter((e) => e.order_date && isSameDay(parseISO(e.order_date), today)),
-    ...accessoryDeliveries.filter((d) => d.delivery_date && isSameDay(parseISO(d.delivery_date), today)),
+    ...todos.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), currentTime)),
+    ...appointments.filter((a) => a.appointment_date && isSameDay(parseISO(a.appointment_date), currentTime)),
+    ...supplierExpenses.filter((e) => e.order_date && isSameDay(parseISO(e.order_date), currentTime)),
+    ...accessoryDeliveries.filter((d) => d.delivery_date && isSameDay(parseISO(d.delivery_date), currentTime)),
   ].slice(0, 2); // Max 2 événements
 
   return (
@@ -213,15 +212,26 @@ interface CalendarDropdownProps {
 const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps) => {
   const { todos, appointments, supplierExpenses, accessoryDeliveries, setCurrentProjectId } = useProjectData();
   const [currentDate] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     setCurrentProjectId(projectId);
   }, [projectId, setCurrentProjectId]);
 
+  // Mise à jour de l'heure actuelle toutes les 10 secondes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   // Récupérer les événements du jour pour chaque heure
-  const today = new Date();
   const leftColumnHours = [8, 9, 10, 11, 12, 13, 14]; // 8h-14h
   const rightColumnHours = [15, 16, 17, 18, 19, 20, 21]; // 15h-21h
 
@@ -233,7 +243,7 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
       .filter((t) => {
         if (!t.due_date) return false;
         const date = parseISO(t.due_date);
-        return isSameDay(date, today) && date.getHours() === hour;
+        return isSameDay(date, currentTime) && date.getHours() === hour;
       })
       .forEach((t) => events.push({ ...t, type: "todo" }));
 
@@ -242,7 +252,7 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
       .filter((a) => {
         if (!a.appointment_date) return false;
         const date = parseISO(a.appointment_date);
-        return isSameDay(date, today) && date.getHours() === hour;
+        return isSameDay(date, currentTime) && date.getHours() === hour;
       })
       .forEach((a) => events.push({ ...a, type: "appointment" }));
 
@@ -251,7 +261,7 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
       .filter((e) => {
         if (!e.order_date) return false;
         const date = parseISO(e.order_date);
-        return isSameDay(date, today) && date.getHours() === hour;
+        return isSameDay(date, currentTime) && date.getHours() === hour;
       })
       .forEach((e) => events.push({ ...e, type: "expense" }));
 
@@ -260,7 +270,7 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
       .filter((d) => {
         if (!d.delivery_date) return false;
         const date = parseISO(d.delivery_date);
-        return isSameDay(date, today) && date.getHours() === hour;
+        return isSameDay(date, currentTime) && date.getHours() === hour;
       })
       .forEach((d) => events.push({ ...d, type: "delivery" }));
 
@@ -269,13 +279,15 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
 
   const HourCell = ({ hour }: { hour: number }) => {
     const events = getEventsForHour(hour);
-    const currentHour = new Date().getHours();
-    const isCurrentHour = hour === currentHour && isSameDay(today, new Date());
+    const currentHour = currentTime.getHours();
+    const isCurrentHour = hour === currentHour && isSameDay(currentTime, new Date());
 
     return (
       <div
-        className={`p-2 rounded-md border ${
-          isCurrentHour ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700" : "border-border"
+        className={`p-2 rounded-md border transition-all cursor-pointer ${
+          isCurrentHour
+            ? "bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-950/50"
+            : "border-border hover:bg-accent hover:border-accent-foreground/20"
         }`}
       >
         <div className="flex items-start gap-2">
@@ -1162,7 +1174,10 @@ const ProjectDetail = () => {
                     </TabsContent>
 
                     <TabsContent value="bilan" className="mt-4">
-                      <BilanComptable projectId={project.id} projectName={project.nom_projet || project.nom_proprietaire} />
+                      <BilanComptable
+                        projectId={project.id}
+                        projectName={project.nom_projet || project.nom_proprietaire}
+                      />
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -1270,10 +1285,7 @@ const ProjectDetail = () => {
 
             {/* Contenu scrollable - ExpensesSummary */}
             <div className="flex-1 overflow-y-auto p-4">
-              <ExpensesSummary 
-                projectId={project.id} 
-                refreshTrigger={expenseRefresh}
-              />
+              <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
             </div>
           </div>
         </>
