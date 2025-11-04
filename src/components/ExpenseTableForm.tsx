@@ -114,19 +114,32 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const resetTable = () => {
-    setRows([]);
-    // Ajouter une ligne vide immédiatement après
-    setTimeout(() => addNewRow(), 0);
+    setRows([
+      {
+        id: crypto.randomUUID(),
+        nom_accessoire: "",
+        fournisseur: "",
+        date_achat: new Date().toISOString().slice(0, 16),
+        date_paiement: "",
+        statut_paiement: "non_paye",
+        delai_paiement: "commande",
+        prix_vente_ttc: "",
+      },
+    ]);
+    toast.success("Tableau réinitialisé");
   };
 
   const saveRows = async () => {
-    if (rows.length === 0) {
+    // Filtrer les lignes vides
+    const rowsToSave = rows.filter((row) => row.nom_accessoire.trim() || row.fournisseur.trim() || row.prix_vente_ttc);
+
+    if (rowsToSave.length === 0) {
       toast.error("Aucune ligne à enregistrer");
       return;
     }
 
     // Validation
-    for (const row of rows) {
+    for (const row of rowsToSave) {
       if (!row.nom_accessoire.trim()) {
         toast.error("Le nom de la dépense est requis pour toutes les lignes");
         return;
@@ -151,7 +164,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
     // Upload invoices first
     const rowsWithUrls = await Promise.all(
-      rows.map(async (row) => {
+      rowsToSave.map(async (row) => {
         if (row.facture_file) {
           const fileExt = row.facture_file.name.split(".").pop();
           const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -201,8 +214,20 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       toast.error("Erreur lors de l'enregistrement des dépenses");
       console.error(error);
     } else {
-      toast.success(`${rows.length} dépense(s) ajoutée(s) avec succès`);
-      setRows([]);
+      toast.success(`${rowsToSave.length} dépense(s) ajoutée(s) avec succès`);
+      // Réinitialiser avec une ligne vide
+      setRows([
+        {
+          id: crypto.randomUUID(),
+          nom_accessoire: "",
+          fournisseur: "",
+          date_achat: new Date().toISOString().slice(0, 16),
+          date_paiement: "",
+          statut_paiement: "non_paye",
+          delai_paiement: "commande",
+          prix_vente_ttc: "",
+        },
+      ]);
       onSuccess();
     }
   };
@@ -491,13 +516,23 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         </div>
 
         <div className="flex gap-2 mt-4">
-          <Button onClick={resetTable} variant="outline" size="sm" disabled={rows.length === 0}>
+          <Button
+            onClick={resetTable}
+            variant="outline"
+            size="sm"
+            disabled={rows.length === 1 && !rows[0].nom_accessoire && !rows[0].fournisseur && !rows[0].prix_vente_ttc}
+          >
             <RotateCcw className="h-4 w-4 mr-2" />
             Réinitialiser
           </Button>
-          <Button onClick={saveRows} size="sm" disabled={rows.length === 0}>
+          <Button
+            onClick={saveRows}
+            size="sm"
+            disabled={rows.every((row) => !row.nom_accessoire && !row.fournisseur && !row.prix_vente_ttc)}
+          >
             <Save className="h-4 w-4 mr-2" />
-            Enregistrer tout ({rows.length})
+            Enregistrer tout ({rows.filter((row) => row.nom_accessoire || row.fournisseur || row.prix_vente_ttc).length}
+            )
           </Button>
         </div>
       </CardContent>
