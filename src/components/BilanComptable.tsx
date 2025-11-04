@@ -4,8 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Edit, Plus, Euro, FileText, Pencil } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Edit, Plus, Euro, FileText, Pencil, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import ExpenseTableForm from "@/components/ExpenseTableForm";
@@ -52,6 +59,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isEditBalanceOpen, setIsEditBalanceOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isBankBalanceExpanded, setIsBankBalanceExpanded] = useState(false);
   const [balanceForm, setBalanceForm] = useState({
     solde_depart: "",
     date_heure_depart: "",
@@ -138,7 +146,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       return;
     }
 
-    const projectIds = (projectsData || []).map(p => p.id);
+    const projectIds = (projectsData || []).map((p) => p.id);
 
     // Charger les dépenses de TOUS les projets avec leurs prix de vente TTC
     const { data, error } = await supabase
@@ -157,14 +165,16 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     }, 0);
 
     // Ajouter le prix des options sélectionnées pour chaque dépense
-    for (const expense of (data || [])) {
+    for (const expense of data || []) {
       const { data: selectedOptions } = await supabase
         .from("expense_selected_options")
-        .select(`
+        .select(
+          `
           accessory_options!inner(
             prix_vente_ttc
           )
-        `)
+        `,
+        )
         .eq("expense_id", expense.id);
 
       if (selectedOptions && selectedOptions.length > 0) {
@@ -191,10 +201,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     };
 
     if (bankBalance) {
-      const { error } = await supabase
-        .from("project_bank_balance")
-        .update(balanceData)
-        .eq("id", bankBalance.id);
+      const { error } = await supabase.from("project_bank_balance").update(balanceData).eq("id", bankBalance.id);
 
       if (error) {
         toast.error("Erreur lors de la mise à jour");
@@ -202,9 +209,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         return;
       }
     } else {
-      const { error } = await supabase
-        .from("project_bank_balance")
-        .insert([balanceData]);
+      const { error } = await supabase.from("project_bank_balance").insert([balanceData]);
 
       if (error) {
         toast.error("Erreur lors de la création");
@@ -230,14 +235,14 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   const openEditExpense = (expense: Expense) => {
     setEditingExpense(expense);
-    
+
     // Format dates for datetime-local inputs
     const formatDateForInput = (dateStr: string | undefined) => {
       if (!dateStr) return "";
       const date = new Date(dateStr);
       return date.toISOString().slice(0, 16);
     };
-    
+
     setExpenseForm({
       nom_accessoire: expense.nom_accessoire,
       fournisseur: expense.fournisseur || "",
@@ -289,7 +294,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   const now = new Date();
 
-  // Calculer le solde actuel : 
+  // Calculer le solde actuel :
   // Solde de départ + Paiements déjà effectués - Dépenses déjà payées
   const paidPayments = bankBalance
     ? payments.filter((payment) => {
@@ -297,7 +302,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         return paymentDate >= new Date(bankBalance.date_heure_depart) && paymentDate <= now;
       })
     : [];
-  
+
   const paidExpenses = filteredExpenses.reduce((sum, exp) => {
     // Déduire uniquement les dépenses déjà payées ET dont la date d'achat est après le solde de départ
     if (exp.statut_paiement === "paye" && exp.date_achat && bankBalance) {
@@ -311,9 +316,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   }, 0);
 
   const totalPaidPayments = paidPayments.reduce((sum, pay) => sum + pay.montant, 0);
-  const currentBalance = bankBalance
-    ? bankBalance.solde_depart + totalPaidPayments - paidExpenses
-    : 0;
+  const currentBalance = bankBalance ? bankBalance.solde_depart + totalPaidPayments - paidExpenses : 0;
 
   // Calculer le prévisionnel fin de mois
   const monthStart = startOfMonth(now);
@@ -332,10 +335,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     const paymentDate = new Date(exp.date_paiement);
     return paymentDate >= monthStart && paymentDate <= monthEnd;
   });
-  const totalUnpaidExpensesThisMonth = unpaidExpensesThisMonth.reduce(
-    (sum, exp) => sum + exp.prix * exp.quantite,
-    0
-  );
+  const totalUnpaidExpensesThisMonth = unpaidExpensesThisMonth.reduce((sum, exp) => sum + exp.prix * exp.quantite, 0);
 
   const forecastEndOfMonth = currentBalance + totalExpectedPayments - totalUnpaidExpensesThisMonth;
 
@@ -347,8 +347,8 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   return (
     <div className="space-y-6">
       {/* Bouton flottant Gestion Financière */}
-      <Button 
-        onClick={() => setIsSidebarOpen(true)} 
+      <Button
+        onClick={() => setIsSidebarOpen(true)}
         size="icon"
         className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
         title="Gestion Financière"
@@ -364,50 +364,84 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
               {/* En-tête et bouton */}
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold">Solde Bancaire</h3>
-                <Button onClick={openEditBalance} variant="ghost" size="sm" className="h-7 text-xs">
-                  <Edit className="h-3 w-3 mr-1" />
-                  Modifier
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    onClick={() => setIsBankBalanceExpanded(!isBankBalanceExpanded)}
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    {isBankBalanceExpanded ? (
+                      <>
+                        <ChevronUp className="h-3 w-3 mr-1" />
+                        Réduire
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-3 w-3 mr-1" />
+                        Détails
+                      </>
+                    )}
+                  </Button>
+                  <Button onClick={openEditBalance} variant="ghost" size="sm" className="h-7 text-xs">
+                    <Edit className="h-3 w-3 mr-1" />
+                    Modifier
+                  </Button>
+                </div>
               </div>
-              
-              {/* Ligne 1 : Soldes principaux */}
-              <div className="grid grid-cols-3 gap-4 py-2 border-b">
+
+              {/* Ligne compacte : Soldes principaux (toujours visible) */}
+              <div className="grid grid-cols-3 gap-4 py-2">
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-0.5">Solde de départ</p>
-                  <p className="text-base font-bold text-primary">{bankBalance.solde_depart.toFixed(2)} €</p>
-                  <p className="text-[9px] text-muted-foreground">Au {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}</p>
+                  <p className="text-lg font-bold text-primary">{bankBalance.solde_depart.toFixed(2)} €</p>
+                  <p className="text-[9px] text-muted-foreground">
+                    Au {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-0.5">Solde actuel</p>
-                  <p className={`text-base font-bold ${currentBalance >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  <p className={`text-lg font-bold ${currentBalance >= 0 ? "text-green-600" : "text-destructive"}`}>
                     {currentBalance.toFixed(2)} €
                   </p>
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground mb-0.5">Variation</p>
-                  <p className={`text-base font-bold ${(currentBalance - bankBalance.solde_depart) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                    {(currentBalance - bankBalance.solde_depart >= 0 ? '+' : '')}
+                  <p
+                    className={`text-lg font-bold ${currentBalance - bankBalance.solde_depart >= 0 ? "text-green-600" : "text-destructive"}`}
+                  >
+                    {currentBalance - bankBalance.solde_depart >= 0 ? "+" : ""}
                     {(currentBalance - bankBalance.solde_depart).toFixed(2)} €
                   </p>
                 </div>
               </div>
-              
-              {/* Ligne 2 : Prévisionnel */}
-              <div className="flex items-center justify-between py-1">
-                <div className="flex items-center gap-4 text-[10px]">
-                  <span className="text-muted-foreground font-medium">Prévisionnel fin de mois ({format(monthEnd, "dd/MM/yyyy")}):</span>
-                  <span className="text-muted-foreground">Paiements à venir</span>
-                  <span className="font-semibold text-green-600">+{totalExpectedPayments.toFixed(2)} €</span>
-                  <span className="text-muted-foreground">Dépenses à payer</span>
-                  <span className="font-semibold text-destructive">-{totalUnpaidExpensesThisMonth.toFixed(2)} €</span>
+
+              {/* Section dépliable : Prévisionnel */}
+              {isBankBalanceExpanded && (
+                <div className="border-t pt-2 mt-2">
+                  <div className="flex items-center justify-between py-1">
+                    <div className="flex items-center gap-4 text-[10px]">
+                      <span className="text-muted-foreground font-medium">
+                        Prévisionnel fin de mois ({format(monthEnd, "dd/MM/yyyy")}):
+                      </span>
+                      <span className="text-muted-foreground">Paiements à venir</span>
+                      <span className="font-semibold text-green-600">+{totalExpectedPayments.toFixed(2)} €</span>
+                      <span className="text-muted-foreground">Dépenses à payer</span>
+                      <span className="font-semibold text-destructive">
+                        -{totalUnpaidExpensesThisMonth.toFixed(2)} €
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-muted-foreground mb-0.5">Solde prévisionnel</p>
+                      <p
+                        className={`text-base font-bold ${forecastEndOfMonth >= 0 ? "text-green-600" : "text-destructive"}`}
+                      >
+                        {forecastEndOfMonth.toFixed(2)} €
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-muted-foreground mb-0.5">Solde prévisionnel</p>
-                  <p className={`text-base font-bold ${forecastEndOfMonth >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                    {forecastEndOfMonth.toFixed(2)} €
-                  </p>
-                </div>
-              </div>
+              )}
             </>
           ) : (
             <div className="flex items-center justify-between py-2">
@@ -430,7 +464,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
           projectId={projectId}
           onSuccess={() => {
             loadExpenses();
-            setPaymentRefresh(prev => prev + 1);
+            setPaymentRefresh((prev) => prev + 1);
           }}
         />
       )}
@@ -465,15 +499,11 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                     <tbody>
                       {filteredExpenses.map((expense) => (
                         <tr key={expense.id} className="border-b hover:bg-muted/50">
-                           <td className="py-2 px-2">
-                            {expense.date_achat
-                              ? format(new Date(expense.date_achat), "dd/MM/yyyy HH:mm")
-                              : "-"}
+                          <td className="py-2 px-2">
+                            {expense.date_achat ? format(new Date(expense.date_achat), "dd/MM/yyyy HH:mm") : "-"}
                           </td>
                           <td className="py-2 px-2 font-medium">{expense.nom_accessoire}</td>
-                          <td className="py-2 px-2 text-muted-foreground">
-                            {expense.fournisseur || "-"}
-                          </td>
+                          <td className="py-2 px-2 text-muted-foreground">{expense.fournisseur || "-"}</td>
                           <td className="py-2 px-2 text-right">{expense.quantite}</td>
                           <td className="py-2 px-2 text-right">{expense.prix.toFixed(2)} €</td>
                           <td className="py-2 px-2 text-right font-medium">
@@ -485,15 +515,15 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                                 expense.statut_paiement === "paye"
                                   ? "bg-green-100 text-green-800"
                                   : expense.statut_paiement === "acompte"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : "bg-red-100 text-red-800"
+                                    ? "bg-yellow-100 text-yellow-800"
+                                    : "bg-red-100 text-red-800"
                               }`}
                             >
                               {expense.statut_paiement === "paye"
                                 ? "Payé"
                                 : expense.statut_paiement === "acompte"
-                                ? "Acompte"
-                                : "Non payé"}
+                                  ? "Acompte"
+                                  : "Non payé"}
                             </span>
                           </td>
                           <td className="py-2 px-2 text-center">
@@ -528,9 +558,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                         <td colSpan={6} className="py-3 px-2 text-right">
                           Total des dépenses :
                         </td>
-                        <td className="py-3 px-2 text-right text-destructive">
-                          -{totalExpenses.toFixed(2)} €
-                        </td>
+                        <td className="py-3 px-2 text-right text-destructive">-{totalExpenses.toFixed(2)} €</td>
                         <td></td>
                       </tr>
                     </tfoot>
@@ -552,7 +580,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         projectName={projectName}
         totalSales={totalSales}
         onPaymentChange={() => {
-          setPaymentRefresh(prev => prev + 1);
+          setPaymentRefresh((prev) => prev + 1);
           loadPayments();
           loadBankBalance();
         }}
@@ -562,12 +590,8 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       <Dialog open={isEditBalanceOpen} onOpenChange={setIsEditBalanceOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {bankBalance ? "Modifier le solde bancaire" : "Définir le solde bancaire"}
-            </DialogTitle>
-            <DialogDescription>
-              Définissez le solde bancaire de départ et la date de référence
-            </DialogDescription>
+            <DialogTitle>{bankBalance ? "Modifier le solde bancaire" : "Définir le solde bancaire"}</DialogTitle>
+            <DialogDescription>Définissez le solde bancaire de départ et la date de référence</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -577,9 +601,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                 type="number"
                 step="0.01"
                 value={balanceForm.solde_depart}
-                onChange={(e) =>
-                  setBalanceForm({ ...balanceForm, solde_depart: e.target.value })
-                }
+                onChange={(e) => setBalanceForm({ ...balanceForm, solde_depart: e.target.value })}
                 placeholder="0.00"
               />
             </div>
@@ -589,9 +611,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                 id="date_heure_depart"
                 type="datetime-local"
                 value={balanceForm.date_heure_depart}
-                onChange={(e) =>
-                  setBalanceForm({ ...balanceForm, date_heure_depart: e.target.value })
-                }
+                onChange={(e) => setBalanceForm({ ...balanceForm, date_heure_depart: e.target.value })}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -609,9 +629,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modifier la dépense</DialogTitle>
-            <DialogDescription>
-              Modifiez les informations de cette dépense fournisseur
-            </DialogDescription>
+            <DialogDescription>Modifiez les informations de cette dépense fournisseur</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
