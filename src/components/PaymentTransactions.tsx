@@ -222,9 +222,9 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   const remaining = totalSales - totalPaid;
 
   return (
-    <Card className="max-w-md">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Paiements</CardTitle>
+    <Card className="max-w-lg">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Paiements</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="space-y-1 text-xs border-b pb-2">
