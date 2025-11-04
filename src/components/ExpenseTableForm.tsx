@@ -175,11 +175,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     }
   };
 
-  useEffect(() => {
-    if (rows.length === 0) {
-      addNewRow();
-    }
-  }, []);
+  // Removed automatic row creation on mount to show empty table with headers
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -286,18 +282,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       return;
     }
 
-    // Check if first row is empty (only default values)
-    const isFirstRowEmpty = rows.length === 1 && 
-      !rows[0].nom_accessoire && 
-      !rows[0].fournisseur && 
-      !rows[0].prix_vente_ttc;
-
-    // Replace empty first row or add to existing rows
-    if (isFirstRowEmpty) {
-      setRows(newRows);
-    } else {
-      setRows([...rows, ...newRows]);
-    }
+    // Add pasted rows to existing rows
+    setRows([...rows, ...newRows]);
     
     toast.success(`${newRows.length} ligne(s) ajoutée(s) depuis Excel`);
   };
@@ -306,143 +292,158 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     <Card>
       <CardHeader>
         <CardTitle>Ajouter des factures fournisseurs</CardTitle>
-        <p className="text-sm text-muted-foreground mt-1">
-          💡 Astuce : Vous pouvez coller directement depuis Excel (Ctrl+V / Cmd+V)
-        </p>
+        <div className="bg-muted p-3 rounded-lg mt-3 space-y-2">
+          <p className="text-sm font-medium">📋 Comment ça marche ?</p>
+          <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+            <li>Créez votre tableau Excel avec les mêmes colonnes que ci-dessous</li>
+            <li>Remplissez vos données dans Excel</li>
+            <li>Sélectionnez tout (en-têtes + données) et copiez (Ctrl+C ou Cmd+C)</li>
+            <li>Cliquez dans le tableau ci-dessous et collez (Ctrl+V ou Cmd+V)</li>
+            <li>Cliquez sur "Enregistrer tout"</li>
+          </ol>
+        </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto" onKeyDown={handleKeyDown} onPaste={handlePaste} tabIndex={0}>
+        <div className="border rounded-lg overflow-x-auto bg-background" onKeyDown={handleKeyDown} onPaste={handlePaste} tabIndex={0}>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-[180px]">Nom</TableHead>
-                <TableHead className="min-w-[140px]">Fournisseur</TableHead>
-                <TableHead className="min-w-[150px]">Date dépense</TableHead>
-                <TableHead className="min-w-[150px]">Date paiement</TableHead>
-                <TableHead className="min-w-[120px]">Statut</TableHead>
-                <TableHead className="min-w-[130px]">Délai</TableHead>
-                <TableHead className="min-w-[100px]">Montant TTC</TableHead>
-                <TableHead className="min-w-[100px]">Facture</TableHead>
+              <TableRow className="bg-muted/80">
+                <TableHead className="min-w-[180px] font-semibold">Nom</TableHead>
+                <TableHead className="min-w-[140px] font-semibold">Fournisseur</TableHead>
+                <TableHead className="min-w-[150px] font-semibold">Date dépense</TableHead>
+                <TableHead className="min-w-[150px] font-semibold">Date paiement</TableHead>
+                <TableHead className="min-w-[120px] font-semibold">Statut</TableHead>
+                <TableHead className="min-w-[130px] font-semibold">Délai</TableHead>
+                <TableHead className="min-w-[100px] font-semibold">Montant TTC</TableHead>
+                <TableHead className="min-w-[100px] font-semibold">Facture</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Input
-                      value={row.nom_accessoire}
-                      onChange={(e) => updateRow(row.id, "nom_accessoire", e.target.value)}
-                      placeholder="Article..."
-                      className="h-9"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      value={row.fournisseur}
-                      onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
-                      placeholder="Fournisseur..."
-                      className="h-9"
-                      list={`fournisseurs-${row.id}`}
-                    />
-                    <datalist id={`fournisseurs-${row.id}`}>
-                      {fournisseurs.map((f) => (
-                        <option key={f} value={f} />
-                      ))}
-                    </datalist>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="datetime-local"
-                      value={row.date_achat}
-                      onChange={(e) => updateRow(row.id, "date_achat", e.target.value)}
-                      className="h-9"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="datetime-local"
-                      value={row.date_paiement}
-                      onChange={(e) => updateRow(row.id, "date_paiement", e.target.value)}
-                      className="h-9"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={row.statut_paiement}
-                      onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="non_paye">Non payé</SelectItem>
-                        <SelectItem value="paye">Payé</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={row.delai_paiement}
-                      onValueChange={(value) => updateRow(row.id, "delai_paiement", value)}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="commande">À la commande</SelectItem>
-                        <SelectItem value="30_jours">30 jours</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={row.prix_vente_ttc}
-                      onChange={(e) => updateRow(row.id, "prix_vente_ttc", e.target.value)}
-                      placeholder="0.00"
-                      className="h-9"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {row.facture_file || row.facture_url ? (
-                        <div className="flex items-center gap-1">
-                          <FileText className="h-4 w-4 text-green-600" />
-                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeInvoice(row.id)}>
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <input
-                            ref={(el) => (fileInputRefs.current[row.id] = el)}
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            className="hidden"
-                            onChange={(e) => handleFileSelect(row.id, e.target.files?.[0] || null)}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-9 px-2"
-                            onClick={() => fileInputRefs.current[row.id]?.click()}
-                          >
-                            <Upload className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeRow(row.id)}>
-                      <X className="h-4 w-4" />
-                    </Button>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                    Cliquez ici et collez vos données (Ctrl+V ou Cmd+V)
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                rows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>
+                      <Input
+                        value={row.nom_accessoire}
+                        onChange={(e) => updateRow(row.id, "nom_accessoire", e.target.value)}
+                        placeholder="Article..."
+                        className="h-9"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        value={row.fournisseur}
+                        onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
+                        placeholder="Fournisseur..."
+                        className="h-9"
+                        list={`fournisseurs-${row.id}`}
+                      />
+                      <datalist id={`fournisseurs-${row.id}`}>
+                        {fournisseurs.map((f) => (
+                          <option key={f} value={f} />
+                        ))}
+                      </datalist>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="datetime-local"
+                        value={row.date_achat}
+                        onChange={(e) => updateRow(row.id, "date_achat", e.target.value)}
+                        className="h-9"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="datetime-local"
+                        value={row.date_paiement}
+                        onChange={(e) => updateRow(row.id, "date_paiement", e.target.value)}
+                        className="h-9"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={row.statut_paiement}
+                        onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="non_paye">Non payé</SelectItem>
+                          <SelectItem value="paye">Payé</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={row.delai_paiement}
+                        onValueChange={(value) => updateRow(row.id, "delai_paiement", value)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="commande">À la commande</SelectItem>
+                          <SelectItem value="30_jours">30 jours</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={row.prix_vente_ttc}
+                        onChange={(e) => updateRow(row.id, "prix_vente_ttc", e.target.value)}
+                        placeholder="0.00"
+                        className="h-9"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {row.facture_file || row.facture_url ? (
+                          <div className="flex items-center gap-1">
+                            <FileText className="h-4 w-4 text-green-600" />
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeInvoice(row.id)}>
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <input
+                              ref={(el) => (fileInputRefs.current[row.id] = el)}
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              className="hidden"
+                              onChange={(e) => handleFileSelect(row.id, e.target.files?.[0] || null)}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-9 px-2"
+                              onClick={() => fileInputRefs.current[row.id]?.click()}
+                            >
+                              <Upload className="h-3 w-3" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeRow(row.id)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>
