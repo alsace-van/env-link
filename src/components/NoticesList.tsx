@@ -15,14 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface Notice {
   id: string;
@@ -73,16 +66,10 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const handleDelete = async (id: string) => {
     try {
       // First, unlink any accessories
-      await supabase
-        .from("accessories_catalog")
-        .update({ notice_id: null })
-        .eq("notice_id", id);
+      await supabase.from("accessories_catalog").update({ notice_id: null }).eq("notice_id", id);
 
       // Then delete the notice
-      const { error } = await supabase
-        .from("notices_database")
-        .delete()
-        .eq("id", id);
+      const { error } = await supabase.from("notices_database").delete().eq("id", id);
 
       if (error) {
         toast.error("Erreur lors de la suppression");
@@ -98,28 +85,26 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     }
   };
 
-  const getSignedUrl = async (filePath: string): Promise<string | null> => {
+  const getPublicUrl = (filePath: string): string | null => {
     // Check if it's already a full URL (for backwards compatibility)
-    if (filePath.startsWith('http')) {
+    if (filePath.startsWith("http")) {
       return filePath;
     }
 
-    // Generate a signed URL valid for 1 hour
-    const { data, error } = await supabase.storage
-      .from("notice-files")
-      .createSignedUrl(filePath, 3600); // 1 hour
+    // Generate a public URL (permanent, no expiration)
+    const { data } = supabase.storage.from("notice-files").getPublicUrl(filePath);
 
-    if (error || !data) {
-      console.error("Error creating signed URL:", error);
+    if (!data) {
+      console.error("Error creating public URL");
       return null;
     }
 
-    return data.signedUrl;
+    return data.publicUrl;
   };
 
   const handleDownload = async (filePath: string, titre: string) => {
     try {
-      const url = await getSignedUrl(filePath);
+      const url = getPublicUrl(filePath);
       if (!url) {
         toast.error("Erreur lors de l'accès au fichier");
         return;
@@ -128,7 +113,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
       const response = await fetch(url);
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = downloadUrl;
       link.download = `${titre}.pdf`;
       document.body.appendChild(link);
@@ -144,7 +129,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
   const handleOpenNotice = async (filePath: string) => {
     try {
-      const url = await getSignedUrl(filePath);
+      const url = getPublicUrl(filePath);
       if (!url) {
         toast.error("Erreur lors de l'accès au fichier");
         return;
@@ -197,9 +182,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   <span className="text-muted-foreground text-xs">-</span>
                 )}
               </TableCell>
-              <TableCell>
-                {notice.categorie || <span className="text-muted-foreground text-xs">-</span>}
-              </TableCell>
+              <TableCell>{notice.categorie || <span className="text-muted-foreground text-xs">-</span>}</TableCell>
               <TableCell>
                 {notice.description ? (
                   <span className="text-sm line-clamp-2">{notice.description}</span>
@@ -245,9 +228,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDelete(notice.id)}>
-                          Supprimer
-                        </AlertDialogAction>
+                        <AlertDialogAction onClick={() => handleDelete(notice.id)}>Supprimer</AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
