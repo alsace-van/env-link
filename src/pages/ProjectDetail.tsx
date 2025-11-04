@@ -1140,15 +1140,31 @@ const ProjectDetail = () => {
                 <div className="space-y-4">
                   {/* Header avec bouton Statistiques */}
                   <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold">Liste des dépenses</h2>
+                    <h2 className="text-2xl font-bold">Dépenses</h2>
                     <Button onClick={() => setIsExpensesSidebarOpen(true)} className="gap-2" variant="default">
                       <BarChart3 className="h-4 w-4" />
-                      Voir les statistiques
+                      📊 Voir les statistiques
                     </Button>
                   </div>
 
-                  {/* Liste des dépenses pleine largeur */}
-                  <ExpensesList projectId={project.id} onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)} />
+                  {/* Sous-onglets : Liste et Bilan */}
+                  <Tabs defaultValue="liste" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="liste">Liste des dépenses</TabsTrigger>
+                      <TabsTrigger value="bilan">Bilan comptable</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="liste" className="mt-4">
+                      <ExpensesList
+                        projectId={project.id}
+                        onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                      />
+                    </TabsContent>
+
+                    <TabsContent value="bilan" className="mt-4">
+                      <BilanComptable projectId={project.id} />
+                    </TabsContent>
+                  </Tabs>
                 </div>
               </TabsContent>
 
