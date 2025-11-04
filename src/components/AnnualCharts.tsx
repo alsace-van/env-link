@@ -46,6 +46,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
   const [customerRevenues, setCustomerRevenues] = useState<CustomerRevenue[]>([]);
   const [supplierMonthlyExpenses, setSupplierMonthlyExpenses] = useState<MonthlyData[]>([]);
   const [monthlyRevenues, setMonthlyRevenues] = useState<MonthlyData[]>([]);
+  const [monthlyRevenuesByCustomer, setMonthlyRevenuesByCustomer] = useState<any[]>([]);
   const [annualSupplierExpenses, setAnnualSupplierExpenses] = useState<SupplierExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataYear, setDataYear] = useState<number>(new Date().getFullYear());
@@ -153,9 +154,26 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         }));
 
         setMonthlyRevenues(monthlyData);
+
+        // 5b. Revenus mensuels par client (pour graphique empilé)
+        const monthlyByCustomer: any[] = months.map((monthName, monthIndex) => {
+          const monthData: any = { month: monthName };
+
+          customerMap.forEach((data, customer) => {
+            const amount = data.monthly.get(monthIndex) || 0;
+            if (amount > 0) {
+              monthData[customer] = Math.round(amount * 100) / 100;
+            }
+          });
+
+          return monthData;
+        });
+
+        setMonthlyRevenuesByCustomer(monthlyByCustomer);
       } else {
         setCustomerRevenues([]);
         setMonthlyRevenues(months.map((month) => ({ month, amount: 0 })));
+        setMonthlyRevenuesByCustomer([]);
       }
 
       // 6. Factures fournisseurs mensuelles
@@ -231,7 +249,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
   return (
     <>
       <div className="space-y-4">
-        {/* Revenus par client */}
+        {/* Revenus par client (barres empilées par mois) */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -242,14 +260,26 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
             </div>
           </CardHeader>
           <CardContent>
-            {customerRevenues.length > 0 ? (
+            {monthlyRevenuesByCustomer.length > 0 && customerRevenues.length > 0 ? (
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={customerRevenues}>
+                <BarChart data={monthlyRevenuesByCustomer}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="customer" angle={-45} textAnchor="end" height={80} style={{ fontSize: "10px" }} />
-                  <YAxis style={{ fontSize: "11px" }} />
+                  <XAxis dataKey="month" style={{ fontSize: "10px" }} />
+                  <YAxis style={{ fontSize: "11px" }} tickFormatter={(value) => `${value}€`} width={60} />
                   <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
-                  <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
+                  <Legend wrapperStyle={{ fontSize: "10px" }} />
+                  {customerRevenues
+                    .slice(0, 8)
+                    .reverse()
+                    .map((customer, index) => (
+                      <Bar
+                        key={customer.customer}
+                        dataKey={customer.customer}
+                        stackId="a"
+                        fill={COLORS[index % COLORS.length]}
+                        name={customer.customer}
+                      />
+                    ))}
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -374,17 +404,31 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           </DialogHeader>
           <div className="flex-1 overflow-auto">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Graphique */}
+              {/* Graphique en barres empilées */}
               <div>
-                <h3 className="text-sm font-semibold mb-3">Vue d'ensemble</h3>
+                <h3 className="text-sm font-semibold mb-3">Revenus mensuels</h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={customerRevenues}>
+                  <BarChart data={monthlyRevenuesByCustomer}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="customer" angle={-45} textAnchor="end" height={100} />
-                    <YAxis />
-                    <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
-                    <Legend />
-                    <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
+                    <XAxis dataKey="month" />
+                    <YAxis tickFormatter={(value) => `${value}€`} width={70} />
+                    <Tooltip
+                      formatter={(value: number) => `${value.toFixed(2)} €`}
+                      contentStyle={{ fontSize: "12px" }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: "12px" }} />
+                    {customerRevenues
+                      .slice()
+                      .reverse()
+                      .map((customer, index) => (
+                        <Bar
+                          key={customer.customer}
+                          dataKey={customer.customer}
+                          stackId="a"
+                          fill={COLORS[index % COLORS.length]}
+                          name={customer.customer}
+                        />
+                      ))}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
