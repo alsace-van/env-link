@@ -1,400 +1,297 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, Edit } from "lucide-react";
-import { toast } from "sonner";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
+import PaymentTransactions from "./PaymentTransactions";
 
-interface PaymentTransaction {
-  id: string;
-  type_paiement: "acompte" | "solde";
-  montant: number;
-  date_paiement: string;
-  notes?: string;
-  project_id: string;
-  project_name?: string;
+interface ExpensesSummaryProps {
+  projectId: string;
+  refreshTrigger: number;
 }
 
-interface PaymentTransactionsProps {
-  totalSales?: number;
-  onPaymentChange: () => void;
-  currentProjectId: string;
+interface CategoryTotal {
+  name: string;
+  value: number;
+  achats: number;
+  ventes: number;
+  marge: number;
 }
 
-const PaymentTransactions = ({ totalSales: totalSalesProp, onPaymentChange, currentProjectId }: PaymentTransactionsProps) => {
-  const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [totalSales, setTotalSales] = useState(totalSalesProp || 0);
-  const [newTransaction, setNewTransaction] = useState({
-    type_paiement: "acompte" as "acompte" | "solde",
-    montant: 0,
-    date_paiement: new Date().toISOString().split("T")[0],
-    notes: "",
-    project_id: currentProjectId,
-  });
+const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#6366f1"];
+
+const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) => {
+  const [categoryTotals, setCategoryTotals] = useState<CategoryTotal[]>([]);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [totalSales, setTotalSales] = useState(0);
+  const [totalMargin, setTotalMargin] = useState(0);
+  const [paymentRefresh, setPaymentRefresh] = useState(0);
 
   useEffect(() => {
-    loadTransactions();
-    if (!totalSalesProp) {
-      loadTotalSales();
-    }
-  }, []);
+    loadExpensesData();
+  }, [projectId, refreshTrigger, paymentRefresh]);
 
-  const loadTotalSales = async () => {
-    const { data, error } = await supabase
-      .from("project_expenses")
-      .select("prix_vente_ttc, quantite")
-      .eq("project_id", currentProjectId);
+  const loadExpensesData = async () => {
+    const { data, error } = await supabase.from("project_expenses").select("*").eq("project_id", projectId);
 
     if (error) {
-      console.error("Error loading total sales:", error);
-      return;
-    }
-
-    const total = (data || []).reduce((sum, item) => {
-      return sum + (item.prix_vente_ttc || 0) * item.quantite;
-    }, 0);
-
-    setTotalSales(total);
-  };
-
-  const loadTransactions = async () => {
-    // Charger tous les paiements de l'utilisateur
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-
-    // Récupérer les projets de l'utilisateur
-    const { data: projectsData, error: projectsError } = await supabase
-      .from("projects")
-      .select("id, nom_projet, nom_proprietaire")
-      .eq("user_id", userData.user.id);
-
-    if (projectsError) {
-      console.error("Error loading projects:", projectsError);
-      return;
-    }
-
-    const projectsMap = new Map(
-      (projectsData || []).map((p) => [
-        p.id,
-        p.nom_projet || p.nom_proprietaire || "Projet sans nom",
-      ])
-    );
-
-    // Récupérer tous les paiements des projets de l'utilisateur
-    const projectIds = Array.from(projectsMap.keys());
-    
-    const { data, error } = await supabase
-      .from("project_payment_transactions")
-      .select("*")
-      .in("project_id", projectIds)
-      .order("date_paiement", { ascending: false });
-
-    if (error) {
-      console.error("Error loading payments:", error);
-    } else {
-      const transactionsWithNames = (data || []).map((t: any) => ({
-        ...t,
-        project_name: projectsMap.get(t.project_id) || "Projet sans nom",
-      }));
-      setTransactions(transactionsWithNames as PaymentTransaction[]);
-    }
-  };
-
-  const addOrUpdateTransaction = async () => {
-    if (newTransaction.montant <= 0) {
-      toast.error("Le montant doit être supérieur à 0");
-      return;
-    }
-
-    // Calculer le total des paiements pour ce projet (en excluant celui en cours d'édition)
-    const paymentsForProject = transactions.filter(
-      (t) => t.project_id === newTransaction.project_id && t.id !== editingId
-    );
-    const totalPaidForProject = paymentsForProject.reduce((sum, t) => sum + t.montant, 0);
-    
-    // Vérifier que le nouveau total ne dépasse pas le montant des ventes TTC
-    if (totalPaidForProject + newTransaction.montant > totalSales) {
-      toast.error(
-        `Le total des paiements (${(totalPaidForProject + newTransaction.montant).toFixed(2)}€) dépasserait le total des ventes TTC (${totalSales.toFixed(2)}€)`
-      );
-      return;
-    }
-
-    const transactionData = {
-      project_id: newTransaction.project_id,
-      type_paiement: newTransaction.type_paiement,
-      montant: newTransaction.montant,
-      date_paiement: newTransaction.date_paiement,
-      notes: newTransaction.notes || null,
-    };
-
-    if (editingId) {
-      // Update existing transaction
-      const { error } = await supabase
-        .from("project_payment_transactions")
-        .update(transactionData)
-        .eq("id", editingId);
-
-      if (error) {
-        toast.error("Erreur lors de la modification du paiement");
-        console.error(error);
-      } else {
-        toast.success("Paiement modifié");
-        setEditingId(null);
-        setIsAdding(false);
-        setNewTransaction({
-          type_paiement: "acompte",
-          montant: 0,
-          date_paiement: new Date().toISOString().split("T")[0],
-          notes: "",
-          project_id: currentProjectId,
-        });
-        loadTransactions();
-        onPaymentChange();
-      }
-    } else {
-      // Insert new transaction
-      const { error } = await supabase
-        .from("project_payment_transactions")
-        .insert([transactionData]);
-
-      if (error) {
-        toast.error("Erreur lors de l'ajout du paiement");
-        console.error(error);
-      } else {
-        toast.success("Paiement ajouté");
-        setIsAdding(false);
-        setNewTransaction({
-          type_paiement: "acompte",
-          montant: 0,
-          date_paiement: new Date().toISOString().split("T")[0],
-          notes: "",
-          project_id: currentProjectId,
-        });
-        loadTransactions();
-        onPaymentChange();
-      }
-    }
-  };
-
-  const editTransaction = (transaction: PaymentTransaction) => {
-    setEditingId(transaction.id);
-    setNewTransaction({
-      type_paiement: transaction.type_paiement,
-      montant: transaction.montant,
-      date_paiement: transaction.date_paiement,
-      notes: transaction.notes || "",
-      project_id: transaction.project_id,
-    });
-    setIsAdding(true);
-  };
-
-  const deleteTransaction = async (id: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer ce paiement ?")) {
-      return;
-    }
-
-    const { error } = await supabase
-      .from("project_payment_transactions")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      toast.error("Erreur lors de la suppression");
       console.error(error);
-    } else {
-      toast.success("Paiement supprimé");
-      loadTransactions();
-      onPaymentChange();
+      return;
     }
-  };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setIsAdding(false);
-    setNewTransaction({
-      type_paiement: "acompte",
-      montant: 0,
-      date_paiement: new Date().toISOString().split("T")[0],
-      notes: "",
-      project_id: currentProjectId,
+    // Load selected options for each expense
+    const expensesWithOptions = await Promise.all(
+      (data || []).map(async (expense: any) => {
+        const { data: selectedOptions } = await supabase
+          .from("expense_selected_options")
+          .select(
+            `
+            option_id,
+            accessory_options!inner(
+              nom,
+              prix_reference,
+              prix_vente_ttc,
+              marge_pourcent
+            )
+          `,
+          )
+          .eq("expense_id", expense.id);
+
+        return {
+          ...expense,
+          selectedOptions:
+            selectedOptions?.map((opt: any) => ({
+              nom: opt.accessory_options.nom,
+              prix_reference: opt.accessory_options.prix_reference || 0,
+              prix_vente_ttc: opt.accessory_options.prix_vente_ttc || 0,
+              marge_pourcent: opt.accessory_options.marge_pourcent || 0,
+            })) || [],
+        };
+      }),
+    );
+
+    // Calculate totals by category for purchases and sales INCLUDING OPTIONS
+    const categoryMap = new Map<string, { achats: number; ventes: number }>();
+    let total = 0;
+
+    expensesWithOptions.forEach((expense) => {
+      // Calculate total purchase price INCLUDING options
+      const optionsPrixTotal = (expense.selectedOptions || []).reduce(
+        (sum: number, opt: any) => sum + opt.prix_reference,
+        0,
+      );
+      const totalAchat = (expense.prix + optionsPrixTotal) * expense.quantite;
+      total += totalAchat;
+
+      const current = categoryMap.get(expense.categorie) || { achats: 0, ventes: 0 };
+      current.achats += totalAchat;
+
+      if (expense.prix_vente_ttc) {
+        // Calculate total sale price INCLUDING options
+        const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+          (sum: number, opt: any) => sum + opt.prix_vente_ttc,
+          0,
+        );
+        const totalVenteTTC = (expense.prix_vente_ttc + optionsVenteTotal) * expense.quantite;
+        current.ventes += totalVenteTTC / 1.2; // Convert to HT
+      }
+
+      categoryMap.set(expense.categorie, current);
     });
-  };
 
-  const handleAddNew = () => {
-    setEditingId(null);
-    setNewTransaction({
-      type_paiement: "acompte",
-      montant: 0,
-      date_paiement: new Date().toISOString().split("T")[0],
-      notes: "",
-      project_id: currentProjectId,
+    const chartData = Array.from(categoryMap.entries()).map(([name, values]) => ({
+      name,
+      value: Math.round(values.achats * 100) / 100,
+      achats: Math.round(values.achats * 100) / 100,
+      ventes: Math.round(values.ventes * 100) / 100,
+      marge: Math.round((values.ventes - values.achats) * 100) / 100,
+    }));
+
+    setCategoryTotals(chartData);
+    setTotalExpenses(Math.round(total * 100) / 100);
+
+    // Calculate total sales and net margin (excluding 20% VAT) INCLUDING OPTIONS
+    let totalVentes = 0;
+    let totalVentesHT = 0;
+    expensesWithOptions.forEach((expense) => {
+      if (expense.prix_vente_ttc) {
+        // Include options in sale price
+        const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+          (sum: number, opt: any) => sum + opt.prix_vente_ttc,
+          0,
+        );
+        const totalVenteTTC = (expense.prix_vente_ttc + optionsVenteTotal) * expense.quantite;
+        totalVentes += totalVenteTTC;
+        // Convert TTC to HT by dividing by 1.20 (20% VAT)
+        totalVentesHT += totalVenteTTC / 1.2;
+      }
     });
-    setIsAdding(true);
+    setTotalSales(Math.round(totalVentes * 100) / 100);
+    // Net margin = Sales HT - Purchase HT
+    setTotalMargin(Math.round((totalVentesHT - total) * 100) / 100);
   };
-
-  const totalPaid = transactions.reduce((sum, t) => sum + t.montant, 0);
-  const remaining = totalSales - totalPaid;
 
   return (
-    <Card className="max-w-md">
-      <CardHeader className="!p-3 !pb-2">
-        <CardTitle className="!text-base !font-semibold">Paiements</CardTitle>
-      </CardHeader>
-      <CardContent className="!p-3 space-y-2">
-        <div className="space-y-1 !text-sm border-b pb-2">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Total ventes TTC:</span>
-            <span className="font-semibold">{totalSales.toFixed(2)} €</span>
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-1">
+        <Card className="!p-0 overflow-hidden">
+          <div className="p-2">
+            <CardHeader className="!p-0 !pb-1 !space-y-0">
+              <CardTitle className="!text-sm !font-semibold !leading-tight">Total Achats (HT)</CardTitle>
+            </CardHeader>
+            <CardContent className="!p-0 !pt-1">
+              <div className="!text-lg font-bold text-red-600 !leading-tight">{totalExpenses.toFixed(2)} €</div>
+            </CardContent>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Total payé:</span>
-            <span className="font-semibold text-green-600">{totalPaid.toFixed(2)} €</span>
-          </div>
-          <div className="flex justify-between !text-base font-bold pt-1 border-t">
-            <span>Reste:</span>
-            <span className={remaining <= 0 ? "text-green-600" : "text-primary"}>
-              {remaining.toFixed(2)} €
-            </span>
-          </div>
-        </div>
+        </Card>
 
-        {transactions.length > 0 && (
-          <div className="space-y-1">
-            {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between py-1.5 px-2 hover:bg-muted/50 rounded !text-sm border-b">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={transaction.type_paiement === "acompte" ? "text-orange-600 font-semibold" : "text-blue-600 font-semibold"}>
-                      {transaction.type_paiement === "acompte" ? "Acompte" : "Solde"}
-                    </span>
-                    <span className="font-bold !text-base">{transaction.montant.toFixed(0)}€</span>
-                  </div>
-                  <div className="text-muted-foreground truncate !text-sm">
-                    <span className="font-medium text-foreground">{transaction.project_name}</span>
-                    {" • "}
-                    {new Date(transaction.date_paiement).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
-                    {transaction.notes && ` • ${transaction.notes}`}
-                  </div>
+        <Card className="!p-0 overflow-hidden">
+          <div className="p-2">
+            <CardHeader className="!p-0 !pb-1 !space-y-0">
+              <CardTitle className="!text-sm !font-semibold !leading-tight">Total Ventes (TTC)</CardTitle>
+            </CardHeader>
+            <CardContent className="!p-0 !pt-1">
+              <div className="!text-lg font-bold text-green-600 !leading-tight">{totalSales.toFixed(2)} €</div>
+            </CardContent>
+          </div>
+        </Card>
+
+        <Card className="!p-0 overflow-hidden">
+          <div className="p-2">
+            <CardHeader className="!p-0 !pb-1 !space-y-0">
+              <CardTitle className="!text-sm !font-semibold !leading-tight">Marge Nette (HT)</CardTitle>
+            </CardHeader>
+            <CardContent className="!p-0 !pt-1">
+              <div className="!text-lg font-bold text-blue-600 !leading-tight">{totalMargin.toFixed(2)} €</div>
+              {totalExpenses > 0 && (
+                <div className="text-xs text-muted-foreground !mt-0.5 !leading-tight">
+                  {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
                 </div>
-                <div className="flex gap-0.5 flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => editTransaction(transaction)}
-                    className="h-7 w-7"
-                  >
-                    <Edit className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => deleteTransaction(transaction.id)}
-                    className="h-7 w-7"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              )}
+              <div className="text-xs text-muted-foreground !mt-0.5 !leading-tight">TVA 20% déduite</div>
+            </CardContent>
           </div>
-        )}
+        </Card>
+      </div>
 
-        {!isAdding ? (
-          <Button onClick={handleAddNew} className="w-full h-9 !text-sm" variant="outline">
-            <Plus className="h-4 w-4 mr-1" />
-            Ajouter
-          </Button>
-        ) : (
-          <div className="border rounded-lg p-3 space-y-2">
-            <h4 className="font-semibold text-xs">
-              {editingId ? "Modifier" : "Ajouter un paiement"}
-            </h4>
-            <div className="space-y-1">
-              <Label className="text-xs">Type</Label>
-              <Select
-                value={newTransaction.type_paiement}
-                onValueChange={(value: "acompte" | "solde") => {
-                  setNewTransaction({ 
-                    ...newTransaction, 
-                    type_paiement: value,
-                    montant: value === "solde" ? remaining : newTransaction.montant
-                  });
-                }}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="acompte">Acompte</SelectItem>
-                  <SelectItem value="solde">Solde</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <PaymentTransactions
+        currentProjectId={projectId}
+        totalSales={totalSales}
+        onPaymentChange={() => setPaymentRefresh((prev) => prev + 1)}
+      />
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Montant (€)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={newTransaction.montant}
-                  onChange={(e) =>
-                    setNewTransaction({ ...newTransaction, montant: parseFloat(e.target.value) || 0 })
-                  }
-                  className="h-8 text-xs"
+      <Card>
+        <CardHeader>
+          <CardTitle>Analyse par Catégorie</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {categoryTotals.length > 0 ? (
+            <Carousel className="w-full">
+              <CarouselContent>
+                {categoryTotals.map((category, index) => (
+                  <CarouselItem key={category.name}>
+                    <div className="space-y-4">
+                      <div className="text-center">
+                        <h3 className="text-xl font-bold">{category.name}</h3>
+                        <div className="grid grid-cols-3 gap-4 mt-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Achats HT</p>
+                            <p className="text-lg font-bold text-red-600">{category.achats.toFixed(2)} €</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Ventes HT</p>
+                            <p className="text-lg font-bold text-green-600">{category.ventes.toFixed(2)} €</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Marge Nette</p>
+                            <p className="text-lg font-bold text-blue-600">{category.marge.toFixed(2)} €</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: "Achats HT", value: category.achats },
+                              { name: "Marge", value: category.marge },
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={(entry) => `${entry.value.toFixed(0)}€`}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            <Cell fill="#ef4444" />
+                            <Cell fill="#10b981" />
+                          </Pie>
+                          <Tooltip formatter={(value: number) => `${value.toFixed(2)}€`} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              <CarouselPrevious className="h-12 w-12" />
+              <CarouselNext className="h-12 w-12" />
+            </Carousel>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">Aucune catégorie disponible</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Vue d'ensemble par Catégorie</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {categoryTotals.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={categoryTotals}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={true}
+                  label={(entry) => {
+                    const maxLength = 12;
+                    const name =
+                      entry.name.length > maxLength ? entry.name.substring(0, maxLength) + "..." : entry.name;
+                    return `${name}: ${entry.value.toFixed(0)}€`;
+                  }}
+                  outerRadius={70}
+                  fill="#8884d8"
+                  dataKey="value"
+                  style={{ fontSize: "11px" }}
+                >
+                  {categoryTotals.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ fontSize: "12px" }}
+                  formatter={(value: number, name: string, props: any) => [`${value.toFixed(2)}€`, props.payload.name]}
                 />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs">Date</Label>
-                <Input
-                  type="date"
-                  value={newTransaction.date_paiement}
-                  onChange={(e) =>
-                    setNewTransaction({ ...newTransaction, date_paiement: e.target.value })
-                  }
-                  className="h-8 text-xs"
+                <Legend
+                  wrapperStyle={{ fontSize: "11px" }}
+                  formatter={(value: string) => {
+                    const maxLength = 15;
+                    return value.length > maxLength ? value.substring(0, maxLength) + "..." : value;
+                  }}
                 />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs">Notes</Label>
-              <Textarea
-                value={newTransaction.notes}
-                onChange={(e) =>
-                  setNewTransaction({ ...newTransaction, notes: e.target.value })
-                }
-                placeholder="Notes..."
-                className="h-16 text-xs resize-none"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={addOrUpdateTransaction} className="flex-1 h-7 text-xs">
-                {editingId ? "Modifier" : "OK"}
-              </Button>
-              <Button
-                onClick={cancelEdit}
-                variant="outline"
-                className="flex-1 h-7 text-xs"
-              >
-                Annuler
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">Aucune donnée disponible</div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
-export default PaymentTransactions;
+export default ExpensesSummary;
