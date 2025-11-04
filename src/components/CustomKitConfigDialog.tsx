@@ -474,6 +474,8 @@ const CustomKitConfigDialog = ({
                                           <SelectValue placeholder="Sélectionner un accessoire..." />
                                         </SelectTrigger>
                                         <SelectContent className="max-w-[400px]">
+                                          {/* Option vide pour désélectionner */}
+                                          <SelectItem value="">-</SelectItem>
                                           {categoryAccessories.map((accessory) => (
                                             <SelectItem
                                               key={accessory.id}
