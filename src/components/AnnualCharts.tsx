@@ -62,6 +62,9 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
     const startOfYear = new Date(currentYear, 0, 1).toISOString();
     const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59).toISOString();
 
+    // Définir les mois une seule fois pour toute la fonction
+    const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+
     console.log(`🔍 Chargement des données pour l'année ${currentYear}`);
 
     try {
@@ -117,21 +120,6 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           customerData.monthly.set(month, (customerData.monthly.get(month) || 0) + (payment.montant || 0));
         });
 
-        const months = [
-          "janv.",
-          "févr.",
-          "mars",
-          "avr.",
-          "mai",
-          "juin",
-          "juil.",
-          "août",
-          "sept.",
-          "oct.",
-          "nov.",
-          "déc.",
-        ];
-
         const customerData = Array.from(customerMap.entries())
           .map(([customer, data]) => {
             const monthlyData = months.map((monthName, index) => ({
@@ -159,20 +147,6 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + (payment.montant || 0));
         });
 
-        const months = [
-          "janv.",
-          "févr.",
-          "mars",
-          "avr.",
-          "mai",
-          "juin",
-          "juil.",
-          "août",
-          "sept.",
-          "oct.",
-          "nov.",
-          "déc.",
-        ];
         const monthlyData = months.map((month) => ({
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
@@ -181,20 +155,6 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         setMonthlyRevenues(monthlyData);
       } else {
         setCustomerRevenues([]);
-        const months = [
-          "janv.",
-          "févr.",
-          "mars",
-          "avr.",
-          "mai",
-          "juin",
-          "juil.",
-          "août",
-          "sept.",
-          "oct.",
-          "nov.",
-          "déc.",
-        ];
         setMonthlyRevenues(months.map((month) => ({ month, amount: 0 })));
       }
 
@@ -216,40 +176,12 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + total);
         });
 
-        const months = [
-          "janv.",
-          "févr.",
-          "mars",
-          "avr.",
-          "mai",
-          "juin",
-          "juil.",
-          "août",
-          "sept.",
-          "oct.",
-          "nov.",
-          "déc.",
-        ];
         const supplierMonthlyData = months.map((month) => ({
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
         }));
         setSupplierMonthlyExpenses(supplierMonthlyData);
       } else {
-        const months = [
-          "janv.",
-          "févr.",
-          "mars",
-          "avr.",
-          "mai",
-          "juin",
-          "juil.",
-          "août",
-          "sept.",
-          "oct.",
-          "nov.",
-          "déc.",
-        ];
         setSupplierMonthlyExpenses(months.map((month) => ({ month, amount: 0 })));
       }
 
