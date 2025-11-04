@@ -187,7 +187,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const pastedData = e.clipboardData.getData("text");
-    
+
     if (!pastedData.trim()) {
       toast.error("Aucune donnée à coller");
       return;
@@ -196,14 +196,14 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     // Parse TSV data (Tab-separated values from Excel)
     const lines = pastedData.trim().split("\n");
     const newRows: ExpenseRow[] = [];
-    
+
     lines.forEach((line) => {
-      const columns = line.split("\t").map(col => col.trim());
-      
+      const columns = line.split("\t").map((col) => col.trim());
+
       // Expected format: Nom | Fournisseur | Date achat | Date paiement | Statut | Délai | Montant
       if (columns.length >= 2) {
         const [nom, fournisseur, dateAchat, datePaiement, statut, delai, montant] = columns;
-        
+
         // Parse dates - handle various formats
         const parseDateAchat = () => {
           if (!dateAchat) return new Date().toISOString().slice(0, 16);
@@ -211,11 +211,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
             // Try to parse DD/MM/YYYY HH:mm or DD/MM/YYYY
             const dateParts = dateAchat.split(/[/ :]/);
             if (dateParts.length >= 3) {
-              const day = dateParts[0].padStart(2, '0');
-              const month = dateParts[1].padStart(2, '0');
+              const day = dateParts[0].padStart(2, "0");
+              const month = dateParts[1].padStart(2, "0");
               const year = dateParts[2];
-              const hour = dateParts[3]?.padStart(2, '0') || '12';
-              const minute = dateParts[4]?.padStart(2, '0') || '00';
+              const hour = dateParts[3]?.padStart(2, "0") || "12";
+              const minute = dateParts[4]?.padStart(2, "0") || "00";
               return `${year}-${month}-${day}T${hour}:${minute}`;
             }
             return new Date().toISOString().slice(0, 16);
@@ -229,11 +229,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
           try {
             const dateParts = datePaiement.split(/[/ :]/);
             if (dateParts.length >= 3) {
-              const day = dateParts[0].padStart(2, '0');
-              const month = dateParts[1].padStart(2, '0');
+              const day = dateParts[0].padStart(2, "0");
+              const month = dateParts[1].padStart(2, "0");
               const year = dateParts[2];
-              const hour = dateParts[3]?.padStart(2, '0') || '12';
-              const minute = dateParts[4]?.padStart(2, '0') || '30';
+              const hour = dateParts[3]?.padStart(2, "0") || "12";
+              const minute = dateParts[4]?.padStart(2, "0") || "30";
               return `${year}-${month}-${day}T${hour}:${minute}`;
             }
             return "";
@@ -284,7 +284,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
     // Add pasted rows to existing rows
     setRows([...rows, ...newRows]);
-    
+
     toast.success(`${newRows.length} ligne(s) ajoutée(s) depuis Excel`);
   };
 
@@ -304,18 +304,23 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="border rounded-lg overflow-x-auto bg-background" onKeyDown={handleKeyDown} onPaste={handlePaste} tabIndex={0}>
+        <div
+          className="border rounded-lg overflow-x-auto bg-background"
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          tabIndex={0}
+        >
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/80">
-                <TableHead className="min-w-[180px] font-semibold">Nom</TableHead>
-                <TableHead className="min-w-[140px] font-semibold">Fournisseur</TableHead>
-                <TableHead className="min-w-[150px] font-semibold">Date dépense</TableHead>
-                <TableHead className="min-w-[150px] font-semibold">Date paiement</TableHead>
-                <TableHead className="min-w-[120px] font-semibold">Statut</TableHead>
-                <TableHead className="min-w-[130px] font-semibold">Délai</TableHead>
-                <TableHead className="min-w-[100px] font-semibold">Montant TTC</TableHead>
-                <TableHead className="min-w-[100px] font-semibold">Facture</TableHead>
+                <TableHead className="min-w-[180px] font-semibold border-r">Nom</TableHead>
+                <TableHead className="min-w-[140px] font-semibold border-r">Fournisseur</TableHead>
+                <TableHead className="min-w-[150px] font-semibold border-r">Date dépense</TableHead>
+                <TableHead className="min-w-[150px] font-semibold border-r">Date paiement</TableHead>
+                <TableHead className="min-w-[120px] font-semibold border-r">Statut</TableHead>
+                <TableHead className="min-w-[130px] font-semibold border-r">Délai</TableHead>
+                <TableHead className="min-w-[100px] font-semibold border-r">Montant TTC</TableHead>
+                <TableHead className="min-w-[100px] font-semibold border-r">Facture</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -329,7 +334,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <Input
                         value={row.nom_accessoire}
                         onChange={(e) => updateRow(row.id, "nom_accessoire", e.target.value)}
@@ -337,7 +342,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <Input
                         value={row.fournisseur}
                         onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
@@ -351,7 +356,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         ))}
                       </datalist>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <Input
                         type="datetime-local"
                         value={row.date_achat}
@@ -359,7 +364,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <Input
                         type="datetime-local"
                         value={row.date_paiement}
@@ -367,7 +372,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <Select
                         value={row.statut_paiement}
                         onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
@@ -381,7 +386,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <Select
                         value={row.delai_paiement}
                         onValueChange={(value) => updateRow(row.id, "delai_paiement", value)}
@@ -395,7 +400,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <Input
                         type="number"
                         step="0.01"
@@ -406,12 +411,17 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         className="h-9"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="border-r">
                       <div className="flex items-center gap-1">
                         {row.facture_file || row.facture_url ? (
                           <div className="flex items-center gap-1">
                             <FileText className="h-4 w-4 text-green-600" />
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeInvoice(row.id)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => removeInvoice(row.id)}
+                            >
                               <X className="h-3 w-3" />
                             </Button>
                           </div>
