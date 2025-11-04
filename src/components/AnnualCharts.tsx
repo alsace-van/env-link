@@ -3,7 +3,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import { Loader2, Maximize2 } from "lucide-react";
 
 interface AnnualChartsProps {
@@ -13,6 +25,7 @@ interface AnnualChartsProps {
 interface CustomerRevenue {
   customer: string;
   amount: number;
+  monthlyData?: { month: string; amount: number }[];
 }
 
 interface SupplierExpense {
@@ -44,7 +57,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
 
   const loadAnnualData = async () => {
     setLoading(true);
-    
+
     const currentYear = new Date().getFullYear();
     const startOfYear = new Date(currentYear, 0, 1).toISOString();
     const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59).toISOString();
@@ -60,15 +73,15 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         .lte("date_paiement", endOfYear);
 
       console.log("💰 Paiements récupérés:", paymentsData?.length || 0);
-      
+
       if (paymentsError) {
         console.error("❌ Erreur paiements:", paymentsError);
       }
 
       if (paymentsData && paymentsData.length > 0) {
         // 2. Récupérer les projets
-        const projectIds = [...new Set(paymentsData.map(p => p.project_id))];
-        
+        const projectIds = [...new Set(paymentsData.map((p) => p.project_id))];
+
         const { data: projectsData, error: projectsError } = await supabase
           .from("projects")
           .select("id, nom_proprietaire")
@@ -83,23 +96,58 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         // 3. Map des projets
         const projectsMap = new Map<string, string>();
         if (projectsData) {
-          projectsData.forEach(project => {
+          projectsData.forEach((project) => {
             projectsMap.set(project.id, project.nom_proprietaire);
           });
         }
 
-        // 4. Revenus par client
-        const customerMap = new Map<string, number>();
+        // 4. Revenus par client avec détails mensuels
+        const customerMap = new Map<string, { total: number; monthly: Map<number, number> }>();
         paymentsData.forEach((payment) => {
           const customer = projectsMap.get(payment.project_id) || "Client inconnu";
-          customerMap.set(customer, (customerMap.get(customer) || 0) + (payment.montant || 0));
+          const date = new Date(payment.date_paiement);
+          const month = date.getMonth(); // 0-11
+
+          if (!customerMap.has(customer)) {
+            customerMap.set(customer, { total: 0, monthly: new Map() });
+          }
+
+          const customerData = customerMap.get(customer)!;
+          customerData.total += payment.montant || 0;
+          customerData.monthly.set(month, (customerData.monthly.get(month) || 0) + (payment.montant || 0));
         });
-        
+
+        const months = [
+          "janv.",
+          "févr.",
+          "mars",
+          "avr.",
+          "mai",
+          "juin",
+          "juil.",
+          "août",
+          "sept.",
+          "oct.",
+          "nov.",
+          "déc.",
+        ];
+
         const customerData = Array.from(customerMap.entries())
-          .map(([customer, amount]) => ({ customer, amount: Math.round(amount * 100) / 100 }))
+          .map(([customer, data]) => {
+            const monthlyData = months.map((monthName, index) => ({
+              month: monthName,
+              amount: Math.round((data.monthly.get(index) || 0) * 100) / 100,
+            }));
+
+            return {
+              customer,
+              amount: Math.round(data.total * 100) / 100,
+              monthlyData,
+            };
+          })
           .sort((a, b) => b.amount - a.amount)
           .slice(0, 10);
-        
+
         setCustomerRevenues(customerData);
         setDataYear(currentYear);
 
@@ -111,17 +159,43 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + (payment.montant || 0));
         });
 
-        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+        const months = [
+          "janv.",
+          "févr.",
+          "mars",
+          "avr.",
+          "mai",
+          "juin",
+          "juil.",
+          "août",
+          "sept.",
+          "oct.",
+          "nov.",
+          "déc.",
+        ];
         const monthlyData = months.map((month) => ({
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
         }));
-        
+
         setMonthlyRevenues(monthlyData);
       } else {
         setCustomerRevenues([]);
-        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
-        setMonthlyRevenues(months.map(month => ({ month, amount: 0 })));
+        const months = [
+          "janv.",
+          "févr.",
+          "mars",
+          "avr.",
+          "mai",
+          "juin",
+          "juil.",
+          "août",
+          "sept.",
+          "oct.",
+          "nov.",
+          "déc.",
+        ];
+        setMonthlyRevenues(months.map((month) => ({ month, amount: 0 })));
       }
 
       // 6. Factures fournisseurs mensuelles
@@ -141,16 +215,42 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           const total = expense.prix * expense.quantite;
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + total);
         });
-        
-        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+
+        const months = [
+          "janv.",
+          "févr.",
+          "mars",
+          "avr.",
+          "mai",
+          "juin",
+          "juil.",
+          "août",
+          "sept.",
+          "oct.",
+          "nov.",
+          "déc.",
+        ];
         const supplierMonthlyData = months.map((month) => ({
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
         }));
         setSupplierMonthlyExpenses(supplierMonthlyData);
       } else {
-        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
-        setSupplierMonthlyExpenses(months.map(month => ({ month, amount: 0 })));
+        const months = [
+          "janv.",
+          "févr.",
+          "mars",
+          "avr.",
+          "mai",
+          "juin",
+          "juil.",
+          "août",
+          "sept.",
+          "oct.",
+          "nov.",
+          "déc.",
+        ];
+        setSupplierMonthlyExpenses(months.map((month) => ({ month, amount: 0 })));
       }
 
       // 7. Factures fournisseurs annuelles
@@ -177,7 +277,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       } else {
         setAnnualSupplierExpenses([]);
       }
-      
+
       console.log("✅ Chargement terminé");
     } catch (error) {
       console.error("❌ Erreur:", error);
@@ -204,12 +304,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Revenus par client ({dataYear})</CardTitle>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setOpenModal("customer")}
-                className="h-7"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setOpenModal("customer")} className="h-7">
                 <Maximize2 className="h-4 w-4" />
               </Button>
             </div>
@@ -236,18 +331,13 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Factures fournisseurs mensuelles ({dataYear})</CardTitle>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setOpenModal("supplierMonthly")}
-                className="h-7"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setOpenModal("supplierMonthly")} className="h-7">
                 <Maximize2 className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            {supplierMonthlyExpenses.some(e => e.amount > 0) ? (
+            {supplierMonthlyExpenses.some((e) => e.amount > 0) ? (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={supplierMonthlyExpenses}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -268,18 +358,13 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Revenus mensuels ({dataYear})</CardTitle>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setOpenModal("revenue")}
-                className="h-7"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setOpenModal("revenue")} className="h-7">
                 <Maximize2 className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            {monthlyRevenues.some(r => r.amount > 0) ? (
+            {monthlyRevenues.some((r) => r.amount > 0) ? (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={monthlyRevenues}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -300,12 +385,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Factures par fournisseur ({dataYear})</CardTitle>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setOpenModal("supplierAnnual")}
-                className="h-7"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setOpenModal("supplierAnnual")} className="h-7">
                 <Maximize2 className="h-4 w-4" />
               </Button>
             </div>
@@ -321,7 +401,10 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
                     labelLine={false}
                     label={(entry) => {
                       const maxLength = 10;
-                      const name = entry.supplier.length > maxLength ? entry.supplier.substring(0, maxLength) + "..." : entry.supplier;
+                      const name =
+                        entry.supplier.length > maxLength
+                          ? entry.supplier.substring(0, maxLength) + "..."
+                          : entry.supplier;
                       return `${name}: ${entry.amount.toFixed(0)}€`;
                     }}
                     outerRadius={60}
@@ -333,7 +416,12 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number, name: string, props: any) => [`${value.toFixed(2)} €`, props.payload.supplier]} />
+                  <Tooltip
+                    formatter={(value: number, name: string, props: any) => [
+                      `${value.toFixed(2)} €`,
+                      props.payload.supplier,
+                    ]}
+                  />
                   <Legend wrapperStyle={{ fontSize: "10px" }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -345,24 +433,73 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       </div>
 
       {/* Modales pour agrandir les graphiques */}
-      
+
       {/* Modale Revenus par client */}
       <Dialog open={openModal === "customer"} onOpenChange={() => setOpenModal(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Revenus par client ({dataYear})</DialogTitle>
           </DialogHeader>
-          <div className="mt-4">
-            <ResponsiveContainer width="100%" height={500}>
-              <BarChart data={customerRevenues}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="customer" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
-                <Legend />
-                <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex-1 overflow-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Graphique */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Vue d'ensemble</h3>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={customerRevenues}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="customer" angle={-45} textAnchor="end" height={100} />
+                    <YAxis />
+                    <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+                    <Legend />
+                    <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Détails mensuels */}
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Détail mois par mois</h3>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                  {customerRevenues.map((client) => (
+                    <div key={client.customer} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-sm truncate">{client.customer}</h4>
+                        <span className="font-bold text-sm text-primary">{client.amount.toFixed(0)} €</span>
+                      </div>
+
+                      <div className="grid grid-cols-6 gap-1 text-xs">
+                        {client.monthlyData?.map(
+                          (data) =>
+                            data.amount > 0 && (
+                              <div
+                                key={data.month}
+                                className="flex flex-col items-center p-1.5 bg-muted/50 rounded"
+                                title={`${data.month}: ${data.amount.toFixed(2)} €`}
+                              >
+                                <span className="text-muted-foreground text-[10px] uppercase">
+                                  {data.month.substring(0, 3)}
+                                </span>
+                                <span className="font-semibold text-[11px]">{data.amount.toFixed(0)}€</span>
+                              </div>
+                            ),
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Total global */}
+                  <div className="border-t-2 pt-3 mt-4">
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-sm">Total {dataYear}</span>
+                      <span className="text-base text-primary">
+                        {customerRevenues.reduce((sum, client) => sum + client.amount, 0).toFixed(0)} €
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -432,7 +569,12 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number, name: string, props: any) => [`${value.toFixed(2)} €`, props.payload.supplier]} />
+                <Tooltip
+                  formatter={(value: number, name: string, props: any) => [
+                    `${value.toFixed(2)} €`,
+                    props.payload.supplier,
+                  ]}
+                />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
