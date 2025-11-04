@@ -383,11 +383,6 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                 Définir
               </Button>
             </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>Aucun solde bancaire défini</p>
-              <p className="text-sm mt-2">Cliquez sur "Définir le solde" pour commencer</p>
-            </div>
           )}
         </CardContent>
       </Card>
