@@ -132,32 +132,32 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
-          <CardHeader>
-            <CardTitle>Total Achats (HT)</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Total Achats (HT)</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
+          <CardContent className="pt-2">
+            <div className="text-xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Total Ventes (TTC)</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Total Ventes (TTC)</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
+          <CardContent className="pt-2">
+            <div className="text-xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Marge Nette (HT)</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Marge Nette (HT)</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
+          <CardContent className="pt-2">
+            <div className="text-xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
             {totalExpenses > 0 && (
               <div className="text-sm text-muted-foreground mt-1">
                 {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
