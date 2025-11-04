@@ -5,9 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Save, X, Upload, FileText, Trash2, HelpCircle, Clipboard } from "lucide-react";
+import { Plus, Save, X, Upload, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ExpenseTableFormProps {
   projectId: string;
@@ -31,7 +30,6 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
   const [uploading, setUploading] = useState<Set<string>>(new Set());
-  const [showHelp, setShowHelp] = useState(false);
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   useEffect(() => {
@@ -296,60 +294,25 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Ajouter des dépenses fournisseurs</CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowHelp(!showHelp)}
-            className="gap-2"
-          >
-            <Clipboard className="h-4 w-4" />
-            Coller depuis Excel
-            <HelpCircle className="h-4 w-4" />
-          </Button>
-        </div>
-        
-        {showHelp && (
-          <Alert className="mt-4">
-            <Clipboard className="h-4 w-4" />
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-semibold">Comment coller depuis Excel :</p>
-                <ol className="list-decimal list-inside space-y-1 text-sm">
-                  <li>Copiez vos lignes depuis Excel (Ctrl+C / Cmd+C)</li>
-                  <li>Cliquez dans le tableau ci-dessous</li>
-                  <li>Collez avec Ctrl+V / Cmd+V</li>
-                </ol>
-                <p className="text-sm font-medium mt-3">Format attendu (colonnes séparées par tabulation) :</p>
-                <code className="block bg-muted p-2 rounded text-xs mt-1">
-                  Nom | Fournisseur | Date achat | Date paiement | Statut | Délai | Montant
-                </code>
-                <p className="text-xs text-muted-foreground mt-2">
-                  • Les dates peuvent être au format DD/MM/YYYY ou DD/MM/YYYY HH:mm<br/>
-                  • Le statut peut être "Payé" ou "Non payé"<br/>
-                  • Le délai peut être "À la commande" ou "30 jours"<br/>
-                  • Seules les 2 premières colonnes (Nom et Fournisseur) sont obligatoires
-                </p>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
+        <CardTitle>Ajouter des dépenses fournisseurs</CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          💡 Astuce : Vous pouvez coller directement depuis Excel (Ctrl+V / Cmd+V)
+        </p>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto" onKeyDown={handleKeyDown} onPaste={handlePaste} tabIndex={0}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[200px]">Nom de la dépense</TableHead>
-                <TableHead className="min-w-[150px]">Fournisseur</TableHead>
-                <TableHead className="min-w-[180px]">Date et heure de la dépense</TableHead>
-                <TableHead className="min-w-[180px]">Date et heure de paiement</TableHead>
-                <TableHead className="min-w-[140px]">Statut de paiement</TableHead>
-                <TableHead className="min-w-[160px]">Délai de paiement</TableHead>
-                <TableHead className="min-w-[120px]">Montant TTC (€)</TableHead>
-                <TableHead className="min-w-[120px]">Facture</TableHead>
-                <TableHead className="w-[80px]">Actions</TableHead>
+                <TableHead className="min-w-[180px]">Nom</TableHead>
+                <TableHead className="min-w-[140px]">Fournisseur</TableHead>
+                <TableHead className="min-w-[150px]">Date dépense</TableHead>
+                <TableHead className="min-w-[150px]">Date paiement</TableHead>
+                <TableHead className="min-w-[120px]">Statut</TableHead>
+                <TableHead className="min-w-[130px]">Délai</TableHead>
+                <TableHead className="min-w-[100px]">Montant TTC</TableHead>
+                <TableHead className="min-w-[100px]">Facture</TableHead>
+                <TableHead className="w-[60px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -359,16 +322,16 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                     <Input
                       value={row.nom_accessoire}
                       onChange={(e) => updateRow(row.id, "nom_accessoire", e.target.value)}
-                      placeholder="Nom de l'article"
-                      className="h-8"
+                      placeholder="Article..."
+                      className="h-9"
                     />
                   </TableCell>
                   <TableCell>
                     <Input
                       value={row.fournisseur}
                       onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
-                      placeholder="Fournisseur"
-                      className="h-8"
+                      placeholder="Fournisseur..."
+                      className="h-9"
                       list={`fournisseurs-${row.id}`}
                     />
                     <datalist id={`fournisseurs-${row.id}`}>
@@ -382,7 +345,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       type="datetime-local"
                       value={row.date_achat}
                       onChange={(e) => updateRow(row.id, "date_achat", e.target.value)}
-                      className="h-8"
+                      className="h-9"
                     />
                   </TableCell>
                   <TableCell>
@@ -390,7 +353,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       type="datetime-local"
                       value={row.date_paiement}
                       onChange={(e) => updateRow(row.id, "date_paiement", e.target.value)}
-                      className="h-8"
+                      className="h-9"
                     />
                   </TableCell>
                   <TableCell>
@@ -398,7 +361,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       value={row.statut_paiement}
                       onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
                     >
-                      <SelectTrigger className="h-8">
+                      <SelectTrigger className="h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -412,12 +375,12 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       value={row.delai_paiement}
                       onValueChange={(value) => updateRow(row.id, "delai_paiement", value)}
                     >
-                      <SelectTrigger className="h-8">
+                      <SelectTrigger className="h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="commande">À la commande</SelectItem>
-                        <SelectItem value="30_jours">Sous 30 jours</SelectItem>
+                        <SelectItem value="30_jours">30 jours</SelectItem>
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -429,7 +392,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       value={row.prix_vente_ttc}
                       onChange={(e) => updateRow(row.id, "prix_vente_ttc", e.target.value)}
                       placeholder="0.00"
-                      className="h-8"
+                      className="h-9"
                     />
                   </TableCell>
                   <TableCell>
@@ -437,11 +400,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       {row.facture_file || row.facture_url ? (
                         <div className="flex items-center gap-1">
                           <FileText className="h-4 w-4 text-green-600" />
-                          <span className="text-xs text-muted-foreground truncate max-w-[60px]">
-                            {row.facture_file?.name || "Facture"}
-                          </span>
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeInvoice(row.id)}>
-                            <Trash2 className="h-3 w-3" />
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeInvoice(row.id)}>
+                            <X className="h-3 w-3" />
                           </Button>
                         </div>
                       ) : (
@@ -456,18 +416,17 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-8"
+                            className="h-9 px-2"
                             onClick={() => fileInputRefs.current[row.id]?.click()}
                           >
-                            <Upload className="h-3 w-3 mr-1" />
-                            Joindre
+                            <Upload className="h-3 w-3" />
                           </Button>
                         </>
                       )}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeRow(row.id)}>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeRow(row.id)}>
                       <X className="h-4 w-4" />
                     </Button>
                   </TableCell>
