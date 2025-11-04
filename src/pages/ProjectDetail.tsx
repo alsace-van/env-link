@@ -1255,7 +1255,7 @@ const ProjectDetail = () => {
 
           {/* Sidebar à DROITE avec hauteur limitée - Animation horizontale pure */}
           <div
-            className={`${isExpensesSidebarClosing ? "sidebar-slide-out-right" : "sidebar-slide-in-right"} fixed right-0 top-1/2 -translate-y-1/2 z-50 w-[600px] h-[90vh] bg-card border-l-2 border-green-200 dark:border-green-800 shadow-2xl rounded-l-xl overflow-hidden flex flex-col`}
+            className={`${isExpensesSidebarClosing ? "sidebar-slide-out-right" : "sidebar-slide-in-right"} fixed right-0 top-1/2 -translate-y-1/2 z-50 w-[480px] h-[90vh] bg-card border-l-2 border-green-200 dark:border-green-800 shadow-2xl rounded-l-xl overflow-hidden flex flex-col`}
           >
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b bg-green-50 dark:bg-green-950/30 flex-shrink-0">
