@@ -7,8 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, Edit } from "lucide-react";
+import { Plus, Trash2, Edit, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface PaymentTransaction {
   id: string;
@@ -30,6 +32,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [newTransaction, setNewTransaction] = useState({
     type_paiement: "acompte" as "acompte" | "solde",
     montant: 0,
@@ -221,157 +224,188 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   const totalPaid = transactions.reduce((sum, t) => sum + t.montant, 0);
   const remaining = totalSales - totalPaid;
 
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold">Paiements</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-1.5">
-        <div className="space-y-0.5 text-sm border-b pb-1.5">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Total ventes TTC:</span>
-            <span className="font-semibold">{totalSales.toFixed(2)} €</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Total payé:</span>
-            <span className="font-semibold text-green-600">{totalPaid.toFixed(2)} €</span>
-          </div>
-          <div className="flex justify-between text-base font-bold pt-0.5 border-t">
-            <span>Reste:</span>
-            <span className={remaining <= 0 ? "text-green-600" : "text-primary"}>
-              {remaining.toFixed(2)} €
-            </span>
-          </div>
+  const PaymentContent = () => (
+    <>
+      <div className="space-y-0.5 text-sm border-b pb-1.5">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Total ventes TTC:</span>
+          <span className="font-semibold">{totalSales.toFixed(2)} €</span>
         </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Total payé:</span>
+          <span className="font-semibold text-green-600">{totalPaid.toFixed(2)} €</span>
+        </div>
+        <div className="flex justify-between text-base font-bold pt-0.5 border-t">
+          <span>Reste:</span>
+          <span className={remaining <= 0 ? "text-green-600" : "text-primary"}>
+            {remaining.toFixed(2)} €
+          </span>
+        </div>
+      </div>
 
-        {transactions.length > 0 && (
-          <div className="space-y-0.5">
-            {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-sm border-b">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1">
-                    <span className={transaction.type_paiement === "acompte" ? "text-orange-600 font-medium" : "text-blue-600 font-medium"}>
-                      {transaction.type_paiement === "acompte" ? "Acompte" : "Solde"}
-                    </span>
-                    <span className="font-bold">{transaction.montant.toFixed(0)}€</span>
-                  </div>
-                  <div className="text-muted-foreground truncate">
-                    <span className="font-medium text-foreground">{transaction.project_name}</span>
-                    {" • "}
-                    {new Date(transaction.date_paiement).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
-                    {transaction.notes && ` • ${transaction.notes}`}
-                  </div>
+      {transactions.length > 0 && (
+        <div className="space-y-0.5">
+          {transactions.map((transaction) => (
+            <div key={transaction.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-sm border-b">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className={transaction.type_paiement === "acompte" ? "text-orange-600 font-medium" : "text-blue-600 font-medium"}>
+                    {transaction.type_paiement === "acompte" ? "Acompte" : "Solde"}
+                  </span>
+                  <span className="font-bold">{transaction.montant.toFixed(0)}€</span>
                 </div>
-                <div className="flex gap-0.5 flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => editTransaction(transaction)}
-                    className="h-6 w-6"
-                  >
-                    <Edit className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => deleteTransaction(transaction.id)}
-                    className="h-6 w-6"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                <div className="text-muted-foreground truncate">
+                  <span className="font-medium text-foreground">{transaction.project_name}</span>
+                  {" • "}
+                  {new Date(transaction.date_paiement).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+                  {transaction.notes && ` • ${transaction.notes}`}
                 </div>
               </div>
-            ))}
+              <div className="flex gap-0.5 flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => editTransaction(transaction)}
+                  className="h-6 w-6"
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => deleteTransaction(transaction.id)}
+                  className="h-6 w-6"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!isAdding ? (
+        <Button onClick={handleAddNew} className="w-full h-8 text-sm" variant="outline">
+          <Plus className="h-3 w-3 mr-1" />
+          Ajouter
+        </Button>
+      ) : (
+        <div className="border rounded-lg p-3 space-y-2">
+          <h4 className="font-semibold text-sm">
+            {editingId ? "Modifier" : "Ajouter un paiement"}
+          </h4>
+          <div className="space-y-1">
+            <Label className="text-sm">Type</Label>
+            <Select
+              value={newTransaction.type_paiement}
+              onValueChange={(value: "acompte" | "solde") => {
+                setNewTransaction({ 
+                  ...newTransaction, 
+                  type_paiement: value,
+                  montant: value === "solde" ? remaining : newTransaction.montant
+                });
+              }}
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="acompte">Acompte</SelectItem>
+                <SelectItem value="solde">Solde</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        )}
 
-        {!isAdding ? (
-          <Button onClick={handleAddNew} className="w-full h-8 text-sm" variant="outline">
-            <Plus className="h-3 w-3 mr-1" />
-            Ajouter
-          </Button>
-        ) : (
-          <div className="border rounded-lg p-3 space-y-2">
-            <h4 className="font-semibold text-sm">
-              {editingId ? "Modifier" : "Ajouter un paiement"}
-            </h4>
+          <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label className="text-sm">Type</Label>
-              <Select
-                value={newTransaction.type_paiement}
-                onValueChange={(value: "acompte" | "solde") => {
-                  setNewTransaction({ 
-                    ...newTransaction, 
-                    type_paiement: value,
-                    montant: value === "solde" ? remaining : newTransaction.montant
-                  });
-                }}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="acompte">Acompte</SelectItem>
-                  <SelectItem value="solde">Solde</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-sm">Montant (€)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={newTransaction.montant}
-                  onChange={(e) =>
-                    setNewTransaction({ ...newTransaction, montant: parseFloat(e.target.value) || 0 })
-                  }
-                  className="h-8 text-sm"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-sm">Date</Label>
-                <Input
-                  type="date"
-                  value={newTransaction.date_paiement}
-                  onChange={(e) =>
-                    setNewTransaction({ ...newTransaction, date_paiement: e.target.value })
-                  }
-                  className="h-8 text-sm"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-sm">Notes</Label>
-              <Textarea
-                value={newTransaction.notes}
+              <Label className="text-sm">Montant (€)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={newTransaction.montant}
                 onChange={(e) =>
-                  setNewTransaction({ ...newTransaction, notes: e.target.value })
+                  setNewTransaction({ ...newTransaction, montant: parseFloat(e.target.value) || 0 })
                 }
-                placeholder="Notes..."
-                className="h-16 text-sm resize-none"
+                className="h-8 text-sm"
               />
             </div>
 
-            <div className="flex gap-2">
-              <Button onClick={addOrUpdateTransaction} className="flex-1 h-7 text-sm">
-                {editingId ? "Modifier" : "OK"}
-              </Button>
-              <Button
-                onClick={cancelEdit}
-                variant="outline"
-                className="flex-1 h-7 text-sm"
-              >
-                Annuler
-              </Button>
+            <div className="space-y-1">
+              <Label className="text-sm">Date</Label>
+              <Input
+                type="date"
+                value={newTransaction.date_paiement}
+                onChange={(e) =>
+                  setNewTransaction({ ...newTransaction, date_paiement: e.target.value })
+                }
+                className="h-8 text-sm"
+              />
             </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          <div className="space-y-1">
+            <Label className="text-sm">Notes</Label>
+            <Textarea
+              value={newTransaction.notes}
+              onChange={(e) =>
+                setNewTransaction({ ...newTransaction, notes: e.target.value })
+              }
+              placeholder="Notes..."
+              className="h-16 text-sm resize-none"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button onClick={addOrUpdateTransaction} className="flex-1 h-7 text-sm">
+              {editingId ? "Modifier" : "OK"}
+            </Button>
+            <Button
+              onClick={cancelEdit}
+              variant="outline"
+              className="flex-1 h-7 text-sm"
+            >
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold">Paiements</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsExpanded(true)}
+              className="h-8 w-8"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-1.5">
+          <PaymentContent />
+        </CardContent>
+      </Card>
+
+      <Dialog open={isExpanded} onOpenChange={setIsExpanded}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Paiements</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="h-[calc(90vh-100px)] pr-4">
+            <div className="space-y-1.5">
+              <PaymentContent />
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

@@ -4,8 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Edit, Trash2 } from "lucide-react";
+import { Plus, Edit, Trash2, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface MonthlyCharge {
   id: string;
@@ -22,6 +24,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
   const [charges, setCharges] = useState<MonthlyCharge[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [formData, setFormData] = useState({
     nom_charge: "",
     montant: "",
@@ -137,118 +140,149 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
 
   const totalCharges = charges.reduce((sum, charge) => sum + charge.montant, 0);
 
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Charges Mensuelles</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-1.5">
-        {charges.length > 0 && (
-          <div className="space-y-0.5">
-            {charges.map((charge) => (
-              <div key={charge.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-xs border-b">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{charge.nom_charge}</div>
-                  <div className="text-muted-foreground">
-                    Le {charge.jour_mois} du mois
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="font-bold text-destructive whitespace-nowrap">
-                    {charge.montant.toFixed(0)}€
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleEdit(charge)}
-                    className="h-6 w-6 flex-shrink-0"
-                  >
-                    <Edit className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(charge.id)}
-                    className="h-6 w-6 flex-shrink-0"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+  const ChargesContent = () => (
+    <>
+      {charges.length > 0 && (
+        <div className="space-y-0.5">
+          {charges.map((charge) => (
+            <div key={charge.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-xs border-b">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{charge.nom_charge}</div>
+                <div className="text-muted-foreground">
+                  Le {charge.jour_mois} du mois
                 </div>
               </div>
-            ))}
-            <div className="flex justify-between pt-1.5 border-t-2 font-bold text-xs">
-              <span>Total :</span>
-              <span className="text-destructive">{totalCharges.toFixed(2)} €</span>
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-destructive whitespace-nowrap">
+                  {charge.montant.toFixed(0)}€
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleEdit(charge)}
+                  className="h-6 w-6 flex-shrink-0"
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDelete(charge.id)}
+                  className="h-6 w-6 flex-shrink-0"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
+          ))}
+          <div className="flex justify-between pt-1.5 border-t-2 font-bold text-xs">
+            <span>Total :</span>
+            <span className="text-destructive">{totalCharges.toFixed(2)} €</span>
           </div>
-        )}
+        </div>
+      )}
 
-        {!isAdding ? (
-          <Button onClick={() => setIsAdding(true)} className="w-full h-7 text-xs" variant="outline">
-            <Plus className="h-3 w-3 mr-1" />
-            Ajouter
-          </Button>
-        ) : (
-          <div className="border rounded-lg p-3 space-y-2">
-            <h4 className="font-semibold text-xs">
-              {editingId ? "Modifier la charge" : "Ajouter une charge"}
-            </h4>
+      {!isAdding ? (
+        <Button onClick={() => setIsAdding(true)} className="w-full h-7 text-xs" variant="outline">
+          <Plus className="h-3 w-3 mr-1" />
+          Ajouter
+        </Button>
+      ) : (
+        <div className="border rounded-lg p-3 space-y-2">
+          <h4 className="font-semibold text-xs">
+            {editingId ? "Modifier la charge" : "Ajouter une charge"}
+          </h4>
 
+          <div className="space-y-1">
+            <Label htmlFor="nom_charge" className="text-xs">Nom</Label>
+            <Input
+              id="nom_charge"
+              value={formData.nom_charge}
+              onChange={(e) => setFormData({ ...formData, nom_charge: e.target.value })}
+              placeholder="Loyer, assurance..."
+              className="h-8 text-xs"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label htmlFor="nom_charge" className="text-xs">Nom</Label>
+              <Label htmlFor="montant" className="text-xs">Montant (€)</Label>
               <Input
-                id="nom_charge"
-                value={formData.nom_charge}
-                onChange={(e) => setFormData({ ...formData, nom_charge: e.target.value })}
-                placeholder="Loyer, assurance..."
+                id="montant"
+                type="number"
+                step="0.01"
+                value={formData.montant}
+                onChange={(e) => setFormData({ ...formData, montant: e.target.value })}
+                placeholder="0.00"
                 className="h-8 text-xs"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label htmlFor="montant" className="text-xs">Montant (€)</Label>
-                <Input
-                  id="montant"
-                  type="number"
-                  step="0.01"
-                  value={formData.montant}
-                  onChange={(e) => setFormData({ ...formData, montant: e.target.value })}
-                  placeholder="0.00"
-                  className="h-8 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="jour_mois" className="text-xs">Jour du mois</Label>
-                <Input
-                  id="jour_mois"
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={formData.jour_mois}
-                  onChange={(e) => setFormData({ ...formData, jour_mois: e.target.value })}
-                  placeholder="15"
-                  className="h-8 text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={handleSave} className="flex-1 h-7 text-xs">
-                {editingId ? "Modifier" : "OK"}
-              </Button>
-              <Button onClick={resetForm} variant="outline" className="flex-1 h-7 text-xs">
-                Annuler
-              </Button>
+            <div className="space-y-1">
+              <Label htmlFor="jour_mois" className="text-xs">Jour du mois</Label>
+              <Input
+                id="jour_mois"
+                type="number"
+                min="1"
+                max="31"
+                value={formData.jour_mois}
+                onChange={(e) => setFormData({ ...formData, jour_mois: e.target.value })}
+                placeholder="15"
+                className="h-8 text-xs"
+              />
             </div>
           </div>
-        )}
 
-        {charges.length === 0 && !isAdding && (
-          <p className="text-center py-2 text-xs text-muted-foreground">Aucune charge</p>
-        )}
-      </CardContent>
-    </Card>
+          <div className="flex gap-2">
+            <Button onClick={handleSave} className="flex-1 h-7 text-xs">
+              {editingId ? "Modifier" : "OK"}
+            </Button>
+            <Button onClick={resetForm} variant="outline" className="flex-1 h-7 text-xs">
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {charges.length === 0 && !isAdding && (
+        <p className="text-center py-2 text-xs text-muted-foreground">Aucune charge</p>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Charges Mensuelles</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsExpanded(true)}
+              className="h-8 w-8"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-1.5">
+          <ChargesContent />
+        </CardContent>
+      </Card>
+
+      <Dialog open={isExpanded} onOpenChange={setIsExpanded}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Charges Mensuelles</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="h-[calc(90vh-100px)] pr-4">
+            <div className="space-y-1.5">
+              <ChargesContent />
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
