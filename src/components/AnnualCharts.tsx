@@ -66,18 +66,18 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         setCustomerRevenues(customerData);
       }
 
-      // 2. Dépenses fournisseurs sur l'année (from project_expenses where fournisseur is not null)
-      const { data: expensesData } = await supabase
+      // 2. Factures fournisseurs sur l'année mensuelles (from tableau factures fournisseurs)
+      const { data: supplierInvoicesMonthly } = await supabase
         .from("project_expenses")
-        .select("prix, quantite, date_achat, fournisseur")
-        .eq("project_id", projectId)
-        .not("fournisseur", "is", null)
+        .select("prix, quantite, date_achat")
+        .is("project_id", null)
+        .eq("categorie", "Fournisseur")
         .gte("date_achat", startOfYear)
         .lte("date_achat", endOfYear);
 
-      if (expensesData) {
+      if (supplierInvoicesMonthly) {
         const monthMap = new Map<string, number>();
-        expensesData.forEach((expense) => {
+        supplierInvoicesMonthly.forEach((expense) => {
           const date = new Date(expense.date_achat);
           const monthKey = date.toLocaleDateString("fr-FR", { month: "short" });
           const total = expense.prix * expense.quantite;
@@ -110,10 +110,19 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         setMonthlyRevenues(monthlyData);
       }
 
-      // 4. Dépenses annuelles par fournisseur (pie chart)
-      if (expensesData) {
+      // 4. Factures fournisseurs annuelles par fournisseur (pie chart)
+      // Utilise uniquement les dépenses du tableau "factures fournisseurs" (project_id = null, categorie = "Fournisseur")
+      const { data: supplierInvoicesData } = await supabase
+        .from("project_expenses")
+        .select("prix, quantite, fournisseur, date_achat")
+        .is("project_id", null)
+        .eq("categorie", "Fournisseur")
+        .gte("date_achat", startOfYear)
+        .lte("date_achat", endOfYear);
+
+      if (supplierInvoicesData && supplierInvoicesData.length > 0) {
         const supplierMap = new Map<string, number>();
-        expensesData.forEach((expense) => {
+        supplierInvoicesData.forEach((expense) => {
           const supplier = expense.fournisseur || "Fournisseur inconnu";
           const total = expense.prix * expense.quantite;
           supplierMap.set(supplier, (supplierMap.get(supplier) || 0) + total);
@@ -123,6 +132,8 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           .sort((a, b) => b.amount - a.amount)
           .slice(0, 8); // Top 8 fournisseurs
         setAnnualSupplierExpenses(supplierData);
+      } else {
+        setAnnualSupplierExpenses([]);
       }
     } catch (error) {
       console.error("Error loading annual data:", error);
@@ -173,10 +184,10 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         </CardContent>
       </Card>
 
-      {/* Dépenses fournisseurs mensuelles */}
+      {/* Factures fournisseurs mensuelles */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Dépenses fournisseurs mensuelles ({new Date().getFullYear()})</CardTitle>
+          <CardTitle className="text-sm">Factures fournisseurs mensuelles ({new Date().getFullYear()})</CardTitle>
         </CardHeader>
         <CardContent>
           {supplierExpenses.length > 0 ? (
@@ -221,10 +232,10 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         </CardContent>
       </Card>
 
-      {/* Dépenses par fournisseur (pie chart) */}
+      {/* Factures par fournisseur (pie chart) */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Répartition par fournisseur ({new Date().getFullYear()})</CardTitle>
+          <CardTitle className="text-sm">Factures par fournisseur ({new Date().getFullYear()})</CardTitle>
         </CardHeader>
         <CardContent>
           {annualSupplierExpenses.length > 0 ? (
