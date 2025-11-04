@@ -485,7 +485,7 @@ const AccessoryImportExportDialog = ({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Import / Export d'accessoires</DialogTitle>
           </DialogHeader>
@@ -730,7 +730,7 @@ const AccessoryImportExportDialog = ({
 
       {/* Dialogue de mapping de colonnes */}
       <Dialog open={showMappingDialog} onOpenChange={handleCancelMapping}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Correspondance des colonnes</DialogTitle>
           </DialogHeader>
