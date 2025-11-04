@@ -320,76 +320,68 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       </Button>
 
       {/* Solde bancaire */}
-      <Card>
-        <CardHeader className="pb-2 pt-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Solde Bancaire</CardTitle>
-            <Button onClick={openEditBalance} variant="outline" size="sm">
-              {bankBalance ? <Edit className="h-4 w-4 mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-              {bankBalance ? "Modifier" : "Définir"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0 pb-4">
+      <Card className="py-3">
+        <CardContent className="space-y-2 px-4 py-0">
           {bankBalance ? (
-            <div className="space-y-2">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <>
+              {/* En-tête et bouton */}
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold">Solde Bancaire</h3>
+                <Button onClick={openEditBalance} variant="ghost" size="sm" className="h-7 text-xs">
+                  <Edit className="h-3 w-3 mr-1" />
+                  Modifier
+                </Button>
+              </div>
+              
+              {/* Ligne 1 : Soldes principaux */}
+              <div className="grid grid-cols-3 gap-4 py-2 border-b">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Solde de départ</p>
-                  <p className="text-lg font-bold text-primary">
-                    {bankBalance.solde_depart.toFixed(2)} €
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Au {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}
-                  </p>
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Solde de départ</p>
+                  <p className="text-base font-bold text-primary">{bankBalance.solde_depart.toFixed(2)} €</p>
+                  <p className="text-[9px] text-muted-foreground">Au {format(new Date(bankBalance.date_heure_depart), "dd/MM/yyyy à HH:mm")}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Solde actuel</p>
-                  <p className={`text-lg font-bold ${currentBalance >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Solde actuel</p>
+                  <p className={`text-base font-bold ${currentBalance >= 0 ? 'text-green-600' : 'text-destructive'}`}>
                     {currentBalance.toFixed(2)} €
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">Variation</p>
-                  <p className={`text-lg font-bold ${(currentBalance - bankBalance.solde_depart) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Variation</p>
+                  <p className={`text-base font-bold ${(currentBalance - bankBalance.solde_depart) >= 0 ? 'text-green-600' : 'text-destructive'}`}>
                     {(currentBalance - bankBalance.solde_depart >= 0 ? '+' : '')}
                     {(currentBalance - bankBalance.solde_depart).toFixed(2)} €
                   </p>
                 </div>
               </div>
               
-              {/* Prévisionnel fin de mois */}
-              <div className="border-t pt-2">
-                <h3 className="text-xs font-semibold mb-1.5 text-muted-foreground">
-                  Prévisionnel fin de mois ({format(monthEnd, "dd/MM/yyyy")})
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <p className="text-muted-foreground mb-0.5">Paiements à venir</p>
-                    <p className="text-sm font-semibold text-green-600">
-                      +{totalExpectedPayments.toFixed(2)} €
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {expectedPaymentsThisMonth.length} paiement(s)
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-0.5">Dépenses à payer</p>
-                    <p className="text-sm font-semibold text-destructive">
-                      -{totalUnpaidExpensesThisMonth.toFixed(2)} €
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {unpaidExpensesThisMonth.length} dépense(s)
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-0.5">Solde prévisionnel</p>
-                    <p className={`text-sm font-bold ${forecastEndOfMonth >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                      {forecastEndOfMonth.toFixed(2)} €
-                    </p>
-                  </div>
+              {/* Ligne 2 : Prévisionnel */}
+              <div className="flex items-center justify-between py-1">
+                <div className="flex items-center gap-4 text-[10px]">
+                  <span className="text-muted-foreground font-medium">Prévisionnel fin de mois ({format(monthEnd, "dd/MM/yyyy")}):</span>
+                  <span className="text-muted-foreground">Paiements à venir</span>
+                  <span className="font-semibold text-green-600">+{totalExpectedPayments.toFixed(2)} €</span>
+                  <span className="text-muted-foreground">Dépenses à payer</span>
+                  <span className="font-semibold text-destructive">-{totalUnpaidExpensesThisMonth.toFixed(2)} €</span>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Solde prévisionnel</p>
+                  <p className={`text-base font-bold ${forecastEndOfMonth >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    {forecastEndOfMonth.toFixed(2)} €
+                  </p>
                 </div>
               </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <h3 className="text-sm font-semibold mb-1">Solde Bancaire</h3>
+                <p className="text-xs text-muted-foreground">Aucun solde défini</p>
+              </div>
+              <Button onClick={openEditBalance} variant="outline" size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                Définir
+              </Button>
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
