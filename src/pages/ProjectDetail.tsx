@@ -123,7 +123,7 @@ const AgendaWidget = ({ projectId, onClick, onDoubleClick }: AgendaWidgetProps) 
   const today = new Date();
   const todayEvents = [
     ...todos.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), today)),
-    ...appointments.filter((a) => a.date && isSameDay(parseISO(a.date), today)),
+    ...appointments.filter((a) => a.appointment_date && isSameDay(parseISO(a.appointment_date), today)),
     ...supplierExpenses.filter((e) => e.order_date && isSameDay(parseISO(e.order_date), today)),
     ...accessoryDeliveries.filter((d) => d.delivery_date && isSameDay(parseISO(d.delivery_date), today)),
   ].slice(0, 2); // Max 2 événements
@@ -239,8 +239,8 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
     // Filtrer les rendez-vous
     appointments
       .filter((a) => {
-        if (!a.date) return false;
-        const date = parseISO(a.date);
+        if (!a.appointment_date) return false;
+        const date = parseISO(a.appointment_date);
         return isSameDay(date, today) && date.getHours() === hour;
       })
       .forEach((a) => events.push({ ...a, type: "appointment" }));
@@ -392,7 +392,9 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
 
   const getEventsForDate = (date: Date) => {
     const todosForDate = todos.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), date));
-    const appointmentsForDate = appointments.filter((a) => a.date && isSameDay(parseISO(a.date), date));
+    const appointmentsForDate = appointments.filter(
+      (a) => a.appointment_date && isSameDay(parseISO(a.appointment_date), date),
+    );
     const expensesForDate = supplierExpenses.filter((e) => e.order_date && isSameDay(parseISO(e.order_date), date));
     const deliveriesForDate = accessoryDeliveries.filter(
       (d) => d.delivery_date && isSameDay(parseISO(d.delivery_date), date),
@@ -1093,12 +1095,26 @@ const ProjectDetail = () => {
               </TabsList>
 
               <TabsContent value="photos" className="mt-6">
-                <PhotosTab projectId={project.id} refresh={photoRefresh} />
+                <PhotosTab projectId={project.id} />
               </TabsContent>
 
-              <TabsContent value="expenses" className="mt-6 space-y-6">
-                <ExpensesSummary projectId={project.id} />
-                <ExpensesList projectId={project.id} refresh={expenseRefresh} />
+              <TabsContent value="expenses" className="mt-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Colonne principale - Liste des dépenses */}
+                  <div className="lg:col-span-2">
+                    <ExpensesList
+                      projectId={project.id}
+                      onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                    />
+                  </div>
+
+                  {/* Sidebar droite - Résumé et statistiques */}
+                  <div className="lg:col-span-1">
+                    <div className="sticky top-6">
+                      <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
+                    </div>
+                  </div>
+                </div>
               </TabsContent>
 
               <TabsContent value="documents" className="mt-6">
@@ -1106,16 +1122,16 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="catalog" className="mt-6">
-                <AccessoriesCatalogView projectId={project.id} />
+                <AccessoriesCatalogView />
               </TabsContent>
 
               <TabsContent value="notices" className="mt-6">
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold">Notices techniques</h2>
-                    <NoticeUploadDialog projectId={project.id} />
+                    <NoticeUploadDialog />
                   </div>
-                  <NoticesList projectId={project.id} />
+                  <NoticesList />
                 </div>
               </TabsContent>
 
@@ -1160,9 +1176,9 @@ const ProjectDetail = () => {
                         <Layout3DView
                           key={layout3DKey}
                           projectId={project.id}
-                          vehicleLength={project.longueur_chargement_mm || 0}
-                          vehicleWidth={project.largeur_chargement_mm || 0}
-                          vehicleHeight={project.hauteur_mm || 0}
+                          loadAreaLength={project.longueur_chargement_mm || 0}
+                          loadAreaWidth={project.largeur_chargement_mm || 0}
+                          loadAreaHeight={project.hauteur_mm || 0}
                         />
                       </TabsContent>
                     </Tabs>
