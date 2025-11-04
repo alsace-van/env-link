@@ -224,10 +224,10 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Paiements</CardTitle>
+        <CardTitle className="text-base font-semibold">Paiements</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1.5">
-        <div className="space-y-0.5 text-xs border-b pb-1.5">
+        <div className="space-y-0.5 text-sm border-b pb-1.5">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Total ventes TTC:</span>
             <span className="font-semibold">{totalSales.toFixed(2)} €</span>
@@ -236,7 +236,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
             <span className="text-muted-foreground">Total payé:</span>
             <span className="font-semibold text-green-600">{totalPaid.toFixed(2)} €</span>
           </div>
-          <div className="flex justify-between text-xs font-bold pt-0.5 border-t">
+          <div className="flex justify-between text-base font-bold pt-0.5 border-t">
             <span>Reste:</span>
             <span className={remaining <= 0 ? "text-green-600" : "text-primary"}>
               {remaining.toFixed(2)} €
@@ -247,7 +247,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
         {transactions.length > 0 && (
           <div className="space-y-0.5">
             {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-xs border-b">
+              <div key={transaction.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-sm border-b">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1">
                     <span className={transaction.type_paiement === "acompte" ? "text-orange-600 font-medium" : "text-blue-600 font-medium"}>
@@ -286,17 +286,17 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
         )}
 
         {!isAdding ? (
-          <Button onClick={handleAddNew} className="w-full h-8 text-xs" variant="outline">
+          <Button onClick={handleAddNew} className="w-full h-8 text-sm" variant="outline">
             <Plus className="h-3 w-3 mr-1" />
             Ajouter
           </Button>
         ) : (
           <div className="border rounded-lg p-3 space-y-2">
-            <h4 className="font-semibold text-xs">
+            <h4 className="font-semibold text-sm">
               {editingId ? "Modifier" : "Ajouter un paiement"}
             </h4>
             <div className="space-y-1">
-              <Label className="text-xs">Type</Label>
+              <Label className="text-sm">Type</Label>
               <Select
                 value={newTransaction.type_paiement}
                 onValueChange={(value: "acompte" | "solde") => {
@@ -307,7 +307,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
                   });
                 }}
               >
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -319,7 +319,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <Label className="text-xs">Montant (€)</Label>
+                <Label className="text-sm">Montant (€)</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -327,43 +327,43 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
                   onChange={(e) =>
                     setNewTransaction({ ...newTransaction, montant: parseFloat(e.target.value) || 0 })
                   }
-                  className="h-8 text-xs"
+                  className="h-8 text-sm"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs">Date</Label>
+                <Label className="text-sm">Date</Label>
                 <Input
                   type="date"
                   value={newTransaction.date_paiement}
                   onChange={(e) =>
                     setNewTransaction({ ...newTransaction, date_paiement: e.target.value })
                   }
-                  className="h-8 text-xs"
+                  className="h-8 text-sm"
                 />
               </div>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">Notes</Label>
+              <Label className="text-sm">Notes</Label>
               <Textarea
                 value={newTransaction.notes}
                 onChange={(e) =>
                   setNewTransaction({ ...newTransaction, notes: e.target.value })
                 }
                 placeholder="Notes..."
-                className="h-16 text-xs resize-none"
+                className="h-16 text-sm resize-none"
               />
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={addOrUpdateTransaction} className="flex-1 h-7 text-xs">
+              <Button onClick={addOrUpdateTransaction} className="flex-1 h-7 text-sm">
                 {editingId ? "Modifier" : "OK"}
               </Button>
               <Button
                 onClick={cancelEdit}
                 variant="outline"
-                className="flex-1 h-7 text-xs"
+                className="flex-1 h-7 text-sm"
               >
                 Annuler
               </Button>
