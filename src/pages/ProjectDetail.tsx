@@ -1115,45 +1115,41 @@ const ProjectDetail = () => {
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
             <Tabs defaultValue="photos" className="w-full">
-              {/* Zone sticky pour les onglets principaux */}
-              <div className="sticky top-0 z-40 bg-background border-b shadow-sm -mx-4 px-4">
-                <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-                  <TabsTrigger value="photos" className="gap-2">
-                    <Image className="h-4 w-4 text-purple-600" />
-                    <span className="hidden sm:inline">Photos</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="expenses" className="gap-2">
-                    <Euro className="h-4 w-4 text-green-600" />
-                    <span className="hidden sm:inline">Dépenses</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="documents" className="gap-2">
-                    <FileText className="h-4 w-4 text-blue-600" />
-                    <span className="hidden sm:inline">Documents</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="catalog" className="gap-2">
-                    <Package className="h-4 w-4 text-orange-600" />
-                    <span className="hidden sm:inline">Catalogue</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="notices" className="gap-2">
-                    <BookOpen className="h-4 w-4 text-indigo-600" />
-                    <span className="hidden sm:inline">Notices</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="technical" className="gap-2">
-                    <Wrench className="h-4 w-4 text-red-600" />
-                    <span className="hidden sm:inline">Technique</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
+              <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+                <TabsTrigger value="photos" className="gap-2">
+                  <Image className="h-4 w-4 text-purple-600" />
+                  <span className="hidden sm:inline">Photos</span>
+                </TabsTrigger>
+                <TabsTrigger value="expenses" className="gap-2">
+                  <Euro className="h-4 w-4 text-green-600" />
+                  <span className="hidden sm:inline">Dépenses</span>
+                </TabsTrigger>
+                <TabsTrigger value="documents" className="gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <span className="hidden sm:inline">Documents</span>
+                </TabsTrigger>
+                <TabsTrigger value="catalog" className="gap-2">
+                  <Package className="h-4 w-4 text-orange-600" />
+                  <span className="hidden sm:inline">Catalogue</span>
+                </TabsTrigger>
+                <TabsTrigger value="notices" className="gap-2">
+                  <BookOpen className="h-4 w-4 text-indigo-600" />
+                  <span className="hidden sm:inline">Notices</span>
+                </TabsTrigger>
+                <TabsTrigger value="technical" className="gap-2">
+                  <Wrench className="h-4 w-4 text-red-600" />
+                  <span className="hidden sm:inline">Technique</span>
+                </TabsTrigger>
+              </TabsList>
 
               <TabsContent value="photos" className="mt-6">
                 <PhotosTab projectId={project.id} />
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
-                {/* Zone sticky pour le header Dépenses + sous-onglets */}
-                <div className="sticky top-[42px] z-30 bg-background border-b -mx-4 px-4 pb-2">
+                <div className="space-y-4">
                   {/* Header avec bouton Statistiques */}
-                  <div className="flex justify-between items-center py-3 border-b">
+                  <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold">Dépenses</h2>
                     <Button onClick={() => setIsExpensesSidebarOpen(true)} className="gap-2" variant="default">
                       <BarChart3 className="h-4 w-4" />
@@ -1163,16 +1159,11 @@ const ProjectDetail = () => {
 
                   {/* Sous-onglets : Liste et Bilan */}
                   <Tabs defaultValue="liste" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mt-2">
+                    <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="liste">Liste des dépenses</TabsTrigger>
                       <TabsTrigger value="bilan">Bilan comptable</TabsTrigger>
                     </TabsList>
-                  </Tabs>
-                </div>
 
-                {/* Contenu scrollable */}
-                <div className="mt-4">
-                  <Tabs defaultValue="liste" className="w-full">
                     <TabsContent value="liste" className="mt-4">
                       <ExpensesList
                         projectId={project.id}
@@ -1209,70 +1200,54 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="technical" className="mt-6">
-                {/* Zone sticky pour les sous-onglets Technique */}
-                <div className="sticky top-[42px] z-30 bg-background border-b -mx-4 px-4 pb-2">
-                  <Tabs defaultValue="electrical" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 mt-2">
-                      <TabsTrigger value="electrical">Schéma électrique</TabsTrigger>
-                      <TabsTrigger value="cable">Section de câble</TabsTrigger>
-                      <TabsTrigger value="energy">Bilan énergétique</TabsTrigger>
-                      <TabsTrigger value="layout">Aménagement</TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                </div>
+                <Tabs defaultValue="electrical" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+                    <TabsTrigger value="electrical">Schéma électrique</TabsTrigger>
+                    <TabsTrigger value="cable">Section de câble</TabsTrigger>
+                    <TabsTrigger value="energy">Bilan énergétique</TabsTrigger>
+                    <TabsTrigger value="layout">Aménagement</TabsTrigger>
+                  </TabsList>
 
-                {/* Contenu scrollable */}
-                <div className="mt-4">
-                  <Tabs defaultValue="electrical" className="w-full">
-                    <TabsContent value="electrical" className="mt-6">
-                      <TechnicalCanvas projectId={project.id} />
-                    </TabsContent>
+                  <TabsContent value="electrical" className="mt-6">
+                    <TechnicalCanvas projectId={project.id} />
+                  </TabsContent>
 
-                    <TabsContent value="cable" className="mt-6">
-                      <CableSectionCalculator />
-                    </TabsContent>
+                  <TabsContent value="cable" className="mt-6">
+                    <CableSectionCalculator />
+                  </TabsContent>
 
-                    <TabsContent value="energy" className="mt-6">
-                      <EnergyBalance projectId={project.id} />
-                    </TabsContent>
+                  <TabsContent value="energy" className="mt-6">
+                    <EnergyBalance projectId={project.id} />
+                  </TabsContent>
 
-                    <TabsContent value="layout" className="mt-6">
-                      {/* Zone sticky pour les sous-sous-onglets 2D/3D */}
-                      <div className="sticky top-[98px] z-20 bg-background border-b -mx-4 px-4 pb-2">
-                        <Tabs defaultValue="2d" className="w-full">
-                          <TabsList className="grid w-full grid-cols-2 mt-2">
-                            <TabsTrigger value="2d">Plan 2D</TabsTrigger>
-                            <TabsTrigger value="3d">Vue 3D</TabsTrigger>
-                          </TabsList>
-                        </Tabs>
-                      </div>
+                  <TabsContent value="layout" className="mt-6">
+                    <Tabs defaultValue="2d" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="2d">Plan 2D</TabsTrigger>
+                        <TabsTrigger value="3d">Vue 3D</TabsTrigger>
+                      </TabsList>
 
-                      {/* Contenu scrollable */}
-                      <div className="mt-4">
-                        <Tabs defaultValue="2d" className="w-full">
-                          <TabsContent value="2d" className="mt-6">
-                            <LayoutCanvas
-                              key={layoutCanvasKey}
-                              projectId={project.id}
-                              vehicleLength={project.longueur_chargement_mm || 0}
-                              vehicleWidth={project.largeur_chargement_mm || 0}
-                            />
-                          </TabsContent>
+                      <TabsContent value="2d" className="mt-6">
+                        <LayoutCanvas
+                          key={layoutCanvasKey}
+                          projectId={project.id}
+                          vehicleLength={project.longueur_chargement_mm || 0}
+                          vehicleWidth={project.largeur_chargement_mm || 0}
+                        />
+                      </TabsContent>
 
-                          <TabsContent value="3d" className="mt-6">
-                            <Layout3DView
-                              key={layout3DKey}
-                              projectId={project.id}
-                              loadAreaLength={project.longueur_chargement_mm || 0}
-                              loadAreaWidth={project.largeur_chargement_mm || 0}
-                              loadAreaHeight={project.hauteur_mm || 0}
-                            />
-                          </TabsContent>
-                        </Tabs>
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
+                      <TabsContent value="3d" className="mt-6">
+                        <Layout3DView
+                          key={layout3DKey}
+                          projectId={project.id}
+                          loadAreaLength={project.longueur_chargement_mm || 0}
+                          loadAreaWidth={project.largeur_chargement_mm || 0}
+                          loadAreaHeight={project.hauteur_mm || 0}
+                        />
+                      </TabsContent>
+                    </Tabs>
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
             </Tabs>
           </div>
