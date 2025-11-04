@@ -133,38 +133,44 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <Card className="!p-3">
-          <CardHeader className="!p-0 !pb-1">
-            <CardTitle className="!text-sm !font-semibold">Total Achats (HT)</CardTitle>
-          </CardHeader>
-          <CardContent className="!p-0 !pt-1">
-            <div className="!text-lg font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
-          </CardContent>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-1">
+        <Card className="!p-0 overflow-hidden">
+          <div className="p-2">
+            <CardHeader className="!p-0 !pb-1 !space-y-0">
+              <CardTitle className="!text-sm !font-semibold !leading-tight">Total Achats (HT)</CardTitle>
+            </CardHeader>
+            <CardContent className="!p-0 !pt-1">
+              <div className="!text-lg font-bold text-red-600 !leading-tight">{totalExpenses.toFixed(2)} €</div>
+            </CardContent>
+          </div>
         </Card>
 
-        <Card className="!p-3">
-          <CardHeader className="!p-0 !pb-1">
-            <CardTitle className="!text-sm !font-semibold">Total Ventes (TTC)</CardTitle>
-          </CardHeader>
-          <CardContent className="!p-0 !pt-1">
-            <div className="!text-lg font-bold text-green-600">{totalSales.toFixed(2)} €</div>
-          </CardContent>
+        <Card className="!p-0 overflow-hidden">
+          <div className="p-2">
+            <CardHeader className="!p-0 !pb-1 !space-y-0">
+              <CardTitle className="!text-sm !font-semibold !leading-tight">Total Ventes (TTC)</CardTitle>
+            </CardHeader>
+            <CardContent className="!p-0 !pt-1">
+              <div className="!text-lg font-bold text-green-600 !leading-tight">{totalSales.toFixed(2)} €</div>
+            </CardContent>
+          </div>
         </Card>
 
-        <Card className="!p-3">
-          <CardHeader className="!p-0 !pb-1">
-            <CardTitle className="!text-sm !font-semibold">Marge Nette (HT)</CardTitle>
-          </CardHeader>
-          <CardContent className="!p-0 !pt-1">
-            <div className="!text-lg font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
-            {totalExpenses > 0 && (
-              <div className="text-xs text-muted-foreground !mt-0.5">
-                {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
-              </div>
-            )}
-            <div className="text-xs text-muted-foreground !mt-0.5">TVA 20% déduite</div>
-          </CardContent>
+        <Card className="!p-0 overflow-hidden">
+          <div className="p-2">
+            <CardHeader className="!p-0 !pb-1 !space-y-0">
+              <CardTitle className="!text-sm !font-semibold !leading-tight">Marge Nette (HT)</CardTitle>
+            </CardHeader>
+            <CardContent className="!p-0 !pt-1">
+              <div className="!text-lg font-bold text-blue-600 !leading-tight">{totalMargin.toFixed(2)} €</div>
+              {totalExpenses > 0 && (
+                <div className="text-xs text-muted-foreground !mt-0.5 !leading-tight">
+                  {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground !mt-0.5 !leading-tight">TVA 20% déduite</div>
+            </CardContent>
+          </div>
         </Card>
       </div>
 
