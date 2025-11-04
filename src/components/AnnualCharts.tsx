@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Loader2 } from "lucide-react";
+import { Loader2, Maximize2 } from "lucide-react";
 
 interface AnnualChartsProps {
   projectId: string;
@@ -23,6 +25,8 @@ interface MonthlyData {
   amount: number;
 }
 
+type ChartModal = "customer" | "supplierMonthly" | "revenue" | "supplierAnnual" | null;
+
 const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#6366f1", "#14b8a6"];
 
 export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
@@ -32,6 +36,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
   const [annualSupplierExpenses, setAnnualSupplierExpenses] = useState<SupplierExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [dataYear, setDataYear] = useState<number>(new Date().getFullYear());
+  const [openModal, setOpenModal] = useState<ChartModal>(null);
 
   useEffect(() => {
     loadAnnualData();
@@ -45,7 +50,6 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
     const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59).toISOString();
 
     console.log(`🔍 Chargement des données pour l'année ${currentYear}`);
-    console.log(`📅 Période: ${startOfYear} à ${endOfYear}`);
 
     try {
       // 1. Récupérer TOUS les paiements de l'année
@@ -55,18 +59,15 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         .gte("date_paiement", startOfYear)
         .lte("date_paiement", endOfYear);
 
-      console.log("💰 Paiements récupérés:", paymentsData?.length || 0, "paiements");
+      console.log("💰 Paiements récupérés:", paymentsData?.length || 0);
       
       if (paymentsError) {
-        console.error("❌ Erreur lors de la récupération des paiements:", paymentsError);
+        console.error("❌ Erreur paiements:", paymentsError);
       }
 
       if (paymentsData && paymentsData.length > 0) {
-        console.log("📅 Exemple de paiement:", paymentsData[0]);
-        
-        // 2. Récupérer les projets correspondants
+        // 2. Récupérer les projets
         const projectIds = [...new Set(paymentsData.map(p => p.project_id))];
-        console.log("🔍 Récupération de", projectIds.length, "projets...");
         
         const { data: projectsData, error: projectsError } = await supabase
           .from("projects")
@@ -74,12 +75,12 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           .in("id", projectIds);
 
         if (projectsError) {
-          console.error("❌ Erreur lors de la récupération des projets:", projectsError);
+          console.error("❌ Erreur projets:", projectsError);
         }
 
         console.log("👤 Projets récupérés:", projectsData?.length || 0);
 
-        // 3. Créer une map des projets pour un accès rapide
+        // 3. Map des projets
         const projectsMap = new Map<string, string>();
         if (projectsData) {
           projectsData.forEach(project => {
@@ -87,33 +88,27 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           });
         }
 
-        // 4. Regrouper les paiements par client
+        // 4. Revenus par client
         const customerMap = new Map<string, number>();
         paymentsData.forEach((payment) => {
           const customer = projectsMap.get(payment.project_id) || "Client inconnu";
-          const currentAmount = customerMap.get(customer) || 0;
-          customerMap.set(customer, currentAmount + (payment.montant || 0));
+          customerMap.set(customer, (customerMap.get(customer) || 0) + (payment.montant || 0));
         });
         
         const customerData = Array.from(customerMap.entries())
-          .map(([customer, amount]) => ({ 
-            customer, 
-            amount: Math.round(amount * 100) / 100 
-          }))
+          .map(([customer, amount]) => ({ customer, amount: Math.round(amount * 100) / 100 }))
           .sort((a, b) => b.amount - a.amount)
           .slice(0, 10);
         
-        console.log("👥 Revenus par client:", customerData);
         setCustomerRevenues(customerData);
         setDataYear(currentYear);
 
-        // 5. Regrouper par mois
+        // 5. Revenus mensuels
         const monthMap = new Map<string, number>();
         paymentsData.forEach((payment) => {
           const date = new Date(payment.date_paiement);
           const monthKey = date.toLocaleDateString("fr-FR", { month: "short" });
-          const currentAmount = monthMap.get(monthKey) || 0;
-          monthMap.set(monthKey, currentAmount + (payment.montant || 0));
+          monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + (payment.montant || 0));
         });
 
         const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
@@ -122,10 +117,8 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
         }));
         
-        console.log("📊 Revenus mensuels:", monthlyData);
         setMonthlyRevenues(monthlyData);
       } else {
-        console.log(`⚠️ Aucun paiement trouvé pour l'année ${currentYear}`);
         setCustomerRevenues([]);
         const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
         setMonthlyRevenues(months.map(month => ({ month, amount: 0 })));
@@ -160,7 +153,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         setSupplierMonthlyExpenses(months.map(month => ({ month, amount: 0 })));
       }
 
-      // 7. Factures fournisseurs annuelles par fournisseur
+      // 7. Factures fournisseurs annuelles
       const { data: supplierInvoicesData } = await supabase
         .from("project_expenses")
         .select("prix, quantite, fournisseur, date_achat")
@@ -185,9 +178,9 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         setAnnualSupplierExpenses([]);
       }
       
-      console.log("✅ Chargement des données terminé");
+      console.log("✅ Chargement terminé");
     } catch (error) {
-      console.error("❌ Erreur lors du chargement des données:", error);
+      console.error("❌ Erreur:", error);
     } finally {
       setLoading(false);
     }
@@ -204,140 +197,248 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Rentrées d'argent par client */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Revenus par client ({dataYear})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {customerRevenues.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
+    <>
+      <div className="space-y-4">
+        {/* Revenus par client */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Revenus par client ({dataYear})</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setOpenModal("customer")}
+                className="h-7"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {customerRevenues.length > 0 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={customerRevenues}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="customer" angle={-45} textAnchor="end" height={80} style={{ fontSize: "10px" }} />
+                  <YAxis style={{ fontSize: "11px" }} />
+                  <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+                  <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée pour {dataYear}</div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Factures fournisseurs mensuelles */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Factures fournisseurs mensuelles ({dataYear})</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setOpenModal("supplierMonthly")}
+                className="h-7"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {supplierMonthlyExpenses.some(e => e.amount > 0) ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={supplierMonthlyExpenses}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" style={{ fontSize: "10px" }} />
+                  <YAxis style={{ fontSize: "11px" }} />
+                  <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+                  <Bar dataKey="amount" fill="#ef4444" name="Montant (€)" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée pour {dataYear}</div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Revenus mensuels */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Revenus mensuels ({dataYear})</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setOpenModal("revenue")}
+                className="h-7"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {monthlyRevenues.some(r => r.amount > 0) ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={monthlyRevenues}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" style={{ fontSize: "10px" }} />
+                  <YAxis style={{ fontSize: "11px" }} />
+                  <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+                  <Bar dataKey="amount" fill="#3b82f6" name="Montant (€)" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée pour {dataYear}</div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Factures par fournisseur */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm">Factures par fournisseur ({dataYear})</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setOpenModal("supplierAnnual")}
+                className="h-7"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {annualSupplierExpenses.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie
+                    data={annualSupplierExpenses}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={(entry) => {
+                      const maxLength = 10;
+                      const name = entry.supplier.length > maxLength ? entry.supplier.substring(0, maxLength) + "..." : entry.supplier;
+                      return `${name}: ${entry.amount.toFixed(0)}€`;
+                    }}
+                    outerRadius={60}
+                    fill="#8884d8"
+                    dataKey="amount"
+                    style={{ fontSize: "10px" }}
+                  >
+                    {annualSupplierExpenses.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number, name: string, props: any) => [`${value.toFixed(2)} €`, props.payload.supplier]} />
+                  <Legend wrapperStyle={{ fontSize: "10px" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée pour {dataYear}</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Modales pour agrandir les graphiques */}
+      
+      {/* Modale Revenus par client */}
+      <Dialog open={openModal === "customer"} onOpenChange={() => setOpenModal(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Revenus par client ({dataYear})</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            <ResponsiveContainer width="100%" height={500}>
               <BarChart data={customerRevenues}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="customer" 
-                  angle={-45} 
-                  textAnchor="end" 
-                  height={80}
-                  style={{ fontSize: "10px" }}
-                />
-                <YAxis style={{ fontSize: "11px" }} />
+                <XAxis dataKey="customer" angle={-45} textAnchor="end" height={100} />
+                <YAxis />
                 <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+                <Legend />
                 <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
               </BarChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {dataYear}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-      {/* Factures fournisseurs mensuelles */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Factures fournisseurs mensuelles ({dataYear})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {supplierMonthlyExpenses.some(e => e.amount > 0) ? (
-            <ResponsiveContainer width="100%" height={250}>
+      {/* Modale Factures fournisseurs mensuelles */}
+      <Dialog open={openModal === "supplierMonthly"} onOpenChange={() => setOpenModal(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Factures fournisseurs mensuelles ({dataYear})</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            <ResponsiveContainer width="100%" height={500}>
               <BarChart data={supplierMonthlyExpenses}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" style={{ fontSize: "10px" }} />
-                <YAxis style={{ fontSize: "11px" }} />
+                <XAxis dataKey="month" />
+                <YAxis />
                 <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+                <Legend />
                 <Bar dataKey="amount" fill="#ef4444" name="Montant (€)" />
               </BarChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {dataYear}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-      {/* Rentrées d'argent mensuelles */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Revenus mensuels ({dataYear})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {monthlyRevenues.some(r => r.amount > 0) ? (
-            <ResponsiveContainer width="100%" height={250}>
+      {/* Modale Revenus mensuels */}
+      <Dialog open={openModal === "revenue"} onOpenChange={() => setOpenModal(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Revenus mensuels ({dataYear})</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            <ResponsiveContainer width="100%" height={500}>
               <BarChart data={monthlyRevenues}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" style={{ fontSize: "10px" }} />
-                <YAxis style={{ fontSize: "11px" }} />
+                <XAxis dataKey="month" />
+                <YAxis />
                 <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
+                <Legend />
                 <Bar dataKey="amount" fill="#3b82f6" name="Montant (€)" />
               </BarChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {dataYear}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-      {/* Factures par fournisseur (pie chart) */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Factures par fournisseur ({dataYear})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {annualSupplierExpenses.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
+      {/* Modale Factures par fournisseur */}
+      <Dialog open={openModal === "supplierAnnual"} onOpenChange={() => setOpenModal(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Factures par fournisseur ({dataYear})</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4">
+            <ResponsiveContainer width="100%" height={500}>
               <PieChart>
                 <Pie
                   data={annualSupplierExpenses}
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  label={(entry) => {
-                    const maxLength = 10;
-                    const name = entry.supplier.length > maxLength 
-                      ? entry.supplier.substring(0, maxLength) + "..." 
-                      : entry.supplier;
-                    return `${name}: ${entry.amount.toFixed(0)}€`;
-                  }}
-                  outerRadius={70}
+                  labelLine
+                  label={(entry) => `${entry.supplier}: ${entry.amount.toFixed(2)}€`}
+                  outerRadius={150}
                   fill="#8884d8"
                   dataKey="amount"
-                  style={{ fontSize: "10px" }}
                 >
                   {annualSupplierExpenses.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
-                  formatter={(value: number, name: string, props: any) => [
-                    `${value.toFixed(2)} €`,
-                    props.payload.supplier
-                  ]}
-                />
-                <Legend 
-                  wrapperStyle={{ fontSize: "10px" }}
-                  formatter={(value: string, entry: any) => {
-                    const maxLength = 15;
-                    const supplier = entry.payload.supplier;
-                    return supplier.length > maxLength 
-                      ? supplier.substring(0, maxLength) + "..." 
-                      : supplier;
-                  }}
-                />
+                <Tooltip formatter={(value: number, name: string, props: any) => [`${value.toFixed(2)} €`, props.payload.supplier]} />
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {dataYear}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
