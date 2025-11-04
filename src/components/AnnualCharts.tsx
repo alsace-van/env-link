@@ -1,19 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Loader2 } from "lucide-react";
 
 interface AnnualChartsProps {
@@ -30,7 +18,7 @@ interface SupplierExpense {
   amount: number;
 }
 
-interface MonthlyRevenue {
+interface MonthlyData {
   month: string;
   amount: number;
 }
@@ -39,10 +27,11 @@ const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899"
 
 export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
   const [customerRevenues, setCustomerRevenues] = useState<CustomerRevenue[]>([]);
-  const [supplierExpenses, setSupplierExpenses] = useState<SupplierExpense[]>([]);
-  const [monthlyRevenues, setMonthlyRevenues] = useState<MonthlyRevenue[]>([]);
+  const [supplierMonthlyExpenses, setSupplierMonthlyExpenses] = useState<MonthlyData[]>([]);
+  const [monthlyRevenues, setMonthlyRevenues] = useState<MonthlyData[]>([]);
   const [annualSupplierExpenses, setAnnualSupplierExpenses] = useState<SupplierExpense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataYear, setDataYear] = useState<number>(new Date().getFullYear());
 
   useEffect(() => {
     loadAnnualData();
@@ -50,60 +39,99 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
 
   const loadAnnualData = async () => {
     setLoading(true);
-
-    // Get current year date range
+    
     const currentYear = new Date().getFullYear();
     const startOfYear = new Date(currentYear, 0, 1).toISOString();
     const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59).toISOString();
 
-    console.log("🔍 Chargement des données annuelles pour", currentYear);
+    console.log(`🔍 Chargement des données pour l'année ${currentYear}`);
+    console.log(`📅 Période: ${startOfYear} à ${endOfYear}`);
 
     try {
-      // 1. Rentrées d'argent par client (from project_payment_transactions)
-      // Récupère TOUS les paiements de TOUS les projets pour le bilan global
+      // 1. Récupérer TOUS les paiements de l'année
       const { data: paymentsData, error: paymentsError } = await supabase
         .from("project_payment_transactions")
-        .select(
-          `
-          montant,
-          date_paiement,
-          project_id,
-          projects!inner(nom_proprietaire, id)
-        `,
-        )
+        .select("montant, date_paiement, project_id")
         .gte("date_paiement", startOfYear)
         .lte("date_paiement", endOfYear);
 
       console.log("💰 Paiements récupérés:", paymentsData?.length || 0, "paiements");
+      
       if (paymentsError) {
         console.error("❌ Erreur lors de la récupération des paiements:", paymentsError);
       }
 
       if (paymentsData && paymentsData.length > 0) {
-        // Regrouper par client (nom_proprietaire)
+        console.log("📅 Exemple de paiement:", paymentsData[0]);
+        
+        // 2. Récupérer les projets correspondants
+        const projectIds = [...new Set(paymentsData.map(p => p.project_id))];
+        console.log("🔍 Récupération de", projectIds.length, "projets...");
+        
+        const { data: projectsData, error: projectsError } = await supabase
+          .from("projects")
+          .select("id, nom_proprietaire")
+          .in("id", projectIds);
+
+        if (projectsError) {
+          console.error("❌ Erreur lors de la récupération des projets:", projectsError);
+        }
+
+        console.log("👤 Projets récupérés:", projectsData?.length || 0);
+
+        // 3. Créer une map des projets pour un accès rapide
+        const projectsMap = new Map<string, string>();
+        if (projectsData) {
+          projectsData.forEach(project => {
+            projectsMap.set(project.id, project.nom_proprietaire);
+          });
+        }
+
+        // 4. Regrouper les paiements par client
         const customerMap = new Map<string, number>();
-        paymentsData.forEach((payment: any) => {
-          const customer = payment.projects?.nom_proprietaire || "Client inconnu";
+        paymentsData.forEach((payment) => {
+          const customer = projectsMap.get(payment.project_id) || "Client inconnu";
           const currentAmount = customerMap.get(customer) || 0;
           customerMap.set(customer, currentAmount + (payment.montant || 0));
         });
-
+        
         const customerData = Array.from(customerMap.entries())
-          .map(([customer, amount]) => ({
-            customer,
-            amount: Math.round(amount * 100) / 100,
+          .map(([customer, amount]) => ({ 
+            customer, 
+            amount: Math.round(amount * 100) / 100 
           }))
           .sort((a, b) => b.amount - a.amount)
-          .slice(0, 10); // Top 10 clients
-
+          .slice(0, 10);
+        
         console.log("👥 Revenus par client:", customerData);
         setCustomerRevenues(customerData);
+        setDataYear(currentYear);
+
+        // 5. Regrouper par mois
+        const monthMap = new Map<string, number>();
+        paymentsData.forEach((payment) => {
+          const date = new Date(payment.date_paiement);
+          const monthKey = date.toLocaleDateString("fr-FR", { month: "short" });
+          const currentAmount = monthMap.get(monthKey) || 0;
+          monthMap.set(monthKey, currentAmount + (payment.montant || 0));
+        });
+
+        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+        const monthlyData = months.map((month) => ({
+          month,
+          amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
+        }));
+        
+        console.log("📊 Revenus mensuels:", monthlyData);
+        setMonthlyRevenues(monthlyData);
       } else {
-        console.log("⚠️ Aucun paiement trouvé pour l'année", currentYear);
+        console.log(`⚠️ Aucun paiement trouvé pour l'année ${currentYear}`);
         setCustomerRevenues([]);
+        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+        setMonthlyRevenues(months.map(month => ({ month, amount: 0 })));
       }
 
-      // 2. Factures fournisseurs sur l'année mensuelles (from tableau factures fournisseurs)
+      // 6. Factures fournisseurs mensuelles
       const { data: supplierInvoicesMonthly } = await supabase
         .from("project_expenses")
         .select("prix, quantite, date_achat")
@@ -112,7 +140,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         .gte("date_achat", startOfYear)
         .lte("date_achat", endOfYear);
 
-      if (supplierInvoicesMonthly) {
+      if (supplierInvoicesMonthly && supplierInvoicesMonthly.length > 0) {
         const monthMap = new Map<string, number>();
         supplierInvoicesMonthly.forEach((expense) => {
           const date = new Date(expense.date_achat);
@@ -120,66 +148,19 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           const total = expense.prix * expense.quantite;
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + total);
         });
-
-        // Create array for all months
-        const months = [
-          "janv.",
-          "févr.",
-          "mars",
-          "avr.",
-          "mai",
-          "juin",
-          "juil.",
-          "août",
-          "sept.",
-          "oct.",
-          "nov.",
-          "déc.",
-        ];
+        
+        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
         const supplierMonthlyData = months.map((month) => ({
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
         }));
-        setSupplierExpenses(supplierMonthlyData);
-      }
-
-      // 3. Rentrées d'argent sur l'année (mensuel)
-      if (paymentsData && paymentsData.length > 0) {
-        const monthMap = new Map<string, number>();
-        paymentsData.forEach((payment: any) => {
-          const date = new Date(payment.date_paiement);
-          const monthKey = date.toLocaleDateString("fr-FR", { month: "short" });
-          const currentAmount = monthMap.get(monthKey) || 0;
-          monthMap.set(monthKey, currentAmount + (payment.montant || 0));
-        });
-
-        const months = [
-          "janv.",
-          "févr.",
-          "mars",
-          "avr.",
-          "mai",
-          "juin",
-          "juil.",
-          "août",
-          "sept.",
-          "oct.",
-          "nov.",
-          "déc.",
-        ];
-        const monthlyData = months.map((month) => ({
-          month,
-          amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
-        }));
-
-        console.log("📊 Revenus mensuels:", monthlyData);
-        setMonthlyRevenues(monthlyData);
+        setSupplierMonthlyExpenses(supplierMonthlyData);
       } else {
-        setMonthlyRevenues([]);
+        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+        setSupplierMonthlyExpenses(months.map(month => ({ month, amount: 0 })));
       }
 
-      // 4. Factures fournisseurs annuelles par fournisseur (pie chart)
-      // Utilise uniquement les dépenses du tableau "factures fournisseurs" (project_id = null, categorie = "Fournisseur")
+      // 7. Factures fournisseurs annuelles par fournisseur
       const { data: supplierInvoicesData } = await supabase
         .from("project_expenses")
         .select("prix, quantite, fournisseur, date_achat")
@@ -198,15 +179,15 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
         const supplierData = Array.from(supplierMap.entries())
           .map(([supplier, amount]) => ({ supplier, amount: Math.round(amount * 100) / 100 }))
           .sort((a, b) => b.amount - a.amount)
-          .slice(0, 8); // Top 8 fournisseurs
+          .slice(0, 8);
         setAnnualSupplierExpenses(supplierData);
       } else {
         setAnnualSupplierExpenses([]);
       }
-
+      
       console.log("✅ Chargement des données terminé");
     } catch (error) {
-      console.error("❌ Error loading annual data:", error);
+      console.error("❌ Erreur lors du chargement des données:", error);
     } finally {
       setLoading(false);
     }
@@ -227,14 +208,20 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       {/* Rentrées d'argent par client */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Revenus par client ({new Date().getFullYear()})</CardTitle>
+          <CardTitle className="text-sm">Revenus par client ({dataYear})</CardTitle>
         </CardHeader>
         <CardContent>
           {customerRevenues.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={customerRevenues}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="customer" angle={-45} textAnchor="end" height={80} style={{ fontSize: "10px" }} />
+                <XAxis 
+                  dataKey="customer" 
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={80}
+                  style={{ fontSize: "10px" }}
+                />
                 <YAxis style={{ fontSize: "11px" }} />
                 <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
                 <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
@@ -242,7 +229,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
             </ResponsiveContainer>
           ) : (
             <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {new Date().getFullYear()}
+              Aucune donnée disponible pour {dataYear}
             </div>
           )}
         </CardContent>
@@ -251,12 +238,12 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       {/* Factures fournisseurs mensuelles */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Factures fournisseurs mensuelles ({new Date().getFullYear()})</CardTitle>
+          <CardTitle className="text-sm">Factures fournisseurs mensuelles ({dataYear})</CardTitle>
         </CardHeader>
         <CardContent>
-          {supplierExpenses.length > 0 ? (
+          {supplierMonthlyExpenses.some(e => e.amount > 0) ? (
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={supplierExpenses}>
+              <BarChart data={supplierMonthlyExpenses}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" style={{ fontSize: "10px" }} />
                 <YAxis style={{ fontSize: "11px" }} />
@@ -266,7 +253,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
             </ResponsiveContainer>
           ) : (
             <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {new Date().getFullYear()}
+              Aucune donnée disponible pour {dataYear}
             </div>
           )}
         </CardContent>
@@ -275,10 +262,10 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       {/* Rentrées d'argent mensuelles */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Revenus mensuels ({new Date().getFullYear()})</CardTitle>
+          <CardTitle className="text-sm">Revenus mensuels ({dataYear})</CardTitle>
         </CardHeader>
         <CardContent>
-          {monthlyRevenues.length > 0 ? (
+          {monthlyRevenues.some(r => r.amount > 0) ? (
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={monthlyRevenues}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -290,7 +277,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
             </ResponsiveContainer>
           ) : (
             <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {new Date().getFullYear()}
+              Aucune donnée disponible pour {dataYear}
             </div>
           )}
         </CardContent>
@@ -299,7 +286,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       {/* Factures par fournisseur (pie chart) */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Factures par fournisseur ({new Date().getFullYear()})</CardTitle>
+          <CardTitle className="text-sm">Factures par fournisseur ({dataYear})</CardTitle>
         </CardHeader>
         <CardContent>
           {annualSupplierExpenses.length > 0 ? (
@@ -312,10 +299,9 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
                   labelLine={false}
                   label={(entry) => {
                     const maxLength = 10;
-                    const name =
-                      entry.supplier.length > maxLength
-                        ? entry.supplier.substring(0, maxLength) + "..."
-                        : entry.supplier;
+                    const name = entry.supplier.length > maxLength 
+                      ? entry.supplier.substring(0, maxLength) + "..." 
+                      : entry.supplier;
                     return `${name}: ${entry.amount.toFixed(0)}€`;
                   }}
                   outerRadius={70}
@@ -327,25 +313,27 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip
+                <Tooltip 
                   formatter={(value: number, name: string, props: any) => [
                     `${value.toFixed(2)} €`,
-                    props.payload.supplier,
+                    props.payload.supplier
                   ]}
                 />
-                <Legend
+                <Legend 
                   wrapperStyle={{ fontSize: "10px" }}
                   formatter={(value: string, entry: any) => {
                     const maxLength = 15;
                     const supplier = entry.payload.supplier;
-                    return supplier.length > maxLength ? supplier.substring(0, maxLength) + "..." : supplier;
+                    return supplier.length > maxLength 
+                      ? supplier.substring(0, maxLength) + "..." 
+                      : supplier;
                   }}
                 />
               </PieChart>
             </ResponsiveContainer>
           ) : (
             <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible pour {new Date().getFullYear()}
+              Aucune donnée disponible pour {dataYear}
             </div>
           )}
         </CardContent>
