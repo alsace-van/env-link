@@ -44,7 +44,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       .not("fournisseur", "is", null);
 
     if (data) {
-      const uniqueFournisseurs = Array.from(new Set(data.map(d => d.fournisseur).filter(Boolean)));
+      const uniqueFournisseurs = Array.from(new Set(data.map((d) => d.fournisseur).filter(Boolean)));
       setFournisseurs(uniqueFournisseurs as string[]);
     }
   };
@@ -70,15 +70,13 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const updateRow = (id: string, field: keyof ExpenseRow, value: string | File) => {
-    setRows(
-      rows.map((row) => (row.id === id ? { ...row, [field]: value } : row))
-    );
+    setRows(rows.map((row) => (row.id === id ? { ...row, [field]: value } : row)));
   };
 
   const handleFileSelect = async (rowId: string, file: File | null) => {
     if (!file) return;
 
-    const row = rows.find(r => r.id === rowId);
+    const row = rows.find((r) => r.id === rowId);
     if (!row) return;
 
     // Store file temporarily in row
@@ -86,11 +84,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const removeInvoice = (rowId: string) => {
-    setRows(rows.map(row => 
-      row.id === rowId 
-        ? { ...row, facture_file: undefined, facture_url: undefined }
-        : row
-    ));
+    setRows(rows.map((row) => (row.id === rowId ? { ...row, facture_file: undefined, facture_url: undefined } : row)));
   };
 
   const saveRows = async () => {
@@ -115,7 +109,9 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       }
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       toast.error("Vous devez être connecté");
       return;
@@ -125,11 +121,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const rowsWithUrls = await Promise.all(
       rows.map(async (row) => {
         if (row.facture_file) {
-          const fileExt = row.facture_file.name.split('.').pop();
+          const fileExt = row.facture_file.name.split(".").pop();
           const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-          
+
           const { error: uploadError, data } = await supabase.storage
-            .from('project-invoices')
+            .from("project-invoices")
             .upload(fileName, row.facture_file);
 
           if (uploadError) {
@@ -137,20 +133,18 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
             return row;
           }
 
-          // Use signed URL with 1 hour expiration for sensitive invoice data
-          const { data: signedUrlData, error: urlError } = await supabase.storage
-            .from('project-invoices')
-            .createSignedUrl(fileName, 3600); // 1 hour
+          // Use public URL (permanent, no expiration)
+          const { data: publicUrlData } = supabase.storage.from("project-invoices").getPublicUrl(fileName);
 
-          if (urlError || !signedUrlData) {
-            console.error("Error creating signed URL:", urlError);
+          if (!publicUrlData) {
+            console.error("Error creating public URL");
             return row;
           }
 
-          return { ...row, facture_url: signedUrlData.signedUrl };
+          return { ...row, facture_url: publicUrlData.publicUrl };
         }
         return row;
-      })
+      }),
     );
 
     const expensesToInsert = rowsWithUrls.map((row) => ({
@@ -169,9 +163,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       facture_url: row.facture_url || null,
     }));
 
-    const { error } = await supabase
-      .from("project_expenses")
-      .insert(expensesToInsert);
+    const { error } = await supabase.from("project_expenses").insert(expensesToInsert);
 
     if (error) {
       toast.error("Erreur lors de l'enregistrement des dépenses");
@@ -190,7 +182,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       saveRows();
     }
@@ -223,9 +215,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                   <TableCell>
                     <Input
                       value={row.nom_accessoire}
-                      onChange={(e) =>
-                        updateRow(row.id, "nom_accessoire", e.target.value)
-                      }
+                      onChange={(e) => updateRow(row.id, "nom_accessoire", e.target.value)}
                       placeholder="Nom de l'article"
                       className="h-8"
                     />
@@ -233,9 +223,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                   <TableCell>
                     <Input
                       value={row.fournisseur}
-                      onChange={(e) =>
-                        updateRow(row.id, "fournisseur", e.target.value)
-                      }
+                      onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
                       placeholder="Fournisseur"
                       className="h-8"
                       list={`fournisseurs-${row.id}`}
@@ -250,9 +238,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                     <Input
                       type="datetime-local"
                       value={row.date_achat}
-                      onChange={(e) =>
-                        updateRow(row.id, "date_achat", e.target.value)
-                      }
+                      onChange={(e) => updateRow(row.id, "date_achat", e.target.value)}
                       className="h-8"
                     />
                   </TableCell>
@@ -260,18 +246,14 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                     <Input
                       type="datetime-local"
                       value={row.date_paiement}
-                      onChange={(e) =>
-                        updateRow(row.id, "date_paiement", e.target.value)
-                      }
+                      onChange={(e) => updateRow(row.id, "date_paiement", e.target.value)}
                       className="h-8"
                     />
                   </TableCell>
                   <TableCell>
                     <Select
                       value={row.statut_paiement}
-                      onValueChange={(value) =>
-                        updateRow(row.id, "statut_paiement", value)
-                      }
+                      onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
                     >
                       <SelectTrigger className="h-8">
                         <SelectValue />
@@ -285,9 +267,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                   <TableCell>
                     <Select
                       value={row.delai_paiement}
-                      onValueChange={(value) =>
-                        updateRow(row.id, "delai_paiement", value)
-                      }
+                      onValueChange={(value) => updateRow(row.id, "delai_paiement", value)}
                     >
                       <SelectTrigger className="h-8">
                         <SelectValue />
@@ -304,9 +284,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       step="0.01"
                       min="0"
                       value={row.prix_vente_ttc}
-                      onChange={(e) =>
-                        updateRow(row.id, "prix_vente_ttc", e.target.value)
-                      }
+                      onChange={(e) => updateRow(row.id, "prix_vente_ttc", e.target.value)}
                       placeholder="0.00"
                       className="h-8"
                     />
@@ -319,12 +297,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                           <span className="text-xs text-muted-foreground truncate max-w-[60px]">
                             {row.facture_file?.name || "Facture"}
                           </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => removeInvoice(row.id)}
-                          >
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeInvoice(row.id)}>
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
@@ -351,12 +324,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => removeRow(row.id)}
-                    >
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeRow(row.id)}>
                       <X className="h-4 w-4" />
                     </Button>
                   </TableCell>
