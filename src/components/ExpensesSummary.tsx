@@ -136,7 +136,9 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle style={{ fontSize: '16px', fontWeight: '600' }}>Total Achats (HT)</CardTitle>
+            <CardTitle>
+              <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>Total Achats (HT)</span>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
@@ -145,7 +147,9 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
         <Card>
           <CardHeader>
-            <CardTitle style={{ fontSize: '16px', fontWeight: '600' }}>Total Ventes (TTC)</CardTitle>
+            <CardTitle>
+              <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>Total Ventes (TTC)</span>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
@@ -154,7 +158,9 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
         <Card>
           <CardHeader>
-            <CardTitle style={{ fontSize: '16px', fontWeight: '600' }}>Marge Nette (HT)</CardTitle>
+            <CardTitle>
+              <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>Marge Nette (HT)</span>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
