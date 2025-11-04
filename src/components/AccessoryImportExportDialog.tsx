@@ -39,11 +39,16 @@ const EXPECTED_COLUMNS = {
   hauteur_mm: { label: "Hauteur (mm)", required: false },
 };
 
-const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }: AccessoryImportExportDialogProps) => {
+const AccessoryImportExportDialog = ({ 
+  isOpen, 
+  onClose, 
+  onSuccess,
+  categories 
+}: AccessoryImportExportDialogProps) => {
   const [pastedData, setPastedData] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-
+  
   // État pour le mapping de colonnes
   const [showMappingDialog, setShowMappingDialog] = useState(false);
   const [detectedColumns, setDetectedColumns] = useState<string[]>([]);
@@ -52,9 +57,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
   const handleExport = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Vous devez être connecté");
         return;
@@ -62,8 +65,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
       const { data, error } = await supabase
         .from("accessories_catalog")
-        .select(
-          `
+        .select(`
           nom,
           categories (nom),
           prix_reference,
@@ -77,21 +79,20 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           longueur_mm,
           largeur_mm,
           hauteur_mm
-        `,
-        )
+        `)
         .eq("user_id", user.id);
 
       if (error) throw error;
 
       // Préparer les données pour l'export
       const exportData = data.map((item: any) => ({
-        Nom: item.nom,
-        Catégorie: item.categories?.nom || "",
+        "Nom": item.nom,
+        "Catégorie": item.categories?.nom || "",
         "Prix référence": item.prix_reference || "",
         "Prix vente TTC": item.prix_vente_ttc || "",
         "Marge %": item.marge_pourcent || "",
-        Fournisseur: item.fournisseur || "",
-        Description: item.description || "",
+        "Fournisseur": item.fournisseur || "",
+        "Description": item.description || "",
         "URL produit": item.url_produit || "",
         "Type électrique": item.type_electrique || "",
         "Poids (kg)": item.poids_kg || "",
@@ -104,7 +105,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       const ws = XLSX.utils.json_to_sheet(exportData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Accessoires");
-      XLSX.writeFile(wb, `accessoires_${new Date().toISOString().split("T")[0]}.xlsx`);
+      XLSX.writeFile(wb, `accessoires_${new Date().toISOString().split('T')[0]}.xlsx`);
 
       toast.success("Export réussi");
     } catch (error) {
@@ -115,19 +116,16 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
   const detectColumnMapping = (columns: string[]): ColumnMapping => {
     const mapping: ColumnMapping = {};
-
-    columns.forEach((col) => {
+    
+    columns.forEach(col => {
       const normalized = col.toLowerCase().trim();
-
+      
       // Essayer de trouver une correspondance automatique
       if (normalized === "nom" || normalized === "name" || normalized === "produit") {
         mapping[col] = "nom";
       } else if (normalized === "catégorie" || normalized === "categorie" || normalized === "category") {
         mapping[col] = "categorie";
-      } else if (
-        normalized.includes("sous") &&
-        (normalized.includes("catégorie") || normalized.includes("categorie"))
-      ) {
+      } else if (normalized.includes("sous") && (normalized.includes("catégorie") || normalized.includes("categorie"))) {
         mapping[col] = "sous_categorie";
       } else if (normalized.includes("prix") && (normalized.includes("ref") || normalized.includes("référence"))) {
         mapping[col] = "prix_reference";
@@ -153,7 +151,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         mapping[col] = "hauteur_mm";
       }
     });
-
+    
     return mapping;
   };
 
@@ -166,7 +164,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
     const columns = Object.keys(data[0]);
     const autoMapping = detectColumnMapping(columns);
-
+    
     // Vérifier si toutes les colonnes obligatoires sont mappées
     const hasRequiredColumns = Object.entries(EXPECTED_COLUMNS)
       .filter(([_, config]) => config.required)
@@ -195,12 +193,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
     try {
       // Parser les données collées (TSV d'Excel)
-      const result = Papa.parse(pastedData, {
-        header: true,
+      const result = Papa.parse(pastedData, { 
+        header: true, 
         skipEmptyLines: true,
-        delimiter: pastedData.includes("\t") ? "\t" : ",",
+        delimiter: pastedData.includes('\t') ? '\t' : ','
       });
-
+      
       checkAndMapColumns(result.data);
     } catch (error) {
       console.error("Erreur lors du traitement:", error);
@@ -252,16 +250,16 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         let parsedData: any[] = [];
 
         try {
-          if (file.name.endsWith(".csv")) {
+          if (file.name.endsWith('.csv')) {
             const result = Papa.parse(data as string, { header: true, skipEmptyLines: true });
             parsedData = result.data;
-          } else if (file.name.endsWith(".numbers")) {
+          } else if (file.name.endsWith('.numbers')) {
             // Fichier Numbers - tenter de le lire avec XLSX
             try {
-              const workbook = XLSX.read(data, { type: "binary" });
+              const workbook = XLSX.read(data, { type: 'binary' });
               const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
               parsedData = XLSX.utils.sheet_to_json(firstSheet);
-
+              
               if (parsedData.length === 0) {
                 throw new Error("Impossible de lire le fichier Numbers");
               }
@@ -269,14 +267,14 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
               console.error("Erreur lecture Numbers:", numbersError);
               toast.error(
                 "Impossible de lire ce fichier Numbers. Veuillez l'exporter en .xlsx depuis Numbers (Fichier > Exporter > Excel)",
-                { duration: 6000 },
+                { duration: 6000 }
               );
               setIsProcessing(false);
               return;
             }
           } else {
             // Fichier Excel
-            const workbook = XLSX.read(data, { type: "binary" });
+            const workbook = XLSX.read(data, { type: 'binary' });
             const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
             parsedData = XLSX.utils.sheet_to_json(firstSheet);
           }
@@ -294,7 +292,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         setIsProcessing(false);
       };
 
-      if (file.name.endsWith(".csv")) {
+      if (file.name.endsWith('.csv')) {
         reader.readAsText(file);
       } else {
         reader.readAsBinaryString(file);
@@ -308,9 +306,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
   const processImportWithMapping = async (data: any[], mapping: ColumnMapping) => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Vous devez être connecté");
         setIsProcessing(false);
@@ -352,7 +348,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
           // Gérer la catégorie avec création automatique
           let categoryId = null;
-
+          
           if (categoryName) {
             const { data: existingCategory } = await supabase
               .from("categories")
@@ -370,7 +366,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
                 .insert({
                   user_id: user.id,
                   nom: categoryName,
-                  parent_id: null,
+                  parent_id: null
                 })
                 .select("id")
                 .single();
@@ -398,7 +394,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
                   .insert({
                     user_id: user.id,
                     nom: subCategoryName,
-                    parent_id: categoryId,
+                    parent_id: categoryId
                   })
                   .select("id")
                   .single();
@@ -411,22 +407,24 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           }
 
           // Insérer l'accessoire
-          const { error: insertError } = await supabase.from("accessories_catalog").insert({
-            user_id: user.id,
-            nom,
-            category_id: categoryId,
-            prix_reference: prixReference,
-            prix_vente_ttc: prixVenteTTC,
-            marge_pourcent: margePourcent,
-            fournisseur,
-            description,
-            url_produit: urlProduit,
-            type_electrique: typeElectrique,
-            poids_kg: poidsKg,
-            longueur_mm: longueurMm,
-            largeur_mm: largeurMm,
-            hauteur_mm: hauteurMm,
-          });
+          const { error: insertError } = await supabase
+            .from("accessories_catalog")
+            .insert({
+              user_id: user.id,
+              nom,
+              category_id: categoryId,
+              prix_reference: prixReference,
+              prix_vente_ttc: prixVenteTTC,
+              marge_pourcent: margePourcent,
+              fournisseur,
+              description,
+              url_produit: urlProduit,
+              type_electrique: typeElectrique,
+              poids_kg: poidsKg,
+              longueur_mm: longueurMm,
+              largeur_mm: largeurMm,
+              hauteur_mm: hauteurMm,
+            });
 
           if (insertError) {
             console.error("Erreur insertion:", insertError);
@@ -445,7 +443,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         onSuccess();
         onClose();
       }
-
+      
       if (errorCount > 0) {
         toast.warning(`${errorCount} ligne(s) ignorée(s)`);
       }
@@ -466,7 +464,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   const handleConfirmMapping = () => {
     // Vérifier que la colonne "nom" est mappée
     const hasNomMapping = Object.values(columnMapping).includes("nom");
-
+    
     if (!hasNomMapping) {
       toast.error("Vous devez mapper au moins la colonne 'Nom'");
       return;
@@ -504,83 +502,159 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
                 <div className="bg-muted p-4 rounded-lg space-y-2">
                   <p className="text-sm font-medium">📋 Comment ça marche ?</p>
                   <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-                    <li>Ouvrez votre fichier Excel / Google Sheets / Numbers</li>
-                    <li>Sélectionnez les lignes à importer (avec les en-têtes)</li>
-                    <li>Copiez (Ctrl+C ou Cmd+C)</li>
+                    <li>Créez votre tableau Excel avec les mêmes colonnes que ci-dessous</li>
+                    <li>Remplissez vos données dans Excel</li>
+                    <li>Sélectionnez tout (en-têtes + données) et copiez (Ctrl+C ou Cmd+C)</li>
                     <li>Cliquez dans le tableau ci-dessous et collez (Ctrl+V ou Cmd+V)</li>
+                    <li>Vos données remplaceront le tableau vide</li>
                     <li>Cliquez sur "Importer"</li>
                   </ol>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Tableau d'import</Label>
-                  <div
+                  <div className="flex items-center justify-between">
+                    <Label>Tableau d'import (structure à reproduire dans Excel)</Label>
+                    {pastedData && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPastedData("")}
+                      >
+                        <X className="h-3 w-3 mr-1" />
+                        Réinitialiser
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div 
                     className="border rounded-lg overflow-auto max-h-[400px] bg-background"
                     onPaste={(e) => {
                       e.preventDefault();
-                      const text = e.clipboardData.getData("text");
+                      const text = e.clipboardData.getData('text');
                       setPastedData(text);
-
+                      
                       // Parse immédiatement pour afficher dans le tableau
-                      const lines = text.split("\n").filter((line) => line.trim());
+                      const lines = text.split('\n').filter(line => line.trim());
                       if (lines.length > 0) {
                         toast.success(`${lines.length} ligne(s) collée(s)`);
                       }
                     }}
                     tabIndex={0}
                   >
-                    {pastedData ? (
-                      <table className="w-full text-xs border-collapse">
-                        <thead className="bg-muted sticky top-0">
-                          <tr>
-                            {pastedData
-                              .split("\n")[0]
-                              ?.split("\t")
-                              .map((header, i) => (
-                                <th
-                                  key={i}
-                                  className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap"
-                                >
-                                  {header}
-                                </th>
+                    <table className="w-full text-xs border-collapse">
+                      <thead className="bg-muted/80 sticky top-0">
+                        <tr>
+                          {pastedData ? (
+                            pastedData.split('\n')[0]?.split('\t').map((header, i) => (
+                              <th key={i} className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">
+                                {header}
+                              </th>
+                            ))
+                          ) : (
+                            <>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Nom</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Catégorie</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Sous-catégorie</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Prix référence</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Prix vente TTC</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Marge %</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Fournisseur</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Description</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">URL produit</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Type électrique</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Poids (kg)</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Longueur (mm)</th>
+                              <th className="px-3 py-2 text-left font-medium border-b border-r whitespace-nowrap">Largeur (mm)</th>
+                              <th className="px-3 py-2 text-left font-medium border-b">Hauteur (mm)</th>
+                            </>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pastedData ? (
+                          pastedData.split('\n').slice(1).filter(line => line.trim()).map((line, rowIndex) => (
+                            <tr key={rowIndex} className="border-b hover:bg-muted/50">
+                              {line.split('\t').map((cell, cellIndex) => (
+                                <td key={cellIndex} className="px-3 py-2 border-r whitespace-nowrap">
+                                  {cell}
+                                </td>
                               ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pastedData
-                            .split("\n")
-                            .slice(1)
-                            .filter((line) => line.trim())
-                            .map((line, rowIndex) => (
-                              <tr key={rowIndex} className="border-b hover:bg-muted/50">
-                                {line.split("\t").map((cell, cellIndex) => (
-                                  <td key={cellIndex} className="px-3 py-2 border-r whitespace-nowrap">
-                                    {cell}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="p-12 text-center text-muted-foreground">
-                        <p className="mb-2">Cliquez ici et collez vos données</p>
-                        <p className="text-xs">Le tableau s'affichera automatiquement</p>
-                      </div>
-                    )}
+                            </tr>
+                          ))
+                        ) : (
+                          // Afficher des lignes vides pour montrer la structure
+                          <>
+                            <tr className="border-b">
+                              <td className="px-3 py-2 border-r text-muted-foreground text-center" colSpan={14}>
+                                Cliquez ici et collez vos données (Ctrl+V ou Cmd+V)
+                              </td>
+                            </tr>
+                            <tr className="border-b hover:bg-muted/30">
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 text-muted-foreground/40">&nbsp;</td>
+                            </tr>
+                            <tr className="border-b hover:bg-muted/30">
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 text-muted-foreground/40">&nbsp;</td>
+                            </tr>
+                            <tr className="border-b hover:bg-muted/30">
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 border-r text-muted-foreground/40">&nbsp;</td>
+                              <td className="px-3 py-2 text-muted-foreground/40">&nbsp;</td>
+                            </tr>
+                          </>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
+                  
                   {pastedData && (
                     <div className="flex justify-between items-center text-xs text-muted-foreground">
-                      <span>{pastedData.split("\n").filter((line) => line.trim()).length - 1} ligne(s) de données</span>
-                      <Button variant="ghost" size="sm" onClick={() => setPastedData("")}>
-                        <X className="h-3 w-3 mr-1" />
-                        Effacer
-                      </Button>
+                      <span>{pastedData.split('\n').filter(line => line.trim()).length - 1} ligne(s) de données</span>
                     </div>
                   )}
                 </div>
 
-                <Button onClick={handlePasteImport} className="w-full" disabled={isProcessing || !pastedData.trim()}>
+                <Button 
+                  onClick={handlePasteImport} 
+                  className="w-full"
+                  disabled={isProcessing || !pastedData.trim()}
+                >
                   <Upload className="h-4 w-4 mr-2" />
                   {isProcessing ? "Import en cours..." : "Importer les données"}
                 </Button>
@@ -603,12 +677,18 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-                    isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+                    isDragging
+                      ? "border-primary bg-primary/5"
+                      : "border-muted-foreground/25 hover:border-primary/50"
                   }`}
                 >
                   <FileUp className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-lg font-medium mb-2">Glissez-déposez votre fichier ici</p>
-                  <p className="text-sm text-muted-foreground mb-4">ou</p>
+                  <p className="text-lg font-medium mb-2">
+                    Glissez-déposez votre fichier ici
+                  </p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    ou
+                  </p>
                   <input
                     type="file"
                     accept=".csv,.xlsx,.xls,.numbers"
@@ -620,7 +700,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => document.getElementById("file-upload")?.click()}
+                    onClick={() => document.getElementById('file-upload')?.click()}
                     disabled={isProcessing}
                   >
                     <Upload className="h-4 w-4 mr-2" />
@@ -658,8 +738,8 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           <div className="space-y-4">
             <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 p-4 rounded-lg">
               <p className="text-sm">
-                ⚠️ Les colonnes de votre fichier ne correspondent pas exactement au format attendu. Veuillez indiquer à
-                quoi correspond chaque colonne.
+                ⚠️ Les colonnes de votre fichier ne correspondent pas exactement au format attendu.
+                Veuillez indiquer à quoi correspond chaque colonne.
               </p>
             </div>
 
@@ -670,15 +750,15 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
                     <p className="font-medium text-sm">{col}</p>
                     <p className="text-xs text-muted-foreground">Colonne détectée</p>
                   </div>
-
+                  
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
-
+                  
                   <Select
                     value={columnMapping[col] || "ignore"}
                     onValueChange={(value) => {
-                      setColumnMapping((prev) => ({
+                      setColumnMapping(prev => ({
                         ...prev,
-                        [col]: value,
+                        [col]: value
                       }));
                     }}
                   >
