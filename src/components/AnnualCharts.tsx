@@ -1,7 +1,19 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import {
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import { Loader2 } from "lucide-react";
 
 interface AnnualChartsProps {
@@ -38,25 +50,30 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
 
   const loadAnnualData = async () => {
     setLoading(true);
-    
+
     // Get current year date range
     const currentYear = new Date().getFullYear();
     const startOfYear = new Date(currentYear, 0, 1).toISOString();
     const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59).toISOString();
 
     try {
-      // 1. Rentrées d'argent par client (from payment_transactions)
+      // 1. Rentrées d'argent par client (from project_payment_transactions with join to projects)
       const { data: paymentsData } = await supabase
-        .from("payment_transactions")
-        .select("montant, nom_client, date_paiement")
-        .eq("project_id", projectId)
+        .from("project_payment_transactions")
+        .select(
+          `
+          montant,
+          date_paiement,
+          projects!inner(nom_proprietaire)
+        `,
+        )
         .gte("date_paiement", startOfYear)
         .lte("date_paiement", endOfYear);
 
       if (paymentsData) {
         const customerMap = new Map<string, number>();
-        paymentsData.forEach((payment) => {
-          const customer = payment.nom_client || "Client inconnu";
+        paymentsData.forEach((payment: any) => {
+          const customer = payment.projects?.nom_proprietaire || "Client inconnu";
           customerMap.set(customer, (customerMap.get(customer) || 0) + payment.montant);
         });
         const customerData = Array.from(customerMap.entries())
@@ -83,9 +100,22 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           const total = expense.prix * expense.quantite;
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + total);
         });
-        
+
         // Create array for all months
-        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+        const months = [
+          "janv.",
+          "févr.",
+          "mars",
+          "avr.",
+          "mai",
+          "juin",
+          "juil.",
+          "août",
+          "sept.",
+          "oct.",
+          "nov.",
+          "déc.",
+        ];
         const supplierMonthlyData = months.map((month) => ({
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
@@ -96,13 +126,26 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       // 3. Rentrées d'argent sur l'année (mensuel)
       if (paymentsData) {
         const monthMap = new Map<string, number>();
-        paymentsData.forEach((payment) => {
+        paymentsData.forEach((payment: any) => {
           const date = new Date(payment.date_paiement);
           const monthKey = date.toLocaleDateString("fr-FR", { month: "short" });
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + payment.montant);
         });
 
-        const months = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+        const months = [
+          "janv.",
+          "févr.",
+          "mars",
+          "avr.",
+          "mai",
+          "juin",
+          "juil.",
+          "août",
+          "sept.",
+          "oct.",
+          "nov.",
+          "déc.",
+        ];
         const monthlyData = months.map((month) => ({
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
@@ -164,22 +207,14 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={customerRevenues}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="customer" 
-                  angle={-45} 
-                  textAnchor="end" 
-                  height={80}
-                  style={{ fontSize: "10px" }}
-                />
+                <XAxis dataKey="customer" angle={-45} textAnchor="end" height={80} style={{ fontSize: "10px" }} />
                 <YAxis style={{ fontSize: "11px" }} />
                 <Tooltip formatter={(value: number) => `${value.toFixed(2)} €`} />
                 <Bar dataKey="amount" fill="#10b981" name="Montant (€)" />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible
-            </div>
+            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
           )}
         </CardContent>
       </Card>
@@ -201,9 +236,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible
-            </div>
+            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
           )}
         </CardContent>
       </Card>
@@ -225,9 +258,7 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible
-            </div>
+            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
           )}
         </CardContent>
       </Card>
@@ -248,9 +279,10 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
                   labelLine={false}
                   label={(entry) => {
                     const maxLength = 10;
-                    const name = entry.supplier.length > maxLength 
-                      ? entry.supplier.substring(0, maxLength) + "..." 
-                      : entry.supplier;
+                    const name =
+                      entry.supplier.length > maxLength
+                        ? entry.supplier.substring(0, maxLength) + "..."
+                        : entry.supplier;
                     return `${name}: ${entry.amount.toFixed(0)}€`;
                   }}
                   outerRadius={70}
@@ -262,28 +294,24 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   formatter={(value: number, name: string, props: any) => [
                     `${value.toFixed(2)} €`,
-                    props.payload.supplier
+                    props.payload.supplier,
                   ]}
                 />
-                <Legend 
+                <Legend
                   wrapperStyle={{ fontSize: "10px" }}
                   formatter={(value: string, entry: any) => {
                     const maxLength = 15;
                     const supplier = entry.payload.supplier;
-                    return supplier.length > maxLength 
-                      ? supplier.substring(0, maxLength) + "..." 
-                      : supplier;
+                    return supplier.length > maxLength ? supplier.substring(0, maxLength) + "..." : supplier;
                   }}
                 />
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              Aucune donnée disponible
-            </div>
+            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
           )}
         </CardContent>
       </Card>
