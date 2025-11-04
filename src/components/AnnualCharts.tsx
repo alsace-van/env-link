@@ -56,31 +56,51 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
     const startOfYear = new Date(currentYear, 0, 1).toISOString();
     const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59).toISOString();
 
+    console.log("🔍 Chargement des données annuelles pour", currentYear);
+
     try {
-      // 1. Rentrées d'argent par client (from project_payment_transactions with join to projects)
-      const { data: paymentsData } = await supabase
+      // 1. Rentrées d'argent par client (from project_payment_transactions)
+      // Récupère TOUS les paiements de TOUS les projets pour le bilan global
+      const { data: paymentsData, error: paymentsError } = await supabase
         .from("project_payment_transactions")
         .select(
           `
           montant,
           date_paiement,
-          projects!inner(nom_proprietaire)
+          project_id,
+          projects!inner(nom_proprietaire, id)
         `,
         )
         .gte("date_paiement", startOfYear)
         .lte("date_paiement", endOfYear);
 
-      if (paymentsData) {
+      console.log("💰 Paiements récupérés:", paymentsData?.length || 0, "paiements");
+      if (paymentsError) {
+        console.error("❌ Erreur lors de la récupération des paiements:", paymentsError);
+      }
+
+      if (paymentsData && paymentsData.length > 0) {
+        // Regrouper par client (nom_proprietaire)
         const customerMap = new Map<string, number>();
         paymentsData.forEach((payment: any) => {
           const customer = payment.projects?.nom_proprietaire || "Client inconnu";
-          customerMap.set(customer, (customerMap.get(customer) || 0) + payment.montant);
+          const currentAmount = customerMap.get(customer) || 0;
+          customerMap.set(customer, currentAmount + (payment.montant || 0));
         });
+
         const customerData = Array.from(customerMap.entries())
-          .map(([customer, amount]) => ({ customer, amount: Math.round(amount * 100) / 100 }))
+          .map(([customer, amount]) => ({
+            customer,
+            amount: Math.round(amount * 100) / 100,
+          }))
           .sort((a, b) => b.amount - a.amount)
           .slice(0, 10); // Top 10 clients
+
+        console.log("👥 Revenus par client:", customerData);
         setCustomerRevenues(customerData);
+      } else {
+        console.log("⚠️ Aucun paiement trouvé pour l'année", currentYear);
+        setCustomerRevenues([]);
       }
 
       // 2. Factures fournisseurs sur l'année mensuelles (from tableau factures fournisseurs)
@@ -124,12 +144,13 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       }
 
       // 3. Rentrées d'argent sur l'année (mensuel)
-      if (paymentsData) {
+      if (paymentsData && paymentsData.length > 0) {
         const monthMap = new Map<string, number>();
         paymentsData.forEach((payment: any) => {
           const date = new Date(payment.date_paiement);
           const monthKey = date.toLocaleDateString("fr-FR", { month: "short" });
-          monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + payment.montant);
+          const currentAmount = monthMap.get(monthKey) || 0;
+          monthMap.set(monthKey, currentAmount + (payment.montant || 0));
         });
 
         const months = [
@@ -150,7 +171,11 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
           month,
           amount: Math.round((monthMap.get(month) || 0) * 100) / 100,
         }));
+
+        console.log("📊 Revenus mensuels:", monthlyData);
         setMonthlyRevenues(monthlyData);
+      } else {
+        setMonthlyRevenues([]);
       }
 
       // 4. Factures fournisseurs annuelles par fournisseur (pie chart)
@@ -178,8 +203,10 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       } else {
         setAnnualSupplierExpenses([]);
       }
+
+      console.log("✅ Chargement des données terminé");
     } catch (error) {
-      console.error("Error loading annual data:", error);
+      console.error("❌ Error loading annual data:", error);
     } finally {
       setLoading(false);
     }
@@ -214,7 +241,9 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
+            <div className="text-center text-sm text-muted-foreground py-8">
+              Aucune donnée disponible pour {new Date().getFullYear()}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -236,7 +265,9 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
+            <div className="text-center text-sm text-muted-foreground py-8">
+              Aucune donnée disponible pour {new Date().getFullYear()}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -258,7 +289,9 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
+            <div className="text-center text-sm text-muted-foreground py-8">
+              Aucune donnée disponible pour {new Date().getFullYear()}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -311,7 +344,9 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="text-center text-sm text-muted-foreground py-8">Aucune donnée disponible</div>
+            <div className="text-center text-sm text-muted-foreground py-8">
+              Aucune donnée disponible pour {new Date().getFullYear()}
+            </div>
           )}
         </CardContent>
       </Card>
