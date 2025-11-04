@@ -36,6 +36,7 @@ import {
   UserCircle,
   Truck,
   X,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -572,12 +573,38 @@ sidebarStyle.textContent = `
     }
   }
   
+  @keyframes slideInFromRight {
+    from {
+      transform: translateY(-50%) translateX(100%);
+    }
+    to {
+      transform: translateY(-50%) translateX(0);
+    }
+  }
+  
+  @keyframes slideOutToRight {
+    from {
+      transform: translateY(-50%) translateX(0);
+    }
+    to {
+      transform: translateY(-50%) translateX(100%);
+    }
+  }
+  
   .sidebar-slide-in {
     animation: slideInFromLeft 500ms ease-out;
   }
   
   .sidebar-slide-out {
     animation: slideOutToLeft 400ms ease-in;
+  }
+  
+  .sidebar-slide-in-right {
+    animation: slideInFromRight 500ms ease-out;
+  }
+  
+  .sidebar-slide-out-right {
+    animation: slideOutToRight 400ms ease-in;
   }
 `;
 if (!document.head.querySelector("#sidebar-animation-style")) {
@@ -599,6 +626,8 @@ const ProjectDetail = () => {
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
   const [isProjectInfoSidebarOpen, setIsProjectInfoSidebarOpen] = useState(false); // État pour la sidebar des infos projet
   const [isProjectInfoSidebarClosing, setIsProjectInfoSidebarClosing] = useState(false); // État pour l'animation de fermeture
+  const [isExpensesSidebarOpen, setIsExpensesSidebarOpen] = useState(false); // État pour la sidebar des statistiques
+  const [isExpensesSidebarClosing, setIsExpensesSidebarClosing] = useState(false); // État pour l'animation de fermeture
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false); // État pour le dropdown du calendrier
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false); // État pour la vue mensuelle directe
   const [layout3DKey, setLayout3DKey] = useState(0);
@@ -685,6 +714,15 @@ const ProjectDetail = () => {
     setTimeout(() => {
       setIsProjectInfoSidebarOpen(false);
       setIsProjectInfoSidebarClosing(false);
+    }, 400); // Durée de l'animation de sortie
+  };
+
+  // Fonction pour fermer la sidebar des statistiques avec animation
+  const handleCloseExpensesSidebar = () => {
+    setIsExpensesSidebarClosing(true);
+    setTimeout(() => {
+      setIsExpensesSidebarOpen(false);
+      setIsExpensesSidebarClosing(false);
     }, 400); // Durée de l'animation de sortie
   };
 
@@ -1099,21 +1137,18 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Colonne principale - Liste des dépenses */}
-                  <div className="lg:col-span-2">
-                    <ExpensesList
-                      projectId={project.id}
-                      onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
-                    />
+                <div className="space-y-4">
+                  {/* Header avec bouton Statistiques */}
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Liste des dépenses</h2>
+                    <Button onClick={() => setIsExpensesSidebarOpen(true)} className="gap-2" variant="default">
+                      <BarChart3 className="h-4 w-4" />
+                      Voir les statistiques
+                    </Button>
                   </div>
 
-                  {/* Sidebar droite - Résumé et statistiques */}
-                  <div className="lg:col-span-1">
-                    <div className="sticky top-6">
-                      <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
-                    </div>
-                  </div>
+                  {/* Liste des dépenses pleine largeur */}
+                  <ExpensesList projectId={project.id} onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)} />
                 </div>
               </TabsContent>
 
@@ -1192,6 +1227,40 @@ const ProjectDetail = () => {
 
       {/* Sidebar pour les notes et tâches */}
       <ProjectSidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} projectId={project?.id || null} />
+
+      {/* Sidebar des statistiques - Glisse depuis la DROITE avec overlay transparent */}
+      {isExpensesSidebarOpen && (
+        <>
+          {/* Overlay TRANSPARENT */}
+          <div
+            className="fixed inset-0 z-40 bg-black/10 backdrop-blur-[2px] transition-opacity"
+            onClick={handleCloseExpensesSidebar}
+          />
+
+          {/* Sidebar à DROITE avec hauteur limitée - Animation horizontale pure */}
+          <div
+            className={`${isExpensesSidebarClosing ? "sidebar-slide-out-right" : "sidebar-slide-in-right"} fixed right-0 top-1/2 -translate-y-1/2 z-50 w-[600px] max-h-[90vh] bg-card border-l-2 border-green-200 dark:border-green-800 shadow-2xl rounded-l-xl overflow-hidden`}
+          >
+            <div className="flex flex-col h-full">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b bg-green-50 dark:bg-green-950/30">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-green-600" />
+                  <h2 className="text-lg font-semibold">Statistiques & Analyses</h2>
+                </div>
+                <Button variant="ghost" size="icon" onClick={handleCloseExpensesSidebar}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* Contenu scrollable - ExpensesSummary */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Dialog pour modifier les dimensions et infos du projet */}
       <Dialog open={isEditDimensionsOpen} onOpenChange={setIsEditDimensionsOpen}>
