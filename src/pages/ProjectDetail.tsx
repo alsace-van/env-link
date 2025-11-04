@@ -1239,24 +1239,22 @@ const ProjectDetail = () => {
 
           {/* Sidebar à DROITE avec hauteur limitée - Animation horizontale pure */}
           <div
-            className={`${isExpensesSidebarClosing ? "sidebar-slide-out-right" : "sidebar-slide-in-right"} fixed right-0 top-1/2 -translate-y-1/2 z-50 w-[600px] max-h-[90vh] bg-card border-l-2 border-green-200 dark:border-green-800 shadow-2xl rounded-l-xl overflow-hidden`}
+            className={`${isExpensesSidebarClosing ? "sidebar-slide-out-right" : "sidebar-slide-in-right"} fixed right-0 top-1/2 -translate-y-1/2 z-50 w-[600px] h-[90vh] bg-card border-l-2 border-green-200 dark:border-green-800 shadow-2xl rounded-l-xl overflow-hidden flex flex-col`}
           >
-            <div className="flex flex-col h-full">
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b bg-green-50 dark:bg-green-950/30">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-green-600" />
-                  <h2 className="text-lg font-semibold">Statistiques & Analyses</h2>
-                </div>
-                <Button variant="ghost" size="icon" onClick={handleCloseExpensesSidebar}>
-                  <X className="h-5 w-5" />
-                </Button>
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b bg-green-50 dark:bg-green-950/30 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-green-600" />
+                <h2 className="text-lg font-semibold">Statistiques & Analyses</h2>
               </div>
+              <Button variant="ghost" size="icon" onClick={handleCloseExpensesSidebar}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
 
-              {/* Contenu scrollable - ExpensesSummary */}
-              <div className="flex-1 overflow-y-auto p-4">
-                <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
-              </div>
+            {/* Contenu scrollable - ExpensesSummary */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <ExpensesSummary projectId={project.id} refreshTrigger={expenseRefresh} />
             </div>
           </div>
         </>
