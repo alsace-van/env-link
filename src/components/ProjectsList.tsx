@@ -69,19 +69,16 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
   const [customPoidsVide, setCustomPoidsVide] = useState<string>("");
   const [customPtac, setCustomPtac] = useState<string>("");
 
-  const availableMarques = Array.from(new Set(vehicles.map(v => v.marque))).sort();
-  
+  const availableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
+
   const availableModeles = selectedMarque
-    ? Array.from(new Set(
-        vehicles
-          .filter(v => v.marque === selectedMarque)
-          .map(v => v.modele)
-      )).sort()
+    ? Array.from(new Set(vehicles.filter((v) => v.marque === selectedMarque).map((v) => v.modele))).sort()
     : [];
-  
-  const availableDimensions = (selectedMarque && selectedModele)
-    ? vehicles.filter(v => v.marque === selectedMarque && v.modele === selectedModele)
-    : [];
+
+  const availableDimensions =
+    selectedMarque && selectedModele
+      ? vehicles.filter((v) => v.marque === selectedMarque && v.modele === selectedModele)
+      : [];
 
   useEffect(() => {
     loadProjects();
@@ -105,8 +102,10 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
 
   const loadProjects = async () => {
     setIsLoading(true);
-    
-    const { data: { user } } = await supabase.auth.getUser();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       setIsLoading(false);
       return;
@@ -114,7 +113,8 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
 
     const { data, error } = await supabase
       .from("projects")
-      .select(`
+      .select(
+        `
         id,
         nom_projet,
         nom_proprietaire,
@@ -138,7 +138,8 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
           marque,
           modele
         )
-      `)
+      `,
+      )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -157,19 +158,19 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
     e.stopPropagation();
     setEditingProject(project);
     setPhotoPreview(project.photo_url);
-    
+
     // Initialize vehicle selection if project has a vehicle
     if (project.vehicles_catalog) {
       setSelectedMarque(project.vehicles_catalog.marque);
       setSelectedModele(project.vehicles_catalog.modele);
-      
+
       // Find and set the selected vehicle
-      const vehicle = vehicles.find(v => v.id === project.vehicle_catalog_id);
+      const vehicle = vehicles.find((v) => v.id === project.vehicle_catalog_id);
       if (vehicle) {
         setSelectedVehicle(vehicle);
       }
     }
-    
+
     setCustomPoidsVide(project.poids_vide_kg?.toString() || "");
     setCustomPtac(project.ptac_kg?.toString() || "");
     setEditDialogOpen(true);
@@ -216,55 +217,53 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
 
     // Upload new photo if selected
     if (photoFile) {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      const fileExt = photoFile.name.split('.').pop();
+      const fileExt = photoFile.name.split(".").pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('project-photos')
-        .upload(filePath, photoFile);
+      const { error: uploadError } = await supabase.storage.from("project-photos").upload(filePath, photoFile);
 
       if (uploadError) {
         toast.error("Erreur lors de l'upload de la photo");
         return;
       }
 
-      // Use signed URL with 24 hour expiration for project photos
-      const { data: signedUrlData, error: urlError } = await supabase.storage
-        .from('project-photos')
-        .createSignedUrl(filePath, 86400); // 24 hours
+      // Use public URL (permanent, no expiration)
+      const { data: publicUrlData } = supabase.storage.from("project-photos").getPublicUrl(filePath);
 
-      if (urlError || !signedUrlData) {
+      if (!publicUrlData) {
         toast.error("Erreur lors de la création de l'URL de la photo");
         return;
       }
 
-      photoUrl = signedUrlData.signedUrl;
+      photoUrl = publicUrlData.publicUrl;
     }
 
     const { error } = await supabase
       .from("projects")
       .update({
-        nom_projet: formData.get("nom_projet") as string || null,
+        nom_projet: (formData.get("nom_projet") as string) || null,
         nom_proprietaire: formData.get("nom_proprietaire") as string,
-        adresse_proprietaire: formData.get("adresse_proprietaire") as string || null,
-        telephone_proprietaire: formData.get("telephone_proprietaire") as string || null,
-        email_proprietaire: formData.get("email_proprietaire") as string || null,
-        immatriculation: formData.get("immatriculation") as string || null,
-        numero_chassis: formData.get("numero_chassis") as string || null,
-        date_mise_circulation: formData.get("date_mise_circulation") as string || null,
-        type_mine: formData.get("type_mine") as string || null,
+        adresse_proprietaire: (formData.get("adresse_proprietaire") as string) || null,
+        telephone_proprietaire: (formData.get("telephone_proprietaire") as string) || null,
+        email_proprietaire: (formData.get("email_proprietaire") as string) || null,
+        immatriculation: (formData.get("immatriculation") as string) || null,
+        numero_chassis: (formData.get("numero_chassis") as string) || null,
+        date_mise_circulation: (formData.get("date_mise_circulation") as string) || null,
+        type_mine: (formData.get("type_mine") as string) || null,
         photo_url: photoUrl,
         vehicle_catalog_id: selectedVehicle?.id || null,
         longueur_mm: selectedVehicle?.longueur_mm || null,
         largeur_mm: selectedVehicle?.largeur_mm || null,
         hauteur_mm: selectedVehicle?.hauteur_mm || null,
-        poids_vide_kg: customPoidsVide ? parseInt(customPoidsVide) : (selectedVehicle?.poids_vide_kg || null),
+        poids_vide_kg: customPoidsVide ? parseInt(customPoidsVide) : selectedVehicle?.poids_vide_kg || null,
         charge_utile_kg: selectedVehicle?.charge_utile_kg || null,
-        ptac_kg: customPtac ? parseInt(customPtac) : (selectedVehicle?.ptac_kg || null),
+        ptac_kg: customPtac ? parseInt(customPtac) : selectedVehicle?.ptac_kg || null,
       })
       .eq("id", editingProject.id);
 
@@ -288,15 +287,12 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
 
   const handleDelete = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     if (!confirm("Êtes-vous sûr de vouloir supprimer ce projet ?")) {
       return;
     }
 
-    const { error } = await supabase
-      .from("projects")
-      .delete()
-      .eq("id", projectId);
+    const { error } = await supabase.from("projects").delete().eq("id", projectId);
 
     if (error) {
       toast.error("Erreur lors de la suppression");
@@ -324,12 +320,8 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
       <Card>
         <CardContent className="py-12 text-center">
           <Truck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">
-            Aucun projet pour le moment.
-          </p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Créez votre premier projet avec le formulaire ci-contre.
-          </p>
+          <p className="text-muted-foreground">Aucun projet pour le moment.</p>
+          <p className="text-sm text-muted-foreground mt-2">Créez votre premier projet avec le formulaire ci-contre.</p>
         </CardContent>
       </Card>
     );
@@ -355,9 +347,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
               <div className="flex-1 min-w-0">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Truck className="h-5 w-5 text-primary flex-shrink-0" />
-                  <span className="truncate">
-                    {project.nom_projet || project.nom_proprietaire}
-                  </span>
+                  <span className="truncate">{project.nom_projet || project.nom_proprietaire}</span>
                 </CardTitle>
                 <div className="mt-2 space-y-1 text-sm text-muted-foreground">
                   {project.vehicles_catalog && (
@@ -410,9 +400,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Modifier le projet</DialogTitle>
-            <DialogDescription>
-              Modifiez toutes les informations du projet
-            </DialogDescription>
+            <DialogDescription>Modifiez toutes les informations du projet</DialogDescription>
           </DialogHeader>
           {editingProject && (
             <form onSubmit={handleUpdateProject} className="space-y-6">
@@ -420,7 +408,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                 {/* Colonne 1: Informations Projet */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-muted-foreground">Informations Projet</h3>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="edit_nom_projet">Nom du projet</Label>
                     <Input
@@ -433,19 +421,10 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
 
                   <div className="space-y-2">
                     <Label htmlFor="edit_photo">Photo du projet</Label>
-                    <Input
-                      id="edit_photo"
-                      type="file"
-                      accept="image/*"
-                      onChange={handlePhotoChange}
-                    />
+                    <Input id="edit_photo" type="file" accept="image/*" onChange={handlePhotoChange} />
                     {photoPreview && (
                       <div className="mt-2">
-                        <img
-                          src={photoPreview}
-                          alt="Aperçu"
-                          className="w-full h-32 object-cover rounded-lg"
-                        />
+                        <img src={photoPreview} alt="Aperçu" className="w-full h-32 object-cover rounded-lg" />
                       </div>
                     )}
                   </div>
@@ -454,7 +433,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                 {/* Colonne 2: Informations Propriétaire */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-muted-foreground">Informations Propriétaire</h3>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="edit_nom_proprietaire">Nom du propriétaire *</Label>
                     <Input
@@ -502,7 +481,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                 {/* Colonne 3: Informations Véhicule */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-muted-foreground">Informations Véhicule</h3>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="edit_marque">Marque</Label>
                     <Select value={selectedMarque} onValueChange={handleMarqueChange}>
@@ -639,9 +618,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                 >
                   Annuler
                 </Button>
-                <Button type="submit">
-                  Enregistrer
-                </Button>
+                <Button type="submit">Enregistrer</Button>
               </div>
             </form>
           )}
