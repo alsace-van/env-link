@@ -139,7 +139,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
             <CardTitle>Total Achats (HT)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
+            <div className="text-2xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
           </CardContent>
         </Card>
 
@@ -148,7 +148,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
             <CardTitle>Total Ventes (TTC)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
+            <div className="text-2xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
           </CardContent>
         </Card>
 
@@ -157,7 +157,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
             <CardTitle>Marge Nette (HT)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
+            <div className="text-2xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
             {totalExpenses > 0 && (
               <div className="text-sm text-muted-foreground mt-1">
                 {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
