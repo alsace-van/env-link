@@ -136,7 +136,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle>Total Achats (HT)</CardTitle>
+            <CardTitle className="!text-base !font-semibold">Total Achats (HT)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
@@ -145,7 +145,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
         <Card>
           <CardHeader>
-            <CardTitle>Total Ventes (TTC)</CardTitle>
+            <CardTitle className="!text-base !font-semibold">Total Ventes (TTC)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
@@ -154,7 +154,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
         <Card>
           <CardHeader>
-            <CardTitle>Marge Nette (HT)</CardTitle>
+            <CardTitle className="!text-base !font-semibold">Marge Nette (HT)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
