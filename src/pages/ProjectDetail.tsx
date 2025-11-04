@@ -1115,7 +1115,7 @@ const ProjectDetail = () => {
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
             <Tabs defaultValue="photos" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+              <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 sticky top-0 z-30 bg-background">
                 <TabsTrigger value="photos" className="gap-2">
                   <Image className="h-4 w-4 text-purple-600" />
                   <span className="hidden sm:inline">Photos</span>
@@ -1149,7 +1149,7 @@ const ProjectDetail = () => {
               <TabsContent value="expenses" className="mt-6">
                 <div className="space-y-4">
                   {/* Header avec bouton Statistiques */}
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center sticky top-10 z-20 bg-background py-2 border-b">
                     <h2 className="text-2xl font-bold">Dépenses</h2>
                     <Button onClick={() => setIsExpensesSidebarOpen(true)} className="gap-2" variant="default">
                       <BarChart3 className="h-4 w-4" />
@@ -1159,7 +1159,7 @@ const ProjectDetail = () => {
 
                   {/* Sous-onglets : Liste et Bilan */}
                   <Tabs defaultValue="liste" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
+                    <TabsList className="grid w-full grid-cols-2 sticky top-[88px] z-20 bg-background">
                       <TabsTrigger value="liste">Liste des dépenses</TabsTrigger>
                       <TabsTrigger value="bilan">Bilan comptable</TabsTrigger>
                     </TabsList>
@@ -1201,7 +1201,7 @@ const ProjectDetail = () => {
 
               <TabsContent value="technical" className="mt-6">
                 <Tabs defaultValue="electrical" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 sticky top-10 z-20 bg-background">
                     <TabsTrigger value="electrical">Schéma électrique</TabsTrigger>
                     <TabsTrigger value="cable">Section de câble</TabsTrigger>
                     <TabsTrigger value="energy">Bilan énergétique</TabsTrigger>
@@ -1222,7 +1222,7 @@ const ProjectDetail = () => {
 
                   <TabsContent value="layout" className="mt-6">
                     <Tabs defaultValue="2d" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
+                      <TabsList className="grid w-full grid-cols-2 sticky top-[88px] z-10 bg-background">
                         <TabsTrigger value="2d">Plan 2D</TabsTrigger>
                         <TabsTrigger value="3d">Vue 3D</TabsTrigger>
                       </TabsList>
