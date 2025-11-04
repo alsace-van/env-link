@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Save, X, Upload, FileText, Trash2 } from "lucide-react";
+import { Plus, Save, X, Upload, FileText, Trash2, HelpCircle, Clipboard } from "lucide-react";
 import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ExpenseTableFormProps {
   projectId: string;
@@ -30,6 +31,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   const [rows, setRows] = useState<ExpenseRow[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
   const [uploading, setUploading] = useState<Set<string>>(new Set());
+  const [showHelp, setShowHelp] = useState(false);
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   useEffect(() => {
@@ -188,13 +190,154 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text");
+    
+    if (!pastedData.trim()) {
+      toast.error("Aucune donnée à coller");
+      return;
+    }
+
+    // Parse TSV data (Tab-separated values from Excel)
+    const lines = pastedData.trim().split("\n");
+    const newRows: ExpenseRow[] = [];
+    
+    lines.forEach((line) => {
+      const columns = line.split("\t").map(col => col.trim());
+      
+      // Expected format: Nom | Fournisseur | Date achat | Date paiement | Statut | Délai | Montant
+      if (columns.length >= 2) {
+        const [nom, fournisseur, dateAchat, datePaiement, statut, delai, montant] = columns;
+        
+        // Parse dates - handle various formats
+        const parseDateAchat = () => {
+          if (!dateAchat) return new Date().toISOString().slice(0, 16);
+          try {
+            // Try to parse DD/MM/YYYY HH:mm or DD/MM/YYYY
+            const dateParts = dateAchat.split(/[/ :]/);
+            if (dateParts.length >= 3) {
+              const day = dateParts[0].padStart(2, '0');
+              const month = dateParts[1].padStart(2, '0');
+              const year = dateParts[2];
+              const hour = dateParts[3]?.padStart(2, '0') || '12';
+              const minute = dateParts[4]?.padStart(2, '0') || '00';
+              return `${year}-${month}-${day}T${hour}:${minute}`;
+            }
+            return new Date().toISOString().slice(0, 16);
+          } catch {
+            return new Date().toISOString().slice(0, 16);
+          }
+        };
+
+        const parseDatePaiement = () => {
+          if (!datePaiement) return "";
+          try {
+            const dateParts = datePaiement.split(/[/ :]/);
+            if (dateParts.length >= 3) {
+              const day = dateParts[0].padStart(2, '0');
+              const month = dateParts[1].padStart(2, '0');
+              const year = dateParts[2];
+              const hour = dateParts[3]?.padStart(2, '0') || '12';
+              const minute = dateParts[4]?.padStart(2, '0') || '30';
+              return `${year}-${month}-${day}T${hour}:${minute}`;
+            }
+            return "";
+          } catch {
+            return "";
+          }
+        };
+
+        // Parse statut
+        const parseStatut = () => {
+          if (!statut) return "non_paye";
+          const lower = statut.toLowerCase();
+          if (lower.includes("payé") || lower.includes("paye")) return "paye";
+          return "non_paye";
+        };
+
+        // Parse délai
+        const parseDelai = () => {
+          if (!delai) return "commande";
+          const lower = delai.toLowerCase();
+          if (lower.includes("30") || lower.includes("jours")) return "30_jours";
+          return "commande";
+        };
+
+        // Parse montant - remove spaces and replace comma with dot
+        const parseMontant = () => {
+          if (!montant) return "";
+          return montant.replace(/\s/g, "").replace(",", ".");
+        };
+
+        newRows.push({
+          id: crypto.randomUUID(),
+          nom_accessoire: nom || "",
+          fournisseur: fournisseur || "",
+          date_achat: parseDateAchat(),
+          date_paiement: parseDatePaiement(),
+          statut_paiement: parseStatut(),
+          delai_paiement: parseDelai(),
+          prix_vente_ttc: parseMontant(),
+        });
+      }
+    });
+
+    if (newRows.length === 0) {
+      toast.error("Aucune ligne valide trouvée dans les données collées");
+      return;
+    }
+
+    // Add parsed rows to existing rows
+    setRows([...rows, ...newRows]);
+    toast.success(`${newRows.length} ligne(s) ajoutée(s) depuis Excel`);
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ajouter des dépenses fournisseurs</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle>Ajouter des dépenses fournisseurs</CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowHelp(!showHelp)}
+            className="gap-2"
+          >
+            <Clipboard className="h-4 w-4" />
+            Coller depuis Excel
+            <HelpCircle className="h-4 w-4" />
+          </Button>
+        </div>
+        
+        {showHelp && (
+          <Alert className="mt-4">
+            <Clipboard className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-2">
+                <p className="font-semibold">Comment coller depuis Excel :</p>
+                <ol className="list-decimal list-inside space-y-1 text-sm">
+                  <li>Copiez vos lignes depuis Excel (Ctrl+C / Cmd+C)</li>
+                  <li>Cliquez dans le tableau ci-dessous</li>
+                  <li>Collez avec Ctrl+V / Cmd+V</li>
+                </ol>
+                <p className="text-sm font-medium mt-3">Format attendu (colonnes séparées par tabulation) :</p>
+                <code className="block bg-muted p-2 rounded text-xs mt-1">
+                  Nom | Fournisseur | Date achat | Date paiement | Statut | Délai | Montant
+                </code>
+                <p className="text-xs text-muted-foreground mt-2">
+                  • Les dates peuvent être au format DD/MM/YYYY ou DD/MM/YYYY HH:mm<br/>
+                  • Le statut peut être "Payé" ou "Non payé"<br/>
+                  • Le délai peut être "À la commande" ou "30 jours"<br/>
+                  • Seules les 2 premières colonnes (Nom et Fournisseur) sont obligatoires
+                </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto" onKeyDown={handleKeyDown}>
+        <div className="overflow-x-auto" onKeyDown={handleKeyDown} onPaste={handlePaste} tabIndex={0}>
           <Table>
             <TableHeader>
               <TableRow>
