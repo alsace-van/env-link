@@ -26,7 +26,7 @@ interface Expense {
   fournisseur?: string;
   notes?: string;
   accessory_id?: string;
-  selectedOptions?: Array<{ 
+  selectedOptions?: Array<{
     nom: string;
     prix_reference: number;
     prix_vente_ttc: number;
@@ -72,13 +72,14 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       console.error(error);
     } else {
       const expensesData = (data || []) as Expense[];
-      
+
       // Load selected options for each expense
       const expensesWithOptions = await Promise.all(
         expensesData.map(async (expense) => {
           const { data: selectedOptions } = await supabase
             .from("expense_selected_options")
-            .select(`
+            .select(
+              `
               option_id,
               accessory_options!inner(
                 nom,
@@ -86,27 +87,31 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                 prix_vente_ttc,
                 marge_pourcent
               )
-            `)
+            `,
+            )
             .eq("expense_id", expense.id);
-          
+
           return {
             ...expense,
-            selectedOptions: selectedOptions?.map((opt: any) => ({
-              nom: opt.accessory_options.nom,
-              prix_reference: opt.accessory_options.prix_reference || 0,
-              prix_vente_ttc: opt.accessory_options.prix_vente_ttc || 0,
-              marge_pourcent: opt.accessory_options.marge_pourcent || 0
-            })) || []
+            selectedOptions:
+              selectedOptions?.map((opt: any) => ({
+                nom: opt.accessory_options.nom,
+                prix_reference: opt.accessory_options.prix_reference || 0,
+                prix_vente_ttc: opt.accessory_options.prix_vente_ttc || 0,
+                marge_pourcent: opt.accessory_options.marge_pourcent || 0,
+              })) || [],
           };
-        })
+        }),
       );
-      
+
       setExpenses(expensesWithOptions);
-      
+
       // Extract unique categories, including empty ones as "Non catégorisé"
-      const uniqueCategories = Array.from(new Set(
-        expensesWithOptions.map(e => e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé")
-      ));
+      const uniqueCategories = Array.from(
+        new Set(
+          expensesWithOptions.map((e) => (e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé")),
+        ),
+      );
       setCategories(uniqueCategories);
 
       // Calculate total sales including options
@@ -138,21 +143,21 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
 
   const getPaymentStatus = () => {
     const totalPaid = paymentTransactions.reduce((sum, t) => sum + t.montant, 0);
-    
+
     if (totalPaid === 0) {
       return {
         color: "border-red-500 text-red-500 bg-red-50",
-        label: "Aucun paiement"
+        label: "Aucun paiement",
       };
     } else if (totalPaid >= totalSales) {
       return {
         color: "border-green-500 text-green-500 bg-green-50",
-        label: "Entièrement payé"
+        label: "Entièrement payé",
       };
     } else {
       return {
         color: "border-orange-500 text-orange-500 bg-orange-50",
-        label: "Paiement partiel"
+        label: "Paiement partiel",
       };
     }
   };
@@ -181,10 +186,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       return;
     }
 
-    const { error } = await supabase
-      .from("project_expenses")
-      .delete()
-      .eq("id", id);
+    const { error } = await supabase.from("project_expenses").delete().eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la suppression");
@@ -201,10 +203,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       return;
     }
 
-    const { error } = await supabase
-      .from("project_expenses")
-      .update({ quantite: newQuantity })
-      .eq("id", expenseId);
+    const { error } = await supabase.from("project_expenses").update({ quantite: newQuantity }).eq("id", expenseId);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -219,40 +218,43 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   const getDeliveryInfo = (status: Expense["statut_livraison"]) => {
     switch (status) {
       case "commande":
-        return { 
+        return {
           color: "border-orange-500 text-orange-500 bg-orange-50",
           label: "Commandé",
-          icon: <Package className="h-4 w-4" />
+          icon: <Package className="h-4 w-4" />,
         };
       case "en_livraison":
         return {
           color: "border-blue-500 text-blue-500 bg-blue-50",
           label: "En livraison",
-          icon: <ArrowRight className="h-4 w-4" />
+          icon: <ArrowRight className="h-4 w-4" />,
         };
       case "livre":
         return {
           color: "border-green-500 text-green-500 bg-green-50",
           label: "Livré",
-          icon: <Truck className="h-4 w-4" />
+          icon: <Truck className="h-4 w-4" />,
         };
     }
   };
 
   const filteredExpenses = selectedCategory
-    ? expenses.filter(e => {
+    ? expenses.filter((e) => {
         const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
         return expenseCategory === selectedCategory;
       })
     : expenses;
 
-  const groupedByCategory = categories.reduce((acc, cat) => {
-    acc[cat] = expenses.filter(e => {
-      const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
-      return expenseCategory === cat;
-    });
-    return acc;
-  }, {} as Record<string, Expense[]>);
+  const groupedByCategory = categories.reduce(
+    (acc, cat) => {
+      acc[cat] = expenses.filter((e) => {
+        const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
+        return expenseCategory === cat;
+      });
+      return acc;
+    },
+    {} as Record<string, Expense[]>,
+  );
 
   if (isLoading) {
     return <div className="text-center py-8">Chargement...</div>;
@@ -299,10 +301,16 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                   <div className="flex-1 space-y-1.5">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
-                      <Badge variant="outline" className="text-xs">{expense.categorie}</Badge>
-                      {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
+                      <Badge variant="outline" className="text-xs">
+                        {expense.categorie}
+                      </Badge>
+                      {expense.marque && (
+                        <Badge variant="secondary" className="text-xs">
+                          {expense.marque}
+                        </Badge>
+                      )}
                     </div>
-                    
+
                     <div className="space-y-0.5 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
@@ -332,33 +340,46 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                           </Button>
                         </div>
                       </div>
-                      
+
                       {expense.prix_vente_ttc && (
-                        <div>Prix vente TTC: {(() => {
-                          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
-                          return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
-                        })()} €</div>
+                        <div>
+                          Prix vente TTC:{" "}
+                          {(() => {
+                            const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                              (sum, opt) => sum + opt.prix_vente_ttc,
+                              0,
+                            );
+                            return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
+                          })()}{" "}
+                          €
+                        </div>
                       )}
-                      
-                      {expense.date_achat && (
-                        <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>
-                      )}
-                      
+
+                      {expense.date_achat && <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>}
+
                       {expense.marge_pourcent !== undefined && (
-                        <div>Marge: {(() => {
-                          const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                          const totalAchat = expense.prix + optionsTotal;
-                          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
-                          const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
-                          const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
-                          return marge.toFixed(2);
-                        })()} %</div>
+                        <div>
+                          Marge:{" "}
+                          {(() => {
+                            const optionsTotal = (expense.selectedOptions || []).reduce(
+                              (sum, opt) => sum + opt.prix_reference,
+                              0,
+                            );
+                            const totalAchat = expense.prix + optionsTotal;
+                            const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                              (sum, opt) => sum + opt.prix_vente_ttc,
+                              0,
+                            );
+                            const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                            const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat) * 100 : 0;
+                            return marge.toFixed(2);
+                          })()}{" "}
+                          %
+                        </div>
                       )}
-                      
-                      {expense.fournisseur && (
-                        <div>Fournisseur: {expense.fournisseur}</div>
-                      )}
-                      
+
+                      {expense.fournisseur && <div>Fournisseur: {expense.fournisseur}</div>}
+
                       {expense.selectedOptions && expense.selectedOptions.length > 0 && (
                         <div>
                           <span className="font-medium">Options:</span>
@@ -370,19 +391,23 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                         </div>
                       )}
                     </div>
-                    
-                    {expense.notes && (
-                      <p className="text-xs text-muted-foreground italic">{expense.notes}</p>
-                    )}
+
+                    {expense.notes && <p className="text-xs text-muted-foreground italic">{expense.notes}</p>}
                   </div>
 
                   <div className="flex items-start gap-3">
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground">Total achat</p>
-                      <p className="font-semibold text-lg">{(() => {
-                        const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                        return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
-                      })()} €</p>
+                      <p className="font-semibold text-lg">
+                        {(() => {
+                          const optionsTotal = (expense.selectedOptions || []).reduce(
+                            (sum, opt) => sum + opt.prix_reference,
+                            0,
+                          );
+                          return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                        })()}{" "}
+                        €
+                      </p>
                     </div>
 
                     <div className="flex gap-1.5">
@@ -405,7 +430,9 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
 
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
+                            <div
+                              className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}
+                            >
                               <CreditCard className="h-4 w-4" />
                             </div>
                           </TooltipTrigger>
@@ -453,9 +480,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
             ))}
 
             {filteredExpenses.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                Aucune dépense dans cette catégorie
-              </div>
+              <div className="text-center py-12 text-muted-foreground">Aucune dépense dans cette catégorie</div>
             )}
           </div>
         ) : (
@@ -476,9 +501,13 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                           <div className="flex-1 space-y-1.5">
                             <div className="flex items-center gap-2">
                               <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
-                              {expense.marque && <Badge variant="secondary" className="text-xs">{expense.marque}</Badge>}
+                              {expense.marque && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {expense.marque}
+                                </Badge>
+                              )}
                             </div>
-                            
+
                             <div className="space-y-0.5 text-xs text-muted-foreground">
                               <div className="flex items-center gap-1">
                                 <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
@@ -508,33 +537,48 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                                   </Button>
                                 </div>
                               </div>
-                              
+
                               {expense.prix_vente_ttc && (
-                                <div>Prix vente TTC: {(() => {
-                                  const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
-                                  return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
-                                })()} €</div>
+                                <div>
+                                  Prix vente TTC:{" "}
+                                  {(() => {
+                                    const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_vente_ttc,
+                                      0,
+                                    );
+                                    return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
+                                  })()}{" "}
+                                  €
+                                </div>
                               )}
-                              
+
                               {expense.date_achat && (
                                 <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>
                               )}
-                              
+
                               {expense.marge_pourcent !== undefined && (
-                                <div>Marge: {(() => {
-                                  const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                                  const totalAchat = expense.prix + optionsTotal;
-                                  const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
-                                  const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
-                                  const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat * 100) : 0;
-                                  return marge.toFixed(2);
-                                })()} %</div>
+                                <div>
+                                  Marge:{" "}
+                                  {(() => {
+                                    const optionsTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_reference,
+                                      0,
+                                    );
+                                    const totalAchat = expense.prix + optionsTotal;
+                                    const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_vente_ttc,
+                                      0,
+                                    );
+                                    const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                                    const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat) * 100 : 0;
+                                    return marge.toFixed(2);
+                                  })()}{" "}
+                                  %
+                                </div>
                               )}
-                              
-                              {expense.fournisseur && (
-                                <div>Fournisseur: {expense.fournisseur}</div>
-                              )}
-                              
+
+                              {expense.fournisseur && <div>Fournisseur: {expense.fournisseur}</div>}
+
                               {expense.selectedOptions && expense.selectedOptions.length > 0 && (
                                 <div>
                                   <span className="font-medium">Options:</span>
@@ -546,19 +590,45 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                                 </div>
                               )}
                             </div>
-                            
-                            {expense.notes && (
-                              <p className="text-xs text-muted-foreground italic">{expense.notes}</p>
-                            )}
+
+                            {expense.notes && <p className="text-xs text-muted-foreground italic">{expense.notes}</p>}
                           </div>
 
                           <div className="flex items-start gap-3">
-                            <div className="text-right">
-                              <p className="text-xs text-muted-foreground">Total achat</p>
-                              <p className="font-semibold text-lg">{(() => {
-                                const optionsTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_reference, 0);
-                                return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
-                              })()} €</p>
+                            <div className="text-right space-y-1">
+                              {/* Prix vente TTC en GRAND */}
+                              {expense.prix_vente_ttc && (
+                                <>
+                                  <p className="text-xs text-muted-foreground">Prix vente TTC</p>
+                                  <p className="font-bold text-2xl text-green-600">
+                                    {(() => {
+                                      const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                                        (sum, opt) => sum + opt.prix_vente_ttc,
+                                        0,
+                                      );
+                                      return ((expense.prix_vente_ttc + optionsVenteTotal) * expense.quantite).toFixed(
+                                        2,
+                                      );
+                                    })()}{" "}
+                                    €
+                                  </p>
+                                </>
+                              )}
+
+                              {/* Total achat en petit en dessous */}
+                              <div className="pt-1 border-t border-dashed">
+                                <p className="text-xs text-muted-foreground">Total achat HT</p>
+                                <p className="font-medium text-sm text-gray-600">
+                                  {(() => {
+                                    const optionsTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_reference,
+                                      0,
+                                    );
+                                    return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                                  })()}{" "}
+                                  €
+                                </p>
+                              </div>
                             </div>
 
                             <div className="flex gap-1.5">
@@ -581,7 +651,9 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
 
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <div className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}>
+                                    <div
+                                      className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}
+                                    >
                                       <CreditCard className="h-4 w-4" />
                                     </div>
                                   </TooltipTrigger>
