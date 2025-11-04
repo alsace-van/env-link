@@ -21,15 +21,16 @@ interface PaymentTransaction {
 }
 
 interface PaymentTransactionsProps {
-  totalSales: number;
+  totalSales?: number;
   onPaymentChange: () => void;
   currentProjectId: string;
 }
 
-const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: PaymentTransactionsProps) => {
+const PaymentTransactions = ({ totalSales: totalSalesProp, onPaymentChange, currentProjectId }: PaymentTransactionsProps) => {
   const [transactions, setTransactions] = useState<PaymentTransaction[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [totalSales, setTotalSales] = useState(totalSalesProp || 0);
   const [newTransaction, setNewTransaction] = useState({
     type_paiement: "acompte" as "acompte" | "solde",
     montant: 0,
@@ -40,7 +41,28 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
 
   useEffect(() => {
     loadTransactions();
+    if (!totalSalesProp) {
+      loadTotalSales();
+    }
   }, []);
+
+  const loadTotalSales = async () => {
+    const { data, error } = await supabase
+      .from("project_expenses")
+      .select("prix_vente_ttc, quantite")
+      .eq("project_id", currentProjectId);
+
+    if (error) {
+      console.error("Error loading total sales:", error);
+      return;
+    }
+
+    const total = (data || []).reduce((sum, item) => {
+      return sum + (item.prix_vente_ttc || 0) * item.quantite;
+    }, 0);
+
+    setTotalSales(total);
+  };
 
   const loadTransactions = async () => {
     // Charger tous les paiements de l'utilisateur
