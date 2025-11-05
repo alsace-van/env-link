@@ -140,30 +140,52 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   };
 
   const handleOpenNotice = async (filePath: string, title: string) => {
+    console.log("🔵 STEP 1: handleOpenNotice called");
+    console.log("🔵 filePath:", filePath);
+    console.log("🔵 title:", title);
+
     try {
-      console.log("Open - File path:", filePath);
+      console.log("🔵 STEP 2: Getting URL...");
       const url = await getPublicUrl(filePath);
-      console.log("Open - Generated URL:", url);
+      console.log("🔵 STEP 3: URL received:", url);
 
       if (!url) {
-        console.error("Failed to generate URL");
+        console.error("❌ No URL - stopping");
         toast.error("Fichier non trouvé dans le stockage");
         return;
       }
 
-      // 🔥 MODIFICATION : Ouvre directement dans un nouvel onglet
-      // Cela contourne tous les problèmes CORS, Safari, et Opera
+      console.log("🔵 STEP 4: Creating link element...");
       const link = document.createElement("a");
+      console.log("🔵 STEP 5: Link created");
+
+      console.log("🔵 STEP 6: Setting link properties...");
       link.href = url;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      console.log("🔵 STEP 7: Link configured:", { href: link.href, target: link.target });
 
+      console.log("🔵 STEP 8: Appending to body...");
+      document.body.appendChild(link);
+      console.log("🔵 STEP 9: Link appended");
+
+      console.log("🔵 STEP 10: Clicking link...");
+      link.click();
+      console.log("🔵 STEP 11: Link clicked");
+
+      console.log("🔵 STEP 12: Removing link...");
+      document.body.removeChild(link);
+      console.log("🔵 STEP 13: Link removed");
+
+      console.log("✅ SUCCESS: All steps completed!");
       toast.success("Notice ouverte dans un nouvel onglet");
     } catch (error) {
-      console.error("Open error:", error);
+      console.error("❌ ERROR in handleOpenNotice:", error);
+      console.error("❌ Error details:", {
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack,
+      });
       toast.error("Erreur lors de l'ouverture de la notice");
     }
   };
