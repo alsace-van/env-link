@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, Download, Eye } from "lucide-react";
+import { ExternalLink, Trash2, Download, Eye, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { PdfViewerModal } from "./PdfViewerModal";
+import { NoticeEditDialog } from "./NoticeEditDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +39,8 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<{ url: string; title: string } | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [noticeToEdit, setNoticeToEdit] = useState<Notice | null>(null);
 
   useEffect(() => {
     loadNotices();
@@ -97,7 +100,9 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     console.log("Getting URL for file:", filePath);
 
     // Generate a signed URL (works for both public and private buckets)
-    const { data, error } = await supabase.storage.from("notice-files").createSignedUrl(filePath, 3600); // 1 hour expiration
+    const { data, error } = await supabase.storage
+      .from("notice-files")
+      .createSignedUrl(filePath, 3600); // 1 hour expiration
 
     if (error) {
       console.error("Error creating signed URL:", error);
@@ -113,7 +118,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
       console.log("Download - File path:", filePath);
       const url = await getPublicUrl(filePath);
       console.log("Download - Generated URL:", url);
-
+      
       if (!url) {
         toast.error("Fichier non trouvé dans le stockage");
         return;
@@ -121,11 +126,11 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
       const response = await fetch(url);
       console.log("Download - Response status:", response.status);
-
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-
+      
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -147,13 +152,13 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
       console.log("Open - File path:", filePath);
       const url = await getPublicUrl(filePath);
       console.log("Open - Generated URL:", url);
-
+      
       if (!url) {
         console.error("Failed to generate URL");
         toast.error("Fichier non trouvé dans le stockage");
         return;
       }
-
+      
       setSelectedNotice({ url, title });
       setViewerOpen(true);
     } catch (error) {
@@ -165,6 +170,20 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const handleCloseViewer = () => {
     setViewerOpen(false);
     setSelectedNotice(null);
+  };
+
+  const handleEdit = (notice: Notice) => {
+    setNoticeToEdit(notice);
+    setEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setNoticeToEdit(null);
+  };
+
+  const handleEditSuccess = () => {
+    loadNotices();
   };
 
   if (isLoading) {
@@ -190,89 +209,104 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         title={selectedNotice?.title || ""}
       />
 
+      <NoticeEditDialog
+        isOpen={editDialogOpen}
+        onClose={handleCloseEditDialog}
+        notice={noticeToEdit}
+        onSuccess={handleEditSuccess}
+      />
+      
       <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-[200px]">Titre</TableHead>
-              <TableHead className="min-w-[150px]">Marque / Modèle</TableHead>
-              <TableHead className="min-w-[120px]">Catégorie</TableHead>
-              <TableHead className="min-w-[200px]">Description</TableHead>
-              <TableHead className="min-w-[150px]">Date d'ajout</TableHead>
-              <TableHead className="w-[180px] text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {notices.map((notice) => (
-              <TableRow key={notice.id}>
-                <TableCell className="font-medium">{notice.titre}</TableCell>
-                <TableCell>
-                  {notice.marque || notice.modele ? (
-                    <div className="text-sm">
-                      {notice.marque && <div>{notice.marque}</div>}
-                      {notice.modele && <div className="text-muted-foreground">{notice.modele}</div>}
-                    </div>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">-</span>
-                  )}
-                </TableCell>
-                <TableCell>{notice.categorie || <span className="text-muted-foreground text-xs">-</span>}</TableCell>
-                <TableCell>
-                  {notice.description ? (
-                    <span className="text-sm line-clamp-2">{notice.description}</span>
-                  ) : (
-                    <span className="text-muted-foreground text-xs">-</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm text-muted-foreground">
-                    {new Date(notice.created_at).toLocaleDateString("fr-FR")}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-2 justify-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenNotice(notice.url_notice, notice.titre)}
-                      title="Voir la notice"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload(notice.url_notice, notice.titre)}
-                      title="Télécharger"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Cette action est irréversible. La notice sera dissociée des accessoires liés.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(notice.id)}>Supprimer</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="min-w-[200px]">Titre</TableHead>
+            <TableHead className="min-w-[150px]">Marque / Modèle</TableHead>
+            <TableHead className="min-w-[120px]">Catégorie</TableHead>
+            <TableHead className="min-w-[200px]">Description</TableHead>
+            <TableHead className="min-w-[150px]">Date d'ajout</TableHead>
+            <TableHead className="w-[230px] text-center">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {notices.map((notice) => (
+            <TableRow key={notice.id}>
+              <TableCell className="font-medium">{notice.titre}</TableCell>
+              <TableCell>
+                {notice.marque || notice.modele ? (
+                  <div className="text-sm">
+                    {notice.marque && <div>{notice.marque}</div>}
+                    {notice.modele && <div className="text-muted-foreground">{notice.modele}</div>}
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                ) : (
+                  <span className="text-muted-foreground text-xs">-</span>
+                )}
+              </TableCell>
+              <TableCell>{notice.categorie || <span className="text-muted-foreground text-xs">-</span>}</TableCell>
+              <TableCell>
+                {notice.description ? (
+                  <span className="text-sm line-clamp-2">{notice.description}</span>
+                ) : (
+                  <span className="text-muted-foreground text-xs">-</span>
+                )}
+              </TableCell>
+              <TableCell>
+                <span className="text-sm text-muted-foreground">
+                  {new Date(notice.created_at).toLocaleDateString("fr-FR")}
+                </span>
+              </TableCell>
+              <TableCell>
+                <div className="flex gap-2 justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleOpenNotice(notice.url_notice, notice.titre)}
+                    title="Voir la notice"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEdit(notice)}
+                    title="Modifier"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload(notice.url_notice, notice.titre)}
+                    title="Télécharger"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action est irréversible. La notice sera dissociée des accessoires liés.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDelete(notice.id)}>Supprimer</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
     </>
   );
 };
