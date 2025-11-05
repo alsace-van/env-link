@@ -30,6 +30,7 @@ import { AdminActionsLog } from "@/components/admin/AdminActionsLog";
 import { LoginHistoryCard } from "@/components/admin/LoginHistoryCard";
 import { ShopWelcomeConfigDialog } from "@/components/admin/ShopWelcomeConfigDialog";
 import { OfficialDocumentsManager } from "@/components/OfficialDocumentsManager";
+import { AdminNoticesManager } from "@/components/admin/AdminNoticesManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface UserData {
@@ -230,6 +231,7 @@ const Admin = () => {
             <TabsList>
               <TabsTrigger value="users">Utilisateurs</TabsTrigger>
               <TabsTrigger value="documents">Documents Officiels</TabsTrigger>
+              <TabsTrigger value="manuals">Notices</TabsTrigger>
               <TabsTrigger value="logins">Connexions</TabsTrigger>
               <TabsTrigger value="actions">Journal d'activité</TabsTrigger>
             </TabsList>
@@ -324,6 +326,10 @@ const Admin = () => {
 
             <TabsContent value="documents">
               <OfficialDocumentsManager />
+            </TabsContent>
+
+            <TabsContent value="manuals">
+              <AdminNoticesManager />
             </TabsContent>
 
             <TabsContent value="logins">
