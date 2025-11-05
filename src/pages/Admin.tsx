@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Users, Shield, Trash2, Activity } from "lucide-react";
+import { ArrowLeft, Users, Shield, Trash2, Activity, FileText } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -29,6 +29,7 @@ import { SendMessageDialog } from "@/components/admin/SendMessageDialog";
 import { AdminActionsLog } from "@/components/admin/AdminActionsLog";
 import { LoginHistoryCard } from "@/components/admin/LoginHistoryCard";
 import { ShopWelcomeConfigDialog } from "@/components/admin/ShopWelcomeConfigDialog";
+import { OfficialDocumentsManager } from "@/components/OfficialDocumentsManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface UserData {
@@ -228,6 +229,7 @@ const Admin = () => {
           <Tabs defaultValue="users" className="space-y-4">
             <TabsList>
               <TabsTrigger value="users">Utilisateurs</TabsTrigger>
+              <TabsTrigger value="documents">Documents Officiels</TabsTrigger>
               <TabsTrigger value="logins">Connexions</TabsTrigger>
               <TabsTrigger value="actions">Journal d'activité</TabsTrigger>
             </TabsList>
@@ -318,6 +320,10 @@ const Admin = () => {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="documents">
+              <OfficialDocumentsManager />
             </TabsContent>
 
             <TabsContent value="logins">
