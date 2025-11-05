@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -46,17 +45,6 @@ interface AdminNotice {
   created_by: string | null;
 }
 
-const CATEGORIES = [
-  "Électricité",
-  "Chauffage",
-  "Eau",
-  "Isolation",
-  "Mobilier",
-  "Électroménager",
-  "Mécanique",
-  "Autre",
-];
-
 export const AdminNoticesManager = () => {
   const [notices, setNotices] = useState<AdminNotice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +52,7 @@ export const AdminNoticesManager = () => {
   const [uploading, setUploading] = useState(false);
   const [deleteNoticeId, setDeleteNoticeId] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [existingCategories, setExistingCategories] = useState<string[]>([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -77,6 +66,7 @@ export const AdminNoticesManager = () => {
 
   useEffect(() => {
     loadNotices();
+    loadExistingCategories();
   }, []);
 
   const loadNotices = async () => {
@@ -94,6 +84,22 @@ export const AdminNoticesManager = () => {
       setNotices(data || []);
     }
     setLoading(false);
+  };
+
+  const loadExistingCategories = async () => {
+    const { data, error } = await supabase
+      .from("notices_database")
+      .select("categorie")
+      .not("categorie", "is", null);
+
+    if (error) {
+      console.error("Erreur lors du chargement des catégories:", error);
+      return;
+    }
+
+    // Extraire les catégories uniques et les trier
+    const categories = [...new Set(data.map(item => item.categorie).filter(Boolean))].sort();
+    setExistingCategories(categories as string[]);
   };
 
   const checkForDuplicate = async (titre: string, fileSize: number): Promise<boolean> => {
@@ -185,14 +191,13 @@ export const AdminNoticesManager = () => {
           categorie: formData.categorie || null,
           marque: formData.marque.trim() || null,
           modele: formData.modele.trim() || null,
-          url_notice: fileName, // Stocker juste le chemin du fichier
+          url_notice: fileName,
           file_size: formData.file.size,
           is_admin_notice: true,
           created_by: user?.id,
         });
 
       if (dbError) {
-        // Si erreur, supprimer le fichier uploadé
         await supabase.storage
           .from("notice-files")
           .remove([fileName]);
@@ -212,6 +217,7 @@ export const AdminNoticesManager = () => {
       });
       setDuplicateWarning(null);
       loadNotices();
+      loadExistingCategories();
     } catch (error: any) {
       console.error("Erreur lors de l'upload:", error);
       toast.error("Erreur lors de l'upload de la notice");
@@ -227,20 +233,17 @@ export const AdminNoticesManager = () => {
     if (!notice) return;
 
     try {
-      // Delete from storage if it's not a full URL
       if (!notice.url_notice.startsWith("http")) {
         await supabase.storage
           .from("notice-files")
           .remove([notice.url_notice]);
       }
 
-      // Unlink from accessories
       await supabase
         .from("accessories_catalog")
         .update({ notice_id: null })
         .eq("notice_id", notice.id);
 
-      // Delete from database
       const { error } = await supabase
         .from("notices_database")
         .delete()
@@ -444,21 +447,27 @@ export const AdminNoticesManager = () => {
 
             <div className="space-y-2">
               <Label htmlFor="categorie">Catégorie</Label>
-              <Select
+              <Input
+                id="categorie"
                 value={formData.categorie}
-                onValueChange={(value) => setFormData({ ...formData, categorie: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez une catégorie" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
+                onChange={(e) => setFormData({ ...formData, categorie: e.target.value })}
+                placeholder="Saisissez ou créez une catégorie"
+              />
+              {existingCategories.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground">Suggestions :</span>
+                  {existingCategories.map((cat) => (
+                    <Badge
+                      key={cat}
+                      variant="outline"
+                      className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                      onClick={() => setFormData({ ...formData, categorie: cat })}
+                    >
                       {cat}
-                    </SelectItem>
+                    </Badge>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
