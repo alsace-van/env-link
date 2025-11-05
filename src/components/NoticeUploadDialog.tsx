@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -29,6 +30,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   const [selectedAccessoryId, setSelectedAccessoryId] = useState<string>("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [existingCategories, setExistingCategories] = useState<string[]>([]);
 
   // Auto-open when preselectedAccessoryId changes
   useEffect(() => {
@@ -41,6 +43,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   useEffect(() => {
     if (open) {
       loadAccessories();
+      loadExistingCategories();
     }
   }, [open]);
 
@@ -60,6 +63,22 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
     }
 
     setAccessories(data || []);
+  };
+
+  const loadExistingCategories = async () => {
+    const { data, error } = await supabase
+      .from("notices_database")
+      .select("categorie")
+      .not("categorie", "is", null);
+
+    if (error) {
+      console.error("Erreur lors du chargement des catégories:", error);
+      return;
+    }
+
+    // Extraire les catégories uniques et les trier
+    const categories = [...new Set(data.map(item => item.categorie).filter(Boolean))].sort();
+    setExistingCategories(categories as string[]);
   };
 
   const handleFileSelect = (file: File) => {
@@ -357,8 +376,23 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
               id="categorie"
               value={categorie}
               onChange={(e) => setCategorie(e.target.value)}
-              placeholder="Catégorie"
+              placeholder="Saisissez ou créez une catégorie"
             />
+            {existingCategories.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <span className="text-xs text-muted-foreground">Suggestions :</span>
+                {existingCategories.map((cat) => (
+                  <Badge
+                    key={cat}
+                    variant="outline"
+                    className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                    onClick={() => setCategorie(cat)}
+                  >
+                    {cat}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid gap-2">
