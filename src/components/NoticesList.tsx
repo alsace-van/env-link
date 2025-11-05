@@ -85,32 +85,60 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     }
   };
 
-  const getPublicUrl = (filePath: string): string | null => {
+  const getPublicUrl = async (filePath: string): Promise<string | null> => {
     // Check if it's already a full URL (for backwards compatibility)
     if (filePath.startsWith("http")) {
       return filePath;
     }
 
-    // Generate a public URL (permanent, no expiration)
-    const { data } = supabase.storage.from("notice-files").getPublicUrl(filePath);
+    console.log("Getting URL for file:", filePath);
 
-    if (!data) {
-      console.error("Error creating public URL");
+    // First check if file exists
+    const { data: fileData, error: fileError } = await supabase.storage
+      .from("notice-files")
+      .list(filePath.split('/')[0], {
+        search: filePath.split('/')[1]
+      });
+
+    console.log("File exists check:", { fileData, fileError });
+
+    if (fileError || !fileData || fileData.length === 0) {
+      console.error("File not found in storage:", filePath);
       return null;
     }
 
-    return data.publicUrl;
+    // Generate a signed URL (works for both public and private buckets)
+    const { data, error } = await supabase.storage
+      .from("notice-files")
+      .createSignedUrl(filePath, 3600); // 1 hour expiration
+
+    if (error) {
+      console.error("Error creating signed URL:", error);
+      return null;
+    }
+
+    console.log("Generated signed URL:", data.signedUrl);
+    return data.signedUrl;
   };
 
   const handleDownload = async (filePath: string, titre: string) => {
     try {
-      const url = getPublicUrl(filePath);
+      console.log("Download - File path:", filePath);
+      const url = await getPublicUrl(filePath);
+      console.log("Download - Generated URL:", url);
+      
       if (!url) {
-        toast.error("Erreur lors de l'accès au fichier");
+        toast.error("Fichier non trouvé dans le stockage");
         return;
       }
 
       const response = await fetch(url);
+      console.log("Download - Response status:", response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -122,21 +150,27 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
       window.URL.revokeObjectURL(downloadUrl);
       toast.success("Téléchargement lancé");
     } catch (error) {
-      console.error(error);
+      console.error("Download error:", error);
       toast.error("Erreur lors du téléchargement");
     }
   };
 
   const handleOpenNotice = async (filePath: string) => {
     try {
-      const url = getPublicUrl(filePath);
+      console.log("Open - File path:", filePath);
+      const url = await getPublicUrl(filePath);
+      console.log("Open - Generated URL:", url);
+      
       if (!url) {
-        toast.error("Erreur lors de l'accès au fichier");
+        console.error("Failed to generate URL");
+        toast.error("Fichier non trouvé dans le stockage");
         return;
       }
+      
       window.open(url, "_blank");
+      toast.success("Notice ouverte dans un nouvel onglet");
     } catch (error) {
-      console.error(error);
+      console.error("Open error:", error);
       toast.error("Erreur lors de l'ouverture de la notice");
     }
   };
