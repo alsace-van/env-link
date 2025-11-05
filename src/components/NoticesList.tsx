@@ -93,20 +93,6 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
     console.log("Getting URL for file:", filePath);
 
-    // First check if file exists
-    const { data: fileData, error: fileError } = await supabase.storage
-      .from("notice-files")
-      .list(filePath.split('/')[0], {
-        search: filePath.split('/')[1]
-      });
-
-    console.log("File exists check:", { fileData, fileError });
-
-    if (fileError || !fileData || fileData.length === 0) {
-      console.error("File not found in storage:", filePath);
-      return null;
-    }
-
     // Generate a signed URL (works for both public and private buckets)
     const { data, error } = await supabase.storage
       .from("notice-files")
