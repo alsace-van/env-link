@@ -1166,10 +1166,7 @@ const ProjectDetail = () => {
                     </TabsList>
 
                     <TabsContent value="liste" className="mt-4">
-                      <ExpensesList
-                        projectId={project.id}
-                        onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
-                      />
+                      <ExpensesList projectId={project.id} refreshTrigger={expenseRefresh} />
                     </TabsContent>
 
                     <TabsContent value="bilan" className="mt-4">
