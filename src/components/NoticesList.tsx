@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, Download, Eye, Pencil } from "lucide-react";
+import { ExternalLink, Trash2, Download, Eye, Pencil, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { PdfViewerModal } from "./PdfViewerModal";
 import { NoticeEditDialog } from "./NoticeEditDialog";
@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 interface Notice {
   id: string;
@@ -28,6 +29,8 @@ interface Notice {
   description?: string;
   url_notice: string;
   created_at: string;
+  is_admin_notice?: boolean;
+  created_by?: string;
 }
 
 interface NoticesListProps {
@@ -41,10 +44,29 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [selectedNotice, setSelectedNotice] = useState<{ url: string; title: string } | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [noticeToEdit, setNoticeToEdit] = useState<Notice | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    checkAdminRole();
     loadNotices();
   }, [refreshTrigger]);
+
+  const checkAdminRole = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    setCurrentUserId(user.id);
+
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    setIsAdmin(!!roleData);
+  };
 
   const loadNotices = async () => {
     setIsLoading(true);
@@ -223,13 +245,18 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
             <TableHead className="min-w-[200px]">Titre</TableHead>
             <TableHead className="min-w-[150px]">Marque / Modèle</TableHead>
             <TableHead className="min-w-[120px]">Catégorie</TableHead>
+            <TableHead className="min-w-[100px]">Type</TableHead>
             <TableHead className="min-w-[200px]">Description</TableHead>
             <TableHead className="min-w-[150px]">Date d'ajout</TableHead>
             <TableHead className="w-[230px] text-center">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {notices.map((notice) => (
+          {notices.map((notice) => {
+            const canModify = isAdmin || (!notice.is_admin_notice && notice.created_by === currentUserId);
+            const canDelete = isAdmin || (!notice.is_admin_notice && notice.created_by === currentUserId);
+            
+            return (
             <TableRow key={notice.id}>
               <TableCell className="font-medium">{notice.titre}</TableCell>
               <TableCell>
@@ -243,6 +270,16 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                 )}
               </TableCell>
               <TableCell>{notice.categorie || <span className="text-muted-foreground text-xs">-</span>}</TableCell>
+              <TableCell>
+                {notice.is_admin_notice ? (
+                  <Badge className="bg-primary">
+                    <Shield className="h-3 w-3 mr-1" />
+                    Admin
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">Utilisateur</Badge>
+                )}
+              </TableCell>
               <TableCell>
                 {notice.description ? (
                   <span className="text-sm line-clamp-2">{notice.description}</span>
@@ -265,14 +302,16 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   >
                     <Eye className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(notice)}
-                    title="Modifier"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
+                  {canModify && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEdit(notice)}
+                      title="Modifier"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -281,29 +320,31 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   >
                     <Download className="h-4 w-4" />
                   </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Cette action est irréversible. La notice sera dissociée des accessoires liés.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDelete(notice.id)}>Supprimer</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  {canDelete && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Cette action est irréversible. La notice sera dissociée des accessoires liés.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Annuler</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDelete(notice.id)}>Supprimer</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
-          ))}
+          )})}
         </TableBody>
       </Table>
     </div>
