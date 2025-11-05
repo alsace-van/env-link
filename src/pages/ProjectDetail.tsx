@@ -1233,6 +1233,7 @@ const ProjectDetail = () => {
                           projectId={project.id}
                           vehicleLength={project.longueur_chargement_mm || 0}
                           vehicleWidth={project.largeur_chargement_mm || 0}
+                          maxLoad={project.charge_utile_kg || 500}
                         />
                       </TabsContent>
 
