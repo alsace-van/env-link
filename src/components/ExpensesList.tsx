@@ -77,8 +77,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
         expensesData.map(async (expense) => {
           const { data: selectedOptions } = await supabase
             .from("expense_selected_options")
-            .select(
-              `
+            .select(`
               option_id,
               accessory_options!inner(
                 nom,
@@ -86,8 +85,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
                 prix_vente_ttc,
                 marge_pourcent
               )
-            `,
-            )
+            `)
             .eq("expense_id", expense.id);
 
           return {
@@ -242,64 +240,6 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
       })
     : expenses;
 
-  const groupedByCategory = categories.reduce(
-    (acc, cat) => {
-      acc[cat] = expenses.filter((e) => {
-        const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
-        return expenseCategory === cat;
-      });
-      return acc;
-    },
-    {} as Record<string, Expense[]>,
-  );
-
-  if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-semibold">Liste des dépenses</h3>
-        <Button onClick={() => setIsDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Ajouter une dépense
-        </Button>
-      </div>
-
-      {categories.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            variant={selectedCategory === null ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedCategory(null)}
-          >
-            Toutes ({expenses.length})
-          </Button>
-          {categories.map((cat) => (
-            <Button
-              key={cat}
-              variant={selectedCategory === cat ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedCategory(cat)}
-            >
-              {cat} ({groupedByCategory[cat].length})
-            </Button>
-          ))}
-        </div>
-      )}
-
-      <ScrollArea className="h-[600px]">
-        {selectedCategory ? (
-          <div className="space-y-3">
-            {filteredExpenses.map((expense) => (
-              <Card key={expense.id} className="p-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
-                      <Badge variant="outline" className="text-xs">
-                        {expense.categorie}
-                      </Badge>
-                      {expense.marque && (
-                        <Badge variant="secondary" className="te
+  const groupedByCategory = categories.reduce((acc, cat) => {
+    acc[cat] = expenses.filter((e) => {
+      const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categ
