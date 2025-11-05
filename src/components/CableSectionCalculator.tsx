@@ -96,14 +96,14 @@ export const CableSectionCalculator = () => {
     <Card>
       <CardHeader>
         <CardTitle>Calculateur de Section de Câble</CardTitle>
-        <CardDescription>
-          Calcul pour câbles souples en cuivre - Courant continu 12V
-        </CardDescription>
+        <CardDescription>Calcul pour câbles souples en cuivre - Courant continu 12V</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-2">
-            <Label htmlFor="power">Puissance (W)</Label>
+            <Label htmlFor="power" className="text-base font-semibold">
+              Puissance (W)
+            </Label>
             <Input
               id="power"
               type="number"
@@ -112,10 +112,13 @@ export const CableSectionCalculator = () => {
               value={power || ""}
               onChange={(e) => handlePowerChange(Number(e.target.value))}
               placeholder="Ex: 120"
+              className="h-12 text-lg"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="current">Intensité (A)</Label>
+            <Label htmlFor="current" className="text-base font-semibold">
+              Intensité (A)
+            </Label>
             <Input
               id="current"
               type="number"
@@ -124,10 +127,13 @@ export const CableSectionCalculator = () => {
               value={current || ""}
               onChange={(e) => handleCurrentChange(Number(e.target.value))}
               placeholder="Ex: 10"
+              className="h-12 text-lg"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="length">Longueur du câble (m)</Label>
+            <Label htmlFor="length" className="text-base font-semibold">
+              Longueur du câble (m)
+            </Label>
             <Input
               id="length"
               type="number"
@@ -136,11 +142,14 @@ export const CableSectionCalculator = () => {
               value={length || ""}
               onChange={(e) => setLength(Number(e.target.value))}
               placeholder="Ex: 5"
+              className="h-12 text-lg"
             />
             <p className="text-xs text-muted-foreground">Aller-retour déjà pris en compte</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="voltage">Tension (V)</Label>
+            <Label htmlFor="voltage" className="text-base font-semibold">
+              Tension (V)
+            </Label>
             <Input
               id="voltage"
               type="number"
@@ -149,6 +158,7 @@ export const CableSectionCalculator = () => {
               value={voltage}
               onChange={(e) => handleVoltageChange(Number(e.target.value))}
               placeholder="Ex: 12"
+              className="h-12 text-lg"
             />
           </div>
         </div>
@@ -161,13 +171,13 @@ export const CableSectionCalculator = () => {
                   <CheckCircle className="h-6 w-6 text-primary flex-shrink-0" />
                   <div className="flex-1">
                     <h3 className="text-sm font-semibold text-primary">Section recommandée</h3>
-                    <div className="text-3xl font-bold text-primary my-2">
-                      {recommendedSection.section} mm²
-                    </div>
+                    <div className="text-3xl font-bold text-primary my-2">{recommendedSection.section} mm²</div>
                     <div className="flex flex-wrap gap-3 text-xs">
                       <div>
                         <span className="text-muted-foreground">Chute:</span>{" "}
-                        <span className="font-semibold">{recommendedSection.voltageDrop}V ({recommendedSection.voltageDropPercent}%)</span>
+                        <span className="font-semibold">
+                          {recommendedSection.voltageDrop}V ({recommendedSection.voltageDropPercent}%)
+                        </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">I max:</span>{" "}
@@ -185,7 +195,8 @@ export const CableSectionCalculator = () => {
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  Aucune section standard ne convient pour ces paramètres. Vérifiez vos valeurs ou envisagez une tension plus élevée.
+                  Aucune section standard ne convient pour ces paramètres. Vérifiez vos valeurs ou envisagez une tension
+                  plus élevée.
                 </AlertDescription>
               </Alert>
             )}
@@ -193,7 +204,9 @@ export const CableSectionCalculator = () => {
         )}
 
         <div className="text-sm text-muted-foreground space-y-1">
-          <p><strong>Critères de sélection :</strong></p>
+          <p>
+            <strong>Critères de sélection :</strong>
+          </p>
           <ul className="list-disc list-inside space-y-1 ml-2">
             <li>Chute de tension maximale : 3%</li>
             <li>Intensité ne doit pas dépasser l'intensité maximale admissible du câble</li>
