@@ -1,11 +1,7 @@
-import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, ExternalLink, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
-// Détecte si on est sur Safari
-const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 interface PdfViewerModalProps {
   isOpen: boolean;
@@ -15,11 +11,9 @@ interface PdfViewerModalProps {
 }
 
 export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModalProps) => {
-  const [useNativeViewer, setUseNativeViewer] = useState(isSafari);
-
   const handleDownload = () => {
     if (!pdfUrl) return;
-    
+
     const link = document.createElement("a");
     link.href = pdfUrl;
     link.download = `${title}.pdf`;
@@ -40,45 +34,30 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModa
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl font-semibold">{title}</DialogTitle>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownload}
-                title="Télécharger"
-              >
+              <Button variant="outline" size="sm" onClick={handleDownload} title="Télécharger">
                 <Download className="h-4 w-4 mr-2" />
                 Télécharger
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleOpenNewTab}
-                title="Ouvrir dans un nouvel onglet"
-              >
+              <Button variant="outline" size="sm" onClick={handleOpenNewTab} title="Ouvrir dans un nouvel onglet">
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Ouvrir
               </Button>
             </div>
           </div>
         </DialogHeader>
-        
+
         <div className="flex-1 overflow-auto px-6 pb-6">
           {pdfUrl ? (
             <div className="h-full flex flex-col gap-4 py-4">
-              {/* Message pour Safari */}
-              {isSafari && (
-                <Alert className="bg-blue-50 border-blue-200">
-                  <AlertCircle className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-sm text-blue-800">
-                    Safari détecté : Pour une meilleure expérience, cliquez sur "Ouvrir" pour voir le PDF dans un nouvel onglet.
-                    <div className="mt-2">
-                      <strong>Astuce :</strong> Dans les réglages Safari → Confidentialité, désactivez "Empêcher le suivi sur plusieurs domaines" pour améliorer l'affichage.
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {/* Viewer natif (fonctionne mieux sur Safari) */}
+              {/* Message informatif */}
+              <Alert className="bg-blue-50 border-blue-200">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-sm text-blue-800">
+                  Si le PDF ne s'affiche pas, cliquez sur "Ouvrir" pour le voir dans un nouvel onglet.
+                </AlertDescription>
+              </Alert>
+
+              {/* Viewer natif avec object tag */}
               <div className="flex-1 min-h-0">
                 <object
                   data={pdfUrl}
@@ -86,26 +65,18 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModa
                   className="w-full h-full rounded-lg border shadow-sm"
                   aria-label={title}
                 >
-                  <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                  <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-gray-50 rounded-lg">
                     <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-lg font-medium mb-2">
-                      Prévisualisation non disponible
-                    </p>
+                    <p className="text-lg font-medium mb-2">Prévisualisation non disponible</p>
                     <p className="text-sm text-muted-foreground mb-6">
-                      Votre navigateur ne peut pas afficher le PDF directement.
+                      Votre navigateur ne peut pas afficher le PDF directement dans cette fenêtre.
                     </p>
                     <div className="flex gap-3">
-                      <Button
-                        variant="default"
-                        onClick={handleOpenNewTab}
-                      >
+                      <Button variant="default" onClick={handleOpenNewTab}>
                         <ExternalLink className="h-4 w-4 mr-2" />
                         Ouvrir dans un nouvel onglet
                       </Button>
-                      <Button
-                        variant="outline"
-                        onClick={handleDownload}
-                      >
+                      <Button variant="outline" onClick={handleDownload}>
                         <Download className="h-4 w-4 mr-2" />
                         Télécharger
                       </Button>
@@ -115,9 +86,7 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModa
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              Chargement du PDF...
-            </div>
+            <div className="flex items-center justify-center h-full text-muted-foreground">Chargement du PDF...</div>
           )}
         </div>
       </DialogContent>
