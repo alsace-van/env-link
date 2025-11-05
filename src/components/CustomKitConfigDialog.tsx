@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, Plus, Trash2, Copy, Tag, TrendingDown } from "lucide-react";
+import { ChevronDown, Plus, Trash2, Copy, Tag, TrendingDown, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useAccessoryTieredPricing } from "@/hooks/useAccessoryTieredPricing";
 
@@ -92,6 +92,7 @@ const CustomKitConfigDialog = ({
   const [categoryInstances, setCategoryInstances] = useState<CategoryInstance[]>([]);
   const [accessoryTieredPricing, setAccessoryTieredPricing] = useState<Map<string, any[]>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [detailsAccessory, setDetailsAccessory] = useState<Accessory | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -515,9 +516,23 @@ const CustomKitConfigDialog = ({
                                     </div>
 
                                     {selectedAccessory && (
-                                      <div
-                                        className={`grid gap-3 ${selectedAccessory.image_url ? "grid-cols-[200px,1fr]" : "grid-cols-1"}`}
-                                      >
+                                      <div className="space-y-2">
+                                        {/* Bouton Voir les détails */}
+                                        <div className="flex justify-end">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setDetailsAccessory(selectedAccessory)}
+                                            className="gap-2"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                            Voir les détails
+                                          </Button>
+                                        </div>
+
+                                        <div
+                                          className={`grid gap-3 ${selectedAccessory.image_url ? "grid-cols-[200px,1fr]" : "grid-cols-1"}`}
+                                        >
                                         {selectedAccessory.image_url && (
                                           <div className="rounded-md overflow-hidden border bg-muted/50 h-48">
                                             <img
@@ -710,6 +725,7 @@ const CustomKitConfigDialog = ({
                                           </div>
                                         </div>
                                       </div>
+                                      </div>
                                     )}
                                   </div>
                                 </CardContent>
@@ -799,6 +815,146 @@ const CustomKitConfigDialog = ({
           </div>
         )}
       </DialogContent>
+
+      {/* Modale de détails de l'accessoire */}
+      {detailsAccessory && (
+        <Dialog open={!!detailsAccessory} onOpenChange={(open) => !open && setDetailsAccessory(null)}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-2xl">{detailsAccessory.nom}</DialogTitle>
+              {detailsAccessory.marque && (
+                <DialogDescription className="text-base">{detailsAccessory.marque}</DialogDescription>
+              )}
+            </DialogHeader>
+
+            <div className="space-y-6">
+              {/* Image de l'accessoire */}
+              {detailsAccessory.image_url && (
+                <div className="w-full aspect-video rounded-lg overflow-hidden bg-white flex items-center justify-center p-8 border">
+                  <img
+                    src={detailsAccessory.image_url}
+                    alt={detailsAccessory.nom}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              )}
+
+              {/* Prix */}
+              <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
+                {detailsAccessory.promo_active && detailsAccessory.promo_price && (() => {
+                  const now = new Date();
+                  const start = detailsAccessory.promo_start_date
+                    ? new Date(detailsAccessory.promo_start_date)
+                    : null;
+                  const end = detailsAccessory.promo_end_date ? new Date(detailsAccessory.promo_end_date) : null;
+
+                  if ((!start || now >= start) && (!end || now <= end)) {
+                    return (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="destructive" className="text-xs">
+                            PROMO
+                          </Badge>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-3xl font-bold text-primary">
+                            {detailsAccessory.promo_price.toFixed(2)} €
+                          </span>
+                          <span className="text-xl text-muted-foreground line-through">
+                            {(detailsAccessory.prix_vente_ttc || 0).toFixed(2)} €
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Économisez{" "}
+                          {(
+                            (((detailsAccessory.prix_vente_ttc || 0) - detailsAccessory.promo_price) /
+                              (detailsAccessory.prix_vente_ttc || 1)) *
+                            100
+                          ).toFixed(0)}
+                          %
+                        </p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                {(!detailsAccessory.promo_active ||
+                  !detailsAccessory.promo_price ||
+                  (() => {
+                    const now = new Date();
+                    const start = detailsAccessory.promo_start_date
+                      ? new Date(detailsAccessory.promo_start_date)
+                      : null;
+                    const end = detailsAccessory.promo_end_date ? new Date(detailsAccessory.promo_end_date) : null;
+                    return (start && now < start) || (end && now > end);
+                  })()) && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Prix</p>
+                    <span className="text-3xl font-bold text-primary">
+                      {(detailsAccessory.prix_vente_ttc || 0).toFixed(2)} €
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Caractéristiques techniques */}
+              {(detailsAccessory.puissance_watts ||
+                detailsAccessory.poids_kg ||
+                detailsAccessory.longueur_mm ||
+                detailsAccessory.couleur) && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Caractéristiques</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailsAccessory.puissance_watts && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Puissance</p>
+                        <p className="font-medium">{detailsAccessory.puissance_watts} W</p>
+                      </div>
+                    )}
+                    {detailsAccessory.poids_kg && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Poids</p>
+                        <p className="font-medium">{detailsAccessory.poids_kg} kg</p>
+                      </div>
+                    )}
+                    {detailsAccessory.longueur_mm && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Dimensions</p>
+                        <p className="font-medium">
+                          {detailsAccessory.longueur_mm} × {detailsAccessory.largeur_mm} ×{" "}
+                          {detailsAccessory.hauteur_mm} mm
+                        </p>
+                      </div>
+                    )}
+                    {detailsAccessory.couleur && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Couleur</p>
+                        <p className="font-medium">{detailsAccessory.couleur}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Description */}
+              {detailsAccessory.description && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-3">Description</h3>
+                  <DialogDescription className="text-base leading-relaxed whitespace-pre-wrap">
+                    {detailsAccessory.description}
+                  </DialogDescription>
+                </div>
+              )}
+
+              {!detailsAccessory.description && (
+                <div className="text-center py-6 text-muted-foreground">
+                  Aucune description disponible pour cet accessoire
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 };
