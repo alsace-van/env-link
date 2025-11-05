@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Trash2, Download, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { PdfViewerModal } from "./PdfViewerModal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,8 @@ interface NoticesListProps {
 export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [selectedNotice, setSelectedNotice] = useState<{ url: string; title: string } | null>(null);
 
   useEffect(() => {
     loadNotices();
@@ -140,54 +143,28 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   };
 
   const handleOpenNotice = async (filePath: string, title: string) => {
-    console.log("🔵 STEP 1: handleOpenNotice called");
-    console.log("🔵 filePath:", filePath);
-    console.log("🔵 title:", title);
-
     try {
-      console.log("🔵 STEP 2: Getting URL...");
+      console.log("Open - File path:", filePath);
       const url = await getPublicUrl(filePath);
-      console.log("🔵 STEP 3: URL received:", url);
+      console.log("Open - Generated URL:", url);
 
       if (!url) {
-        console.error("❌ No URL - stopping");
+        console.error("Failed to generate URL");
         toast.error("Fichier non trouvé dans le stockage");
         return;
       }
 
-      console.log("🔵 STEP 4: Creating link element...");
-      const link = document.createElement("a");
-      console.log("🔵 STEP 5: Link created");
-
-      console.log("🔵 STEP 6: Setting link properties...");
-      link.href = url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      console.log("🔵 STEP 7: Link configured:", { href: link.href, target: link.target });
-
-      console.log("🔵 STEP 8: Appending to body...");
-      document.body.appendChild(link);
-      console.log("🔵 STEP 9: Link appended");
-
-      console.log("🔵 STEP 10: Clicking link...");
-      link.click();
-      console.log("🔵 STEP 11: Link clicked");
-
-      console.log("🔵 STEP 12: Removing link...");
-      document.body.removeChild(link);
-      console.log("🔵 STEP 13: Link removed");
-
-      console.log("✅ SUCCESS: All steps completed!");
-      toast.success("Notice ouverte dans un nouvel onglet");
+      setSelectedNotice({ url, title });
+      setViewerOpen(true);
     } catch (error) {
-      console.error("❌ ERROR in handleOpenNotice:", error);
-      console.error("❌ Error details:", {
-        name: error?.name,
-        message: error?.message,
-        stack: error?.stack,
-      });
+      console.error("Open error:", error);
       toast.error("Erreur lors de l'ouverture de la notice");
     }
+  };
+
+  const handleCloseViewer = () => {
+    setViewerOpen(false);
+    setSelectedNotice(null);
   };
 
   if (isLoading) {
@@ -206,6 +183,13 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
   return (
     <>
+      <PdfViewerModal
+        isOpen={viewerOpen}
+        onClose={handleCloseViewer}
+        pdfUrl={selectedNotice?.url || null}
+        title={selectedNotice?.title || ""}
+      />
+
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
