@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Trash2, Edit, Search, Euro } from "lucide-react";
+import { Trash2, Edit, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -74,29 +74,48 @@ const ExpensesList = ({ projectId, refreshTrigger }: ExpensesListProps) => {
     try {
       setLoading(true);
 
-      // Load expenses with their selected options
+      // Charger les dépenses
       const { data: expensesData, error: expensesError } = await supabase
         .from("project_expenses")
-        .select(
-          `
-          *,
-          expense_options:expense_selected_options(
-            id,
-            option_id,
-            nom,
-            prix_vente
-          )
-        `,
-        )
+        .select("*")
         .eq("project_id", projectId)
         .order("created_at", { ascending: false });
 
-      if (expensesError) throw expensesError;
+      if (expensesError) {
+        console.error("Erreur chargement dépenses:", expensesError);
+        throw expensesError;
+      }
 
-      const expensesWithOptions = (expensesData || []).map((expense) => ({
-        ...expense,
-        expense_options: expense.expense_options || [],
-      }));
+      // Charger les options pour chaque dépense
+      const expensesWithOptions = await Promise.all(
+        (expensesData || []).map(async (expense) => {
+          const { data: optionsData } = await supabase
+            .from("expense_selected_options")
+            .select(
+              `
+              id,
+              option_id,
+              accessory_options!inner(
+                nom,
+                prix_vente_ttc
+              )
+            `,
+            )
+            .eq("expense_id", expense.id);
+
+          const options = (optionsData || []).map((opt: any) => ({
+            id: opt.id,
+            option_id: opt.option_id,
+            nom: opt.accessory_options?.nom || "",
+            prix_vente: opt.accessory_options?.prix_vente_ttc || 0,
+          }));
+
+          return {
+            ...expense,
+            expense_options: options,
+          };
+        }),
+      );
 
       setExpenses(expensesWithOptions);
 
