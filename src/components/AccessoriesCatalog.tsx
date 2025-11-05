@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Search, Trash2, Filter, Package } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
+import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +50,7 @@ const AccessoriesCatalog = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isShippingSidebarOpen, setIsShippingSidebarOpen] = useState(false);
 
   useEffect(() => {
     loadAccessories();
@@ -86,7 +88,8 @@ const AccessoriesCatalog = () => {
         (accessoriesData || []).map(async (acc) => {
           const { data: shippingLink } = await supabase
             .from("accessory_shipping_fees")
-            .select(`
+            .select(
+              `
               id,
               visible_boutique,
               visible_depenses,
@@ -96,7 +99,8 @@ const AccessoriesCatalog = () => {
                 type,
                 fixed_price
               )
-            `)
+            `,
+            )
             .eq("accessory_id", acc.id)
             .maybeSingle();
 
@@ -117,7 +121,7 @@ const AccessoriesCatalog = () => {
             ...acc,
             shipping_fee: shippingFee,
           };
-        })
+        }),
       );
 
       setAccessories(accessoriesWithShipping);
@@ -149,19 +153,44 @@ const AccessoriesCatalog = () => {
   };
 
   const getShippingBadge = (fee: ShippingFeeInfo) => {
-    if (fee.type === 'free') {
-      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Gratuit</Badge>;
+    if (fee.type === "free") {
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Package className="h-3 w-3" />
+          Gratuit
+        </Badge>
+      );
     }
-    if (fee.type === 'pickup') {
-      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Retrait</Badge>;
+    if (fee.type === "pickup") {
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Package className="h-3 w-3" />
+          Retrait
+        </Badge>
+      );
     }
-    if (fee.type === 'fixed' && fee.fixed_price) {
-      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />{fee.fixed_price.toFixed(2)} €</Badge>;
+    if (fee.type === "fixed" && fee.fixed_price) {
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Package className="h-3 w-3" />
+          {fee.fixed_price.toFixed(2)} €
+        </Badge>
+      );
     }
-    if (fee.type === 'variable') {
-      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Variable</Badge>;
+    if (fee.type === "variable") {
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Package className="h-3 w-3" />
+          Variable
+        </Badge>
+      );
     }
-    return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Frais</Badge>;
+    return (
+      <Badge variant="outline" className="gap-1">
+        <Package className="h-3 w-3" />
+        Frais
+      </Badge>
+    );
   };
 
   return (
@@ -194,6 +223,10 @@ const AccessoriesCatalog = () => {
               </Badge>
             )}
           </Button>
+          <Button variant="outline" onClick={() => setIsShippingSidebarOpen(true)} className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Frais de port
+          </Button>
         </div>
 
         {loading ? (
@@ -221,12 +254,8 @@ const AccessoriesCatalog = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg mb-2">{accessory.nom}</CardTitle>
-                        <div className="flex gap-2 mb-2">
-                          {category && (
-                            <Badge variant="secondary">
-                              {category}
-                            </Badge>
-                          )}
+                        <div className="flex gap-2 mb-2 flex-wrap">
+                          {category && <Badge variant="secondary">{category}</Badge>}
                           {accessory.shipping_fee && getShippingBadge(accessory.shipping_fee)}
                         </div>
                       </div>
@@ -259,15 +288,15 @@ const AccessoriesCatalog = () => {
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Frais de port:</span>
                           <span className="text-xs">
-                            {accessory.shipping_fee.visible_boutique && '🏪 '}
-                            {accessory.shipping_fee.visible_depenses && '👁️ '}
+                            {accessory.shipping_fee.visible_boutique && "🏪 "}
+                            {accessory.shipping_fee.visible_depenses && "👁️ "}
                             {accessory.shipping_fee.nom}
                           </span>
                         </div>
                       )}
                       {accessory.url_produit && (
                         <div>
-                          
+                          <a
                             href={accessory.url_produit}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -290,6 +319,12 @@ const AccessoriesCatalog = () => {
           onCategoryChange={setSelectedCategories}
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
+        />
+
+        <ShippingFeesSidebar
+          isOpen={isShippingSidebarOpen}
+          onClose={() => setIsShippingSidebarOpen(false)}
+          onFeesChange={loadAccessories}
         />
 
         <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
