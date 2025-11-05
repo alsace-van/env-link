@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, Download } from "lucide-react";
+import { ExternalLink, Trash2, Download, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { PdfViewerModal } from "./PdfViewerModal";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,8 @@ interface NoticesListProps {
 export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [selectedNotice, setSelectedNotice] = useState<{ url: string; title: string } | null>(null);
 
   useEffect(() => {
     loadNotices();
@@ -141,7 +144,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     }
   };
 
-  const handleOpenNotice = async (filePath: string) => {
+  const handleOpenNotice = async (filePath: string, title: string) => {
     try {
       console.log("Open - File path:", filePath);
       const url = await getPublicUrl(filePath);
@@ -153,12 +156,17 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         return;
       }
       
-      window.open(url, "_blank");
-      toast.success("Notice ouverte dans un nouvel onglet");
+      setSelectedNotice({ url, title });
+      setViewerOpen(true);
     } catch (error) {
       console.error("Open error:", error);
       toast.error("Erreur lors de l'ouverture de la notice");
     }
+  };
+
+  const handleCloseViewer = () => {
+    setViewerOpen(false);
+    setSelectedNotice(null);
   };
 
   if (isLoading) {
@@ -176,7 +184,15 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   }
 
   return (
-    <div className="border rounded-lg">
+    <>
+      <PdfViewerModal
+        isOpen={viewerOpen}
+        onClose={handleCloseViewer}
+        pdfUrl={selectedNotice?.url || null}
+        title={selectedNotice?.title || ""}
+      />
+      
+      <div className="border rounded-lg">
       <Table>
         <TableHeader>
           <TableRow>
@@ -220,18 +236,18 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDownload(notice.url_notice, notice.titre)}
-                    title="Télécharger"
+                    onClick={() => handleOpenNotice(notice.url_notice, notice.titre)}
+                    title="Voir la notice"
                   >
-                    <Download className="h-4 w-4" />
+                    <Eye className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleOpenNotice(notice.url_notice)}
-                    title="Ouvrir dans un nouvel onglet"
+                    onClick={() => handleDownload(notice.url_notice, notice.titre)}
+                    title="Télécharger"
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <Download className="h-4 w-4" />
                   </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -259,5 +275,6 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         </TableBody>
       </Table>
     </div>
+    </>
   );
 };
