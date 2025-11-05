@@ -53,7 +53,6 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
   const loadData = async () => {
     setLoading(true);
 
-    // Charger les dépenses du projet
     const { data: expensesData, error: expensesError } = await supabase
       .from("project_expenses")
       .select("*")
@@ -66,7 +65,6 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
       setExpenses(expensesData || []);
     }
 
-    // Charger le catalogue
     const { data: catalogData, error: catalogError } = await supabase
       .from("accessories_catalog")
       .select("*, categories!category_id(nom)")
@@ -82,7 +80,6 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
   };
 
   const handleAddToExpenses = async (accessory: Accessory) => {
-    // Charger les données complètes de l'accessoire depuis le catalogue pour obtenir tous les champs
     const { data: fullAccessory } = await supabase
       .from("accessories_catalog")
       .select("*")
@@ -118,6 +115,53 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
       console.error(error);
     } else {
       toast.success("Accessoire ajouté aux dépenses");
+      
+      const { data: shippingLink } = await supabase
+        .from("accessory_shipping_fees")
+        .select(`
+          visible_depenses,
+          shipping_fees:shipping_fee_id (
+            id,
+            nom,
+            type,
+            fixed_price
+          )
+        `)
+        .eq("accessory_id", accessoryToAdd.id)
+        .eq("visible_depenses", true)
+        .maybeSingle();
+
+      if (shippingLink && shippingLink.shipping_fees) {
+        const fee: any = shippingLink.shipping_fees;
+        let shippingPrice = 0;
+
+        if (fee.type === 'fixed' && fee.fixed_price) {
+          shippingPrice = fee.fixed_price;
+        } else if (fee.type === 'variable') {
+          const { data: tiersData } = await supabase
+            .from("shipping_fee_tiers")
+            .select("*")
+            .eq("shipping_fee_id", fee.id)
+            .eq("quantity_from", 1)
+            .maybeSingle();
+          
+          if (tiersData) {
+            shippingPrice = tiersData.total_price;
+          }
+        }
+
+        if (fee.type !== 'free') {
+          await supabase.from("project_expenses").insert({
+            project_id: projectId,
+            nom_accessoire: `${fee.nom} - ${accessoryToAdd.nom}`,
+            marque: "Frais de port",
+            prix: shippingPrice,
+            quantite: 1,
+            categorie: "Frais de port",
+          });
+        }
+      }
+
       loadData();
       if (onAddToCatalog) {
         onAddToCatalog(accessoryToAdd);
