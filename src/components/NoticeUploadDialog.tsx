@@ -170,6 +170,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
           categorie,
           description,
           url_notice: finalUrl,
+          file_size: selectedFile ? selectedFile.size : null,
           created_by: user.id,
         })
         .select()
