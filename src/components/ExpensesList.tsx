@@ -24,9 +24,6 @@ interface ExpenseOption {
   option_id: string;
   nom: string;
   prix_vente: number;
-  accessories_options?: {
-    nom: string;
-  };
 }
 
 interface Expense {
@@ -87,8 +84,7 @@ const ExpensesList = ({ projectId, refreshTrigger }: ExpensesListProps) => {
             id,
             option_id,
             nom,
-            prix_vente,
-            accessories_options(nom)
+            prix_vente
           )
         `,
         )
