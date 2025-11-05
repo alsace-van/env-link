@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Search, Trash2, Filter } from "lucide-react";
+import { ArrowLeft, Search, Trash2, Filter, Package } from "lucide-react";
 import { toast } from "sonner";
 import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
+import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +20,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+interface ShippingFeeInfo {
+  id: string;
+  nom: string;
+  type: string;
+  fixed_price: number | null;
+  visible_boutique: boolean;
+  visible_depenses: boolean;
+}
+
 interface Accessory {
   id: string;
   nom: string;
@@ -28,6 +38,7 @@ interface Accessory {
   url_produit: string | null;
   created_at: string;
   category_id: string | null;
+  shipping_fee?: ShippingFeeInfo | null;
 }
 
 const AccessoriesCatalog = () => {
@@ -39,6 +50,7 @@ const AccessoriesCatalog = () => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isShippingSidebarOpen, setIsShippingSidebarOpen] = useState(false);
 
   useEffect(() => {
     loadAccessories();
@@ -47,7 +59,6 @@ const AccessoriesCatalog = () => {
   useEffect(() => {
     let filtered = accessories;
 
-    // Filtrer par recherche
     if (searchTerm) {
       filtered = filtered.filter(
         (acc) =>
@@ -56,7 +67,6 @@ const AccessoriesCatalog = () => {
       );
     }
 
-    // Filtrer par catégories
     if (selectedCategories.length > 0) {
       filtered = filtered.filter((acc) => acc.category_id && selectedCategories.includes(acc.category_id));
     }
@@ -66,19 +76,60 @@ const AccessoriesCatalog = () => {
 
   const loadAccessories = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("accessories_catalog")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { data: accessoriesData, error: accessoriesError } = await supabase
+        .from("accessories_catalog")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (error) {
+      if (accessoriesError) throw accessoriesError;
+
+      const accessoriesWithShipping = await Promise.all(
+        (accessoriesData || []).map(async (acc) => {
+          const { data: shippingLink } = await supabase
+            .from("accessory_shipping_fees")
+            .select(`
+              id,
+              visible_boutique,
+              visible_depenses,
+              shipping_fees:shipping_fee_id (
+                id,
+                nom,
+                type,
+                fixed_price
+              )
+            `)
+            .eq("accessory_id", acc.id)
+            .maybeSingle();
+
+          let shippingFee = null;
+          if (shippingLink && shippingLink.shipping_fees) {
+            const fee: any = shippingLink.shipping_fees;
+            shippingFee = {
+              id: fee.id,
+              nom: fee.nom,
+              type: fee.type,
+              fixed_price: fee.fixed_price,
+              visible_boutique: shippingLink.visible_boutique,
+              visible_depenses: shippingLink.visible_depenses,
+            };
+          }
+
+          return {
+            ...acc,
+            shipping_fee: shippingFee,
+          };
+        })
+      );
+
+      setAccessories(accessoriesWithShipping);
+      setFilteredAccessories(accessoriesWithShipping);
+    } catch (error: any) {
       toast.error("Erreur lors du chargement du catalogue");
       console.error(error);
-    } else {
-      setAccessories(data || []);
-      setFilteredAccessories(data || []);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -97,6 +148,22 @@ const AccessoriesCatalog = () => {
   const getCategoryFromName = (name: string) => {
     const parts = name.split(" - ");
     return parts.length > 1 ? parts[0] : null;
+  };
+
+  const getShippingBadge = (fee: ShippingFeeInfo) => {
+    if (fee.type === 'free') {
+      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Gratuit</Badge>;
+    }
+    if (fee.type === 'pickup') {
+      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Retrait</Badge>;
+    }
+    if (fee.type === 'fixed' && fee.fixed_price) {
+      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />{fee.fixed_price.toFixed(2)} €</Badge>;
+    }
+    if (fee.type === 'variable') {
+      return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Variable</Badge>;
+    }
+    return <Badge variant="outline" className="gap-1"><Package className="h-3 w-3" />Frais</Badge>;
   };
 
   return (
@@ -129,6 +196,10 @@ const AccessoriesCatalog = () => {
               </Badge>
             )}
           </Button>
+          <Button variant="outline" onClick={() => setIsShippingSidebarOpen(true)} className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Frais de port
+          </Button>
         </div>
 
         {loading ? (
@@ -156,11 +227,14 @@ const AccessoriesCatalog = () => {
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <CardTitle className="text-lg mb-2">{accessory.nom}</CardTitle>
-                        {category && (
-                          <Badge variant="secondary" className="mb-2">
-                            {category}
-                          </Badge>
-                        )}
+                        <div className="flex gap-2 mb-2 flex-wrap">
+                          {category && (
+                            <Badge variant="secondary">
+                              {category}
+                            </Badge>
+                          )}
+                          {accessory.shipping_fee && getShippingBadge(accessory.shipping_fee)}
+                        </div>
                       </div>
                       <Button
                         variant="ghost"
@@ -187,9 +261,19 @@ const AccessoriesCatalog = () => {
                           <span>{accessory.fournisseur}</span>
                         </div>
                       )}
+                      {accessory.shipping_fee && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Frais de port:</span>
+                          <span className="text-xs">
+                            {accessory.shipping_fee.visible_boutique && '🏪 '}
+                            {accessory.shipping_fee.visible_depenses && '👁️ '}
+                            {accessory.shipping_fee.nom}
+                          </span>
+                        </div>
+                      )}
                       {accessory.url_produit && (
                         <div>
-                          <a
+                          
                             href={accessory.url_produit}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -212,6 +296,12 @@ const AccessoriesCatalog = () => {
           onCategoryChange={setSelectedCategories}
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
+        />
+
+        <ShippingFeesSidebar
+          isOpen={isShippingSidebarOpen}
+          onClose={() => setIsShippingSidebarOpen(false)}
+          onFeesChange={loadAccessories}
         />
 
         <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
