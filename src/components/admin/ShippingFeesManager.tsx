@@ -57,7 +57,6 @@ export const ShippingFeesManager = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Charger les frais de port
       const { data: fees, error: feesError } = await supabase
         .from("shipping_fees")
         .select("*")
@@ -66,10 +65,8 @@ export const ShippingFeesManager = () => {
 
       if (feesError) throw feesError;
 
-      // Pour chaque frais, charger les paliers et compter les accessoires assignés
       const feesWithDetails = await Promise.all(
         (fees || []).map(async (fee) => {
-          // Charger les paliers si type variable
           let tiers: ShippingFeeTier[] = [];
           if (fee.type === 'variable') {
             const { data: tiersData } = await supabase
@@ -81,7 +78,6 @@ export const ShippingFeesManager = () => {
             tiers = tiersData || [];
           }
 
-          // Compter les accessoires assignés
           const { count } = await supabase
             .from("accessory_shipping_fees")
             .select("*", { count: 'exact', head: true })
@@ -305,21 +301,18 @@ export const ShippingFeesManager = () => {
         </CardContent>
       </Card>
 
-      {/* Dialog de création/modification */}
       <ShippingFeeDialog
         open={editDialogOpen}
         onClose={handleDialogClose}
         fee={selectedFee}
       />
 
-      {/* Dialog d'assignation */}
       <ShippingFeeAssignDialog
         open={assignDialogOpen}
         onClose={handleDialogClose}
         fee={selectedFee}
       />
 
-      {/* Dialog de confirmation de suppression */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -344,49 +337,3 @@ export const ShippingFeesManager = () => {
     </>
   );
 };
-```
-
----
-
-## ✅ Ce que fait ce composant
-
-### Fonctionnalités principales :
-
-1. **Affichage de la liste** des frais de port
-2. **Création** d'un nouveau frais (bouton +)
-3. **Modification** d'un frais existant (icône crayon)
-4. **Suppression** d'un frais (icône poubelle)
-5. **Assignation** rapide aux accessoires (bouton "Assigner")
-
-### Informations affichées :
-
-- 📝 **Nom** du frais
-- 🏷️ **Type** (Fixe, Variable, Gratuit, Retrait)
-- 💰 **Tarif** (adapté selon le type)
-- 📦 **Nombre d'accessoires** assignés
-
-### Particularités :
-
-- **Chargement des paliers** pour les frais variables
-- **Comptage automatique** des accessoires liés
-- **Affichage intelligent** du prix selon le type
-- **Badges de couleur** selon le type de frais
-
----
-
-## 🎨 Aperçu visuel
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 📦 Gestion des Frais de Port        [+ Nouveau frais de port]│
-├─────────────────────────────────────────────────────────────┤
-│ Configurez les différents types de frais...                │
-├─────────────────────────────────────────────────────────────┤
-│ Nom                │ Type     │ Tarif      │ Assignés │     │
-├─────────────────────────────────────────────────────────────┤
-│ Frais toit         │ Variable │ 250-500 €  │ 2 acc.   │ 📋✏️🗑│
-│ relevable          │          │            │          │     │
-├─────────────────────────────────────────────────────────────┤
-│ Frais standard     │ Fixe     │ 30,00 €    │ 5 acc.   │ 📋✏️🗑│
-├─────────────────────────────────────────────────────────────┤
-│ Retrait atelier    │ Retrait  │ Retrait    │ 1 acc.   │ 📋✏️🗑│
-└─────────────────────────────────────────────────────────────┘
