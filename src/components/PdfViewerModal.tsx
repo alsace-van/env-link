@@ -1,14 +1,11 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, ExternalLink, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
-import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/esm/Page/AnnotationLayer.css";
-import "react-pdf/dist/esm/Page/TextLayer.css";
-import "./PdfViewerModal.css";
+import { Download, ExternalLink, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Détecte si on est sur Safari
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 interface PdfViewerModalProps {
   isOpen: boolean;
@@ -18,21 +15,7 @@ interface PdfViewerModalProps {
 }
 
 export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModalProps) => {
-  const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.0);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Reset state when modal opens/closes or URL changes
-  useEffect(() => {
-    if (isOpen && pdfUrl) {
-      setPageNumber(1);
-      setScale(1.0);
-      setIsLoading(true);
-      setError(null);
-    }
-  }, [isOpen, pdfUrl]);
+  const [useNativeViewer, setUseNativeViewer] = useState(isSafari);
 
   const handleDownload = () => {
     if (!pdfUrl) return;
@@ -48,34 +31,6 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModa
   const handleOpenNewTab = () => {
     if (!pdfUrl) return;
     window.open(pdfUrl, "_blank");
-  };
-
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
-    setIsLoading(false);
-    setError(null);
-  };
-
-  const onDocumentLoadError = (error: Error) => {
-    console.error("Error loading PDF:", error);
-    setError("Erreur lors du chargement du PDF");
-    setIsLoading(false);
-  };
-
-  const goToPrevPage = () => {
-    setPageNumber((prev) => Math.max(1, prev - 1));
-  };
-
-  const goToNextPage = () => {
-    setPageNumber((prev) => Math.min(numPages, prev + 1));
-  };
-
-  const zoomIn = () => {
-    setScale((prev) => Math.min(2.0, prev + 0.2));
-  };
-
-  const zoomOut = () => {
-    setScale((prev) => Math.max(0.5, prev - 0.2));
   };
 
   return (
@@ -107,109 +62,57 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModa
           </div>
         </DialogHeader>
         
-        {/* Controls */}
-        <div className="flex items-center justify-center gap-4 px-6 py-3 border-b bg-muted/30">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToPrevPage}
-              disabled={pageNumber <= 1 || isLoading}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm">
-              Page {pageNumber} / {numPages || "?"}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToNextPage}
-              disabled={pageNumber >= numPages || isLoading}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={zoomOut}
-              disabled={scale <= 0.5 || isLoading}
-              title="Zoom arrière"
-            >
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <span className="text-sm min-w-[60px] text-center">
-              {Math.round(scale * 100)}%
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={zoomIn}
-              disabled={scale >= 2.0 || isLoading}
-              title="Zoom avant"
-            >
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-auto px-6 pb-6 bg-gray-100">
+        <div className="flex-1 overflow-auto px-6 pb-6">
           {pdfUrl ? (
-            <div className="flex justify-center py-4">
-              {error ? (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <p className="text-destructive mb-4">{error}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleOpenNewTab}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Ouvrir dans un nouvel onglet
-                  </Button>
-                </div>
-              ) : (
-                <Document
-                  file={pdfUrl}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  onLoadError={onDocumentLoadError}
-                  loading={
-                    <div className="flex items-center justify-center min-h-[400px]">
-                      <div className="text-muted-foreground">Chargement du PDF...</div>
+            <div className="h-full flex flex-col gap-4 py-4">
+              {/* Message pour Safari */}
+              {isSafari && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-sm text-blue-800">
+                    Safari détecté : Pour une meilleure expérience, cliquez sur "Ouvrir" pour voir le PDF dans un nouvel onglet.
+                    <div className="mt-2">
+                      <strong>Astuce :</strong> Dans les réglages Safari → Confidentialité, désactivez "Empêcher le suivi sur plusieurs domaines" pour améliorer l'affichage.
                     </div>
-                  }
-                  error={
-                    <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-                      <p className="text-destructive mb-4">Erreur lors du chargement du PDF</p>
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {/* Viewer natif (fonctionne mieux sur Safari) */}
+              <div className="flex-1 min-h-0">
+                <object
+                  data={pdfUrl}
+                  type="application/pdf"
+                  className="w-full h-full rounded-lg border shadow-sm"
+                  aria-label={title}
+                >
+                  <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                    <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                    <p className="text-lg font-medium mb-2">
+                      Prévisualisation non disponible
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      Votre navigateur ne peut pas afficher le PDF directement.
+                    </p>
+                    <div className="flex gap-3">
                       <Button
-                        variant="outline"
-                        size="sm"
+                        variant="default"
                         onClick={handleOpenNewTab}
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
                         Ouvrir dans un nouvel onglet
                       </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleDownload}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Télécharger
+                      </Button>
                     </div>
-                  }
-                  className="flex justify-center"
-                >
-                  <Page
-                    pageNumber={pageNumber}
-                    scale={scale}
-                    loading={
-                      <div className="flex items-center justify-center min-h-[400px]">
-                        <div className="text-muted-foreground">Chargement de la page...</div>
-                      </div>
-                    }
-                    className="shadow-lg"
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                  />
-                </Document>
-              )}
+                  </div>
+                </object>
+              </div>
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
