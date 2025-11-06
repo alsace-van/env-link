@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ interface PhotoUploadProps {
 const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -36,6 +37,7 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
       } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Vous devez être connecté");
+        setIsUploading(false);
         return;
       }
 
@@ -53,10 +55,19 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
           continue;
         }
 
-        // Save to database (store path only, not full URL for private buckets)
+        // Get public URL (permanent, no expiration)
+        const { data: publicUrlData } = supabase.storage.from("project-photos").getPublicUrl(fileName);
+
+        if (!publicUrlData) {
+          console.error("Error getting public URL");
+          toast.error(`Erreur lors de la création de l'URL pour ${file.name}`);
+          continue;
+        }
+
+        // Save to database
         const { error: dbError } = await supabase.from("project_photos").insert({
           project_id: projectId,
-          url: fileName, // Store just the path for signed URL generation
+          url: publicUrlData.publicUrl,
           type: type,
           description: file.name,
         });
@@ -69,6 +80,10 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
 
       toast.success("Photos uploadées avec succès !");
       setSelectedFiles(null);
+      // Réinitialiser l'input file pour permettre de sélectionner de nouvelles photos
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       onUploadComplete();
     } catch (error) {
       console.error("Error:", error);
@@ -84,6 +99,7 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
         <Label htmlFor="photos">Sélectionner des photos</Label>
         <Input
           id="photos"
+          ref={fileInputRef}
           type="file"
           accept="image/*"
           capture="environment"
