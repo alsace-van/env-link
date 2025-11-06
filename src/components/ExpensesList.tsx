@@ -36,7 +36,8 @@ interface Expense {
 
 interface ExpensesListProps {
   projectId: string;
-  onExpenseChange: () => void;
+  onExpenseChange?: () => void;
+  refreshTrigger?: number;
 }
 
 interface PaymentTransaction {
@@ -44,7 +45,7 @@ interface PaymentTransaction {
   montant: number;
 }
 
-const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
+const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -57,7 +58,7 @@ const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   useEffect(() => {
     loadExpenses();
     loadPaymentTransactions();
-  }, [projectId]);
+  }, [projectId, refreshTrigger]);
 
   const loadExpenses = async () => {
     setIsLoading(true);
