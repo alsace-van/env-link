@@ -10,16 +10,14 @@ interface SummarizeRequest {
   noticeId: string;
 }
 
-interface GeminiResponse {
-  candidates: Array<{
-    content: {
-      parts: Array<{ text: string }>;
+interface LovableAIResponse {
+  choices: Array<{
+    message: {
+      content: string;
     };
   }>;
-  usageMetadata: {
-    promptTokenCount: number;
-    candidatesTokenCount: number;
-    totalTokenCount: number;
+  usage?: {
+    total_tokens: number;
   };
 }
 
@@ -102,32 +100,6 @@ serve(async (req) => {
       )
     }
 
-    // Vérifier les limites de l'utilisateur
-    const { data: usageData, error: usageError } = await supabaseClient
-      .rpc('get_user_ai_usage', {
-        p_feature: 'pdf_summary',
-        p_user_id: user.id,
-      })
-
-    if (usageError) {
-      console.error('Erreur lors de la vérification des limites:', usageError)
-    }
-
-    const usage = usageData?.[0]
-    if (usage && usage.remaining_today !== null && usage.remaining_today <= 0) {
-      return new Response(
-        JSON.stringify({
-          error: 'Limite journalière atteinte',
-          limit: usage.limit_per_day,
-          resetAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString(),
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 429,
-        }
-      )
-    }
-
     // Télécharger le PDF depuis Supabase Storage
     console.log('Téléchargement du PDF:', notice.url_notice)
     
@@ -158,11 +130,11 @@ serve(async (req) => {
       new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
     )
 
-    // Appeler l'API Gemini
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!geminiApiKey) {
+    // Appeler Lovable AI
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')
+    if (!lovableApiKey) {
       return new Response(
-        JSON.stringify({ error: 'Clé API Gemini non configurée' }),
+        JSON.stringify({ error: 'Lovable AI non configuré' }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500,
@@ -170,13 +142,14 @@ serve(async (req) => {
       )
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`
-
-    const geminiPayload = {
-      contents: [
+    const aiPayload = {
+      model: 'google/gemini-2.5-flash',
+      messages: [
         {
-          parts: [
+          role: 'user',
+          content: [
             {
+              type: 'text',
               text: `Tu es un assistant spécialisé dans l'analyse de notices techniques de produits pour véhicules aménagés et camping-cars.
 
 Analyse ce document PDF et génère un résumé structuré en français avec les sections suivantes:
@@ -202,34 +175,50 @@ Si certaines sections ne sont pas pertinentes pour ce document, ne les inclus pa
 Sois concis mais précis. Maximum 500 mots.`
             },
             {
-              inlineData: {
-                mimeType: 'application/pdf',
-                data: base64Data,
-              },
-            },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.4,
-        topK: 32,
-        topP: 1,
-        maxOutputTokens: 2048,
-      },
+              type: 'image_url',
+              image_url: {
+                url: `data:application/pdf;base64,${base64Data}`
+              }
+            }
+          ]
+        }
+      ]
     }
 
-    console.log('Appel à Gemini API...')
-    const geminiResponse = await fetch(geminiUrl, {
+    console.log('Appel à Lovable AI...')
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(geminiPayload),
+      body: JSON.stringify(aiPayload),
     })
 
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text()
-      console.error('Erreur Gemini API:', geminiResponse.status, errorText)
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text()
+      console.error('Erreur Lovable AI:', aiResponse.status, errorText)
+      
+      if (aiResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'Limite de requêtes atteinte, veuillez réessayer plus tard' }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 429,
+          }
+        )
+      }
+      
+      if (aiResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ error: 'Crédits insuffisants, veuillez ajouter des crédits à votre espace de travail' }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 402,
+          }
+        )
+      }
+      
       return new Response(
         JSON.stringify({ error: 'Erreur lors de la génération du résumé', details: errorText }),
         {
@@ -239,11 +228,11 @@ Sois concis mais précis. Maximum 500 mots.`
       )
     }
 
-    const geminiData = await geminiResponse.json() as GeminiResponse
+    const aiData = await aiResponse.json() as LovableAIResponse
 
-    if (!geminiData.candidates?.[0]?.content?.parts?.[0]?.text) {
+    if (!aiData.choices?.[0]?.message?.content) {
       return new Response(
-        JSON.stringify({ error: 'Réponse invalide de Gemini' }),
+        JSON.stringify({ error: 'Réponse invalide de l\'IA' }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500,
@@ -251,8 +240,8 @@ Sois concis mais précis. Maximum 500 mots.`
       )
     }
 
-    const summary = geminiData.candidates[0].content.parts[0].text
-    const tokensUsed = geminiData.usageMetadata?.totalTokenCount || 0
+    const summary = aiData.choices[0].message.content
+    const tokensUsed = aiData.usage?.total_tokens || 0
 
     console.log('Résumé généré, tokens utilisés:', tokensUsed)
 
@@ -270,21 +259,17 @@ Sois concis mais précis. Maximum 500 mots.`
       console.error('Erreur sauvegarde résumé:', updateError)
     }
 
-    // Logger l'usage
-    await supabaseAdmin.from('ai_usage').insert({
-      user_id: user.id,
-      feature: 'pdf_summary',
-      tokens_used: tokensUsed,
-      cost_estimate: tokensUsed * 0.00001, // Estimation du coût
-    })
-
-    // Incrémenter les quotas API
-    await supabaseAdmin.rpc('increment_api_quota', {
-      p_provider: 'gemini',
-      p_date: new Date().toISOString().split('T')[0],
-      p_tokens: tokensUsed,
-      p_cost: tokensUsed * 0.00001,
-    })
+    // Logger l'usage (optionnel - Lovable AI gère son propre suivi)
+    try {
+      await supabaseAdmin.from('ai_usage').insert({
+        user_id: user.id,
+        feature: 'pdf_summary',
+        tokens_used: tokensUsed,
+        cost_estimate: 0, // Lovable AI gère la facturation
+      })
+    } catch (err) {
+      console.log('Info: ai_usage table logging skipped')
+    }
 
     return new Response(
       JSON.stringify({
@@ -300,7 +285,7 @@ Sois concis mais précis. Maximum 500 mots.`
   } catch (error) {
     console.error('Erreur dans summarize-notice:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Erreur inconnue' }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
