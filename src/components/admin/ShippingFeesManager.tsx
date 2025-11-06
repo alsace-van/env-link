@@ -31,8 +31,8 @@ interface ShippingFee {
   nom: string;
   type: 'fixed' | 'variable' | 'free' | 'pickup';
   fixed_price: number | null;
-  description?: string | null;
-  message_pickup?: string | null;
+  description: string | null;
+  message_pickup: string | null;
   created_at: string;
   tiers?: ShippingFeeTier[];
   assigned_count?: number;

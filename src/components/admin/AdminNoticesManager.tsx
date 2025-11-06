@@ -107,7 +107,6 @@ export const AdminNoticesManager = () => {
       .from("notices_database")
       .select("id, titre, marque, modele")
       .ilike("titre", titre)
-      .eq("file_size", fileSize)
       .maybeSingle();
 
     if (error && error.code !== "PGRST116") {
