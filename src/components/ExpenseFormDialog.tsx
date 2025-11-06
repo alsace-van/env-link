@@ -40,7 +40,14 @@ interface ExpenseFormDialogProps {
   } | null;
 }
 
-const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onSuccess, expense }: ExpenseFormDialogProps) => {
+const ExpenseFormDialog = ({
+  isOpen,
+  onClose,
+  projectId,
+  existingCategories,
+  onSuccess,
+  expense,
+}: ExpenseFormDialogProps) => {
   const [formData, setFormData] = useState({
     nom_accessoire: "",
     marque: "",
@@ -65,8 +72,8 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   const [existingMarques, setExistingMarques] = useState<string[]>([]);
   const [showMarqueList, setShowMarqueList] = useState(false);
   const [filteredMarques, setFilteredMarques] = useState<string[]>([]);
-  
-  const [catalogCategories, setCatalogCategories] = useState<{id: string, nom: string}[]>([]);
+
+  const [catalogCategories, setCatalogCategories] = useState<{ id: string; nom: string }[]>([]);
   const [isNewCatalogCategory, setIsNewCatalogCategory] = useState(false);
   const [catalogCategoryId, setCatalogCategoryId] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -87,7 +94,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       loadExistingMarques();
       loadCatalogCategories();
       loadCatalogAccessories();
-      
+
       // Load expense data if editing
       if (expense) {
         setFormData({
@@ -110,6 +117,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           intensite_amperes: expense.intensite_amperes?.toString() || "",
         });
         setSelectedAccessoryId(expense.accessory_id || null);
+
+        // Charger les options si l'accessoire est lié au catalogue
+        if (expense.accessory_id) {
+          loadOptionsForExpense(expense.id, expense.accessory_id);
+        }
       } else {
         // Reset form for new expense
         setFormData({
@@ -132,15 +144,15 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           intensite_amperes: "",
         });
         setSelectedAccessoryId(null);
+        setAvailableOptions([]);
+        setSelectedOptions([]);
       }
     }
   }, [isOpen, expense]);
 
   useEffect(() => {
     if (formData.marque) {
-      const filtered = existingMarques.filter(m => 
-        m.toLowerCase().includes(formData.marque.toLowerCase())
-      );
+      const filtered = existingMarques.filter((m) => m.toLowerCase().includes(formData.marque.toLowerCase()));
       setFilteredMarques(filtered);
     } else {
       setFilteredMarques([]);
@@ -151,10 +163,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   useEffect(() => {
     if (formData.nom_accessoire && formData.nom_accessoire.length >= 2) {
       const searchTerm = formData.nom_accessoire.toLowerCase();
-      const filtered = catalogAccessories.filter(acc => 
-        acc.nom.toLowerCase().includes(searchTerm) ||
-        (acc.description && acc.description.toLowerCase().includes(searchTerm)) ||
-        (acc.fournisseur && acc.fournisseur.toLowerCase().includes(searchTerm))
+      const filtered = catalogAccessories.filter(
+        (acc) =>
+          acc.nom.toLowerCase().includes(searchTerm) ||
+          (acc.description && acc.description.toLowerCase().includes(searchTerm)) ||
+          (acc.fournisseur && acc.fournisseur.toLowerCase().includes(searchTerm)),
       );
       setFilteredAccessories(filtered.slice(0, 5)); // Limit to 5 suggestions
     } else {
@@ -163,19 +176,13 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   }, [formData.nom_accessoire, catalogAccessories]);
 
   const loadExistingMarques = async () => {
-    const { data: expensesData } = await supabase
-      .from("project_expenses")
-      .select("marque")
-      .not("marque", "is", null);
+    const { data: expensesData } = await supabase.from("project_expenses").select("marque").not("marque", "is", null);
 
-    const { data: catalogData } = await supabase
-      .from("accessories_catalog")
-      .select("nom")
-      .not("nom", "is", null);
+    const { data: catalogData } = await supabase.from("accessories_catalog").select("nom").not("nom", "is", null);
 
     const marques = new Set<string>();
-    expensesData?.forEach(e => e.marque && marques.add(e.marque));
-    catalogData?.forEach(c => {
+    expensesData?.forEach((e) => e.marque && marques.add(e.marque));
+    catalogData?.forEach((c) => {
       const match = c.nom.match(/^([A-Z][a-zA-Z0-9]*)/);
       if (match) marques.add(match[1]);
     });
@@ -184,10 +191,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   };
 
   const loadCatalogCategories = async () => {
-    const { data } = await supabase
-      .from("categories")
-      .select("id, nom")
-      .order("nom");
+    const { data } = await supabase.from("categories").select("id, nom").order("nom");
 
     if (data) {
       setCatalogCategories(data);
@@ -195,7 +199,9 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
   };
 
   const loadCatalogAccessories = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const { data } = await supabase
@@ -206,6 +212,39 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
 
     if (data) {
       setCatalogAccessories(data);
+    }
+  };
+
+  const loadOptionsForExpense = async (expenseId: string, accessoryId: string) => {
+    try {
+      // Charger les options disponibles pour cet accessoire
+      const { data: options, error: optionsError } = await supabase
+        .from("accessory_options")
+        .select("*")
+        .eq("accessory_id", accessoryId)
+        .order("created_at");
+
+      if (!optionsError && options) {
+        setAvailableOptions(
+          options.map((opt) => ({
+            id: opt.id,
+            nom: opt.nom,
+            prix: parseFloat(opt.prix_vente_ttc.toString()),
+          })),
+        );
+      }
+
+      // Charger les options déjà sélectionnées pour cette dépense
+      const { data: selectedOpts, error: selectedError } = await supabase
+        .from("expense_selected_options")
+        .select("option_id")
+        .eq("expense_id", expenseId);
+
+      if (!selectedError && selectedOpts) {
+        setSelectedOptions(selectedOpts.map((opt) => opt.option_id));
+      }
+    } catch (error) {
+      console.error("Erreur lors du chargement des options:", error);
     }
   };
 
@@ -229,7 +268,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
     });
     setSelectedAccessoryId(accessory.id);
     setShowAccessoriesList(false);
-    
+
     // Charger les options disponibles pour cet accessoire
     const { data: options, error } = await supabase
       .from("accessory_options")
@@ -238,15 +277,17 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       .order("created_at");
 
     if (!error && options) {
-      setAvailableOptions(options.map(opt => ({ id: opt.id, nom: opt.nom, prix: parseFloat(opt.prix_vente_ttc.toString()) })));
+      setAvailableOptions(
+        options.map((opt) => ({ id: opt.id, nom: opt.nom, prix: parseFloat(opt.prix_vente_ttc.toString()) })),
+      );
     }
-    
+
     toast.success("Article du catalogue sélectionné et informations copiées");
   };
 
   const handlePricingChange = (field: "prix_achat" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
     const newFormData = { ...formData, [field]: value };
-    
+
     // Déterminer quels champs sont remplis (non vides et non zéro)
     const hasPrixAchat = newFormData.prix_achat && parseFloat(newFormData.prix_achat) > 0;
     const hasPrixVente = newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0;
@@ -300,7 +341,9 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       toast.error("Vous devez être connecté");
       return;
@@ -326,26 +369,24 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       finalCategoryId = newCat.id;
     }
 
-    const { error } = await supabase
-      .from("accessories_catalog")
-      .insert({
-        nom: formData.nom_accessoire,
-        marque: formData.marque || null,
-        category_id: finalCategoryId,
-        prix_reference: parseFloat(formData.prix_achat),
-        prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-        marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-        description: formData.notes || null,
-        fournisseur: formData.fournisseur || null,
-        type_electrique: formData.type_electrique || null,
-        poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-        longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-        largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-        hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
-        puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
-        intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-        user_id: user.id,
-      });
+    const { error } = await supabase.from("accessories_catalog").insert({
+      nom: formData.nom_accessoire,
+      marque: formData.marque || null,
+      category_id: finalCategoryId,
+      prix_reference: parseFloat(formData.prix_achat),
+      prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+      marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
+      description: formData.notes || null,
+      fournisseur: formData.fournisseur || null,
+      type_electrique: formData.type_electrique || null,
+      poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+      longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
+      largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
+      hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
+      puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+      intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+      user_id: user.id,
+    });
 
     if (error) {
       toast.error("Erreur lors de l'ajout au catalogue");
@@ -395,16 +436,13 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
       } else {
         // Mettre à jour les options sélectionnées
         // Supprimer les anciennes
-        await supabase
-          .from("expense_selected_options")
-          .delete()
-          .eq("expense_id", expense.id);
+        await supabase.from("expense_selected_options").delete().eq("expense_id", expense.id);
 
         // Ajouter les nouvelles
         if (selectedOptions.length > 0) {
           await supabase
             .from("expense_selected_options")
-            .insert(selectedOptions.map(optId => ({ expense_id: expense.id, option_id: optId })));
+            .insert(selectedOptions.map((optId) => ({ expense_id: expense.id, option_id: optId })));
         }
 
         toast.success("Dépense modifiée avec succès");
@@ -416,22 +454,24 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
 
       // Si pas de lien sélectionné, chercher dans le catalogue
       if (!finalAccessoryId) {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) {
-          const { data: catalogItems } = await supabase
-            .from("accessories_catalog")
-            .select("*")
-            .eq("user_id", user.id);
+          const { data: catalogItems } = await supabase.from("accessories_catalog").select("*").eq("user_id", user.id);
 
           if (catalogItems && catalogItems.length > 0) {
-            const match = catalogItems.find(item => {
-              const nameMatch = item.nom.toLowerCase().includes(formData.nom_accessoire.toLowerCase()) ||
-                               formData.nom_accessoire.toLowerCase().includes(item.nom.toLowerCase());
-              const priceMatch = item.prix_reference && 
-                                Math.abs(item.prix_reference - parseFloat(formData.prix_achat)) < 0.01;
-              const supplierMatch = item.fournisseur && formData.fournisseur && 
-                                   item.fournisseur.toLowerCase() === formData.fournisseur.toLowerCase();
-              
+            const match = catalogItems.find((item) => {
+              const nameMatch =
+                item.nom.toLowerCase().includes(formData.nom_accessoire.toLowerCase()) ||
+                formData.nom_accessoire.toLowerCase().includes(item.nom.toLowerCase());
+              const priceMatch =
+                item.prix_reference && Math.abs(item.prix_reference - parseFloat(formData.prix_achat)) < 0.01;
+              const supplierMatch =
+                item.fournisseur &&
+                formData.fournisseur &&
+                item.fournisseur.toLowerCase() === formData.fournisseur.toLowerCase();
+
               return nameMatch || priceMatch || supplierMatch;
             });
 
@@ -478,7 +518,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
         if (selectedOptions.length > 0 && newExpense) {
           await supabase
             .from("expense_selected_options")
-            .insert(selectedOptions.map(optId => ({ expense_id: newExpense.id, option_id: optId })));
+            .insert(selectedOptions.map((optId) => ({ expense_id: newExpense.id, option_id: optId })));
         }
 
         if (finalAccessoryId && !selectedAccessoryId) {
@@ -555,17 +595,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                       <div className="flex flex-col gap-1">
                         <div className="font-medium text-sm">{accessory.nom}</div>
                         <div className="text-xs text-muted-foreground flex gap-2">
-                          {accessory.prix_reference && (
-                            <span>Prix: {accessory.prix_reference}€</span>
-                          )}
-                          {accessory.fournisseur && (
-                            <span>• {accessory.fournisseur}</span>
-                          )}
+                          {accessory.prix_reference && <span>Prix: {accessory.prix_reference}€</span>}
+                          {accessory.fournisseur && <span>• {accessory.fournisseur}</span>}
                         </div>
                         {accessory.description && (
-                          <div className="text-xs text-muted-foreground italic truncate">
-                            {accessory.description}
-                          </div>
+                          <div className="text-xs text-muted-foreground italic truncate">{accessory.description}</div>
                         )}
                       </div>
                     </button>
@@ -573,9 +607,7 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                 </div>
               )}
               {selectedAccessoryId && (
-                <div className="text-xs text-green-600 mt-1">
-                  ✓ Article du catalogue sélectionné
-                </div>
+                <div className="text-xs text-green-600 mt-1">✓ Article du catalogue sélectionné</div>
               )}
             </div>
 
@@ -675,7 +707,9 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
             <Label>Dimensions (mm)</Label>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="longueur" className="text-xs text-muted-foreground">Longueur</Label>
+                <Label htmlFor="longueur" className="text-xs text-muted-foreground">
+                  Longueur
+                </Label>
                 <Input
                   id="longueur"
                   type="number"
@@ -685,7 +719,9 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="largeur" className="text-xs text-muted-foreground">Largeur</Label>
+                <Label htmlFor="largeur" className="text-xs text-muted-foreground">
+                  Largeur
+                </Label>
                 <Input
                   id="largeur"
                   type="number"
@@ -695,7 +731,9 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">Hauteur</Label>
+                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">
+                  Hauteur
+                </Label>
                 <Input
                   id="hauteur"
                   type="number"
@@ -767,14 +805,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                             if (checked) {
                               setSelectedOptions([...selectedOptions, option.id]);
                             } else {
-                              setSelectedOptions(selectedOptions.filter(id => id !== option.id));
+                              setSelectedOptions(selectedOptions.filter((id) => id !== option.id));
                             }
                           }}
                         />
-                        <label
-                          htmlFor={`option-${option.id}`}
-                          className="text-sm font-medium cursor-pointer"
-                        >
+                        <label htmlFor={`option-${option.id}`} className="text-sm font-medium cursor-pointer">
                           {option.nom}
                         </label>
                       </div>
@@ -789,10 +824,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
                       {(
                         parseFloat(formData.prix_achat || "0") +
                         selectedOptions.reduce((sum, optId) => {
-                          const opt = availableOptions.find(o => o.id === optId);
+                          const opt = availableOptions.find((o) => o.id === optId);
                           return sum + (opt?.prix || 0);
                         }, 0)
-                      ).toFixed(2)} €
+                      ).toFixed(2)}{" "}
+                      €
                     </span>
                   </div>
                 )}
@@ -968,15 +1004,11 @@ const ExpenseFormDialog = ({ isOpen, onClose, projectId, existingCategories, onS
           )}
 
           <div className="flex justify-between gap-2 pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowAddToCatalog(!showAddToCatalog)}
-            >
+            <Button type="button" variant="secondary" onClick={() => setShowAddToCatalog(!showAddToCatalog)}>
               <Plus className="h-4 w-4 mr-2" />
               {showAddToCatalog ? "Masquer" : "Ajouter au catalogue"}
             </Button>
-            
+
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Annuler
