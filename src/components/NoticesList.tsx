@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, Download, Eye, Pencil, Shield } from "lucide-react";
+import { ExternalLink, Trash2, Download, Eye, Pencil, Shield, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { PdfViewerModal } from "./PdfViewerModal";
+import { PdfViewerModal } from "./PdfViewerModalWithAI"; // ✅ MODIFIÉ
 import { NoticeEditDialog } from "./NoticeEditDialog";
 import {
   AlertDialog,
@@ -20,6 +20,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
+// ✅ MODIFIÉ - Ajout des champs summary
 interface Notice {
   id: string;
   titre: string;
@@ -31,6 +32,9 @@ interface Notice {
   created_at: string;
   is_admin_notice?: boolean;
   created_by?: string;
+  summary?: string | null;
+  summary_generated_at?: string | null;
+  tokens_used?: number;
 }
 
 interface NoticesListProps {
@@ -41,7 +45,13 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [selectedNotice, setSelectedNotice] = useState<{ url: string; title: string } | null>(null);
+  // ✅ MODIFIÉ - selectedNotice inclut maintenant id et summary
+  const [selectedNotice, setSelectedNotice] = useState<{ 
+    url: string; 
+    title: string; 
+    id: string; 
+    summary?: string | null 
+  } | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [noticeToEdit, setNoticeToEdit] = useState<Notice | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -169,10 +179,11 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     }
   };
 
-  const handleOpenNotice = async (filePath: string, title: string) => {
+  // ✅ MODIFIÉ - Fonction handleOpenNotice prend maintenant l'objet notice complet
+  const handleOpenNotice = async (notice: Notice) => {
     try {
-      console.log("Open - File path:", filePath);
-      const url = await getPublicUrl(filePath);
+      console.log("Open - File path:", notice.url_notice);
+      const url = await getPublicUrl(notice.url_notice);
       console.log("Open - Generated URL:", url);
       
       if (!url) {
@@ -181,7 +192,12 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         return;
       }
       
-      setSelectedNotice({ url, title });
+      setSelectedNotice({ 
+        url, 
+        title: notice.titre,
+        id: notice.id,
+        summary: notice.summary
+      });
       setViewerOpen(true);
     } catch (error) {
       console.error("Open error:", error);
@@ -224,11 +240,14 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
   return (
     <>
+      {/* ✅ MODIFIÉ - Ajout des props noticeId et existingSummary */}
       <PdfViewerModal
         isOpen={viewerOpen}
         onClose={handleCloseViewer}
         pdfUrl={selectedNotice?.url || null}
         title={selectedNotice?.title || ""}
+        noticeId={selectedNotice?.id}
+        existingSummary={selectedNotice?.summary}
       />
 
       <NoticeEditDialog
@@ -246,6 +265,8 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
             <TableHead className="min-w-[150px]">Marque / Modèle</TableHead>
             <TableHead className="min-w-[120px]">Catégorie</TableHead>
             <TableHead className="min-w-[100px]">Type</TableHead>
+            {/* ✅ AJOUTÉ - Colonne Résumé IA */}
+            <TableHead className="min-w-[100px]">Résumé</TableHead>
             <TableHead className="min-w-[200px]">Description</TableHead>
             <TableHead className="min-w-[150px]">Date d'ajout</TableHead>
             <TableHead className="w-[230px] text-center">Actions</TableHead>
@@ -280,6 +301,17 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   <Badge variant="secondary">Utilisateur</Badge>
                 )}
               </TableCell>
+              {/* ✅ AJOUTÉ - Badge Résumé IA */}
+              <TableCell>
+                {notice.summary ? (
+                  <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    IA
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">-</span>
+                )}
+              </TableCell>
               <TableCell>
                 {notice.description ? (
                   <span className="text-sm line-clamp-2">{notice.description}</span>
@@ -297,7 +329,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleOpenNotice(notice.url_notice, notice.titre)}
+                    onClick={() => handleOpenNotice(notice)} // ✅ MODIFIÉ
                     title="Voir la notice"
                   >
                     <Eye className="h-4 w-4" />
