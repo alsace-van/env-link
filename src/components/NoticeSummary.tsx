@@ -34,7 +34,7 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
   const loadUsage = async () => {
     setLoadingUsage(true);
     try {
-      const { data, error } = await supabase.rpc("get_user_ai_usage", {
+      const { data, error } = await supabase.rpc("get_user_ai_usage" as any, {
         p_feature: "pdf_summary",
       });
 
@@ -43,8 +43,8 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
         return;
       }
 
-      if (data && data.length > 0) {
-        setUsage(data[0]);
+      if (data && Array.isArray(data) && data.length > 0) {
+        setUsage(data[0] as AIUsage);
       }
     } catch (error) {
       console.error("Erreur:", error);

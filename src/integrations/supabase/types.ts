@@ -363,6 +363,69 @@ export type Database = {
           },
         ]
       }
+      ai_usage: {
+        Row: {
+          created_at: string
+          feature: string
+          id: string
+          tokens_used: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feature: string
+          id?: string
+          tokens_used?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feature?: string
+          id?: string
+          tokens_used?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      api_quotas: {
+        Row: {
+          created_at: string
+          daily_count: number
+          feature: string
+          id: string
+          last_reset_date: string
+          last_reset_month: string
+          monthly_count: number
+          monthly_tokens: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          daily_count?: number
+          feature: string
+          id?: string
+          last_reset_date?: string
+          last_reset_month?: string
+          monthly_count?: number
+          monthly_tokens?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          daily_count?: number
+          feature?: string
+          id?: string
+          last_reset_date?: string
+          last_reset_month?: string
+          monthly_count?: number
+          monthly_tokens?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       calendar_events: {
         Row: {
           accessory_id: string | null
@@ -637,7 +700,10 @@ export type Database = {
           id: string
           marque: string | null
           modele: string | null
+          summary: string | null
+          summary_generated_at: string | null
           titre: string
+          tokens_used: number | null
           url_notice: string
         }
         Insert: {
@@ -648,7 +714,10 @@ export type Database = {
           id?: string
           marque?: string | null
           modele?: string | null
+          summary?: string | null
+          summary_generated_at?: string | null
           titre: string
+          tokens_used?: number | null
           url_notice: string
         }
         Update: {
@@ -659,7 +728,10 @@ export type Database = {
           id?: string
           marque?: string | null
           modele?: string | null
+          summary?: string | null
+          summary_generated_at?: string | null
           titre?: string
+          tokens_used?: number | null
           url_notice?: string
         }
         Relationships: [
@@ -701,6 +773,38 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      pdf_summaries_cache: {
+        Row: {
+          created_at: string
+          id: string
+          notice_id: string
+          summary: string
+          tokens_used: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notice_id: string
+          summary: string
+          tokens_used?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notice_id?: string
+          summary?: string
+          tokens_used?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pdf_summaries_cache_notice_id_fkey"
+            columns: ["notice_id"]
+            isOneToOne: true
+            referencedRelation: "notices_database"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_tiered_pricing: {
         Row: {
@@ -2023,12 +2127,29 @@ export type Database = {
         Returns: number
       }
       generate_order_number: { Args: never; Returns: string }
+      get_user_ai_usage: {
+        Args: { p_feature: string }
+        Returns: {
+          limit_per_day: number
+          limit_per_month: number
+          month_count: number
+          month_tokens: number
+          plan: string
+          remaining_month_tokens: number
+          remaining_today: number
+          today_count: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_api_quota: {
+        Args: { p_feature: string; p_tokens: number }
+        Returns: undefined
       }
     }
     Enums: {
