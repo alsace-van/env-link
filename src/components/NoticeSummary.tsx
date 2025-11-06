@@ -14,48 +14,12 @@ interface NoticeSummaryProps {
   onSummaryGenerated?: (summary: string) => void;
 }
 
-interface AIUsage {
-  plan: string;
-  today_count: number;
-  month_count: number;
-  month_tokens: number;
-  limit_per_day: number;
-  limit_per_month: number;
-  remaining_today: number;
-  remaining_month_tokens: number;
-}
-
 export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }: NoticeSummaryProps) => {
   const [summary, setSummary] = useState<string | null>(existingSummary || null);
   const [loading, setLoading] = useState(false);
-  const [usage, setUsage] = useState<AIUsage | null>(null);
-  const [loadingUsage, setLoadingUsage] = useState(false);
-
-  const loadUsage = async () => {
-    setLoadingUsage(true);
-    try {
-      const { data, error } = await supabase.rpc('get_user_ai_usage', {
-        p_feature: 'pdf_summary'
-      });
-
-      if (error) {
-        console.error('Erreur chargement usage:', error);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        setUsage(data[0]);
-      }
-    } catch (error) {
-      console.error('Erreur:', error);
-    } finally {
-      setLoadingUsage(false);
-    }
-  };
 
   const handleGenerateSummary = async () => {
     setLoading(true);
-    await loadUsage();
 
     try {
       const { data, error } = await supabase.functions.invoke('summarize-notice', {
@@ -84,21 +48,7 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
       }
 
       if (data.error) {
-        if (data.error.includes('Limite')) {
-          toast.error(
-            data.error,
-            {
-              description: `Réinitialisation à minuit`,
-              action: {
-                label: 'Passer Pro',
-                onClick: () => window.location.href = '/pricing'
-              },
-              duration: 5000
-            }
-          );
-        } else {
-          toast.error(data.error);
-        }
+        toast.error(data.error);
         return;
       }
 
@@ -108,17 +58,10 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
       }
 
       if (data.fromCache) {
-        toast.success('Résumé récupéré instantanément (cache)', {
-          description: 'Aucun crédit utilisé'
-        });
+        toast.success('Résumé récupéré instantanément (cache)');
       } else {
-        toast.success('Résumé généré avec succès !', {
-          description: `${data.tokens} tokens utilisés`
-        });
+        toast.success('Résumé généré avec succès !');
       }
-
-      // Recharger l'usage
-      await loadUsage();
     } catch (error) {
       console.error('Erreur:', error);
       toast.error('Erreur lors de la génération du résumé');
@@ -126,13 +69,6 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
       setLoading(false);
     }
   };
-
-  // Charger l'usage au montage si pas de résumé existant
-  useState(() => {
-    if (!existingSummary) {
-      loadUsage();
-    }
-  });
 
   return (
     <Card>
@@ -147,14 +83,6 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
               Résumé automatique généré par intelligence artificielle
             </CardDescription>
           </div>
-          {!summary && usage && (
-            <Badge variant={usage.remaining_today > 2 ? "secondary" : "destructive"}>
-              {usage.remaining_today === -1 
-                ? '∞ résumés restants'
-                : `${usage.remaining_today}/${usage.limit_per_day} restants aujourd'hui`
-              }
-            </Badge>
-          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -170,7 +98,7 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
             
             <Button
               onClick={handleGenerateSummary}
-              disabled={loading || loadingUsage || (usage?.remaining_today === 0)}
+              disabled={loading}
               className="w-full"
             >
               {loading ? (
@@ -185,37 +113,6 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
                 </>
               )}
             </Button>
-
-            {usage && usage.remaining_today === 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Limite journalière atteinte ({usage.limit_per_day} résumés).
-                  {usage.plan === 'free' && (
-                    <Button
-                      variant="link"
-                      className="p-0 h-auto font-normal ml-1"
-                      onClick={() => window.location.href = '/pricing'}
-                    >
-                      Passez Pro pour 50 résumés/jour
-                    </Button>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {usage && usage.plan === 'free' && usage.remaining_today > 0 && usage.remaining_today < 3 && (
-              <div className="text-sm text-muted-foreground text-center">
-                Plus que {usage.remaining_today} résumé{usage.remaining_today > 1 ? 's' : ''} gratuit{usage.remaining_today > 1 ? 's' : ''} aujourd'hui.{' '}
-                <Button
-                  variant="link"
-                  className="p-0 h-auto font-normal"
-                  onClick={() => window.location.href = '/pricing'}
-                >
-                  Passer Pro
-                </Button>
-              </div>
-            )}
           </div>
         ) : (
           <div className="space-y-4">
