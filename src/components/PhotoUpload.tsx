@@ -53,19 +53,10 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
           continue;
         }
 
-        // Get public URL (permanent, no expiration)
-        const { data: publicUrlData } = supabase.storage.from("project-photos").getPublicUrl(fileName);
-
-        if (!publicUrlData) {
-          console.error("Error getting public URL");
-          toast.error(`Erreur lors de la création de l'URL pour ${file.name}`);
-          continue;
-        }
-
-        // Save to database
+        // Save to database (store path only, not full URL for private buckets)
         const { error: dbError } = await supabase.from("project_photos").insert({
           project_id: projectId,
-          url: publicUrlData.publicUrl,
+          url: fileName, // Store just the path for signed URL generation
           type: type,
           description: file.name,
         });

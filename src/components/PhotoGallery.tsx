@@ -10,6 +10,7 @@ interface Photo {
   description?: string;
   comment?: string;
   annotations?: any;
+  storagePath?: string; // Store original path for deletion
 }
 
 interface PhotoGalleryProps {
@@ -45,23 +46,56 @@ const PhotoGallery = ({ projectId, type, refresh, onPhotoClick }: PhotoGalleryPr
       return;
     }
 
-    setPhotos(data || []);
+    // Generate signed URLs for private bucket photos
+    if (data) {
+      const photosWithSignedUrls = await Promise.all(
+        data.map(async (photo) => {
+          let storagePath = photo.url;
+          
+          // Check if URL is already a full URL (old format) or just a path
+          if (photo.url.startsWith('http')) {
+            // Old format with full URL - extract path and generate signed URL
+            const urlParts = photo.url.split('/project-photos/');
+            if (urlParts.length === 2) {
+              storagePath = urlParts[1];
+              const { data: signedUrlData } = await supabase.storage
+                .from('project-photos')
+                .createSignedUrl(storagePath, 3600); // 1 hour expiration
+              return { ...photo, url: signedUrlData?.signedUrl || photo.url, storagePath };
+            }
+          } else {
+            // New format with just path - generate signed URL
+            const { data: signedUrlData } = await supabase.storage
+              .from('project-photos')
+              .createSignedUrl(photo.url, 3600); // 1 hour expiration
+            return { ...photo, url: signedUrlData?.signedUrl || photo.url, storagePath: photo.url };
+          }
+          return { ...photo, storagePath };
+        })
+      );
+      setPhotos(photosWithSignedUrls);
+    } else {
+      setPhotos([]);
+    }
   };
 
-  const handleDelete = async (photoId: string, photoUrl: string, e: React.MouseEvent) => {
+  const handleDelete = async (photo: Photo, e: React.MouseEvent) => {
     e.stopPropagation();
 
     if (!confirm("Êtes-vous sûr de vouloir supprimer cette photo ?")) {
       return;
     }
 
-    // Extract file path from URL
-    const urlParts = photoUrl.split("/project-photos/");
-    if (urlParts.length < 2) {
-      toast.error("URL invalide");
+    // Use storagePath if available, otherwise extract from URL
+    const filePath = photo.storagePath || (() => {
+      const urlParts = photo.url.split("/project-photos/");
+      return urlParts.length === 2 ? urlParts[1].split('?')[0] : null;
+    })();
+
+    if (!filePath) {
+      toast.error("Impossible de déterminer le chemin du fichier");
       return;
     }
-    const filePath = urlParts[1];
 
     // Delete from storage
     const { error: storageError } = await supabase.storage
@@ -78,7 +112,7 @@ const PhotoGallery = ({ projectId, type, refresh, onPhotoClick }: PhotoGalleryPr
     const { error: dbError } = await supabase
       .from("project_photos")
       .delete()
-      .eq("id", photoId);
+      .eq("id", photo.id);
 
     if (dbError) {
       toast.error("Erreur lors de la suppression");
@@ -124,7 +158,7 @@ const PhotoGallery = ({ projectId, type, refresh, onPhotoClick }: PhotoGalleryPr
               variant="destructive"
               size="icon"
               className="opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={(e) => handleDelete(photo.id, photo.url, e)}
+              onClick={(e) => handleDelete(photo, e)}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
