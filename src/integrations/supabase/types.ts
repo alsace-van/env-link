@@ -36,6 +36,7 @@ export type Database = {
           notice_id: string | null
           poids_kg: number | null
           prix_reference: number | null
+          prix_vente: number | null
           prix_vente_ttc: number | null
           promo_active: boolean | null
           promo_end_date: string | null
@@ -70,6 +71,7 @@ export type Database = {
           notice_id?: string | null
           poids_kg?: number | null
           prix_reference?: number | null
+          prix_vente?: number | null
           prix_vente_ttc?: number | null
           promo_active?: boolean | null
           promo_end_date?: string | null
@@ -104,6 +106,7 @@ export type Database = {
           notice_id?: string | null
           poids_kg?: number | null
           prix_reference?: number | null
+          prix_vente?: number | null
           prix_vente_ttc?: number | null
           promo_active?: boolean | null
           promo_end_date?: string | null
@@ -178,6 +181,48 @@ export type Database = {
             columns: ["accessory_id"]
             isOneToOne: false
             referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accessory_shipping_fees: {
+        Row: {
+          accessory_id: string
+          created_at: string
+          id: string
+          shipping_fee_id: string
+          visible_boutique: boolean
+          visible_depenses: boolean
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string
+          id?: string
+          shipping_fee_id: string
+          visible_boutique?: boolean
+          visible_depenses?: boolean
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string
+          id?: string
+          shipping_fee_id?: string
+          visible_boutique?: boolean
+          visible_depenses?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessory_shipping_fees_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accessory_shipping_fees_shipping_fee_id_fkey"
+            columns: ["shipping_fee_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_fees"
             referencedColumns: ["id"]
           },
         ]
@@ -626,6 +671,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      official_documents: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          file_url: string
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          file_url: string
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          file_url?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
       }
       product_tiered_pricing: {
         Row: {
@@ -1293,6 +1368,71 @@ export type Database = {
           },
         ]
       }
+      shipping_fee_tiers: {
+        Row: {
+          created_at: string
+          id: string
+          quantity_from: number
+          quantity_to: number | null
+          shipping_fee_id: string
+          total_price: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          quantity_from: number
+          quantity_to?: number | null
+          shipping_fee_id: string
+          total_price: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          quantity_from?: number
+          quantity_to?: number | null
+          shipping_fee_id?: string
+          total_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_fee_tiers_shipping_fee_id_fkey"
+            columns: ["shipping_fee_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_fees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipping_fees: {
+        Row: {
+          created_at: string
+          fixed_price: number | null
+          id: string
+          nom: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          fixed_price?: number | null
+          id?: string
+          nom: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          fixed_price?: number | null
+          id?: string
+          nom?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       shop_custom_kits: {
         Row: {
           allowed_category_ids: string[] | null
@@ -1726,6 +1866,54 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "technical_schemas_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_filled_documents: {
+        Row: {
+          created_at: string
+          file_url: string
+          filled_data: Json | null
+          id: string
+          name: string
+          official_document_id: string | null
+          project_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_url: string
+          filled_data?: Json | null
+          id?: string
+          name: string
+          official_document_id?: string | null
+          project_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          file_url?: string
+          filled_data?: Json | null
+          id?: string
+          name?: string
+          official_document_id?: string | null
+          project_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_filled_documents_official_document_id_fkey"
+            columns: ["official_document_id"]
+            isOneToOne: false
+            referencedRelation: "official_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_filled_documents_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"

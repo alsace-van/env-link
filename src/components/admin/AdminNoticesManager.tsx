@@ -39,10 +39,10 @@ interface AdminNotice {
   categorie: string | null;
   description: string | null;
   url_notice: string;
-  file_size: number | null;
-  is_admin_notice: boolean;
-  created_at: string;
   created_by: string | null;
+  created_at: string;
+  file_size?: number;
+  is_admin_notice?: boolean;
 }
 
 export const AdminNoticesManager = () => {

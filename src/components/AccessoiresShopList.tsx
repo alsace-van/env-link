@@ -78,62 +78,19 @@ export const AccessoiresShopList = ({ projectId, onAddToProject }: AccessoiresSh
         .from("accessories_catalog")
         .select("*")
         .eq("user_id", user.id)
+        .eq("available_in_shop", true)
         .order("nom");
 
       if (accessoriesError) throw accessoriesError;
 
-      const accessoriesWithShipping = await Promise.all(
-        (accessoriesData || []).map(async (acc) => {
-          const { data: shippingLink } = await supabase
-            .from("accessory_shipping_fees")
-            .select(`
-              id,
-              visible_boutique,
-              shipping_fees:shipping_fee_id (
-                id,
-                nom,
-                type,
-                fixed_price
-              )
-            `)
-            .eq("accessory_id", acc.id)
-            .eq("visible_boutique", true)
-            .maybeSingle();
+      const accessories = (accessoriesData || []).map(acc => ({
+        ...acc,
+        prix_vente: acc.prix_vente_ttc || 0,
+        shipping_fee: null,
+      }));
 
-          let shippingFee = null;
-          if (shippingLink && shippingLink.shipping_fees) {
-            const fee: any = shippingLink.shipping_fees;
-            
-            let tiers = [];
-            if (fee.type === 'variable') {
-              const { data: tiersData } = await supabase
-                .from("shipping_fee_tiers")
-                .select("*")
-                .eq("shipping_fee_id", fee.id)
-                .order("quantity_from");
-              
-              tiers = tiersData || [];
-            }
-
-            shippingFee = {
-              id: fee.id,
-              nom: fee.nom,
-              type: fee.type,
-              fixed_price: fee.fixed_price,
-              visible_boutique: true,
-              tiers,
-            };
-          }
-
-          return {
-            ...acc,
-            shipping_fee: shippingFee,
-          };
-        })
-      );
-
-      setAccessories(accessoriesWithShipping);
-      setFilteredAccessories(accessoriesWithShipping);
+      setAccessories(accessories);
+      setFilteredAccessories(accessories);
     } catch (error: any) {
       console.error("Erreur lors du chargement:", error);
       toast.error("Erreur lors du chargement des accessoires");

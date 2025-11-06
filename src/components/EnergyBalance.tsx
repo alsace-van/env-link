@@ -182,8 +182,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
       intensite_amperes: item.intensite_amperes,
       temps_utilisation_heures: item.temps_utilisation_heures,
       temps_production_heures: item.temps_production_heures,
-      prix_unitaire: item.prix_unitaire,
-      montant_total: (item.prix_unitaire || 0) * item.quantite,
+      prix: item.prix_unitaire || 0,
       categorie: "Électrique",
     }));
 

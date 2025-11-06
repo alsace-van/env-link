@@ -165,7 +165,7 @@ export const PDFFormFiller = ({
       if (!user) throw new Error("User not authenticated");
 
       // Create blob and upload
-      const blob = new Blob([filledPdfBytes], { type: "application/pdf" });
+      const blob = new Blob([filledPdfBytes as any], { type: "application/pdf" });
       const fileName = `${user.id}/${Date.now()}_${document.name}.pdf`;
 
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -211,14 +211,14 @@ export const PDFFormFiller = ({
       const filledPdfBytes = await fillPDF();
       if (!filledPdfBytes) return;
 
-      const blob = new Blob([filledPdfBytes], { type: "application/pdf" });
+      const blob = new Blob([filledPdfBytes as any], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
+      const link = window.document.createElement("a");
       link.href = url;
       link.download = `${document.name}_rempli.pdf`;
-      document.body.appendChild(link);
+      window.document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
+      window.document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
       toast.success("PDF téléchargé");

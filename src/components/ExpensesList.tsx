@@ -32,14 +32,11 @@ interface Expense {
   marque: string | null;
   categorie: string;
   quantite: number;
-  prix_achat_unitaire: number;
-  prix_vente_unitaire: number;
-  prix_achat_total: number;
-  prix_vente_total: number;
+  prix: number;
+  prix_vente_ttc: number | null;
+  marge_pourcent: number | null;
   fournisseur: string | null;
   date_achat: string | null;
-  garantie_mois: number | null;
-  url_fiche_produit: string | null;
   notes: string | null;
   created_at: string;
   expense_options?: ExpenseOption[];
@@ -234,12 +231,12 @@ const ExpensesList = ({ projectId, refreshTrigger }: ExpensesListProps) => {
 
                     <div>
                       <span className="text-muted-foreground text-xs block">Prix d'achat (unitaire)</span>
-                      <span className="text-sm">{formatPrice(expense.prix_achat_unitaire)}</span>
+                      <span className="text-sm">{formatPrice(expense.prix)}</span>
                     </div>
 
                     <div>
                       <span className="text-muted-foreground text-xs block">Prix de vente</span>
-                      <span className="text-2xl font-bold text-green-600">{formatPrice(expense.prix_vente_total)}</span>
+                      <span className="text-2xl font-bold text-green-600">{formatPrice(expense.prix_vente_ttc || 0)}</span>
                     </div>
                   </div>
 
@@ -284,9 +281,10 @@ const ExpensesList = ({ projectId, refreshTrigger }: ExpensesListProps) => {
 
       {editExpense && (
         <ExpenseFormDialog
-          open={!!editExpense}
-          onOpenChange={(open) => !open && setEditExpense(null)}
+          isOpen={!!editExpense}
+          onClose={() => setEditExpense(null)}
           projectId={projectId}
+          existingCategories={categories}
           expense={editExpense}
           onSuccess={() => {
             setEditExpense(null);

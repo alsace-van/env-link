@@ -31,8 +31,8 @@ interface ShippingFee {
   nom: string;
   type: 'fixed' | 'variable' | 'free' | 'pickup';
   fixed_price: number | null;
-  description: string | null;
-  message_pickup: string | null;
+  description?: string | null;
+  message_pickup?: string | null;
   created_at: string;
   tiers?: ShippingFeeTier[];
   assigned_count?: number;
@@ -66,7 +66,7 @@ export const ShippingFeesManager = () => {
       if (feesError) throw feesError;
 
       const feesWithDetails = await Promise.all(
-        (fees || []).map(async (fee) => {
+        (fees || []).map(async (fee: any) => {
           let tiers: ShippingFeeTier[] = [];
           if (fee.type === 'variable') {
             const { data: tiersData } = await supabase

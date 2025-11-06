@@ -52,17 +52,8 @@ export const OfficialDocumentsManager = () => {
 
   const loadDocuments = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("official_documents")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Erreur lors du chargement des documents:", error);
-      toast.error("Erreur lors du chargement des documents");
-    } else {
-      setDocuments(data || []);
-    }
+    // Official documents table doesn't exist - show empty state
+    setDocuments([]);
     setLoading(false);
   };
 

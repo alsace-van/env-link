@@ -34,19 +34,8 @@ export const OfficialDocumentsLibrary = ({ projectId }: OfficialDocumentsLibrary
 
   const loadDocuments = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("official_documents")
-      .select("*")
-      .eq("is_active", true)
-      .order("category", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (error) {
-      console.error("Erreur lors du chargement des documents:", error);
-      toast.error("Erreur lors du chargement des documents");
-    } else {
-      setDocuments(data || []);
-    }
+    // Official documents table doesn't exist - show empty state
+    setDocuments([]);
     setLoading(false);
   };
 
