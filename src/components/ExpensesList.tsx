@@ -1,317 +1,728 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Trash2, Edit, Search } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus } from "lucide-react";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-interface ExpenseOption {
-  id: string;
-  option_id: string;
-  nom: string;
-  prix_vente: number;
-}
+import { Input } from "@/components/ui/input";
 
 interface Expense {
   id: string;
   nom_accessoire: string;
-  marque: string | null;
-  categorie: string;
-  quantite: number;
+  marque?: string;
   prix: number;
-  prix_vente_ttc: number | null;
-  marge_pourcent: number | null;
-  fournisseur: string | null;
-  date_achat: string | null;
-  notes: string | null;
-  created_at: string;
-  expense_options?: ExpenseOption[];
+  prix_vente_ttc?: number;
+  marge_pourcent?: number;
+  quantite: number;
+  date_achat: string;
+  categorie: string;
+  statut_paiement: "non_paye" | "paye";
+  statut_livraison: "commande" | "en_livraison" | "livre";
+  fournisseur?: string;
+  notes?: string;
+  accessory_id?: string;
+  selectedOptions?: Array<{
+    nom: string;
+    prix_reference: number;
+    prix_vente_ttc: number;
+    marge_pourcent: number;
+  }>;
 }
 
 interface ExpensesListProps {
   projectId: string;
-  refreshTrigger?: number;
+  onExpenseChange: () => void;
 }
 
-const ExpensesList = ({ projectId, refreshTrigger }: ExpensesListProps) => {
+interface PaymentTransaction {
+  id: string;
+  montant: number;
+}
+
+const ExpensesList = ({ projectId, onExpenseChange }: ExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [filteredExpenses, setFilteredExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [editExpense, setEditExpense] = useState<Expense | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [paymentTransactions, setPaymentTransactions] = useState<PaymentTransaction[]>([]);
+  const [totalSales, setTotalSales] = useState(0);
 
   useEffect(() => {
-    if (projectId) {
-      loadExpenses();
-    }
-  }, [projectId, refreshTrigger]);
-
-  useEffect(() => {
-    filterExpenses();
-  }, [expenses, searchTerm, categoryFilter]);
+    loadExpenses();
+    loadPaymentTransactions();
+  }, [projectId]);
 
   const loadExpenses = async () => {
-    try {
-      setLoading(true);
+    setIsLoading(true);
+    const { data, error } = await supabase
+      .from("project_expenses")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("date_achat", { ascending: false });
 
-      // Charger les dépenses
-      const { data: expensesData, error: expensesError } = await supabase
-        .from("project_expenses")
-        .select("*")
-        .eq("project_id", projectId)
-        .order("created_at", { ascending: false });
+    if (error) {
+      toast.error("Erreur lors du chargement des dépenses");
+      console.error(error);
+    } else {
+      const expensesData = (data || []) as Expense[];
 
-      if (expensesError) {
-        console.error("Erreur chargement dépenses:", expensesError);
-        throw expensesError;
-      }
-
-      // Charger les options pour chaque dépense
+      // Load selected options for each expense
       const expensesWithOptions = await Promise.all(
-        (expensesData || []).map(async (expense) => {
-          const { data: optionsData } = await supabase
+        expensesData.map(async (expense) => {
+          const { data: selectedOptions } = await supabase
             .from("expense_selected_options")
             .select(
               `
-              id,
               option_id,
               accessory_options!inner(
                 nom,
-                prix_vente_ttc
+                prix_reference,
+                prix_vente_ttc,
+                marge_pourcent
               )
             `,
             )
             .eq("expense_id", expense.id);
 
-          const options = (optionsData || []).map((opt: any) => ({
-            id: opt.id,
-            option_id: opt.option_id,
-            nom: opt.accessory_options?.nom || "",
-            prix_vente: opt.accessory_options?.prix_vente_ttc || 0,
-          }));
-
           return {
             ...expense,
-            expense_options: options,
+            selectedOptions:
+              selectedOptions?.map((opt: any) => ({
+                nom: opt.accessory_options.nom,
+                prix_reference: opt.accessory_options.prix_reference || 0,
+                prix_vente_ttc: opt.accessory_options.prix_vente_ttc || 0,
+                marge_pourcent: opt.accessory_options.marge_pourcent || 0,
+              })) || [],
           };
         }),
       );
 
       setExpenses(expensesWithOptions);
 
-      // Extract unique categories
-      const uniqueCategories = [...new Set(expensesWithOptions.map((e) => e.categorie))];
-      setCategories(uniqueCategories);
-    } catch (error: any) {
-      console.error("Error loading expenses:", error);
-      toast.error("Erreur lors du chargement des dépenses");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filterExpenses = () => {
-    let filtered = expenses;
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (expense) =>
-          expense.nom_accessoire.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          expense.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          expense.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()),
+      // Extract unique categories, including empty ones as "Non catégorisé"
+      const uniqueCategories = Array.from(
+        new Set(
+          expensesWithOptions.map((e) => (e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé")),
+        ),
       );
-    }
+      setCategories(uniqueCategories);
 
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter((expense) => expense.categorie === categoryFilter);
+      // Calculate total sales including options
+      let total = 0;
+      expensesWithOptions.forEach((expense) => {
+        if (expense.prix_vente_ttc) {
+          const optionsVenteTotal = (expense.selectedOptions || []).reduce((sum, opt) => sum + opt.prix_vente_ttc, 0);
+          total += (expense.prix_vente_ttc + optionsVenteTotal) * expense.quantite;
+        }
+      });
+      setTotalSales(total);
     }
-
-    setFilteredExpenses(filtered);
+    setIsLoading(false);
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      const { error } = await supabase.from("project_expenses").delete().eq("id", id);
+  const loadPaymentTransactions = async () => {
+    const { data, error } = await supabase
+      .from("project_payment_transactions")
+      .select("id, montant")
+      .eq("project_id", projectId);
 
-      if (error) throw error;
+    if (error) {
+      console.error(error);
+      return;
+    }
 
+    setPaymentTransactions(data || []);
+  };
+
+  const getPaymentStatus = () => {
+    const totalPaid = paymentTransactions.reduce((sum, t) => sum + t.montant, 0);
+
+    if (totalPaid === 0) {
+      return {
+        color: "border-red-500 text-red-500 bg-red-50",
+        label: "Aucun paiement",
+      };
+    } else if (totalPaid >= totalSales) {
+      return {
+        color: "border-green-500 text-green-500 bg-green-50",
+        label: "Entièrement payé",
+      };
+    } else {
+      return {
+        color: "border-orange-500 text-orange-500 bg-orange-50",
+        label: "Paiement partiel",
+      };
+    }
+  };
+
+  const cycleDeliveryStatus = async (expense: Expense) => {
+    const statusOrder: Expense["statut_livraison"][] = ["commande", "en_livraison", "livre"];
+    const currentIndex = statusOrder.indexOf(expense.statut_livraison);
+    const nextStatus = statusOrder[(currentIndex + 1) % statusOrder.length];
+
+    const { error } = await supabase
+      .from("project_expenses")
+      .update({ statut_livraison: nextStatus })
+      .eq("id", expense.id);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+    } else {
+      toast.success("Statut de livraison mis à jour");
+      loadExpenses();
+      onExpenseChange();
+    }
+  };
+
+  const deleteExpense = async (id: string) => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cette dépense ?")) {
+      return;
+    }
+
+    const { error } = await supabase.from("project_expenses").delete().eq("id", id);
+
+    if (error) {
+      toast.error("Erreur lors de la suppression");
+    } else {
       toast.success("Dépense supprimée");
       loadExpenses();
-    } catch (error: any) {
-      console.error("Error deleting expense:", error);
-      toast.error("Erreur lors de la suppression");
+      onExpenseChange();
     }
-    setDeleteId(null);
   };
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat("fr-FR", {
-      style: "currency",
-      currency: "EUR",
-    }).format(price);
+  const updateQuantity = async (expenseId: string, newQuantity: number) => {
+    if (newQuantity < 1) {
+      toast.error("La quantité doit être au moins 1");
+      return;
+    }
+
+    const { error } = await supabase.from("project_expenses").update({ quantite: newQuantity }).eq("id", expenseId);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+      console.error(error);
+    } else {
+      toast.success("Quantité mise à jour");
+      loadExpenses();
+      onExpenseChange();
+    }
   };
 
-  if (loading) {
-    return <div className="text-center py-8 text-muted-foreground">Chargement...</div>;
+  const getDeliveryInfo = (status: Expense["statut_livraison"]) => {
+    switch (status) {
+      case "commande":
+        return {
+          color: "border-orange-500 text-orange-500 bg-orange-50",
+          label: "Commandé",
+          icon: <Package className="h-4 w-4" />,
+        };
+      case "en_livraison":
+        return {
+          color: "border-blue-500 text-blue-500 bg-blue-50",
+          label: "En livraison",
+          icon: <ArrowRight className="h-4 w-4" />,
+        };
+      case "livre":
+        return {
+          color: "border-green-500 text-green-500 bg-green-50",
+          label: "Livré",
+          icon: <Truck className="h-4 w-4" />,
+        };
+    }
+  };
+
+  const filteredExpenses = selectedCategory
+    ? expenses.filter((e) => {
+        const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
+        return expenseCategory === selectedCategory;
+      })
+    : expenses;
+
+  const groupedByCategory = categories.reduce(
+    (acc, cat) => {
+      acc[cat] = expenses.filter((e) => {
+        const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
+        return expenseCategory === cat;
+      });
+      return acc;
+    },
+    {} as Record<string, Expense[]>,
+  );
+
+  if (isLoading) {
+    return <div className="text-center py-8">Chargement...</div>;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-4 items-center">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Catégorie" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Toutes les catégories</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat} value={cat}>
-                {cat}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold">Liste des dépenses</h3>
+        <Button onClick={() => setIsDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Ajouter une dépense
+        </Button>
       </div>
 
-      {filteredExpenses.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">
-          {searchTerm || categoryFilter !== "all"
-            ? "Aucune dépense trouvée avec ces filtres"
-            : "Aucune dépense pour ce projet"}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredExpenses.map((expense) => (
-            <Card key={expense.id} className="p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-base font-semibold">{expense.nom_accessoire}</h4>
-                    <Badge variant="outline" className="text-xs">
-                      {expense.categorie}
-                    </Badge>
-                    {expense.marque && (
-                      <Badge variant="secondary" className="text-xs">
-                        {expense.marque}
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground text-xs block">Quantité</span>
-                      <span className="font-medium">{expense.quantite}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-muted-foreground text-xs block">Prix d'achat (unitaire)</span>
-                      <span className="text-sm">{formatPrice(expense.prix)}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-muted-foreground text-xs block">Prix de vente</span>
-                      <span className="text-2xl font-bold text-green-600">{formatPrice(expense.prix_vente_ttc || 0)}</span>
-                    </div>
-                  </div>
-
-                  {expense.expense_options && expense.expense_options.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      <span className="text-xs text-muted-foreground">Options sélectionnées:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {expense.expense_options.map((option) => (
-                          <Badge key={option.id} variant="outline" className="text-xs">
-                            {option.nom} (+{formatPrice(option.prix_vente)})
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {expense.fournisseur && (
-                    <div className="text-xs text-muted-foreground">Fournisseur: {expense.fournisseur}</div>
-                  )}
-
-                  {expense.notes && <div className="text-xs text-muted-foreground italic">{expense.notes}</div>}
-                </div>
-
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setEditExpense(expense)}>
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDeleteId(expense.id)}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
+      {categories.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            variant={selectedCategory === null ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedCategory(null)}
+          >
+            Toutes ({expenses.length})
+          </Button>
+          {categories.map((cat) => (
+            <Button
+              key={cat}
+              variant={selectedCategory === cat ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedCategory(cat)}
+            >
+              {cat} ({groupedByCategory[cat].length})
+            </Button>
           ))}
         </div>
       )}
 
-      {editExpense && (
-        <ExpenseFormDialog
-          isOpen={!!editExpense}
-          onClose={() => setEditExpense(null)}
-          projectId={projectId}
-          existingCategories={categories}
-          expense={editExpense}
-          onSuccess={() => {
-            setEditExpense(null);
-            loadExpenses();
-          }}
-        />
-      )}
+      <ScrollArea className="h-[600px]">
+        {selectedCategory ? (
+          <div className="space-y-3">
+            {filteredExpenses.map((expense) => (
+              <Card key={expense.id} className="p-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
+                      <Badge variant="outline" className="text-xs">
+                        {expense.categorie}
+                      </Badge>
+                      {expense.marque && (
+                        <Badge variant="secondary" className="text-xs">
+                          {expense.marque}
+                        </Badge>
+                      )}
+                    </div>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer cette dépense ? Cette action est irréversible.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && handleDelete(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                    <div className="space-y-0.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-4 w-4"
+                            onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
+                          >
+                            <Minus className="h-2 w-2" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={expense.quantite}
+                            onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                            className="h-5 w-10 text-center text-xs p-0"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-4 w-4"
+                            onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
+                          >
+                            <Plus className="h-2 w-2" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {expense.prix_vente_ttc && (
+                        <div>
+                          Prix vente TTC:{" "}
+                          {(() => {
+                            const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                              (sum, opt) => sum + opt.prix_vente_ttc,
+                              0,
+                            );
+                            return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
+                          })()}{" "}
+                          €
+                        </div>
+                      )}
+
+                      {expense.date_achat && <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>}
+
+                      {expense.marge_pourcent !== undefined && (
+                        <div>
+                          Marge:{" "}
+                          {(() => {
+                            const optionsTotal = (expense.selectedOptions || []).reduce(
+                              (sum, opt) => sum + opt.prix_reference,
+                              0,
+                            );
+                            const totalAchat = expense.prix + optionsTotal;
+                            const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                              (sum, opt) => sum + opt.prix_vente_ttc,
+                              0,
+                            );
+                            const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                            const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat) * 100 : 0;
+                            return marge.toFixed(2);
+                          })()}{" "}
+                          %
+                        </div>
+                      )}
+
+                      {expense.fournisseur && <div>Fournisseur: {expense.fournisseur}</div>}
+
+                      {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                        <div>
+                          <span className="font-medium">Options:</span>
+                          <ul className="ml-4 space-y-0.5">
+                            {expense.selectedOptions.map((opt, idx) => (
+                              <li key={idx}>• {opt.nom}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {expense.notes && <p className="text-xs text-muted-foreground italic">{expense.notes}</p>}
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Total achat</p>
+                      <p className="font-semibold text-lg">
+                        {(() => {
+                          const optionsTotal = (expense.selectedOptions || []).reduce(
+                            (sum, opt) => sum + opt.prix_reference,
+                            0,
+                          );
+                          return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                        })()}{" "}
+                        €
+                      </p>
+                    </div>
+
+                    <div className="flex gap-1.5">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => setEditingExpense(expense)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Modifier</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}
+                            >
+                              <CreditCard className="h-4 w-4" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{getPaymentStatus().label}</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                              onClick={() => cycleDeliveryStatus(expense)}
+                            >
+                              {getDeliveryInfo(expense.statut_livraison).icon}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => deleteExpense(expense.id)}
+                            >
+                              <span className="text-xs font-bold">×</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Supprimer</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+
+            {filteredExpenses.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">Aucune dépense dans cette catégorie</div>
+            )}
+          </div>
+        ) : (
+          <Accordion type="multiple" className="space-y-2">
+            {categories.map((category) => (
+              <AccordionItem key={category} value={category} className="border rounded-lg px-4">
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{category}</span>
+                    <Badge variant="secondary">{groupedByCategory[category].length} article(s)</Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-3 pt-2">
+                    {groupedByCategory[category].map((expense) => (
+                      <Card key={expense.id} className="p-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
+                              {expense.marque && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {expense.marque}
+                                </Badge>
+                              )}
+                            </div>
+
+                            <div className="space-y-0.5 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
+                                <div className="flex items-center gap-0.5">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-4 w-4"
+                                    onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
+                                  >
+                                    <Minus className="h-2 w-2" />
+                                  </Button>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={expense.quantite}
+                                    onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                                    className="h-5 w-10 text-center text-xs p-0"
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-4 w-4"
+                                    onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
+                                  >
+                                    <Plus className="h-2 w-2" />
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {expense.prix_vente_ttc && (
+                                <div>
+                                  Prix vente TTC:{" "}
+                                  {(() => {
+                                    const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_vente_ttc,
+                                      0,
+                                    );
+                                    return (expense.prix_vente_ttc + optionsVenteTotal).toFixed(2);
+                                  })()}{" "}
+                                  €
+                                </div>
+                              )}
+
+                              {expense.date_achat && (
+                                <div>Date: {new Date(expense.date_achat).toLocaleDateString()}</div>
+                              )}
+
+                              {expense.marge_pourcent !== undefined && (
+                                <div>
+                                  Marge:{" "}
+                                  {(() => {
+                                    const optionsTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_reference,
+                                      0,
+                                    );
+                                    const totalAchat = expense.prix + optionsTotal;
+                                    const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_vente_ttc,
+                                      0,
+                                    );
+                                    const totalVente = (expense.prix_vente_ttc || 0) + optionsVenteTotal;
+                                    const marge = totalAchat > 0 ? ((totalVente - totalAchat) / totalAchat) * 100 : 0;
+                                    return marge.toFixed(2);
+                                  })()}{" "}
+                                  %
+                                </div>
+                              )}
+
+                              {expense.fournisseur && <div>Fournisseur: {expense.fournisseur}</div>}
+
+                              {expense.selectedOptions && expense.selectedOptions.length > 0 && (
+                                <div>
+                                  <span className="font-medium">Options:</span>
+                                  <ul className="ml-4 space-y-0.5">
+                                    {expense.selectedOptions.map((opt, idx) => (
+                                      <li key={idx}>• {opt.nom}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+
+                            {expense.notes && <p className="text-xs text-muted-foreground italic">{expense.notes}</p>}
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <div className="text-right space-y-1">
+                              {/* Prix vente TTC en GRAND */}
+                              {expense.prix_vente_ttc && (
+                                <>
+                                  <p className="text-xs text-muted-foreground">Prix vente TTC</p>
+                                  <p className="font-bold text-2xl text-green-600">
+                                    {(() => {
+                                      const optionsVenteTotal = (expense.selectedOptions || []).reduce(
+                                        (sum, opt) => sum + opt.prix_vente_ttc,
+                                        0,
+                                      );
+                                      return ((expense.prix_vente_ttc + optionsVenteTotal) * expense.quantite).toFixed(
+                                        2,
+                                      );
+                                    })()}{" "}
+                                    €
+                                  </p>
+                                </>
+                              )}
+
+                              {/* Total achat en petit en dessous */}
+                              <div className="pt-1 border-t border-dashed">
+                                <p className="text-xs text-muted-foreground">Total achat HT</p>
+                                <p className="font-medium text-sm text-gray-600">
+                                  {(() => {
+                                    const optionsTotal = (expense.selectedOptions || []).reduce(
+                                      (sum, opt) => sum + opt.prix_reference,
+                                      0,
+                                    );
+                                    return ((expense.prix + optionsTotal) * expense.quantite).toFixed(2);
+                                  })()}{" "}
+                                  €
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-1.5">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => setEditingExpense(expense)}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Modifier</p>
+                                  </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className={`h-8 w-8 border rounded-md flex items-center justify-center ${getPaymentStatus().color}`}
+                                    >
+                                      <CreditCard className="h-4 w-4" />
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{getPaymentStatus().label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className={`h-8 w-8 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                                      onClick={() => cycleDeliveryStatus(expense)}
+                                    >
+                                      {getDeliveryInfo(expense.statut_livraison).icon}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="destructive"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => deleteExpense(expense.id)}
+                                    >
+                                      <span className="text-xs font-bold">×</span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Supprimer</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        )}
+      </ScrollArea>
+
+      <ExpenseFormDialog
+        isOpen={isDialogOpen || editingExpense !== null}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingExpense(null);
+        }}
+        projectId={projectId}
+        existingCategories={categories}
+        expense={editingExpense}
+        onSuccess={() => {
+          loadExpenses();
+          onExpenseChange();
+          setIsDialogOpen(false);
+          setEditingExpense(null);
+        }}
+      />
     </div>
   );
 };
