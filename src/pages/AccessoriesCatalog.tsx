@@ -223,10 +223,6 @@ const AccessoriesCatalog = () => {
               </Badge>
             )}
           </Button>
-          <Button variant="outline" onClick={() => setIsShippingSidebarOpen(true)} className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Frais de port
-          </Button>
         </div>
 
         {loading ? (
@@ -326,6 +322,15 @@ const AccessoriesCatalog = () => {
           onClose={() => setIsShippingSidebarOpen(false)}
           onFeesChange={loadAccessories}
         />
+
+        {/* Bouton rond fixe pour les frais de port */}
+        <Button
+          onClick={() => setIsShippingSidebarOpen(true)}
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-shadow z-50"
+          title="Gérer les frais de port"
+        >
+          <Package className="h-6 w-6" />
+        </Button>
 
         <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
           <AlertDialogContent>
