@@ -822,7 +822,7 @@ const ExpenseFormDialog = ({
                     <span className="font-semibold">Prix total avec options:</span>
                     <span className="text-lg font-bold">
                       {(
-                        parseFloat(formData.prix_achat || "0") +
+                        parseFloat(formData.prix_vente_ttc || "0") +
                         selectedOptions.reduce((sum, optId) => {
                           const opt = availableOptions.find((o) => o.id === optId);
                           return sum + (opt?.prix || 0);
