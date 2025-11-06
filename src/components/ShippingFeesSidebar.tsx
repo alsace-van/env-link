@@ -16,8 +16,8 @@ export const ShippingFeesSidebar = ({ isOpen, onClose, onFeesChange }: ShippingF
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={handleClose}>
-      <SheetContent side="right" className="w-[900px] sm:max-w-[900px] overflow-y-auto">
+    <Sheet open={isOpen} onOpenChange={handleClose} modal={true}>
+      <SheetContent side="right" className="w-auto min-w-[400px] max-w-[600px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Gestion des Frais de Port</SheetTitle>
           <SheetDescription>
