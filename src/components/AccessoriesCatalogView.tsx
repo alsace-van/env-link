@@ -17,6 +17,7 @@ import {
   Store,
   Package,
   Filter,
+  Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
@@ -36,6 +37,7 @@ import {
 import AccessoryCatalogFormDialog from "@/components/AccessoryCatalogFormDialog";
 import CategoryManagementDialog from "@/components/CategoryManagementDialog";
 import AccessoryImportExportDialog from "@/components/AccessoryImportExportDialog";
+import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
 
 interface Category {
   id: string;
@@ -106,6 +108,7 @@ const AccessoriesCatalogView = () => {
   const [expandedMainCategories, setExpandedMainCategories] = useState<Set<string>>(new Set());
   const [expandedSubCategories, setExpandedSubCategories] = useState<Set<string>>(new Set());
   const [expandedOptions, setExpandedOptions] = useState<Set<string>>(new Set());
+  const [isShippingFeesOpen, setIsShippingFeesOpen] = useState(false);
 
   useEffect(() => {
     loadAccessories();
@@ -365,6 +368,10 @@ const AccessoriesCatalogView = () => {
             </div>
             <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
               Import/Export
+            </Button>
+            <Button onClick={() => setIsShippingFeesOpen(true)} variant="outline">
+              <Truck className="h-4 w-4 mr-2" />
+              Frais de port
             </Button>
             <Button onClick={handleAdd}>
               <Plus className="h-4 w-4 mr-2" />
@@ -849,6 +856,12 @@ const AccessoriesCatalogView = () => {
             onClose={() => setIsImportExportOpen(false)}
             onSuccess={loadAccessories}
             categories={categories}
+          />
+
+          <ShippingFeesSidebar
+            isOpen={isShippingFeesOpen}
+            onClose={() => setIsShippingFeesOpen(false)}
+            onFeesChange={loadAccessories}
           />
         </CardContent>
       </Card>
