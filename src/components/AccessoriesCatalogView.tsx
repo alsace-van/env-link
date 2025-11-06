@@ -369,10 +369,6 @@ const AccessoriesCatalogView = () => {
             <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
               Import/Export
             </Button>
-            <Button onClick={() => setIsShippingFeesOpen(true)} variant="outline">
-              <Truck className="h-4 w-4 mr-2" />
-              Frais de port
-            </Button>
             <Button onClick={handleAdd}>
               <Plus className="h-4 w-4 mr-2" />
               Ajouter un accessoire
@@ -863,6 +859,15 @@ const AccessoriesCatalogView = () => {
             onClose={() => setIsShippingFeesOpen(false)}
             onFeesChange={loadAccessories}
           />
+
+          {/* Bouton rond fixe pour les frais de port */}
+          <Button
+            onClick={() => setIsShippingFeesOpen(true)}
+            className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-shadow z-50"
+            title="Gérer les frais de port"
+          >
+            <Package className="h-6 w-6" />
+          </Button>
         </CardContent>
       </Card>
     </div>
