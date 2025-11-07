@@ -11,37 +11,37 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface VehicleRegistrationData {
-  // Données essentielles
-  vin?: string;                    // E - Numéro VIN
-  immatriculation?: string;        // A - Immatriculation
-  marque?: string;                 // D1 - Marque
-  modele?: string;                 // D2 - Type variante version
-  denomination?: string;           // D3 - Dénomination commerciale
-  
+  // ✅ CORRECTION: Utiliser les MÊMES noms que ScanConfirmationModal
+  numeroChassisVIN?: string; // E - Numéro VIN (était "vin")
+  immatriculation?: string; // A - Immatriculation
+  marque?: string; // D1 - Marque
+  modele?: string; // D2 - Type variante version
+  denominationCommerciale?: string; // D3 - Dénomination commerciale (était "denomination")
+
   // Classification
-  genre?: string;                  // J - Genre (CTTE, VP, VASP)
-  carrosserie?: string;            // J1 - Carrosserie
-  
+  genreNational?: string; // J - Genre (était "genre")
+  carrosserie?: string; // J1 - Carrosserie
+
   // Motorisation
-  energie?: string;                // P3 - Énergie
-  puissanceFiscale?: number;       // P6 - Puissance fiscale
-  cylindree?: number;              // P1 - Cylindrée
-  
+  energie?: string; // P3 - Énergie
+  puissanceFiscale?: number; // P6 - Puissance fiscale
+  cylindree?: number; // P1 - Cylindrée
+
   // Masses
-  masseVide?: number;              // G - Masse en ordre de marche
-  ptac?: number;                   // F1 - PTAC
-  ptra?: number;                   // F2 - PTRA
-  
+  masseVide?: number; // G - Masse en ordre de marche
+  masseEnChargeMax?: number; // F1 - PTAC (était "ptac")
+  ptra?: number; // F2 - PTRA
+
   // Dimensions
-  longueur?: number;               // L - Longueur
-  largeur?: number;                // B - Largeur
-  hauteur?: number;                // H - Hauteur
-  
+  longueur?: number; // L - Longueur
+  largeur?: number; // B - Largeur
+  hauteur?: number; // H - Hauteur
+
   // Autres
-  nombrePlaces?: number;           // S1 - Nombre de places
-  datePremiereImmat?: string;      // B1 - Date première immat
-  
-  confidence?: number;             // Niveau de confiance du scan
+  nombrePlaces?: number; // S1 - Nombre de places
+  datePremiereImmatriculation?: string; // B1 - Date première immat (était "datePremiereImmat")
+
+  confidence?: number; // Niveau de confiance du scan
   [key: string]: any;
 }
 
@@ -96,29 +96,43 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
         throw new Error(data.error || "Erreur lors du scan");
       }
 
-      // Mapper les données Gemini vers notre format
+      // ✅ CORRECTION: Mapper avec les BONS noms de champs pour ScanConfirmationModal
       const scanData = data.data;
       const mappedData: VehicleRegistrationData = {
-        vin: scanData.E,
+        // Champs critiques
+        numeroChassisVIN: scanData.E, // ✅ Corrigé: était "vin"
         immatriculation: scanData.A,
         marque: scanData.D1,
         modele: scanData.D2,
-        denomination: scanData.D3,
-        genre: scanData.J,
+        denominationCommerciale: scanData.D3, // ✅ Corrigé: était "denomination"
+
+        // Classification
+        genreNational: scanData.J, // ✅ Corrigé: était "genre"
         carrosserie: scanData.J1,
+
+        // Motorisation
         energie: scanData.P3,
         puissanceFiscale: scanData.P6 ? parseInt(scanData.P6) : undefined,
         cylindree: scanData.P1 ? parseInt(scanData.P1) : undefined,
+
+        // Masses
         masseVide: scanData.G ? parseInt(scanData.G) : undefined,
-        ptac: scanData.F1 ? parseInt(scanData.F1) : undefined,
+        masseEnChargeMax: scanData.F1 ? parseInt(scanData.F1) : undefined, // ✅ Corrigé: était "ptac"
         ptra: scanData.F2 ? parseInt(scanData.F2) : undefined,
+
+        // Dimensions
         longueur: scanData.L ? parseInt(scanData.L) : undefined,
         largeur: scanData.B ? parseInt(scanData.B) : undefined,
         hauteur: scanData.H ? parseInt(scanData.H) : undefined,
+
+        // Autres
         nombrePlaces: scanData.S1 ? parseInt(scanData.S1) : undefined,
-        datePremiereImmat: scanData.B1,
+        datePremiereImmatriculation: scanData.B1, // ✅ Corrigé: était "datePremiereImmat"
+
         confidence: scanData.confidence || 90,
       };
+
+      console.log("✅ Données mappées pour ScanConfirmationModal:", mappedData);
 
       setProgress(100);
       setExtractedData(mappedData);
@@ -185,9 +199,7 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
                 IA Gemini
               </Badge>
             </CardTitle>
-            <CardDescription>
-              Scannez automatiquement la carte grise avec l'IA - Précision 95%
-            </CardDescription>
+            <CardDescription>Scannez automatiquement la carte grise avec l'IA - Précision 95%</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -214,27 +226,16 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
                 disabled={isProcessing}
               />
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Prenez une photo nette de la carte grise (recto)
-            </p>
+            <p className="mt-2 text-sm text-muted-foreground">Prenez une photo nette de la carte grise (recto)</p>
           </div>
         )}
 
         {imagePreview && (
           <div className="space-y-4">
             <div className="relative">
-              <img
-                src={imagePreview}
-                alt="Carte grise"
-                className="w-full rounded-lg border"
-              />
+              <img src={imagePreview} alt="Carte grise" className="w-full rounded-lg border" />
               {!isProcessing && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={resetScanner}
-                >
+                <Button variant="destructive" size="sm" className="absolute top-2 right-2" onClick={resetScanner}>
                   <X className="h-4 w-4" />
                 </Button>
               )}
@@ -265,27 +266,27 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
                   <div>
                     <Label className="text-xs text-muted-foreground">VIN</Label>
-                    <p className="font-mono font-bold">{extractedData.vin}</p>
+                    <p className="font-mono font-bold">{extractedData.numeroChassisVIN || "Non détecté"}</p>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Immatriculation</Label>
-                    <p className="font-bold">{extractedData.immatriculation}</p>
+                    <p className="font-bold">{extractedData.immatriculation || "Non détecté"}</p>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Marque</Label>
-                    <p>{extractedData.marque}</p>
+                    <p>{extractedData.marque || "Non détecté"}</p>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Modèle</Label>
-                    <p>{extractedData.modele}</p>
+                    <p>{extractedData.modele || "Non détecté"}</p>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Genre</Label>
-                    <p>{extractedData.genre}</p>
+                    <p>{extractedData.genreNational || "Non détecté"}</p>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">PTAC</Label>
-                    <p>{extractedData.ptac} kg</p>
+                    <p>{extractedData.masseEnChargeMax ? `${extractedData.masseEnChargeMax} kg` : "Non détecté"}</p>
                   </div>
                 </div>
 
