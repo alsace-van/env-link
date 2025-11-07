@@ -26,11 +26,11 @@ serve(async (req) => {
     // Convertir l'image base64 en format accepté par Gemini
     const base64Image = imageData.replace(/^data:image\/\w+;base64,/, "");
 
-    // ✅ Détecter le type MIME de l'image
+    // Détecter le type MIME de l'image
     const mimeMatch = imageData.match(/^data:(image\/\w+);base64,/);
     const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
 
-    // ✅ PROMPT AMÉLIORÉ - Plus strict et précis
+    // Prompt amélioré pour Gemini
     const improvedPrompt = `Tu es un expert en lecture de cartes grises françaises (certificat d'immatriculation français).
 
 Analyse cette image et extrait UNIQUEMENT les informations VISIBLES et LISIBLES.
@@ -103,7 +103,7 @@ EXEMPLE DE RÉPONSE ATTENDUE :
   "confidence": 92
 }`;
 
-    // ✅ CORRECTION CRITIQUE : Utiliser gemini-2.0-flash-exp (pas gemini-1.5-flash)
+    // Appel à l'API Gemini Vision avec le bon modèle
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`,
       {
@@ -120,7 +120,7 @@ EXEMPLE DE RÉPONSE ATTENDUE :
                 },
                 {
                   inline_data: {
-                    mime_type: mimeType, // ✅ Utilise le bon MIME type
+                    mime_type: mimeType,
                     data: base64Image,
                   },
                 },
@@ -128,8 +128,8 @@ EXEMPLE DE RÉPONSE ATTENDUE :
             },
           ],
           generationConfig: {
-            temperature: 0, // ✅ 0 pour être déterministe
-            topK: 1, // ✅ Prendre seulement le meilleur token
+            temperature: 0,
+            topK: 1,
             topP: 1,
             maxOutputTokens: 2048,
           },
@@ -160,7 +160,18 @@ EXEMPLE DE RÉPONSE ATTENDUE :
 
     const vehicleData = JSON.parse(cleanedText);
 
-    // ✅ VALIDATION AMÉLIORÉE - Accepter si au moins QUELQUES champs sont détectés
+    // ✅ CONVERTIR LES DATES DD/MM/YYYY → YYYY-MM-DD
+    if (vehicleData.B1 && typeof vehicleData.B1 === 'string') {
+      // Si format DD/MM/YYYY
+      const match = vehicleData.B1.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (match) {
+        const [, day, month, year] = match;
+        vehicleData.B1 = `${year}-${month}-${day}`; // Convertir en YYYY-MM-DD
+        console.log(`✅ Date convertie: ${match[0]} → ${vehicleData.B1}`);
+      }
+    }
+
+    // Validation améliorée - Accepter si au moins QUELQUES champs sont détectés
     const detectedFields = Object.keys(vehicleData).filter(
       (key) =>
         key !== "confidence" && vehicleData[key] !== null && vehicleData[key] !== undefined && vehicleData[key] !== "",
