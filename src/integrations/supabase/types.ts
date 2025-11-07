@@ -1383,7 +1383,33 @@ export type Database = {
           type_mine: string | null
           updated_at: string
           user_id: string
+          vehicle_carrosserie: string | null
           vehicle_catalog_id: string | null
+          vehicle_couleur: string | null
+          vehicle_cylindree: number | null
+          vehicle_date_premiere_immatriculation: string | null
+          vehicle_denomination_commerciale: string | null
+          vehicle_empattement: number | null
+          vehicle_energie: string | null
+          vehicle_genre: string | null
+          vehicle_hauteur: number | null
+          vehicle_immatriculation: string | null
+          vehicle_largeur: number | null
+          vehicle_longueur: number | null
+          vehicle_marque: string | null
+          vehicle_masse_vide: number | null
+          vehicle_modele: string | null
+          vehicle_nombre_places: number | null
+          vehicle_ptac: number | null
+          vehicle_ptr_essieu_arriere: number | null
+          vehicle_ptr_essieu_avant: number | null
+          vehicle_ptra: number | null
+          vehicle_puissance_fiscale: number | null
+          vehicle_scan_confidence: number | null
+          vehicle_scan_data: Json | null
+          vehicle_scanned_at: string | null
+          vehicle_type_variante_version: string | null
+          vehicle_vin: string | null
         }
         Insert: {
           adresse_proprietaire?: string | null
@@ -1418,7 +1444,33 @@ export type Database = {
           type_mine?: string | null
           updated_at?: string
           user_id: string
+          vehicle_carrosserie?: string | null
           vehicle_catalog_id?: string | null
+          vehicle_couleur?: string | null
+          vehicle_cylindree?: number | null
+          vehicle_date_premiere_immatriculation?: string | null
+          vehicle_denomination_commerciale?: string | null
+          vehicle_empattement?: number | null
+          vehicle_energie?: string | null
+          vehicle_genre?: string | null
+          vehicle_hauteur?: number | null
+          vehicle_immatriculation?: string | null
+          vehicle_largeur?: number | null
+          vehicle_longueur?: number | null
+          vehicle_marque?: string | null
+          vehicle_masse_vide?: number | null
+          vehicle_modele?: string | null
+          vehicle_nombre_places?: number | null
+          vehicle_ptac?: number | null
+          vehicle_ptr_essieu_arriere?: number | null
+          vehicle_ptr_essieu_avant?: number | null
+          vehicle_ptra?: number | null
+          vehicle_puissance_fiscale?: number | null
+          vehicle_scan_confidence?: number | null
+          vehicle_scan_data?: Json | null
+          vehicle_scanned_at?: string | null
+          vehicle_type_variante_version?: string | null
+          vehicle_vin?: string | null
         }
         Update: {
           adresse_proprietaire?: string | null
@@ -1453,7 +1505,33 @@ export type Database = {
           type_mine?: string | null
           updated_at?: string
           user_id?: string
+          vehicle_carrosserie?: string | null
           vehicle_catalog_id?: string | null
+          vehicle_couleur?: string | null
+          vehicle_cylindree?: number | null
+          vehicle_date_premiere_immatriculation?: string | null
+          vehicle_denomination_commerciale?: string | null
+          vehicle_empattement?: number | null
+          vehicle_energie?: string | null
+          vehicle_genre?: string | null
+          vehicle_hauteur?: number | null
+          vehicle_immatriculation?: string | null
+          vehicle_largeur?: number | null
+          vehicle_longueur?: number | null
+          vehicle_marque?: string | null
+          vehicle_masse_vide?: number | null
+          vehicle_modele?: string | null
+          vehicle_nombre_places?: number | null
+          vehicle_ptac?: number | null
+          vehicle_ptr_essieu_arriere?: number | null
+          vehicle_ptr_essieu_avant?: number | null
+          vehicle_ptra?: number | null
+          vehicle_puissance_fiscale?: number | null
+          vehicle_scan_confidence?: number | null
+          vehicle_scan_data?: Json | null
+          vehicle_scanned_at?: string | null
+          vehicle_type_variante_version?: string | null
+          vehicle_vin?: string | null
         }
         Relationships: [
           {

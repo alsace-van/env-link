@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Upload, Trash2, Edit, FileText, Eye, EyeOff } from "lucide-react";
+import { Plus, Upload, Trash2, FileText, Eye, EyeOff, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { RTIAutoFillModal } from "./RTIAutoFillModal";
 
 interface OfficialDocument {
   id: string;
@@ -32,11 +34,12 @@ const CATEGORIES = [
 ];
 
 export const OfficialDocumentsManager = () => {
+  const { projectId } = useParams();
   const [documents, setDocuments] = useState<OfficialDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [editingDoc, setEditingDoc] = useState<OfficialDocument | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [rtiModalOpen, setRtiModalOpen] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -52,9 +55,22 @@ export const OfficialDocumentsManager = () => {
 
   const loadDocuments = async () => {
     setLoading(true);
-    // Official documents table doesn't exist - show empty state
-    setDocuments([]);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("official_documents")
+        .select("*")
+        .eq("is_active", true)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setDocuments(data || []);
+    } catch (error: any) {
+      console.error("Erreur chargement documents:", error);
+      // Silent fail - la table peut ne pas exister encore
+      setDocuments([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -160,191 +176,220 @@ export const OfficialDocumentsManager = () => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>Documents Officiels</CardTitle>
-            <CardDescription>
-              Gérer les PDF templates disponibles pour tous les utilisateurs
-            </CardDescription>
-          </div>
-          <Button onClick={() => setUploadDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter un document
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <p className="text-muted-foreground">Chargement...</p>
-        ) : documents.length === 0 ? (
-          <p className="text-muted-foreground text-center py-8">
-            Aucun document officiel. Ajoutez-en un pour commencer.
-          </p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nom</TableHead>
-                <TableHead>Catégorie</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {documents.map((doc) => (
-                <TableRow key={doc.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-red-500" />
-                      {doc.name}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {doc.category && (
-                      <Badge variant="outline">{doc.category}</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {doc.description || "-"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={doc.is_active ? "default" : "secondary"}>
-                      {doc.is_active ? "Actif" : "Inactif"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleToggleActive(doc)}
-                        title={doc.is_active ? "Désactiver" : "Activer"}
-                      >
-                        {doc.is_active ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => window.open(doc.file_url, "_blank")}
-                        title="Voir le PDF"
-                      >
-                        <FileText className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(doc)}
-                        title="Supprimer"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-
-      {/* Upload Dialog */}
-      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Ajouter un document officiel</DialogTitle>
-            <DialogDescription>
-              Ce document sera disponible pour tous les utilisateurs
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nom du document *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ex: Certificat de conformité"
-              />
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Documents Officiels</CardTitle>
+              <CardDescription>
+                Formulaires DREAL, CERFA et documents administratifs
+              </CardDescription>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="category">Catégorie</Label>
-              <Select
-                value={formData.category}
-                onValueChange={(value) => setFormData({ ...formData, category: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez une catégorie" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Description du document..."
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="file">Fichier PDF *</Label>
-              <Input
-                id="file"
-                type="file"
-                accept="application/pdf"
-                onChange={handleFileChange}
-              />
-              {formData.file && (
-                <p className="text-sm text-muted-foreground">
-                  Fichier sélectionné : {formData.file.name}
-                </p>
+            <div className="flex gap-2">
+              {projectId && (
+                <Button
+                  onClick={() => setRtiModalOpen(true)}
+                  variant="default"
+                  className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Remplissage Auto RTI
+                </Button>
               )}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setUploadDialogOpen(false)}
-                disabled={uploading}
-              >
-                Annuler
-              </Button>
-              <Button onClick={handleUpload} disabled={uploading}>
-                {uploading ? (
-                  <>
-                    <Upload className="h-4 w-4 mr-2 animate-spin" />
-                    Upload en cours...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Ajouter
-                  </>
-                )}
+              <Button onClick={() => setUploadDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Ajouter un document
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-    </Card>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-muted-foreground">Chargement...</p>
+          ) : documents.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                Aucun document officiel disponible.
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Le formulaire RTI 03.5.1 sera automatiquement ajouté lors du premier remplissage.
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nom</TableHead>
+                  <TableHead>Catégorie</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {documents.map((doc) => (
+                  <TableRow key={doc.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-red-500" />
+                        {doc.name}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {doc.category && (
+                        <Badge variant="outline">{doc.category}</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {doc.description || "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={doc.is_active ? "default" : "secondary"}>
+                        {doc.is_active ? "Actif" : "Inactif"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleToggleActive(doc)}
+                          title={doc.is_active ? "Désactiver" : "Activer"}
+                        >
+                          {doc.is_active ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => window.open(doc.file_url, "_blank")}
+                          title="Voir le PDF"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(doc)}
+                          title="Supprimer"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+
+        {/* Upload Dialog */}
+        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Ajouter un document officiel</DialogTitle>
+              <DialogDescription>
+                Ce document sera disponible pour tous les utilisateurs
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Nom du document *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Ex: Certificat de conformité"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="category">Catégorie</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => setFormData({ ...formData, category: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionnez une catégorie" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Description du document..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="file">Fichier PDF *</Label>
+                <Input
+                  id="file"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                />
+                {formData.file && (
+                  <p className="text-sm text-muted-foreground">
+                    Fichier sélectionné : {formData.file.name}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setUploadDialogOpen(false)}
+                  disabled={uploading}
+                >
+                  Annuler
+                </Button>
+                <Button onClick={handleUpload} disabled={uploading}>
+                  {uploading ? (
+                    <>
+                      <Upload className="h-4 w-4 mr-2 animate-spin" />
+                      Upload en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Ajouter
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </Card>
+
+      {/* RTI Auto Fill Modal */}
+      {projectId && (
+        <RTIAutoFillModal
+          open={rtiModalOpen}
+          onOpenChange={setRtiModalOpen}
+          projectId={projectId}
+        />
+      )}
+    </>
   );
 };
