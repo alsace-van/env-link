@@ -14,6 +14,189 @@ export type Database = {
   }
   public: {
     Tables: {
+      accessories_catalog: {
+        Row: {
+          available_in_shop: boolean | null
+          category_id: string | null
+          created_at: string
+          delivery_date: string | null
+          description: string | null
+          expected_delivery_date: string | null
+          fournisseur: string | null
+          hauteur_mm: number | null
+          id: string
+          image_url: string | null
+          intensite_amperes: number | null
+          largeur_mm: number | null
+          last_stock_update: string | null
+          longueur_mm: number | null
+          marge_nette: number | null
+          marge_pourcent: number | null
+          marque: string | null
+          nom: string
+          poids_kg: number | null
+          prix_reference: number | null
+          prix_vente_ttc: number | null
+          puissance_watts: number | null
+          stock_notes: string | null
+          stock_quantity: number | null
+          stock_status: string | null
+          supplier_order_ref: string | null
+          tracking_number: string | null
+          type_electrique: string | null
+          updated_at: string
+          url_produit: string | null
+          user_id: string
+        }
+        Insert: {
+          available_in_shop?: boolean | null
+          category_id?: string | null
+          created_at?: string
+          delivery_date?: string | null
+          description?: string | null
+          expected_delivery_date?: string | null
+          fournisseur?: string | null
+          hauteur_mm?: number | null
+          id?: string
+          image_url?: string | null
+          intensite_amperes?: number | null
+          largeur_mm?: number | null
+          last_stock_update?: string | null
+          longueur_mm?: number | null
+          marge_nette?: number | null
+          marge_pourcent?: number | null
+          marque?: string | null
+          nom: string
+          poids_kg?: number | null
+          prix_reference?: number | null
+          prix_vente_ttc?: number | null
+          puissance_watts?: number | null
+          stock_notes?: string | null
+          stock_quantity?: number | null
+          stock_status?: string | null
+          supplier_order_ref?: string | null
+          tracking_number?: string | null
+          type_electrique?: string | null
+          updated_at?: string
+          url_produit?: string | null
+          user_id: string
+        }
+        Update: {
+          available_in_shop?: boolean | null
+          category_id?: string | null
+          created_at?: string
+          delivery_date?: string | null
+          description?: string | null
+          expected_delivery_date?: string | null
+          fournisseur?: string | null
+          hauteur_mm?: number | null
+          id?: string
+          image_url?: string | null
+          intensite_amperes?: number | null
+          largeur_mm?: number | null
+          last_stock_update?: string | null
+          longueur_mm?: number | null
+          marge_nette?: number | null
+          marge_pourcent?: number | null
+          marque?: string | null
+          nom?: string
+          poids_kg?: number | null
+          prix_reference?: number | null
+          prix_vente_ttc?: number | null
+          puissance_watts?: number | null
+          stock_notes?: string | null
+          stock_quantity?: number | null
+          stock_status?: string | null
+          supplier_order_ref?: string | null
+          tracking_number?: string | null
+          type_electrique?: string | null
+          updated_at?: string
+          url_produit?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessories_catalog_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accessory_options: {
+        Row: {
+          accessory_id: string
+          created_at: string
+          id: string
+          marge_nette: number | null
+          marge_pourcent: number | null
+          nom: string
+          prix_reference: number | null
+          prix_vente_ttc: number | null
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string
+          id?: string
+          marge_nette?: number | null
+          marge_pourcent?: number | null
+          nom: string
+          prix_reference?: number | null
+          prix_vente_ttc?: number | null
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string
+          id?: string
+          marge_nette?: number | null
+          marge_pourcent?: number | null
+          nom?: string
+          prix_reference?: number | null
+          prix_vente_ttc?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessory_options_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      categories: {
+        Row: {
+          created_at: string
+          id: string
+          nom: string
+          parent_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nom: string
+          parent_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nom?: string
+          parent_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expenses: {
         Row: {
           categorie: string
