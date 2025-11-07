@@ -1,134 +1,238 @@
-// ============================================
-// CORRECTION DU BUG DE RECHERCHE DE MARQUE
-// ============================================
-// 
-// PROBLÈME : availableMarques peut être vide si vehicles n'est pas encore chargé
-// SOLUTION : Chercher DIRECTEMENT dans vehicles avec vérification
-//
-// FICHIER À REMPLACER : src/components/ProjectForm.tsx
-// LIGNES MODIFIÉES : 189-263 (handleScannedData)
-//
-// ============================================
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+import { Plus, Loader2 } from "lucide-react";
 
-// Remplacer la fonction handleScannedData (lignes 189-263) par ceci :
+interface ProjectFormProps {
+  onProjectCreated: () => void;
+}
 
-const handleScannedData = (data: VehicleRegistrationData) => {
-  console.log("📥 Données reçues du scanner OCR:", data);
-  setScannedData(data);
+interface VehicleCatalog {
+  id: string;
+  marque: string;
+  modele: string;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
+  poids_vide_kg?: number;
+  ptac_kg?: number;
+}
 
-  // ✅ VÉRIFIER QUE VEHICLES EST CHARGÉ
-  if (vehicles.length === 0) {
-    console.warn("⚠️  vehicles_catalog pas encore chargé, rechargement...");
-    loadVehicles().then(() => {
-      // Retry après chargement
-      handleScannedData(data);
-    });
-    return;
-  }
+const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
+  const [loading, setLoading] = useState(false);
+  const [vehicles, setVehicles] = useState<VehicleCatalog[]>([]);
+  const [formData, setFormData] = useState({
+    nom: "",
+    client_name: "",
+    marque: "",
+    modele: "",
+    immatriculation: "",
+    numero_chassis_vin: "",
+  });
 
-  // Fonction de normalisation ultra-tolérante
-  const normalize = (str: string): string => {
-    return str
-      .normalize("NFD") // Décompose les caractères accentués
-      .replace(/[\u0300-\u036f]/g, "") // Supprime les accents
-      .replace(/[^a-z0-9]/gi, "") // Garde seulement lettres et chiffres
-      .toUpperCase();
+  useEffect(() => {
+    loadVehicles();
+  }, []);
+
+  const loadVehicles = async () => {
+    const { data, error } = await supabase
+      .from("vehicles_catalog")
+      .select("*")
+      .order("marque", { ascending: true })
+      .order("modele", { ascending: true });
+
+    if (error) {
+      console.error("Erreur chargement véhicules:", error);
+      return;
+    }
+
+    setVehicles(data || []);
   };
 
-  if (data.marque) {
-    const marqueNormalized = normalize(data.marque);
-    console.log("🔍 Recherche marque:", data.marque, "→ normalisé:", marqueNormalized);
+  const availableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
+
+  const availableModeles = formData.marque
+    ? Array.from(new Set(vehicles.filter((v) => v.marque === formData.marque).map((v) => v.modele))).sort()
+    : [];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    // ✅ CORRECTION : Extraire availableMarques MAINTENANT (pas au render)
-    // Cela garantit qu'on a la liste à jour
-    const currentAvailableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
-    console.log(`📊 ${currentAvailableMarques.length} marques disponibles:`, currentAvailableMarques);
+    if (!formData.nom) {
+      toast.error("Le nom du projet est requis");
+      return;
+    }
 
-    // Chercher avec différentes stratégies
-    let foundMarque = currentAvailableMarques.find((m) => {
-      const mNorm = normalize(m);
-      console.log(`  🔎 Comparaison: "${m}" (${mNorm}) vs "${data.marque}" (${marqueNormalized})`);
-      
-      // Stratégie 1 : Match exact
-      if (mNorm === marqueNormalized) {
-        console.log(`    ✅ Match exact trouvé !`);
-        return true;
-      }
-      
-      // Stratégie 2 : L'un contient l'autre
-      if (mNorm.includes(marqueNormalized) || marqueNormalized.includes(mNorm)) {
-        console.log(`    ✅ Match partiel trouvé (inclusion) !`);
-        return true;
-      }
-      
-      // Stratégie 3 : Match partiel (au moins 80% de correspondance)
-      const minLength = Math.min(mNorm.length, marqueNormalized.length);
-      const maxLength = Math.max(mNorm.length, marqueNormalized.length);
-      if (minLength / maxLength >= 0.8 && mNorm.startsWith(marqueNormalized.substring(0, 3))) {
-        console.log(`    ✅ Match 80% trouvé !`);
-        return true;
-      }
-      
-      return false;
-    });
+    setLoading(true);
 
-    // Si pas trouvé, essayer avec juste les premiers caractères (PEUG → PEUGEOT)
-    if (!foundMarque && marqueNormalized.length >= 4) {
-      console.log(`  🔎 Tentative avec préfixe de 4 caractères: ${marqueNormalized.substring(0, 4)}`);
-      foundMarque = currentAvailableMarques.find((m) => {
-        const mNorm = normalize(m);
-        const match = mNorm.startsWith(marqueNormalized.substring(0, 4));
-        if (match) console.log(`    ✅ Match préfixe trouvé: ${m}`);
-        return match;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast.error("Vous devez être connecté");
+        return;
+      }
+
+      const selectedVehicle = vehicles.find(
+        (v) => v.marque === formData.marque && v.modele === formData.modele
+      );
+
+      const { error } = await supabase.from("projects").insert({
+        nom: formData.nom,
+        client_name: formData.client_name || null,
+        marque: formData.marque || null,
+        modele: formData.modele || null,
+        immatriculation: formData.immatriculation || null,
+        numero_chassis_vin: formData.numero_chassis_vin || null,
+        longueur: selectedVehicle?.longueur_mm || null,
+        largeur: selectedVehicle?.largeur_mm || null,
+        hauteur: selectedVehicle?.hauteur_mm || null,
+        masse_vide: selectedVehicle?.poids_vide_kg || null,
+        ptra: selectedVehicle?.ptac_kg || null,
+        user_id: user.id,
+        statut: "En cours",
       });
+
+      if (error) throw error;
+
+      toast.success("Projet créé avec succès");
+      
+      // Reset form
+      setFormData({
+        nom: "",
+        client_name: "",
+        marque: "",
+        modele: "",
+        immatriculation: "",
+        numero_chassis_vin: "",
+      });
+
+      onProjectCreated();
+    } catch (error: any) {
+      console.error("Erreur:", error);
+      toast.error("Erreur lors de la création du projet");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    if (foundMarque) {
-      console.log("✅✅✅ MARQUE TROUVÉE DANS LA BASE:", foundMarque);
-      setSelectedMarque(foundMarque);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Plus className="h-5 w-5" />
+          Nouveau Projet
+        </CardTitle>
+        <CardDescription>
+          Créez un nouveau projet de conversion
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="nom">Nom du projet *</Label>
+              <Input
+                id="nom"
+                value={formData.nom}
+                onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                placeholder="Ex: Conversion Ford Transit"
+                required
+              />
+            </div>
 
-      // Essayer aussi de trouver le modèle
-      if (data.denominationCommerciale) {
-        const modeleNormalized = normalize(data.denominationCommerciale);
-        console.log("🔍 Recherche modèle:", data.denominationCommerciale, "→ normalisé:", modeleNormalized);
-        
-        const availableModelesForMarque = vehicles
-          .filter((v) => v.marque === foundMarque)
-          .map((v) => v.modele);
-          
-        console.log(`📊 ${availableModelesForMarque.length} modèles pour ${foundMarque}:`, availableModelesForMarque);
-        
-        const foundModele = Array.from(new Set(availableModelesForMarque)).find((m) => {
-          const mNorm = normalize(m);
-          console.log(`  🔎 Comparaison modèle: "${m}" (${mNorm}) vs "${data.denominationCommerciale}" (${modeleNormalized})`);
-          const match = mNorm.includes(modeleNormalized) || modeleNormalized.includes(mNorm);
-          if (match) console.log(`    ✅ Match modèle trouvé !`);
-          return match;
-        });
+            <div className="space-y-2">
+              <Label htmlFor="client_name">Nom du client</Label>
+              <Input
+                id="client_name"
+                value={formData.client_name}
+                onChange={(e) => setFormData({ ...formData, client_name: e.target.value })}
+                placeholder="Nom du propriétaire"
+              />
+            </div>
 
-        if (foundModele) {
-          console.log("✅✅✅ MODÈLE TROUVÉ DANS LA BASE:", foundModele);
-          setSelectedModele(foundModele);
-          toast.success(`Marque et modèle trouvés : ${foundMarque} ${foundModele}`, {
-            duration: 3000,
-          });
-        } else {
-          console.log("❌ Modèle non trouvé, proposition de création");
-          // Modèle non trouvé, proposer de le créer
-          setNewModeleToCreate(data.denominationCommerciale);
-          setShowCreateModeleDialog(true);
-        }
-      } else {
-        toast.success(`Marque trouvée : ${foundMarque}. Sélectionnez le modèle manuellement.`, {
-          duration: 4000,
-        });
-      }
-    } else {
-      // Marque non trouvée, proposer de la créer
-      console.log("❌❌❌ MARQUE NON TROUVÉE:", data.marque);
-      console.log("  Liste des marques dans vehicles:", currentAvailableMarques);
-      setNewMarqueToCreate(data.marque);
-      setShowCreateMarqueDialog(true);
-    }
-  }
+            <div className="space-y-2">
+              <Label htmlFor="marque">Marque</Label>
+              <Select
+                value={formData.marque}
+                onValueChange={(value) => setFormData({ ...formData, marque: value, modele: "" })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner une marque" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMarques.map((marque) => (
+                    <SelectItem key={marque} value={marque}>
+                      {marque}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="modele">Modèle</Label>
+              <Select
+                value={formData.modele}
+                onValueChange={(value) => setFormData({ ...formData, modele: value })}
+                disabled={!formData.marque}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner un modèle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableModeles.map((modele) => (
+                    <SelectItem key={modele} value={modele}>
+                      {modele}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="immatriculation">Immatriculation</Label>
+              <Input
+                id="immatriculation"
+                value={formData.immatriculation}
+                onChange={(e) => setFormData({ ...formData, immatriculation: e.target.value })}
+                placeholder="Ex: AB-123-CD"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="numero_chassis_vin">N° de châssis (VIN)</Label>
+              <Input
+                id="numero_chassis_vin"
+                value={formData.numero_chassis_vin}
+                onChange={(e) => setFormData({ ...formData, numero_chassis_vin: e.target.value })}
+                placeholder="17 caractères"
+              />
+            </div>
+          </div>
+
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Création en cours...
+              </>
+            ) : (
+              <>
+                <Plus className="mr-2 h-4 w-4" />
+                Créer le projet
+              </>
+            )}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
 };
+
+export default ProjectForm;
