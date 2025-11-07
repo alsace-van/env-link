@@ -103,7 +103,7 @@ EXEMPLE DE RÉPONSE ATTENDUE :
   "confidence": 92
 }`;
 
-    // Appel à l'API Gemini Vision
+    // ✅ CORRECTION CRITIQUE : Utiliser gemini-2.0-flash-exp (pas gemini-1.5-flash)
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`,
       {
