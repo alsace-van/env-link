@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,17 +37,17 @@ interface TransformationItem {
 export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillModalProps) => {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [step, setStep] = useState<'select' | 'generate' | 'preview'>('select');
-  
+  const [step, setStep] = useState<"select" | "generate" | "preview">("select");
+
   // Données du projet
   const [vehicleData, setVehicleData] = useState<any>(null);
   const [customerData, setCustomerData] = useState<any>(null);
   const [expenses, setExpenses] = useState<any[]>([]);
-  
+
   // Transformations sélectionnées
   const [transformations, setTransformations] = useState<TransformationItem[]>([]);
   const [manualTransformations, setManualTransformations] = useState("");
-  
+
   // Données générées
   const [generatedRTI, setGeneratedRTI] = useState<any>(null);
 
@@ -56,7 +63,12 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
       // Charger les données du projet
       const { data: project, error: projectError } = await supabase
         .from("projects")
-        .select("*")
+        .select(
+          `
+          *,
+          customers (*)
+        `,
+        )
         .eq("id", projectId)
         .single();
 
@@ -87,11 +99,11 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
       });
 
       setCustomerData({
-        nom: project.customer_name || "",
-        prenom: "",
-        telephone: project.customer_phone || "",
-        email: project.customer_email || "",
-        adresse: "",
+        nom: project.customers?.name || "",
+        prenom: project.customers?.first_name || "",
+        telephone: project.customers?.phone || "",
+        email: project.customers?.email || "",
+        adresse: project.customers?.address || "",
       });
 
       // Charger les dépenses du projet
@@ -123,23 +135,17 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
   };
 
   const toggleTransformation = (id: string) => {
-    setTransformations(
-      transformations.map((t) =>
-        t.id === id ? { ...t, selected: !t.selected } : t
-      )
-    );
+    setTransformations(transformations.map((t) => (t.id === id ? { ...t, selected: !t.selected } : t)));
   };
 
   const handleGenerate = async () => {
-    setStep('generate');
+    setStep("generate");
     setLoading(true);
     setProgress(10);
 
     try {
       // Préparer les données de transformation
-      const selectedTransformations = transformations
-        .filter((t) => t.selected)
-        .map((t) => t.name);
+      const selectedTransformations = transformations.filter((t) => t.selected).map((t) => t.name);
 
       const allTransformations = [
         ...selectedTransformations,
@@ -170,7 +176,7 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
 
       setGeneratedRTI(data.data);
       setProgress(100);
-      setStep('preview');
+      setStep("preview");
 
       toast.success("Document RTI généré avec succès", {
         description: "Vérifiez les données avant de télécharger",
@@ -180,7 +186,7 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
       toast.error("Erreur lors de la génération", {
         description: error.message,
       });
-      setStep('select');
+      setStep("select");
     } finally {
       setLoading(false);
       setProgress(0);
@@ -216,13 +222,11 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
             Remplissage automatique RTI
             <Badge variant="secondary">IA Gemini</Badge>
           </DialogTitle>
-          <DialogDescription>
-            Génération automatique des données pour le formulaire RTI 03.5.1
-          </DialogDescription>
+          <DialogDescription>Génération automatique des données pour le formulaire RTI 03.5.1</DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh] pr-4">
-          {step === 'select' && (
+          {step === "select" && (
             <div className="space-y-6">
               {/* Informations véhicule */}
               <div>
@@ -260,7 +264,9 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
                 </h3>
                 <div className="p-3 bg-blue-50 rounded-lg text-sm">
                   <p>
-                    <strong>{customerData?.nom} {customerData?.prenom}</strong>
+                    <strong>
+                      {customerData?.nom} {customerData?.prenom}
+                    </strong>
                   </p>
                   <p className="text-muted-foreground">{customerData?.telephone}</p>
                   <p className="text-muted-foreground">{customerData?.email}</p>
@@ -271,20 +277,15 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
 
               {/* Transformations */}
               <div>
-                <h3 className="text-sm font-semibold mb-2">
-                  Travaux de transformation
-                </h3>
-                
+                <h3 className="text-sm font-semibold mb-2">Travaux de transformation</h3>
+
                 {transformations.length > 0 ? (
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground mb-2">
                       Sélectionnez les éléments à inclure dans le dossier RTI :
                     </p>
                     {transformations.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded"
-                      >
+                      <div key={item.id} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
                         <Checkbox
                           id={item.id}
                           checked={item.selected}
@@ -311,9 +312,7 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
                 )}
 
                 <div className="mt-4">
-                  <Label htmlFor="manual-transformations">
-                    Transformations supplémentaires (optionnel)
-                  </Label>
+                  <Label htmlFor="manual-transformations">Transformations supplémentaires (optionnel)</Label>
                   <Textarea
                     id="manual-transformations"
                     value={manualTransformations}
@@ -327,36 +326,40 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
             </div>
           )}
 
-          {step === 'generate' && (
+          {step === "generate" && (
             <div className="space-y-4 py-8">
               <div className="text-center">
                 <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
                 <p className="mt-4 text-lg font-medium">Génération en cours...</p>
-                <p className="text-sm text-muted-foreground">
-                  L'IA analyse les données et génère le formulaire RTI
-                </p>
+                <p className="text-sm text-muted-foreground">L'IA analyse les données et génère le formulaire RTI</p>
               </div>
               <Progress value={progress} className="w-full" />
             </div>
           )}
 
-          {step === 'preview' && generatedRTI && (
+          {step === "preview" && generatedRTI && (
             <div className="space-y-4">
               <Alert className="border-green-500 bg-green-50">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-900">
-                  Document RTI généré avec succès !
-                </AlertDescription>
+                <AlertDescription className="text-green-900">Document RTI généré avec succès !</AlertDescription>
               </Alert>
 
               {/* Annexe 1 */}
               <div>
                 <h3 className="font-semibold mb-2">Annexe 1 - Demande de réception</h3>
                 <div className="p-3 bg-gray-50 rounded-lg space-y-2 text-sm">
-                  <div><strong>Motif:</strong> {generatedRTI.annexe1?.motifReception}</div>
-                  <div><strong>Demandeur:</strong> {generatedRTI.annexe1?.nomPrenom}</div>
-                  <div><strong>VIN:</strong> {generatedRTI.annexe1?.numeroIdentification}</div>
-                  <div><strong>Transformations:</strong> {generatedRTI.annexe1?.modificationsEffectuees}</div>
+                  <div>
+                    <strong>Motif:</strong> {generatedRTI.annexe1?.motifReception}
+                  </div>
+                  <div>
+                    <strong>Demandeur:</strong> {generatedRTI.annexe1?.nomPrenom}
+                  </div>
+                  <div>
+                    <strong>VIN:</strong> {generatedRTI.annexe1?.numeroIdentification}
+                  </div>
+                  <div>
+                    <strong>Transformations:</strong> {generatedRTI.annexe1?.modificationsEffectuees}
+                  </div>
                 </div>
               </div>
 
@@ -364,10 +367,18 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
               <div>
                 <h3 className="font-semibold mb-2">Annexe 2 - Répartition des charges</h3>
                 <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-lg text-sm">
-                  <div><strong>PTAC:</strong> {generatedRTI.annexe2?.ptac} kg</div>
-                  <div><strong>Poids vide:</strong> {generatedRTI.annexe2?.poidsVideTotal} kg</div>
-                  <div><strong>CUM:</strong> {generatedRTI.annexe2?.chargeUtileMarchandises} kg</div>
-                  <div><strong>Passagers:</strong> {generatedRTI.annexe2?.nombrePassagers}</div>
+                  <div>
+                    <strong>PTAC:</strong> {generatedRTI.annexe2?.ptac} kg
+                  </div>
+                  <div>
+                    <strong>Poids vide:</strong> {generatedRTI.annexe2?.poidsVideTotal} kg
+                  </div>
+                  <div>
+                    <strong>CUM:</strong> {generatedRTI.annexe2?.chargeUtileMarchandises} kg
+                  </div>
+                  <div>
+                    <strong>Passagers:</strong> {generatedRTI.annexe2?.nombrePassagers}
+                  </div>
                 </div>
               </div>
 
@@ -375,10 +386,10 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
               <div>
                 <h3 className="font-semibold mb-2">Annexe 3 - Attestation de transformation</h3>
                 <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                  <p><strong>Transformateur:</strong> {generatedRTI.annexe3?.transformateur}</p>
-                  <p className="mt-2 text-muted-foreground">
-                    {generatedRTI.annexe3?.descriptifTransformations}
+                  <p>
+                    <strong>Transformateur:</strong> {generatedRTI.annexe3?.transformateur}
                   </p>
+                  <p className="mt-2 text-muted-foreground">{generatedRTI.annexe3?.descriptifTransformations}</p>
                 </div>
               </div>
             </div>
@@ -389,17 +400,17 @@ export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillM
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Fermer
           </Button>
-          
-          {step === 'select' && (
+
+          {step === "select" && (
             <Button onClick={handleGenerate} disabled={loading}>
               <Sparkles className="h-4 w-4 mr-2" />
               Générer le document
             </Button>
           )}
-          
-          {step === 'preview' && (
+
+          {step === "preview" && (
             <>
-              <Button variant="outline" onClick={() => setStep('select')}>
+              <Button variant="outline" onClick={() => setStep("select")}>
                 Modifier
               </Button>
               <Button onClick={handleDownload}>
