@@ -10,14 +10,16 @@ interface SummarizeRequest {
   noticeId: string;
 }
 
-interface LovableAIResponse {
-  choices: Array<{
-    message: {
-      content: string;
+interface GeminiResponse {
+  candidates: Array<{
+    content: {
+      parts: Array<{
+        text: string;
+      }>;
     };
   }>;
-  usage?: {
-    total_tokens: number;
+  usageMetadata?: {
+    totalTokenCount: number;
   };
 }
 
@@ -130,11 +132,11 @@ serve(async (req) => {
       new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
     )
 
-    // Appeler Lovable AI
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')
-    if (!lovableApiKey) {
+    // Appeler Gemini AI
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!geminiApiKey) {
       return new Response(
-        JSON.stringify({ error: 'Lovable AI non configuré' }),
+        JSON.stringify({ error: 'Gemini API non configurée' }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500,
@@ -142,15 +144,7 @@ serve(async (req) => {
       )
     }
 
-    const aiPayload = {
-      model: 'google/gemini-2.5-flash',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Tu es un assistant spécialisé dans l'analyse de notices techniques de produits pour véhicules aménagés et camping-cars.
+    const prompt = `Tu es un assistant spécialisé dans l'analyse de notices techniques de produits pour véhicules aménagés et camping-cars.
 
 Analyse ce document PDF et génère un résumé structuré en français avec les sections suivantes:
 
@@ -173,11 +167,16 @@ Analyse ce document PDF et génère un résumé structuré en français avec les
 
 Si certaines sections ne sont pas pertinentes pour ce document, ne les inclus pas.
 Sois concis mais précis. Maximum 500 mots.`
-            },
+
+    const aiPayload = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
             {
-              type: 'image_url',
-              image_url: {
-                url: `data:application/pdf;base64,${base64Data}`
+              inline_data: {
+                mime_type: 'application/pdf',
+                data: base64Data
               }
             }
           ]
@@ -185,11 +184,10 @@ Sois concis mais précis. Maximum 500 mots.`
       ]
     }
 
-    console.log('Appel à Lovable AI...')
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    console.log('Appel à Gemini AI...')
+    const aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=' + geminiApiKey, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(aiPayload),
@@ -197,7 +195,7 @@ Sois concis mais précis. Maximum 500 mots.`
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text()
-      console.error('Erreur Lovable AI:', aiResponse.status, errorText)
+      console.error('Erreur Gemini AI:', aiResponse.status, errorText)
       
       if (aiResponse.status === 429) {
         return new Response(
@@ -205,16 +203,6 @@ Sois concis mais précis. Maximum 500 mots.`
           {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 429,
-          }
-        )
-      }
-      
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'Crédits insuffisants, veuillez ajouter des crédits à votre espace de travail' }),
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 402,
           }
         )
       }
@@ -228,11 +216,12 @@ Sois concis mais précis. Maximum 500 mots.`
       )
     }
 
-    const aiData = await aiResponse.json() as LovableAIResponse
+    const aiData = await aiResponse.json()
+    console.log('Réponse Gemini:', JSON.stringify(aiData, null, 2))
 
-    if (!aiData.choices?.[0]?.message?.content) {
+    if (!aiData.candidates?.[0]?.content?.parts?.[0]?.text) {
       return new Response(
-        JSON.stringify({ error: 'Réponse invalide de l\'IA' }),
+        JSON.stringify({ error: 'Réponse invalide de l\'IA', data: aiData }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500,
@@ -240,8 +229,8 @@ Sois concis mais précis. Maximum 500 mots.`
       )
     }
 
-    const summary = aiData.choices[0].message.content
-    const tokensUsed = aiData.usage?.total_tokens || 0
+    const summary = aiData.candidates[0].content.parts[0].text
+    const tokensUsed = aiData.usageMetadata?.totalTokenCount || 0
 
     console.log('Résumé généré, tokens utilisés:', tokensUsed)
 
@@ -259,13 +248,13 @@ Sois concis mais précis. Maximum 500 mots.`
       console.error('Erreur sauvegarde résumé:', updateError)
     }
 
-    // Logger l'usage (optionnel - Lovable AI gère son propre suivi)
+    // Logger l'usage
     try {
       await supabaseAdmin.from('ai_usage').insert({
         user_id: user.id,
         feature: 'pdf_summary',
         tokens_used: tokensUsed,
-        cost_estimate: 0, // Lovable AI gère la facturation
+        cost_estimate: (tokensUsed / 1000000) * 0.15, // Gemini Flash: ~$0.15 per million tokens
       })
     } catch (err) {
       console.log('Info: ai_usage table logging skipped')
