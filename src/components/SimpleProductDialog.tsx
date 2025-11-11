@@ -59,7 +59,7 @@ export const SimpleProductDialog = ({
     setLoading(true);
     
     // Récupérer l'accessoire du produit simple
-    const { data: productItems, error: itemsError } = await supabase
+    const { data: productItems, error: itemsError } = await (supabase as any)
       .from("shop_product_items")
       .select("accessory_id")
       .eq("product_id", productId)
@@ -73,10 +73,10 @@ export const SimpleProductDialog = ({
     }
 
     // Récupérer les informations de l'accessoire avec l'image
-    const { data: accessoryData } = await supabase
+    const { data: accessoryData } = await (supabase as any)
       .from("accessories_catalog")
       .select("id, nom, image_url")
-      .eq("id", productItems.accessory_id)
+      .eq("id", (productItems as any).accessory_id)
       .single();
 
     if (accessoryData) {
@@ -84,10 +84,10 @@ export const SimpleProductDialog = ({
     }
 
     // Récupérer les options de l'accessoire
-    const { data: optionsData, error: optionsError } = await supabase
+    const { data: optionsData, error: optionsError } = await (supabase as any)
       .from("accessory_options")
       .select("id, nom, prix_vente_ttc")
-      .eq("accessory_id", productItems.accessory_id)
+      .eq("accessory_id", (productItems as any).accessory_id)
       .order("nom");
 
     if (optionsError) {

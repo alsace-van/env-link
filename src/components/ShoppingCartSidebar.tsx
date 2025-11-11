@@ -65,7 +65,7 @@ export const ShoppingCartSidebar = ({
 
       if (accessoryIds.length === 0) return;
 
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("accessory_tiered_pricing")
         .select("accessory_id, article_position, discount_percent")
         .in("accessory_id", accessoryIds);

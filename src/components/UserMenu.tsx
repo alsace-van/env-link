@@ -32,7 +32,7 @@ const UserMenu = ({ user }: UserMenuProps) => {
   }, [user]);
 
   const checkAdminStatus = async () => {
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
@@ -43,14 +43,14 @@ const UserMenu = ({ user }: UserMenuProps) => {
   };
 
   const loadUserProfile = async () => {
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("profiles")
       .select("display_name")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (data?.display_name) {
-      setDisplayName(data.display_name);
+    if ((data as any)?.display_name) {
+      setDisplayName((data as any).display_name);
     }
   };
 

@@ -118,7 +118,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
     // Charger les dessins depuis la base de données
     const loadDrawings = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("technical_schemas")
           .select("*")
           .eq("project_id", projectId)
@@ -128,9 +128,9 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         if (error) throw error;
 
         if (data) {
-          setSchemaId(data.id);
-          if (data.canvas_data) {
-            scope.project.activeLayer.importJSON(data.canvas_data);
+          setSchemaId((data as any).id);
+          if ((data as any).canvas_data) {
+            scope.project.activeLayer.importJSON((data as any).canvas_data);
             scope.view.update();
             console.log("Dessins chargés pour schéma", schemaNumber);
           }
@@ -640,7 +640,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
       if (schemaId) {
         // Update existing schema
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("technical_schemas")
           .update({ canvas_data: json })
           .eq("id", schemaId);
@@ -648,7 +648,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         if (error) throw error;
       } else {
         // Create new schema
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("technical_schemas")
           .insert({
             project_id: projectId,
@@ -659,7 +659,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
           .single();
 
         if (error) throw error;
-        if (data) setSchemaId(data.id);
+        if (data) setSchemaId((data as any).id);
       }
 
       toast.success("Schéma sauvegardé");
@@ -903,7 +903,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   useEffect(() => {
     const loadSchemas = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("technical_schemas")
           .select("schema_number")
           .eq("project_id", projectId)
@@ -912,7 +912,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         if (error) throw error;
 
         if (data && data.length > 0) {
-          const schemaNumbers = data.map(s => s.schema_number);
+          const schemaNumbers = (data as any).map((s: any) => s.schema_number);
           setSchemas(schemaNumbers);
         }
       } catch (error) {

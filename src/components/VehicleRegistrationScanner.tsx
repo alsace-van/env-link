@@ -106,8 +106,7 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
         numeroChassisVIN: scanData.vin || scanData.E || undefined,
         immatriculation: scanData.immatriculation || scanData.A || undefined,
         marque: scanData.marque || scanData.D1 || undefined,
-        modele: scanData.modele || scanData.D2 || undefined,
-        denominationCommerciale: scanData.denominationCommerciale || scanData.D3 || undefined,
+        denominationCommerciale: scanData.modele || scanData.D3 || undefined, // ✅ D3 = dénomination commerciale (EXPERT)
 
         // Classification
         genreNational: scanData.genre || scanData.J || undefined,
@@ -127,12 +126,6 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
         longueur: scanData.longueur || (scanData.L ? parseInt(scanData.L) : undefined),
         largeur: scanData.largeur || (scanData.B ? parseInt(scanData.B) : undefined),
         hauteur: scanData.hauteur || (scanData.H ? parseInt(scanData.H) : undefined),
-
-        // Autres
-        nombrePlaces: scanData.places_assises || (scanData.S1 ? parseInt(scanData.S1) : undefined),
-        datePremiereImmatriculation: scanData.date_premiere_immatriculation || scanData.B1 || undefined,
-
-        confidence: scanData.confidence || 90,
       };
 
       console.log("✅ Données mappées pour ScanConfirmationModal:");
@@ -140,7 +133,7 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
       console.log(`  🔑 VIN: ${mappedData.numeroChassisVIN || "❌ Non détecté"}`);
       console.log(`  🚗 Immatriculation: ${mappedData.immatriculation || "❌ Non détecté"}`);
       console.log(`  🏭 Marque: ${mappedData.marque || "❌ Non détecté"}`);
-      console.log(`  📝 Modèle: ${mappedData.modele || "❌ Non détecté"}`);
+      console.log(`  📝 Modèle: ${mappedData.denominationCommerciale || "❌ Non détecté"}`);
       console.log(`  📅 Date: ${mappedData.datePremiereImmatriculation || "❌ Non détecté"}`);
       console.log(`  ⚖️  Masse vide: ${mappedData.masseVide || "❌ Non détecté"} kg`);
       console.log(`  📦 PTAC: ${mappedData.masseEnChargeMax || "❌ Non détecté"} kg`);
@@ -153,11 +146,11 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
       setShowConfirmModal(true);
 
       const detectedCount = Object.keys(mappedData).filter(
-        (key) => key !== "confidence" && mappedData[key] !== undefined && mappedData[key] !== null,
+        (key) => mappedData[key] !== undefined && mappedData[key] !== null,
       ).length;
 
       toast.success(`Carte grise scannée : ${detectedCount} champs détectés`, {
-        description: `Confiance : ${mappedData.confidence}% - Vérifiez avant de valider`,
+        description: `Vérifiez avant de valider`,
         duration: 4000,
       });
     } catch (error: any) {
@@ -240,8 +233,7 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
         numeroChassisVIN: scanData.vin || scanData.E || undefined,
         immatriculation: scanData.immatriculation || scanData.A || undefined,
         marque: scanData.marque || scanData.D1 || undefined,
-        modele: scanData.modele || scanData.D2 || undefined,
-        denominationCommerciale: scanData.denominationCommerciale || scanData.D3 || undefined,
+        denominationCommerciale: scanData.modele || scanData.D3 || undefined, // ✅ D3 = dénomination commerciale (EXPERT)
         genreNational: scanData.genre || scanData.J || undefined,
         carrosserie: scanData.carrosserie || scanData.J1 || undefined,
         energie: scanData.energie || scanData.P3 || undefined,
@@ -253,9 +245,7 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
         longueur: scanData.longueur || (scanData.L ? parseInt(scanData.L) : undefined),
         largeur: scanData.largeur || (scanData.B ? parseInt(scanData.B) : undefined),
         hauteur: scanData.hauteur || (scanData.H ? parseInt(scanData.H) : undefined),
-        nombrePlaces: scanData.places_assises || (scanData.S1 ? parseInt(scanData.S1) : undefined),
         datePremiereImmatriculation: scanData.date_premiere_immatriculation || scanData.B1 || undefined,
-        confidence: scanData.confidence || 90,
       };
 
       console.log(`✅ Rescan ${fieldName} terminé`);
