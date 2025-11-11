@@ -165,6 +165,44 @@ export type Database = {
           },
         ]
       }
+      accessory_tiered_pricing: {
+        Row: {
+          accessory_id: string
+          created_at: string | null
+          id: string
+          max_quantity: number | null
+          min_quantity: number
+          prix_unitaire: number
+          updated_at: string | null
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string | null
+          id?: string
+          max_quantity?: number | null
+          min_quantity: number
+          prix_unitaire: number
+          updated_at?: string | null
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string | null
+          id?: string
+          max_quantity?: number | null
+          min_quantity?: number
+          prix_unitaire?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessory_tiered_pricing_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_messages: {
         Row: {
           created_at: string | null
@@ -226,6 +264,41 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_selected_options: {
+        Row: {
+          created_at: string | null
+          expense_id: string
+          id: string
+          option_id: string
+          option_name: string
+          prix_vente_ttc: number
+        }
+        Insert: {
+          created_at?: string | null
+          expense_id: string
+          id?: string
+          option_id: string
+          option_name: string
+          prix_vente_ttc: number
+        }
+        Update: {
+          created_at?: string | null
+          expense_id?: string
+          id?: string
+          option_id?: string
+          option_name?: string
+          prix_vente_ttc?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_selected_options_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "project_expenses"
             referencedColumns: ["id"]
           },
         ]
@@ -300,6 +373,44 @@ export type Database = {
           version?: string | null
         }
         Relationships: []
+      }
+      project_bank_balance: {
+        Row: {
+          created_at: string | null
+          date_heure_depart: string
+          id: string
+          project_id: string
+          solde_depart: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          date_heure_depart?: string
+          id?: string
+          project_id: string
+          solde_depart?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          date_heure_depart?: string
+          id?: string
+          project_id?: string
+          solde_depart?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_bank_balance_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_expenses: {
         Row: {
@@ -398,6 +509,53 @@ export type Database = {
           },
         ]
       }
+      project_todos: {
+        Row: {
+          completed: boolean | null
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          priority: string | null
+          project_id: string
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          priority?: string | null
+          project_id: string
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          priority?: string | null
+          project_id?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_todos_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           budget_total: number | null
@@ -422,6 +580,7 @@ export type Database = {
           modele: string | null
           modele_officiel: string | null
           nom: string
+          nom_proprietaire: string | null
           nombre_places: number | null
           numero_chassis_vin: string | null
           ptra: number | null
@@ -452,6 +611,7 @@ export type Database = {
           modele?: string | null
           modele_officiel?: string | null
           nom: string
+          nom_proprietaire?: string | null
           nombre_places?: number | null
           numero_chassis_vin?: string | null
           ptra?: number | null
@@ -482,6 +642,7 @@ export type Database = {
           modele?: string | null
           modele_officiel?: string | null
           nom?: string
+          nom_proprietaire?: string | null
           nombre_places?: number | null
           numero_chassis_vin?: string | null
           ptra?: number | null
@@ -539,8 +700,45 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_custom_kits: {
+        Row: {
+          allowed_category_ids: string[] | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          nom: string
+          prix_base: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          allowed_category_ids?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          nom: string
+          prix_base?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          allowed_category_ids?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          nom?: string
+          prix_base?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       shop_welcome_config: {
         Row: {
+          button_text: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -551,6 +749,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          button_text?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -561,6 +760,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          button_text?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
