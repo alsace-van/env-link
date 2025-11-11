@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Loader2, Download, Check } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RTIAutoFillModalProps {
   projectId: string;
