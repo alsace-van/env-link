@@ -433,7 +433,11 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
     setManualNumeroChassis("");
     setManualDateMiseCirculation("");
     setManualTypeMine("");
-    onProjectCreated();
+    
+    // Petit délai pour laisser la BDD persister les données
+    setTimeout(() => {
+      onProjectCreated();
+    }, 200);
   };
 
   return (
