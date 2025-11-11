@@ -1,426 +1,549 @@
-import { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
-import { Sparkles, AlertCircle, CheckCircle2, Loader2, FileText } from "lucide-react";
-import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import React, { useState, useEffect } from 'react';
+import { X, FileText, Loader2, Download, Check } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface RTIAutoFillModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   projectId: string;
+  onClose: () => void;
 }
 
-interface TransformationItem {
-  id: string;
-  name: string;
-  category: string;
-  selected: boolean;
+interface VehicleData {
+  vin?: string;
+  marque?: string;
+  type?: string;
+  immatriculation?: string;
+  datePremiereMiseEnCirculation?: string;
+  genre?: string;
+  carrosserie?: string;
+  ptac?: number;
+  pv?: number;
 }
 
-export const RTIAutoFillModal = ({ open, onOpenChange, projectId }: RTIAutoFillModalProps) => {
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [step, setStep] = useState<"select" | "generate" | "preview">("select");
+interface ClientData {
+  nom?: string;
+  prenom?: string;
+  email?: string;
+  phone?: string;
+  adresse?: string;
+  codePostal?: string;
+  ville?: string;
+}
 
-  // Données du projet
-  const [vehicleData, setVehicleData] = useState<any>(null);
-  const [customerData, setCustomerData] = useState<any>(null);
-  const [expenses, setExpenses] = useState<any[]>([]);
+interface Equipement {
+  nom: string;
+  quantite: number;
+  marque?: string;
+  reference?: string;
+  prix?: number;
+}
 
-  // Transformations sélectionnées
-  const [transformations, setTransformations] = useState<TransformationItem[]>([]);
-  const [manualTransformations, setManualTransformations] = useState("");
+interface RTIFormData {
+  // Annexe 1
+  demandeur: ClientData;
+  vehicule: VehicleData;
+  
+  // Annexe 2 - Charges
+  charges: {
+    ptac: number;
+    pv: number;
+    chargeUtile: number;
+    masseOrdreMarche: number;
+    repartitionAvant: number;
+    repartitionArriere: number;
+  };
+  
+  // Annexe 3
+  transformation: {
+    transformateur: string;
+    adresseTransformateur: string;
+    descriptionTravaux: string;
+    equipementsInstalles: Equipement[];
+  };
+}
 
-  // Données générées
-  const [generatedRTI, setGeneratedRTI] = useState<any>(null);
+export default function RTIAutoFillModal({ projectId, onClose }: RTIAutoFillModalProps) {
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [formData, setFormData] = useState<RTIFormData | null>(null);
+  const [generatedData, setGeneratedData] = useState<any>(null);
+  const [step, setStep] = useState<'loading' | 'review' | 'generated'>('loading');
 
   useEffect(() => {
-    if (open && projectId) {
-      loadProjectData();
-    }
-  }, [open, projectId]);
+    loadProjectData();
+  }, [projectId]);
 
   const loadProjectData = async () => {
-    setLoading(true);
     try {
-      // Charger les données du projet
+      setLoading(true);
+
+      // 1. Récupérer les données du projet
       const { data: project, error: projectError } = await supabase
-        .from("projects")
-        .select(
-          `
+        .from('projects')
+        .select(`
           *,
-          customers (*)
-        `,
-        )
-        .eq("id", projectId)
+          clients (*)
+        `)
+        .eq('id', projectId)
         .single();
 
       if (projectError) throw projectError;
 
-      // Vérifier si la carte grise a été scannée
-      if (!project.vehicle_vin) {
-        toast.error("Aucune carte grise scannée pour ce projet", {
-          description: "Veuillez d'abord scanner la carte grise dans la création du projet",
-        });
-        onOpenChange(false);
-        return;
-      }
+      // 2. Récupérer les données du véhicule (depuis vehicle_registration)
+      const { data: vehicleReg } = await supabase
+        .from('vehicle_registration')
+        .select('*')
+        .eq('project_id', projectId)
+        .single();
 
-      setVehicleData({
-        vin: project.vehicle_vin,
-        immatriculation: project.vehicle_immatriculation,
-        marque: project.vehicle_marque,
-        modele: project.vehicle_modele,
-        genre: project.vehicle_genre,
-        carrosserie: project.vehicle_carrosserie,
-        ptac: project.vehicle_ptac,
-        masseVide: project.vehicle_masse_vide,
-        nombrePlaces: project.vehicle_nombre_places,
-        longueur: project.vehicle_longueur,
-        largeur: project.vehicle_largeur,
-        hauteur: project.vehicle_hauteur,
-      });
+      // 3. Récupérer les équipements/travaux (depuis expenses)
+      const { data: expenses } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('date', { ascending: false });
 
-      setCustomerData({
-        nom: project.customers?.name || "",
-        prenom: project.customers?.first_name || "",
-        telephone: project.customers?.phone || "",
-        email: project.customers?.email || "",
-        adresse: project.customers?.address || "",
-      });
+      // 4. Construire les équipements depuis les dépenses
+      const equipements: Equipement[] = expenses
+        ?.filter(exp => exp.category && exp.description)
+        .map(exp => ({
+          nom: exp.description,
+          quantite: 1,
+          marque: exp.supplier || undefined,
+          prix: exp.amount
+        })) || [];
 
-      // Charger les dépenses du projet
-      const { data: expensesData, error: expensesError } = await supabase
-        .from("project_expenses")
-        .select("*")
-        .eq("project_id", projectId)
-        .order("created_at", { ascending: false });
+      // 5. Pré-remplir le formulaire
+      const initialFormData: RTIFormData = {
+        demandeur: {
+          nom: project.clients?.last_name || '',
+          prenom: project.clients?.first_name || '',
+          email: project.clients?.email || '',
+          phone: project.clients?.phone || '',
+          adresse: project.clients?.address || '',
+          codePostal: '',
+          ville: ''
+        },
+        vehicule: {
+          vin: vehicleReg?.vin || '',
+          marque: vehicleReg?.marque || '',
+          type: vehicleReg?.modele || '',
+          immatriculation: vehicleReg?.immatriculation || '',
+          datePremiereMiseEnCirculation: vehicleReg?.date_premiere_immatriculation || '',
+          genre: vehicleReg?.genre || 'CTTE',
+          carrosserie: vehicleReg?.carrosserie || 'FOURGON',
+          ptac: vehicleReg?.ptac ? parseInt(vehicleReg.ptac) : 0,
+          pv: vehicleReg?.poids_vide ? parseInt(vehicleReg.poids_vide) : 0
+        },
+        charges: {
+          ptac: vehicleReg?.ptac ? parseInt(vehicleReg.ptac) : 3500,
+          pv: vehicleReg?.poids_vide ? parseInt(vehicleReg.poids_vide) : 2000,
+          chargeUtile: 0,
+          masseOrdreMarche: 0,
+          repartitionAvant: 50,
+          repartitionArriere: 50
+        },
+        transformation: {
+          transformateur: 'ALSACE VAN CRÉATION',
+          adresseTransformateur: 'Strasbourg, France',
+          descriptionTravaux: '',
+          equipementsInstalles: equipements
+        }
+      };
 
-      if (expensesError) throw expensesError;
+      // Calculer les charges
+      initialFormData.charges.chargeUtile = 
+        initialFormData.charges.ptac - initialFormData.charges.pv;
+      initialFormData.charges.masseOrdreMarche = 
+        initialFormData.charges.pv + 75 + 90; // PV + conducteur 75kg + carburant ~90kg
 
-      setExpenses(expensesData || []);
-
-      // Convertir les dépenses en transformations
-      const items: TransformationItem[] = (expensesData || []).map((expense) => ({
-        id: expense.id,
-        name: expense.nom_accessoire || "Sans nom",
-        category: expense.categorie || "Autre",
-        selected: true,
-      }));
-
-      setTransformations(items);
-    } catch (error: any) {
-      console.error("Erreur chargement données:", error);
-      toast.error("Erreur lors du chargement des données");
+      setFormData(initialFormData);
+      setStep('review');
+    } catch (error) {
+      console.error('Erreur lors du chargement des données:', error);
+      alert('Erreur lors du chargement des données du projet');
     } finally {
       setLoading(false);
     }
-  };
-
-  const toggleTransformation = (id: string) => {
-    setTransformations(transformations.map((t) => (t.id === id ? { ...t, selected: !t.selected } : t)));
   };
 
   const handleGenerate = async () => {
-    setStep("generate");
-    setLoading(true);
-    setProgress(10);
+    if (!formData) return;
 
     try {
-      // Préparer les données de transformation
-      const selectedTransformations = transformations.filter((t) => t.selected).map((t) => t.name);
+      setGenerating(true);
 
-      const allTransformations = [
-        ...selectedTransformations,
-        ...(manualTransformations ? [manualTransformations] : []),
-      ];
-
-      setProgress(30);
-
-      // Appeler l'Edge Function pour générer le RTI
-      const { data, error } = await supabase.functions.invoke("fill-rti-document", {
+      // Appeler l'Edge Function Gemini
+      const { data, error } = await supabase.functions.invoke('generate-rti', {
         body: {
-          vehicleData,
-          customerData,
-          transformationData: {
-            items: allTransformations,
-            motif: "Aménagement en autocaravane",
+          projectData: {
+            client: formData.demandeur,
+            project_id: projectId
           },
-        },
+          vehicleData: formData.vehicule,
+          chargesData: formData.charges,
+          equipementsData: formData.transformation.equipementsInstalles
+        }
       });
-
-      setProgress(70);
 
       if (error) throw error;
 
-      if (!data.success) {
-        throw new Error(data.error || "Erreur lors de la génération");
-      }
-
-      setGeneratedRTI(data.data);
-      setProgress(100);
-      setStep("preview");
-
-      toast.success("Document RTI généré avec succès", {
-        description: "Vérifiez les données avant de télécharger",
-      });
-    } catch (error: any) {
-      console.error("Erreur génération RTI:", error);
-      toast.error("Erreur lors de la génération", {
-        description: error.message,
-      });
-      setStep("select");
+      setGeneratedData(data.data);
+      setStep('generated');
+    } catch (error) {
+      console.error('Erreur lors de la génération:', error);
+      alert('Erreur lors de la génération du document RTI');
     } finally {
-      setLoading(false);
-      setProgress(0);
+      setGenerating(false);
     }
   };
 
-  const handleDownload = () => {
-    if (!generatedRTI) return;
+  const handleDownloadJSON = () => {
+    if (!generatedData) return;
 
-    // Créer un fichier texte avec les données
-    const content = JSON.stringify(generatedRTI, null, 2);
-    const blob = new Blob([content], { type: "application/json" });
+    const dataStr = JSON.stringify(generatedData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `RTI_${vehicleData?.immatriculation || "document"}_${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `RTI_${formData?.vehicule.immatriculation || 'projet'}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
 
-    toast.success("Document RTI téléchargé", {
-      description: "Utilisez ces données pour remplir le formulaire PDF",
+  const updateFormData = (field: string, value: any) => {
+    setFormData(prev => {
+      if (!prev) return prev;
+      const keys = field.split('.');
+      const newData = { ...prev };
+      let current: any = newData;
+      
+      for (let i = 0; i < keys.length - 1; i++) {
+        current = current[keys[i]];
+      }
+      current[keys[keys.length - 1]] = value;
+      
+      // Recalculer les charges si nécessaire
+      if (field.includes('charges.')) {
+        newData.charges.chargeUtile = newData.charges.ptac - newData.charges.pv;
+        newData.charges.masseOrdreMarche = newData.charges.pv + 75 + 90;
+      }
+      
+      return newData;
     });
   };
 
+  if (loading || !formData) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-8 max-w-md w-full">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-12 h-12 animate-spin text-blue-600" />
+            <p className="text-lg font-medium">Chargement des données du projet...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-yellow-500" />
-            Remplissage automatique RTI
-            <Badge variant="secondary">IA Gemini</Badge>
-          </DialogTitle>
-          <DialogDescription>Génération automatique des données pour le formulaire RTI 03.5.1</DialogDescription>
-        </DialogHeader>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl my-8">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <FileText className="w-6 h-6 text-blue-600" />
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">
+                Remplissage Automatique RTI 03.5.1
+              </h2>
+              <p className="text-sm text-gray-600">
+                Aménagement en autocaravane - VASP
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-        <ScrollArea className="max-h-[60vh] pr-4">
-          {step === "select" && (
+        {/* Content */}
+        <div className="p-6 max-h-[70vh] overflow-y-auto">
+          {step === 'review' && (
             <div className="space-y-6">
-              {/* Informations véhicule */}
-              <div>
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  Données véhicule (carte grise)
+              {/* Informations Demandeur */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-4 text-blue-900">
+                  📋 Annexe 1 - Demandeur
                 </h3>
-                <div className="grid grid-cols-2 gap-2 p-3 bg-green-50 rounded-lg text-sm">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="text-muted-foreground">VIN:</span>
-                    <span className="ml-2 font-mono">{vehicleData?.vin}</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Nom
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.demandeur.nom || ''}
+                      onChange={(e) => updateFormData('demandeur.nom', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Immat:</span>
-                    <span className="ml-2 font-bold">{vehicleData?.immatriculation}</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Prénom
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.demandeur.prenom || ''}
+                      onChange={(e) => updateFormData('demandeur.prenom', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Marque:</span>
-                    <span className="ml-2">{vehicleData?.marque}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">PTAC:</span>
-                    <span className="ml-2">{vehicleData?.ptac} kg</span>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Téléphone
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.demandeur.phone || ''}
+                      onChange={(e) => updateFormData('demandeur.phone', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
                   </div>
                 </div>
               </div>
 
-              <Separator />
-
-              {/* Informations client */}
-              <div>
-                <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  Données client
+              {/* Informations Véhicule */}
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-4 text-green-900">
+                  🚐 Véhicule
                 </h3>
-                <div className="p-3 bg-blue-50 rounded-lg text-sm">
-                  <p>
-                    <strong>
-                      {customerData?.nom} {customerData?.prenom}
-                    </strong>
-                  </p>
-                  <p className="text-muted-foreground">{customerData?.telephone}</p>
-                  <p className="text-muted-foreground">{customerData?.email}</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Immatriculation
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.vehicule.immatriculation || ''}
+                      onChange={(e) => updateFormData('vehicule.immatriculation', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      VIN
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.vehicule.vin || ''}
+                      onChange={(e) => updateFormData('vehicule.vin', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Marque
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.vehicule.marque || ''}
+                      onChange={(e) => updateFormData('vehicule.marque', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Type/Modèle
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.vehicule.type || ''}
+                      onChange={(e) => updateFormData('vehicule.type', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <Separator />
-
-              {/* Transformations */}
-              <div>
-                <h3 className="text-sm font-semibold mb-2">Travaux de transformation</h3>
-
-                {transformations.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Sélectionnez les éléments à inclure dans le dossier RTI :
+              {/* Charges */}
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-4 text-orange-900">
+                  ⚖️ Annexe 2 - Répartition des charges
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      PTAC (kg)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.charges.ptac}
+                      onChange={(e) => updateFormData('charges.ptac', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Poids à vide (kg)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.charges.pv}
+                      onChange={(e) => updateFormData('charges.pv', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-orange-200">
+                    <p className="text-sm font-medium text-gray-700">Charge utile</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {formData.charges.chargeUtile} kg
                     </p>
-                    {transformations.map((item) => (
-                      <div key={item.id} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded">
-                        <Checkbox
-                          id={item.id}
-                          checked={item.selected}
-                          onCheckedChange={() => toggleTransformation(item.id)}
-                        />
-                        <Label htmlFor={item.id} className="flex-1 cursor-pointer">
-                          <div className="flex items-center gap-2">
-                            <span>{item.name}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {item.category}
-                            </Badge>
-                          </div>
-                        </Label>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-orange-200">
+                    <p className="text-sm font-medium text-gray-700">Masse en ordre de marche</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {formData.charges.masseOrdreMarche} kg
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Répartition avant (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.charges.repartitionAvant}
+                      onChange={(e) => updateFormData('charges.repartitionAvant', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Répartition arrière (%)
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.charges.repartitionArriere}
+                      onChange={(e) => updateFormData('charges.repartitionArriere', parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Équipements */}
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-4 text-purple-900">
+                  🔧 Annexe 3 - Équipements installés
+                </h3>
+                {formData.transformation.equipementsInstalles.length > 0 ? (
+                  <div className="space-y-2">
+                    {formData.transformation.equipementsInstalles.map((eq, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-white p-3 rounded-lg">
+                        <div>
+                          <p className="font-medium text-gray-900">{eq.nom}</p>
+                          {eq.marque && (
+                            <p className="text-sm text-gray-600">Marque: {eq.marque}</p>
+                          )}
+                        </div>
+                        <span className="text-sm text-gray-500">x{eq.quantite}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Aucune dépense enregistrée. Vous pouvez ajouter des transformations manuellement.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="mt-4">
-                  <Label htmlFor="manual-transformations">Transformations supplémentaires (optionnel)</Label>
-                  <Textarea
-                    id="manual-transformations"
-                    value={manualTransformations}
-                    onChange={(e) => setManualTransformations(e.target.value)}
-                    placeholder="Ex: Installation d'un lit escamotable, pose de 2 fenêtres latérales..."
-                    rows={4}
-                    className="mt-2"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {step === "generate" && (
-            <div className="space-y-4 py-8">
-              <div className="text-center">
-                <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-                <p className="mt-4 text-lg font-medium">Génération en cours...</p>
-                <p className="text-sm text-muted-foreground">L'IA analyse les données et génère le formulaire RTI</p>
-              </div>
-              <Progress value={progress} className="w-full" />
-            </div>
-          )}
-
-          {step === "preview" && generatedRTI && (
-            <div className="space-y-4">
-              <Alert className="border-green-500 bg-green-50">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-900">Document RTI généré avec succès !</AlertDescription>
-              </Alert>
-
-              {/* Annexe 1 */}
-              <div>
-                <h3 className="font-semibold mb-2">Annexe 1 - Demande de réception</h3>
-                <div className="p-3 bg-gray-50 rounded-lg space-y-2 text-sm">
-                  <div>
-                    <strong>Motif:</strong> {generatedRTI.annexe1?.motifReception}
-                  </div>
-                  <div>
-                    <strong>Demandeur:</strong> {generatedRTI.annexe1?.nomPrenom}
-                  </div>
-                  <div>
-                    <strong>VIN:</strong> {generatedRTI.annexe1?.numeroIdentification}
-                  </div>
-                  <div>
-                    <strong>Transformations:</strong> {generatedRTI.annexe1?.modificationsEffectuees}
-                  </div>
-                </div>
-              </div>
-
-              {/* Annexe 2 */}
-              <div>
-                <h3 className="font-semibold mb-2">Annexe 2 - Répartition des charges</h3>
-                <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-lg text-sm">
-                  <div>
-                    <strong>PTAC:</strong> {generatedRTI.annexe2?.ptac} kg
-                  </div>
-                  <div>
-                    <strong>Poids vide:</strong> {generatedRTI.annexe2?.poidsVideTotal} kg
-                  </div>
-                  <div>
-                    <strong>CUM:</strong> {generatedRTI.annexe2?.chargeUtileMarchandises} kg
-                  </div>
-                  <div>
-                    <strong>Passagers:</strong> {generatedRTI.annexe2?.nombrePassagers}
-                  </div>
-                </div>
-              </div>
-
-              {/* Annexe 3 */}
-              <div>
-                <h3 className="font-semibold mb-2">Annexe 3 - Attestation de transformation</h3>
-                <div className="p-3 bg-gray-50 rounded-lg text-sm">
-                  <p>
-                    <strong>Transformateur:</strong> {generatedRTI.annexe3?.transformateur}
+                  <p className="text-gray-600 italic">
+                    Aucun équipement trouvé dans les dépenses du projet.
+                    Vous pourrez compléter manuellement après la génération.
                   </p>
-                  <p className="mt-2 text-muted-foreground">{generatedRTI.annexe3?.descriptifTransformations}</p>
-                </div>
+                )}
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-600">
+                  ℹ️ <strong>Note :</strong> Gemini AI va générer automatiquement :
+                </p>
+                <ul className="list-disc list-inside mt-2 space-y-1 text-sm text-gray-600">
+                  <li>La description détaillée des travaux (Annexe 3)</li>
+                  <li>Les calculs de répartition des charges (Annexe 2)</li>
+                  <li>Les informations pour la plaque de transformation (Annexe 5)</li>
+                </ul>
               </div>
             </div>
           )}
-        </ScrollArea>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Fermer
-          </Button>
+          {step === 'generated' && generatedData && (
+            <div className="space-y-6">
+              <div className="bg-green-100 border border-green-400 rounded-lg p-4 flex items-start gap-3">
+                <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-green-900">Document RTI généré avec succès !</p>
+                  <p className="text-sm text-green-700 mt-1">
+                    Toutes les annexes ont été remplies automatiquement par l'IA.
+                  </p>
+                </div>
+              </div>
 
-          {step === "select" && (
-            <Button onClick={handleGenerate} disabled={loading}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              Générer le document
-            </Button>
+              {/* Prévisualisation */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-semibold text-lg mb-3">📄 Aperçu du document généré</h3>
+                <pre className="bg-white p-4 rounded-lg border border-gray-200 text-xs overflow-auto max-h-96">
+                  {JSON.stringify(generatedData, null, 2)}
+                </pre>
+              </div>
+            </div>
           )}
+        </div>
 
-          {step === "preview" && (
-            <>
-              <Button variant="outline" onClick={() => setStep("select")}>
-                Modifier
-              </Button>
-              <Button onClick={handleDownload}>
-                <FileText className="h-4 w-4 mr-2" />
-                Télécharger les données
-              </Button>
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Footer */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            Annuler
+          </button>
+          
+          <div className="flex items-center gap-3">
+            {step === 'review' && (
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Génération en cours...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    Générer le document RTI
+                  </>
+                )}
+              </button>
+            )}
+            
+            {step === 'generated' && (
+              <button
+                onClick={handleDownloadJSON}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Télécharger JSON
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
-};
+}
