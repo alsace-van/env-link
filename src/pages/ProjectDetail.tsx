@@ -631,6 +631,7 @@ const ProjectDetail = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [photoRefresh, setPhotoRefresh] = useState(0);
   const [expenseRefresh, setExpenseRefresh] = useState(0);
+  const [noticesRefresh, setNoticesRefresh] = useState(0);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
@@ -1194,9 +1195,9 @@ const ProjectDetail = () => {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold">Notices techniques</h2>
-                    <NoticeUploadDialog />
+                    <NoticeUploadDialog onSuccess={() => setNoticesRefresh(prev => prev + 1)} />
                   </div>
-                  <NoticesList />
+                  <NoticesList refreshTrigger={noticesRefresh} />
                 </div>
               </TabsContent>
 

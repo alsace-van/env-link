@@ -60,6 +60,26 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   useEffect(() => {
     checkAdminRole();
     loadNotices();
+    
+    // Set up real-time subscription
+    const channel = supabase
+      .channel('notices-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notices_database'
+        },
+        () => {
+          loadNotices();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [refreshTrigger]);
 
   const checkAdminRole = async () => {
