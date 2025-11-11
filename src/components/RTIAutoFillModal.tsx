@@ -104,12 +104,12 @@ export default function RTIAutoFillModal({ projectId, onClose }: RTIAutoFillModa
 
       // 4. Construire les équipements depuis les dépenses
       const equipements: Equipement[] = expenses
-        ?.filter(exp => exp.category && exp.description)
+        ?.filter(exp => exp.categorie && exp.montant)
         .map(exp => ({
-          nom: exp.description,
+          nom: (exp as any).description || exp.categorie,
           quantite: 1,
-          marque: exp.supplier || undefined,
-          prix: exp.amount
+          marque: (exp as any).supplier || undefined,
+          prix: exp.montant
         })) || [];
 
       // 5. Pré-remplir le formulaire
@@ -131,12 +131,12 @@ export default function RTIAutoFillModal({ projectId, onClose }: RTIAutoFillModa
           datePremiereMiseEnCirculation: vehicleReg?.date_premiere_immatriculation || '',
           genre: vehicleReg?.genre || 'CTTE',
           carrosserie: vehicleReg?.carrosserie || 'FOURGON',
-          ptac: vehicleReg?.ptac ? parseInt(vehicleReg.ptac) : 0,
-          pv: vehicleReg?.poids_vide ? parseInt(vehicleReg.poids_vide) : 0
+          ptac: vehicleReg?.ptac ? parseInt(vehicleReg.ptac.toString()) : 0,
+          pv: vehicleReg?.poids_vide ? parseInt(vehicleReg.poids_vide.toString()) : 0
         },
         charges: {
-          ptac: vehicleReg?.ptac ? parseInt(vehicleReg.ptac) : 3500,
-          pv: vehicleReg?.poids_vide ? parseInt(vehicleReg.poids_vide) : 2000,
+          ptac: vehicleReg?.ptac ? parseInt(vehicleReg.ptac.toString()) : 3500,
+          pv: vehicleReg?.poids_vide ? parseInt(vehicleReg.poids_vide.toString()) : 2000,
           chargeUtile: 0,
           masseOrdreMarche: 0,
           repartitionAvant: 50,

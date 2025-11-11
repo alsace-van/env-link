@@ -49,35 +49,35 @@ export const ProductPricingDialog = ({
 
     // Charger les données de promotion
     const { data: productData } = await supabase
-      .from("shop_products")
+      .from("shop_products" as any)
       .select("promo_active, promo_price, promo_start_date, promo_end_date")
       .eq("id", productId)
       .single();
 
     if (productData) {
-      setPromoActive(productData.promo_active || false);
-      setPromoPrice(productData.promo_price?.toString() || "");
+      setPromoActive((productData as any).promo_active || false);
+      setPromoPrice((productData as any).promo_price?.toString() || "");
       setPromoStartDate(
-        productData.promo_start_date
-          ? new Date(productData.promo_start_date).toISOString().slice(0, 16)
+        (productData as any).promo_start_date
+          ? new Date((productData as any).promo_start_date).toISOString().slice(0, 16)
           : ""
       );
       setPromoEndDate(
-        productData.promo_end_date
-          ? new Date(productData.promo_end_date).toISOString().slice(0, 16)
+        (productData as any).promo_end_date
+          ? new Date((productData as any).promo_end_date).toISOString().slice(0, 16)
           : ""
       );
     }
 
     // Charger les prix dégressifs
     const { data: tieredData } = await supabase
-      .from("product_tiered_pricing")
+      .from("product_tiered_pricing" as any)
       .select("id, article_position, discount_percent")
       .eq("product_id", productId)
       .order("article_position");
 
     if (tieredData) {
-      setTieredPrices(tieredData);
+      setTieredPrices(tieredData as any);
     }
 
     setLoading(false);
@@ -88,13 +88,13 @@ export const ProductPricingDialog = ({
 
     // Sauvegarder la promotion
     const { error: promoError } = await supabase
-      .from("shop_products")
+      .from("shop_products" as any)
       .update({
         promo_active: promoActive,
         promo_price: promoActive && promoPrice ? parseFloat(promoPrice) : null,
         promo_start_date: promoActive && promoStartDate ? new Date(promoStartDate).toISOString() : null,
         promo_end_date: promoActive && promoEndDate ? new Date(promoEndDate).toISOString() : null,
-      })
+      } as any)
       .eq("id", productId);
 
     if (promoError) {
@@ -106,7 +106,7 @@ export const ProductPricingDialog = ({
 
     // Supprimer les anciens prix dégressifs
     await supabase
-      .from("product_tiered_pricing")
+      .from("product_tiered_pricing" as any)
       .delete()
       .eq("product_id", productId);
 
@@ -117,7 +117,7 @@ export const ProductPricingDialog = ({
 
     if (validTiers.length > 0) {
       const { error: tiersError } = await supabase
-        .from("product_tiered_pricing")
+        .from("product_tiered_pricing" as any)
         .insert(
           validTiers.map((t) => ({
             product_id: productId,

@@ -141,12 +141,12 @@ export const ShopProductFormDialog = ({
       }
     } else {
       const { data, error } = await supabase
-        .from("shop_product_items")
+        .from("shop_product_items" as any)
         .select("accessory_id, quantity")
         .eq("product_id", editProduct.id);
 
       if (!error && data) {
-        setSelectedAccessories(data.map(item => ({
+        setSelectedAccessories((data as any).map((item: any) => ({
           id: item.accessory_id,
           quantity: item.quantity
         })));
@@ -265,20 +265,20 @@ export const ShopProductFormDialog = ({
       if (editProduct) {
         // Mode édition
         const { error: productError } = await supabase
-          .from("shop_products")
+          .from("shop_products" as any)
           .update({
             name: productName,
             description,
             price: productType === "custom_kit" ? 0 : parseFloat(price),
             is_active: isActive,
-          })
+          } as any)
           .eq("id", editProduct.id);
 
         if (productError) throw productError;
 
         // Supprimer les anciens items/kit
         if (productType === "simple" || productType === "composed") {
-          await supabase.from("shop_product_items").delete().eq("product_id", editProduct.id);
+          await supabase.from("shop_product_items" as any).delete().eq("product_id", editProduct.id);
           
           const items = selectedAccessories.map(acc => ({
             product_id: editProduct.id,
@@ -287,8 +287,8 @@ export const ShopProductFormDialog = ({
           }));
 
           const { error: itemsError } = await supabase
-            .from("shop_product_items")
-            .insert(items);
+            .from("shop_product_items" as any)
+            .insert(items as any);
 
           if (itemsError) throw itemsError;
         } else if (productType === "custom_kit") {
@@ -303,8 +303,8 @@ export const ShopProductFormDialog = ({
         toast.success("Produit modifié avec succès");
       } else {
         // Mode création
-        const { data: product, error: productError } = await supabase
-          .from("shop_products")
+        const { data: product, error: productError} = await supabase
+          .from("shop_products" as any)
           .insert({
             user_id: user.id,
             name: productName,
@@ -312,7 +312,7 @@ export const ShopProductFormDialog = ({
             type: productType,
             price: productType === "custom_kit" ? 0 : parseFloat(price),
             is_active: isActive,
-          })
+          } as any)
           .select()
           .single();
 
@@ -321,24 +321,24 @@ export const ShopProductFormDialog = ({
         // Ajouter les items selon le type
         if (productType === "simple" || productType === "composed") {
           const items = selectedAccessories.map(acc => ({
-            product_id: product.id,
+            product_id: (product as any).id,
             accessory_id: acc.id,
             quantity: acc.quantity,
           }));
 
           const { error: itemsError } = await supabase
-            .from("shop_product_items")
-            .insert(items);
+            .from("shop_product_items" as any)
+            .insert(items as any);
 
           if (itemsError) throw itemsError;
         } else if (productType === "custom_kit") {
           // Créer le kit sur-mesure avec les catégories
           const { error: kitError } = await supabase
-            .from("shop_custom_kits")
+            .from("shop_custom_kits" as any)
             .insert({
-              product_id: product.id,
+              product_id: (product as any).id,
               allowed_category_ids: selectedCategories,
-            });
+            } as any);
 
           if (kitError) throw kitError;
         }

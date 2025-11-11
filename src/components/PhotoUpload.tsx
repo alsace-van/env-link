@@ -65,12 +65,12 @@ const PhotoUpload = ({ projectId, type, onUploadComplete }: PhotoUploadProps) =>
         }
 
         // Save to database
-        const { error: dbError } = await supabase.from("project_photos").insert({
+        const { error: dbError } = await supabase.from("project_photos" as any).insert({
           project_id: projectId,
           url: publicUrlData.publicUrl,
           type: type,
           description: file.name,
-        });
+        } as any);
 
         if (dbError) {
           console.error("Database error:", dbError);

@@ -74,12 +74,12 @@ export const ShoppingCartDialog = ({
       if (accessoryIds.length === 0) return;
 
       const { data } = await supabase
-        .from("accessory_tiered_pricing")
+        .from("accessory_tiered_pricing" as any)
         .select("accessory_id, article_position, discount_percent")
         .in("accessory_id", accessoryIds);
 
       const tieredMap = new Map<string, any[]>();
-      (data || []).forEach((tier) => {
+      ((data as any) || []).forEach((tier: any) => {
         if (!tieredMap.has(tier.accessory_id)) {
           tieredMap.set(tier.accessory_id, []);
         }
