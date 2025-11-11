@@ -181,7 +181,7 @@ const CustomKitConfigDialog = ({
     }
 
     // Charger les options pour tous les accessoires
-    const accessoryIds = (accessoriesData || []).map((a) => a.id);
+    const accessoryIds = (accessoriesData || []).map((a: any) => a.id);
     const { data: optionsData } = await supabase.from("accessory_options").select("*").in("accessory_id", accessoryIds);
 
     // Regrouper les options par accessoire
@@ -195,7 +195,7 @@ const CustomKitConfigDialog = ({
 
     // Regrouper les accessoires par catégorie avec leurs options
     const accessoriesMap = new Map<string, Accessory[]>();
-    (accessoriesData || []).forEach((accessory) => {
+    (accessoriesData || []).forEach((accessory: any) => {
       const categoryId = accessory.category_id;
       if (!accessoriesMap.has(categoryId)) {
         accessoriesMap.set(categoryId, []);
@@ -203,7 +203,7 @@ const CustomKitConfigDialog = ({
       accessoriesMap.get(categoryId)!.push({
         ...accessory,
         options: optionsByAccessory.get(accessory.id) || [],
-      });
+      } as any);
     });
 
     setAccessoriesByCategory(accessoriesMap);

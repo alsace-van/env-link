@@ -71,7 +71,7 @@ export const NoticeEditDialog = ({ isOpen, onClose, notice, onSuccess }: NoticeE
           modele: formData.modele.trim() || null,
           categorie: formData.categorie.trim() || null,
           description: formData.description.trim() || null,
-        })
+        } as any)
         .eq("id", notice.id);
 
       if (error) {

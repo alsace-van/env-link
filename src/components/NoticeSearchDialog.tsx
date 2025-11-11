@@ -60,14 +60,14 @@ export const NoticeSearchDialog = ({
     const { data, error } = await supabase
       .from("notices_database")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }) as any;
 
     if (error) {
       console.error("Error loading notices:", error);
       return;
     }
 
-    setNotices(data || []);
+    setNotices((data || []) as any);
   };
 
   const filterNotices = () => {

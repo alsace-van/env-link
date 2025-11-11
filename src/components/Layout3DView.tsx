@@ -799,7 +799,7 @@ export const Layout3DView = ({
         .from("projects")
         .select("furniture_data, layout_canvas_data, longueur_chargement_mm, largeur_chargement_mm")
         .eq("id", projectId)
-        .single();
+        .single() as any;
 
       if (projectError) {
         console.error("❌ Erreur Supabase:", projectError);
@@ -976,7 +976,7 @@ export const Layout3DView = ({
         .from("projects")
         .select("layout_canvas_data")
         .eq("id", projectId)
-        .maybeSingle();
+        .maybeSingle() as any;
 
       let layoutCanvasData = projectData?.layout_canvas_data;
 
@@ -1032,7 +1032,7 @@ export const Layout3DView = ({
         .update({
           furniture_data: furnitureData,
           layout_canvas_data: layoutCanvasData,
-        })
+        } as any)
         .eq("id", projectId);
 
       if (error) {

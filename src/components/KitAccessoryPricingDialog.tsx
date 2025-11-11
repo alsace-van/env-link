@@ -68,7 +68,7 @@ export const KitAccessoryPricingDialog = ({
       .from("shop_custom_kits")
       .select("allowed_category_ids")
       .eq("product_id", productId)
-      .single();
+      .single() as any;
 
     if (!kitData || !kitData.allowed_category_ids) {
       setLoading(false);
@@ -80,10 +80,10 @@ export const KitAccessoryPricingDialog = ({
       .from("accessories_catalog")
       .select("*")
       .in("category_id", kitData.allowed_category_ids)
-      .eq("available_in_shop", true);
+      .eq("available_in_shop", true) as any;
 
     if (accessoriesData) {
-      setAccessories(accessoriesData);
+      setAccessories(accessoriesData as any);
 
       // Charger les tarifs pour chaque accessoire
       const pricingData: any = {};
@@ -91,17 +91,17 @@ export const KitAccessoryPricingDialog = ({
         const { data: tieredData } = await supabase
           .from("accessory_tiered_pricing")
           .select("id, article_position, discount_percent")
-          .eq("accessory_id", acc.id)
+          .eq("accessory_id", (acc as any).id)
           .order("article_position");
 
-        pricingData[acc.id] = {
-          promoActive: acc.promo_active || false,
-          promoPrice: acc.promo_price?.toString() || "",
-          promoStartDate: acc.promo_start_date
-            ? new Date(acc.promo_start_date).toISOString().slice(0, 16)
+        pricingData[(acc as any).id] = {
+          promoActive: (acc as any).promo_active || false,
+          promoPrice: (acc as any).promo_price?.toString() || "",
+          promoStartDate: (acc as any).promo_start_date
+            ? new Date((acc as any).promo_start_date).toISOString().slice(0, 16)
             : "",
-          promoEndDate: acc.promo_end_date
-            ? new Date(acc.promo_end_date).toISOString().slice(0, 16)
+          promoEndDate: (acc as any).promo_end_date
+            ? new Date((acc as any).promo_end_date).toISOString().slice(0, 16)
             : "",
           tieredPrices: tieredData || [],
         };
@@ -124,7 +124,7 @@ export const KitAccessoryPricingDialog = ({
         promo_price: pricing.promoActive && pricing.promoPrice ? parseFloat(pricing.promoPrice) : null,
         promo_start_date: pricing.promoActive && pricing.promoStartDate ? new Date(pricing.promoStartDate).toISOString() : null,
         promo_end_date: pricing.promoActive && pricing.promoEndDate ? new Date(pricing.promoEndDate).toISOString() : null,
-      })
+      } as any)
       .eq("id", accessoryId);
 
     if (promoError) {
@@ -153,7 +153,7 @@ export const KitAccessoryPricingDialog = ({
             accessory_id: accessoryId,
             article_position: t.article_position,
             discount_percent: t.discount_percent,
-          }))
+          })) as any
         );
 
       if (tiersError) {

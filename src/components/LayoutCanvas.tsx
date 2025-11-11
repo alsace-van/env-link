@@ -98,10 +98,10 @@ export const LayoutCanvas = ({
         .from("project_expenses")
         .select("poids_kg, quantite")
         .eq("project_id", projectId)
-        .not("poids_kg", "is", null);
+        .not("poids_kg", "is", null) as any;
 
       if (!error && data) {
-        const total = data.reduce((sum, item) => {
+        const total = data.reduce((sum: number, item: any) => {
           return sum + (item.poids_kg || 0) * (item.quantite || 1);
         }, 0);
         setAccessoriesWeight(total);
@@ -115,7 +115,7 @@ export const LayoutCanvas = ({
   useEffect(() => {
     const loadFurnitureData = async () => {
       try {
-        const { data, error } = await supabase.from("projects").select("furniture_data").eq("id", projectId).single();
+        const { data, error } = await supabase.from("projects").select("furniture_data").eq("id", projectId).single() as any;
 
         if (error) throw error;
 
@@ -556,7 +556,7 @@ export const LayoutCanvas = ({
             furniture_data: furnitureData,
             longueur_chargement_mm: loadAreaLength,
             largeur_chargement_mm: loadAreaWidth,
-          })
+          } as any)
           .eq("id", projectId);
 
         if (error) throw error;
@@ -616,7 +616,7 @@ export const LayoutCanvas = ({
           .from("projects")
           .select("layout_canvas_data, furniture_data")
           .eq("id", projectId)
-          .single();
+          .single() as any;
 
         if (error) throw error;
 

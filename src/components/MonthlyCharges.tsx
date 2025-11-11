@@ -40,14 +40,14 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
       .from("project_monthly_charges")
       .select("*")
       .eq("project_id", projectId)
-      .order("jour_mois", { ascending: true });
+      .order("jour_mois", { ascending: true }) as any;
 
     if (error) {
       console.error("Error loading charges:", error);
       return;
     }
 
-    setCharges(data || []);
+    setCharges((data || []) as any);
   };
 
   const handleSave = async () => {
@@ -73,7 +73,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
       const { error } = await supabase
         .from("project_monthly_charges")
         .update(chargeData)
-        .eq("id", editingId);
+        .eq("id", editingId) as any;
 
       if (error) {
         toast.error("Erreur lors de la modification");
@@ -84,7 +84,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
     } else {
       const { error } = await supabase
         .from("project_monthly_charges")
-        .insert([chargeData]);
+        .insert([chargeData]) as any;
 
       if (error) {
         toast.error("Erreur lors de l'ajout");
@@ -116,7 +116,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
     const { error } = await supabase
       .from("project_monthly_charges")
       .delete()
-      .eq("id", id);
+      .eq("id", id) as any;
 
     if (error) {
       toast.error("Erreur lors de la suppression");
