@@ -28,10 +28,10 @@ interface Notice {
   modele?: string;
   categorie?: string;
   description?: string;
-  url_notice: string;
+  notice_url: string;
   created_at: string;
   is_admin_notice?: boolean;
-  created_by?: string;
+  user_id?: string;
   summary?: string | null;
   summary_generated_at?: string | null;
   tokens_used?: number;
@@ -202,8 +202,8 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   // ✅ MODIFIÉ - Fonction handleOpenNotice prend maintenant l'objet notice complet
   const handleOpenNotice = async (notice: Notice) => {
     try {
-      console.log("Open - File path:", notice.url_notice);
-      const url = await getPublicUrl(notice.url_notice);
+      console.log("Open - File path:", notice.notice_url);
+      const url = await getPublicUrl(notice.notice_url);
       console.log("Open - Generated URL:", url);
       
       if (!url) {
@@ -294,8 +294,8 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         </TableHeader>
         <TableBody>
           {notices.map((notice) => {
-            const canModify = isAdmin || (!notice.is_admin_notice && notice.created_by === currentUserId);
-            const canDelete = isAdmin || (!notice.is_admin_notice && notice.created_by === currentUserId);
+            const canModify = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
+            const canDelete = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
             
             return (
             <TableRow key={notice.id}>
@@ -367,7 +367,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleDownload(notice.url_notice, notice.titre)}
+                    onClick={() => handleDownload(notice.notice_url, notice.titre)}
                     title="Télécharger"
                   >
                     <Download className="h-4 w-4" />

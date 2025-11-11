@@ -14,7 +14,7 @@ interface Notice {
   modele?: string;
   categorie?: string;
   description?: string;
-  url_notice: string;
+  notice_url: string;
 }
 
 interface NoticeEditDialogProps {
