@@ -62,8 +62,15 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
       return;
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
+
     const chargeData = {
       project_id: projectId,
+      user_id: user.id,
       nom_charge: formData.nom_charge,
       montant: parseFloat(formData.montant),
       jour_mois: jourMois,
