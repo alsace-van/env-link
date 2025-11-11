@@ -1,325 +1,313 @@
-// supabase/functions/generate-rti/index.ts
+import React, { useState, useEffect } from 'react';
+import { FileText, Download, ExternalLink, Filter, Loader2, AlertCircle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import RTIAutoFillModal from './RTIAutoFillModal';
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+interface OfficialDocument {
+  id: string;
+  name: string;
+  description: string;
+  category: 'Homologation' | 'Administratif' | 'Technique' | 'Certificat';
+  file_url: string;
+  version: string;
+  is_active: boolean;
+  created_at: string;
 }
 
-interface GenerateRTIRequest {
-  projectData: {
-    client: any;
-    project_id: string;
-  };
-  vehicleData: any;
-  chargesData: any;
-  equipementsData: any[];
+interface OfficialDocumentsManagerProps {
+  projectId: string;
 }
 
-serve(async (req) => {
-  // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+export default function OfficialDocumentsManager({ projectId }: OfficialDocumentsManagerProps) {
+  const [documents, setDocuments] = useState<OfficialDocument[]>([]);
+  const [filteredDocuments, setFilteredDocuments] = useState<OfficialDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [showRTIModal, setShowRTIModal] = useState(false);
 
-  try {
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY not configured')
-    }
+  const categories = ['all', 'Homologation', 'Administratif', 'Technique', 'Certificat'];
 
-    // Parse request
-    const { projectData, vehicleData, chargesData, equipementsData }: GenerateRTIRequest = await req.json()
+  useEffect(() => {
+    loadDocuments();
+  }, []);
 
-    console.log('🚐 Génération RTI pour projet:', projectData.project_id)
-    console.log('📋 Client:', projectData.client)
-    console.log('🚗 Véhicule:', vehicleData)
-    console.log('⚖️ Charges:', chargesData)
-    console.log('🔧 Équipements:', equipementsData)
+  useEffect(() => {
+    filterDocuments();
+  }, [selectedCategory, documents]);
 
-    // Construire le prompt pour Gemini
-    const prompt = `Tu es un expert en homologation VASP pour les véhicules aménagés en France.
-Tu dois générer le contenu complet et professionnel pour le formulaire RTI 03.5.1 (Réception à Titre Isolé - Aménagement en autocaravane).
-
-**DONNÉES DU PROJET :**
-
-**CLIENT/DEMANDEUR :**
-${JSON.stringify(projectData.client, null, 2)}
-
-**VÉHICULE :**
-${JSON.stringify(vehicleData, null, 2)}
-
-**RÉPARTITION DES CHARGES :**
-${JSON.stringify(chargesData, null, 2)}
-
-**ÉQUIPEMENTS INSTALLÉS :**
-${JSON.stringify(equipementsData, null, 2)}
-
-**INSTRUCTIONS :**
-
-Tu dois générer un objet JSON complet avec les sections suivantes :
-
-1. **annexe1** : Demande de réception à titre isolé
-   - Récapituler les informations du demandeur
-   - Informations du véhicule à transformer
-   
-2. **annexe2** : Calcul de répartition des charges
-   - PTAC et poids à vide
-   - Calcul de la charge utile
-   - Masse en ordre de marche (PV + carburant ~90kg + conducteur 75kg)
-   - Répartition des charges par essieu
-   - Explication détaillée du calcul
-
-3. **annexe3** : Attestation de transformation
-   - Transformateur : ALSACE VAN CRÉATION
-   - Description PROFESSIONNELLE et DÉTAILLÉE des travaux effectués (minimum 300 mots)
-   - Liste complète des équipements installés avec :
-     * Nom de l'équipement
-     * Quantité
-     * Normes de conformité (R10, EN 1949, EN 721, etc.)
-     * Emplacement dans le véhicule
-   - Mention des modifications structurelles (découpes, renforcements, etc.)
-   - Conformité aux normes applicables
-
-4. **annexe4** : Prescriptions réglementaires
-   - Liste des normes respectées
-   - Checklist de conformité (portes, fenêtres, ventilation, gaz, électricité)
-
-5. **annexe5** : Plaque de transformation
-   - Transformateur : ALSACE VAN CRÉATION
-   - Numéro d'identification (VIN)
-   - Motif RTI : VASP CARAVANE
-
-**RÈGLES IMPORTANTES :**
-
-1. Le ton doit être **PROFESSIONNEL** et **TECHNIQUE** adapté à une administration (DREAL)
-2. La description des travaux doit être **COMPLÈTE** mais **CONCISE**
-3. Utilise le vocabulaire technique officiel (genre VASP, CTTE, autocaravane, etc.)
-4. Cite les normes applicables (EN 1949, EN 721, R10, R14, R16, R17)
-5. Sois précis sur les dimensions et poids
-6. Respecte le format JSON strict
-
-**FORMAT DE RÉPONSE :**
-
-Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ou après. Format :
-
-{
-  "annexe1": {
-    "motifReception": "Aménagement en Autocaravane",
-    "demandeur": {
-      "nom": "...",
-      "prenom": "...",
-      "adresse": "...",
-      "telephone": "...",
-      "email": "..."
-    },
-    "vehicule": {
-      "vin": "...",
-      "marque": "...",
-      "type": "...",
-      "immatriculation": "...",
-      "datePremiereMiseEnCirculation": "...",
-      "genre": "CTTE",
-      "carrosserie": "FOURGON"
-    }
-  },
-  "annexe2": {
-    "ptac": 3500,
-    "poidsVide": 2000,
-    "chargeUtile": 1500,
-    "masseOrdreMarche": 2165,
-    "repartitionCharges": {
-      "essieu1Kg": 1100,
-      "essieu1Pourcentage": 55,
-      "essieu2Kg": 900,
-      "essieu2Pourcentage": 45
-    },
-    "explication": "Explication détaillée du calcul de répartition des charges, tenant compte du poids des équipements installés et de leur emplacement dans le véhicule..."
-  },
-  "annexe3": {
-    "transformateur": "ALSACE VAN CRÉATION",
-    "adresseTransformateur": "Strasbourg, France",
-    "descriptionTravaux": "Description professionnelle et exhaustive des travaux effectués pour l'aménagement du véhicule en autocaravane. Inclure : découpes éventuelles, isolation, revêtements, installations électriques (batterie auxiliaire, convertisseur, prises), installation gaz (bouteille, détendeur, tuyauterie rigide cuivre conforme EN 1949), plomberie (réservoir eau propre XXL, pompe immergée, robinetterie), meubles et rangements (bois contreplaqué marine, fixations renforcées), couchage (dimensions du lit), cuisine (réchaud gaz 2 feux, évier inox), chauffage (webasto/truma diesel), fenêtres et lanterneaux (conformes R43), ventilation (grilles haute et basse conformes EN 721), etc. Minimum 300 mots.",
-    "equipementsListe": [
-      {
-        "nom": "Batterie auxiliaire",
-        "quantite": 1,
-        "specifications": "Lithium 200Ah",
-        "norme": "Conforme R10",
-        "emplacement": "Sous siège passager"
-      }
-    ],
-    "modificationsStructurelles": [
-      "Découpe pour installation fenêtre latérale droite",
-      "Découpe pour lanterneau toit",
-      "Renforcement chassis pour support réservoir d'eau"
-    ],
-    "conformiteNormes": [
-      "EN 1949 : Installation gaz",
-      "EN 721 : Ventilation",
-      "R10 : Compatibilité électromagnétique",
-      "R43 : Vitrages de sécurité"
-    ]
-  },
-  "annexe4": {
-    "prescriptionsReglementaires": [
-      "Portes d'accès : minimum 550mm de largeur, hauteur 1300mm",
-      "Issue de secours : conforme aux dimensions réglementaires",
-      "Ventilation : grilles hautes et basses conformes EN 721",
-      "Installation gaz : tuyauterie rigide cuivre, conformité EN 1949",
-      "Installation électrique : protection différentielle, conforme R10",
-      "Vitrages : verre trempé ou feuilleté, conforme R43"
-    ],
-    "checklistConformite": {
-      "portes": true,
-      "issuesSecours": true,
-      "ventilation": true,
-      "gaz": true,
-      "electricite": true,
-      "vitrages": true,
-      "couchages": true,
-      "equipementsCuisine": true
-    }
-  },
-  "annexe5": {
-    "plaqueTransformation": {
-      "transformateur": "ALSACE VAN CRÉATION",
-      "numeroIdentification": "[VIN du véhicule]",
-      "motifRTI": "VASP CARAVANE",
-      "dimensionsCaracteres": "Hauteur minimale 4mm",
-      "support": "Plaque gravée métallique rivetée sur châssis",
-      "emplacement": "Montant de porte conducteur ou embase siège"
-    }
-  },
-  "resume": {
-    "pointsCles": [
-      "Transformation de CTTE en VASP Autocaravane",
-      "Conformité aux normes EN 1949 et EN 721",
-      "Installation gaz et électrique certifiée",
-      "Aménagement complet avec couchage, cuisine, rangements"
-    ],
-    "documentsPieces": [
-      "Pièce 1 : Demande de réception (Annexe 1)",
-      "Pièce 2 : Carte grise du véhicule",
-      "Pièce 4 : Plans côtés de l'aménagement",
-      "Pièce 5 : Calcul de répartition des charges (Annexe 2)",
-      "Pièce 6 : Bulletins de pesée (3 pesées)",
-      "Pièce 8 : Attestation de transformation (Annexe 3)",
-      "Pièce 9 : Certificat Qualigaz/Bureau Veritas (EN 1949 + EN 721)",
-      "Pièce 10 : Certificats de conformité équipements (chauffage, etc.)",
-      "Pièce 12 : Contrôle technique valide"
-    ]
-  }
-}
-
-**GÉNÈRE MAINTENANT LE JSON COMPLET :**`
-
-    console.log('🤖 Appel à Gemini AI...')
-
-    // Appeler Gemini
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }],
-          generationConfig: {
-            temperature: 0.3,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 8192,
-          }
-        })
-      }
-    )
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text()
-      throw new Error(`Gemini API error: ${geminiResponse.status} - ${errorText}`)
-    }
-
-    const geminiData = await geminiResponse.json()
-    console.log('✅ Réponse Gemini reçue')
-
-    // Extraire le texte de la réponse
-    const generatedText = geminiData.candidates[0].content.parts[0].text
-    
-    // Parser le JSON (enlever les balises markdown si présentes)
-    let cleanedText = generatedText.trim()
-    if (cleanedText.startsWith('```json')) {
-      cleanedText = cleanedText.replace(/```json\n?/g, '').replace(/```\n?/g, '')
-    } else if (cleanedText.startsWith('```')) {
-      cleanedText = cleanedText.replace(/```\n?/g, '')
-    }
-
-    let rtiData
+  const loadDocuments = async () => {
     try {
-      rtiData = JSON.parse(cleanedText)
-    } catch (parseError) {
-      console.error('❌ Erreur parsing JSON:', parseError)
-      console.error('Texte reçu:', cleanedText)
-      throw new Error('Failed to parse Gemini response as JSON')
+      setLoading(true);
+      setError(null);
+
+      const { data, error: fetchError } = await supabase
+        .from('official_documents')
+        .select('*')
+        .eq('is_active', true)
+        .order('category', { ascending: true })
+        .order('name', { ascending: true });
+
+      if (fetchError) throw fetchError;
+
+      setDocuments(data || []);
+    } catch (err) {
+      console.error('Erreur lors du chargement des documents:', err);
+      setError('Impossible de charger les documents officiels');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Calculer l'usage des tokens (estimation)
-    const usageData = {
-      inputTokens: geminiData.usageMetadata?.promptTokenCount || 0,
-      outputTokens: geminiData.usageMetadata?.candidatesTokenCount || 0,
-      totalTokens: geminiData.usageMetadata?.totalTokenCount || 0,
-      estimatedCost: (geminiData.usageMetadata?.totalTokenCount || 0) * 0.00000015 // ~$0.15 per 1M tokens
+  const filterDocuments = () => {
+    if (selectedCategory === 'all') {
+      setFilteredDocuments(documents);
+    } else {
+      setFilteredDocuments(documents.filter(doc => doc.category === selectedCategory));
     }
+  };
 
-    console.log('📊 Usage:', usageData)
-    console.log('✨ Document RTI généré avec succès')
+  const handleOpenDocument = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
-    // Sauvegarder dans Supabase
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
+  const getCategoryColor = (category: string) => {
+    const colors = {
+      Homologation: 'bg-blue-100 text-blue-800 border-blue-200',
+      Administratif: 'bg-green-100 text-green-800 border-green-200',
+      Technique: 'bg-purple-100 text-purple-800 border-purple-200',
+      Certificat: 'bg-orange-100 text-orange-800 border-orange-200',
+    };
+    return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-200';
+  };
 
-    const { error: insertError } = await supabase
-      .from('rti_submissions')
-      .insert({
-        project_id: projectData.project_id,
-        form_data: rtiData,
-        status: 'draft'
-      })
-
-    if (insertError) {
-      console.error('⚠️ Erreur sauvegarde Supabase:', insertError)
-      // Ne pas bloquer la réponse si l'insertion échoue
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'Homologation':
+        return '🚐';
+      case 'Administratif':
+        return '📋';
+      case 'Technique':
+        return '🔧';
+      case 'Certificat':
+        return '✅';
+      default:
+        return '📄';
     }
+  };
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        data: rtiData,
-        usage: usageData
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      }
-    )
-
-  } catch (error) {
-    console.error('❌ Erreur:', error)
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      }
-    )
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="ml-3 text-gray-600">Chargement des documents officiels...</span>
+      </div>
+    );
   }
-})
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-red-900">Erreur</p>
+            <p className="text-sm text-red-700 mt-1">{error}</p>
+            <button
+              onClick={loadDocuments}
+              className="mt-3 text-sm text-red-700 underline hover:text-red-900"
+            >
+              Réessayer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header avec bouton RTI */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Documents Officiels</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Formulaires DREAL, CERFA et documents techniques pour l'homologation VASP
+          </p>
+        </div>
+
+        {/* Bouton Remplissage Auto RTI */}
+        <button
+          onClick={() => setShowRTIModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm hover:shadow-md"
+        >
+          <FileText className="w-5 h-5" />
+          <span className="font-medium">Remplissage Auto RTI</span>
+        </button>
+      </div>
+
+      {/* Filtres par catégorie */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Filter className="w-4 h-4" />
+          <span className="font-medium">Filtrer :</span>
+        </div>
+        {categories.map((category) => (
+          <button
+            key={category}
+            onClick={() => setSelectedCategory(category)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              selectedCategory === category
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {category === 'all' ? 'Tous' : category}
+            {category !== 'all' && (
+              <span className="ml-2">
+                {documents.filter(d => d.category === category).length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Liste des documents */}
+      {filteredDocuments.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+          <p className="text-gray-600 font-medium">Aucun document trouvé</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {selectedCategory === 'all'
+              ? 'Aucun document officiel disponible'
+              : `Aucun document dans la catégorie "${selectedCategory}"`}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {filteredDocuments.map((doc) => (
+            <div
+              key={doc.id}
+              className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-lg transition-all hover:border-blue-300"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-4 flex-1">
+                  {/* Icône de catégorie */}
+                  <div className="text-4xl">{getCategoryIcon(doc.category)}</div>
+
+                  {/* Informations du document */}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {doc.name}
+                      </h3>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getCategoryColor(
+                          doc.category
+                        )}`}
+                      >
+                        {doc.category}
+                      </span>
+                      {doc.version && (
+                        <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-mono">
+                          v{doc.version}
+                        </span>
+                      )}
+                    </div>
+
+                    {doc.description && (
+                      <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
+                        {doc.description.length > 200
+                          ? doc.description.substring(0, 200) + '...'
+                          : doc.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 ml-4">
+                  <button
+                    onClick={() => handleOpenDocument(doc.file_url)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+                    title="Ouvrir le document"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span className="text-sm font-medium">Ouvrir</span>
+                  </button>
+
+                  <a
+                    href={doc.file_url}
+                    download
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                    title="Télécharger le document"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="text-sm font-medium">Télécharger</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Statistiques */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-600" />
+            <span className="text-sm font-medium text-blue-900">
+              {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} affiché
+              {filteredDocuments.length > 1 ? 's' : ''}
+            </span>
+          </div>
+          {selectedCategory !== 'all' && (
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className="text-sm text-blue-700 hover:text-blue-900 underline"
+            >
+              Voir tous les documents ({documents.length})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Info RTI */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-5">
+        <div className="flex items-start gap-4">
+          <div className="text-3xl">🚐</div>
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-2">
+              Besoin de remplir un dossier RTI ?
+            </h3>
+            <p className="text-sm text-gray-700 mb-3">
+              Le système de <strong>Remplissage Automatique RTI</strong> utilise l'intelligence
+              artificielle pour générer automatiquement toutes les annexes du formulaire RTI 03.5.1
+              à partir des données de votre projet.
+            </p>
+            <ul className="text-sm text-gray-700 space-y-1 mb-4">
+              <li>✅ Récupération automatique des données client et véhicule</li>
+              <li>✅ Calcul des charges (PTAC, poids vide, charge utile)</li>
+              <li>✅ Description professionnelle des travaux (300+ mots)</li>
+              <li>✅ Liste complète des équipements avec normes</li>
+              <li>✅ Export JSON prêt à copier-coller</li>
+            </ul>
+            <button
+              onClick={() => setShowRTIModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              <FileText className="w-4 h-4" />
+              Générer mon dossier RTI
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modale RTI */}
+      {showRTIModal && (
+        <RTIAutoFillModal projectId={projectId} onClose={() => setShowRTIModal(false)} />
+      )}
+    </div>
+  );
+}
