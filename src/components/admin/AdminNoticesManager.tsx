@@ -38,8 +38,8 @@ interface AdminNotice {
   modele: string | null;
   categorie: string | null;
   description: string | null;
-  url_notice: string;
-  created_by: string | null;
+  notice_url: string;
+  user_id: string | null;
   created_at: string;
   file_size?: number;
   is_admin_notice?: boolean;
@@ -190,10 +190,10 @@ export const AdminNoticesManager = () => {
           categorie: formData.categorie || null,
           marque: formData.marque.trim() || null,
           modele: formData.modele.trim() || null,
-          url_notice: fileName,
+          notice_url: fileName,
           file_size: formData.file.size,
           is_admin_notice: true,
-          created_by: user?.id,
+          user_id: user?.id,
         });
 
       if (dbError) {
@@ -232,16 +232,11 @@ export const AdminNoticesManager = () => {
     if (!notice) return;
 
     try {
-      if (!notice.url_notice.startsWith("http")) {
+      if (!notice.notice_url.startsWith("http")) {
         await supabase.storage
           .from("notice-files")
-          .remove([notice.url_notice]);
+          .remove([notice.notice_url]);
       }
-
-      await supabase
-        .from("accessories_catalog")
-        .update({ notice_id: null })
-        .eq("notice_id", notice.id);
 
       const { error } = await supabase
         .from("notices_database")
@@ -367,7 +362,7 @@ export const AdminNoticesManager = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleView(notice.url_notice)}
+                          onClick={() => handleView(notice.notice_url)}
                           title="Voir la notice"
                         >
                           <Eye className="h-4 w-4" />
