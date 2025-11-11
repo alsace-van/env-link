@@ -33,7 +33,7 @@ interface Project {
   email_proprietaire: string | null;
   immatriculation: string | null;
   numero_chassis: string | null;
-  date_mise_circulation: string | null;
+  date_premiere_circulation: string | null;
   type_mine: string | null;
   photo_url: string | null;
   vehicle_catalog_id: string | null;
@@ -123,7 +123,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
         email_proprietaire,
         immatriculation,
         numero_chassis,
-        date_mise_circulation,
+        date_premiere_circulation,
         type_mine,
         photo_url,
         vehicle_catalog_id,
@@ -254,7 +254,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
         email_proprietaire: (formData.get("email_proprietaire") as string) || null,
         immatriculation: (formData.get("immatriculation") as string) || null,
         numero_chassis: (formData.get("numero_chassis") as string) || null,
-        date_mise_circulation: (formData.get("date_mise_circulation") as string) || null,
+        date_premiere_circulation: (formData.get("date_mise_circulation") as string) || null,
         type_mine: (formData.get("type_mine") as string) || null,
         photo_url: photoUrl,
         vehicle_catalog_id: selectedVehicle?.id || null,
@@ -560,7 +560,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                       id="edit_date_mise_circulation"
                       name="date_mise_circulation"
                       type="date"
-                      defaultValue={editingProject.date_mise_circulation || ""}
+                      defaultValue={editingProject.date_premiere_circulation || ""}
                     />
                   </div>
 

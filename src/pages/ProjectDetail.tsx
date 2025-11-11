@@ -82,7 +82,7 @@ interface Project {
   numero_chassis?: string;
   immatriculation?: string;
   type_mine?: string;
-  date_mise_circulation?: string;
+  date_premiere_circulation?: string;
   marque_custom?: string;
   modele_custom?: string;
   longueur_mm?: number;
@@ -648,7 +648,7 @@ const ProjectDetail = () => {
     numero_chassis: "",
     immatriculation: "",
     type_mine: "",
-    date_mise_circulation: "",
+    date_premiere_circulation: "",
     marque_custom: "",
     modele_custom: "",
     nom_proprietaire: "",
@@ -745,7 +745,7 @@ const ProjectDetail = () => {
       numero_chassis: project.numero_chassis || "",
       immatriculation: project.immatriculation || "",
       type_mine: project.type_mine || "",
-      date_mise_circulation: project.date_mise_circulation || "",
+      date_premiere_circulation: project.date_premiere_circulation || "",
       marque_custom: project.marque_custom || "",
       modele_custom: project.modele_custom || "",
       nom_proprietaire: project.nom_proprietaire || "",
@@ -774,7 +774,7 @@ const ProjectDetail = () => {
         numero_chassis: editFormData.numero_chassis || null,
         immatriculation: editFormData.immatriculation || null,
         type_mine: editFormData.type_mine || null,
-        date_mise_circulation: editFormData.date_mise_circulation || null,
+        date_premiere_circulation: editFormData.date_premiere_circulation || null,
         marque_custom: editFormData.marque_custom || null,
         modele_custom: editFormData.modele_custom || null,
         nom_proprietaire: editFormData.nom_proprietaire || project.nom_proprietaire,
@@ -980,11 +980,11 @@ const ProjectDetail = () => {
                       <p className="font-medium">{project.type_mine}</p>
                     </div>
                   )}
-                  {project.date_mise_circulation && (
+                  {project.date_premiere_circulation && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Date de circulation :</span>
                       <p className="font-medium">
-                        {new Date(project.date_mise_circulation).toLocaleDateString("fr-FR")}
+                        {new Date(project.date_premiere_circulation).toLocaleDateString("fr-FR")}
                       </p>
                     </div>
                   )}
@@ -1346,8 +1346,8 @@ const ProjectDetail = () => {
                   <Input
                     id="date_mise_circulation"
                     type="date"
-                    value={editFormData.date_mise_circulation}
-                    onChange={(e) => setEditFormData({ ...editFormData, date_mise_circulation: e.target.value })}
+                    value={editFormData.date_premiere_circulation}
+                    onChange={(e) => setEditFormData({ ...editFormData, date_premiere_circulation: e.target.value })}
                   />
                 </div>
                 <div>

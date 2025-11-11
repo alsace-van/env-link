@@ -78,7 +78,7 @@ export const AddSupplierExpenseModal = ({ isOpen, onClose, onSuccess, selectedDa
       const totalAmount = quantityNum * unitPriceNum;
 
       const { error } = await supabase
-        .from("supplier_expenses")
+        .from("project_expenses")
         .insert([
           {
             user_id: user.user.id,

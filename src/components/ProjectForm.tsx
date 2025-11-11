@@ -396,7 +396,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       email_proprietaire: formData.get("email_proprietaire") as string,
       numero_chassis: manualNumeroChassis || null,
       immatriculation: manualImmatriculation || null,
-      date_mise_circulation: manualDateMiseCirculation || null,
+      date_premiere_circulation: manualDateMiseCirculation || null,
       type_mine: manualTypeMine || null,
       photo_url: photoUrl,
       vehicle_catalog_id: selectedVehicle?.id || null,

@@ -222,17 +222,10 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     if (!user.user) return;
 
     const { data, error } = await supabase
-      .from("supplier_expenses")
-      .select(
-        `
-        *,
-        suppliers (
-          name
-        )
-      `,
-      )
+      .from("project_expenses")
+      .select("*")
       .eq("user_id", user.user.id)
-      .order("order_date", { ascending: false });
+      .order("expense_date", { ascending: false });
 
     if (error) {
       console.error("Error loading supplier expenses:", error);
@@ -480,7 +473,7 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
           {
             event: "*",
             schema: "public",
-            table: "supplier_expenses",
+            table: "project_expenses",
             filter: `user_id=eq.${user.user.id}`,
           },
           (payload) => {

@@ -532,7 +532,7 @@ const Shop = () => {
           }));
 
           const { error } = await supabase
-            .from("supplier_expenses")
+            .from("project_expenses")
             .insert(supplierExpenses);
 
           if (error) throw error;
