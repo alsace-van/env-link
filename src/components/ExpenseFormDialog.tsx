@@ -971,11 +971,13 @@ const ExpenseFormDialog = ({
                     </div>
                   ) : (
                     <Select
-                      value={catalogCategoryId}
+                      value={catalogCategoryId || "none"}
                       onValueChange={(value) => {
                         if (value === "__new__") {
                           setIsNewCatalogCategory(true);
                           setNewCategoryName("");
+                        } else if (value === "none") {
+                          setCatalogCategoryId("");
                         } else {
                           setCatalogCategoryId(value);
                         }
@@ -986,7 +988,7 @@ const ExpenseFormDialog = ({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__new__">+ Nouvelle catégorie</SelectItem>
-                        <SelectItem value="">Aucune catégorie</SelectItem>
+                        <SelectItem value="none">Aucune catégorie</SelectItem>
                         {catalogCategories.map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>
                             {cat.nom}
