@@ -179,18 +179,18 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       // 6. Factures fournisseurs mensuelles
       const { data: supplierInvoicesMonthly } = await supabase
         .from("project_expenses")
-        .select("prix, quantite, date_achat")
+        .select("amount, quantite, expense_date")
         .is("project_id", null)
-        .eq("categorie", "Fournisseur")
-        .gte("date_achat", startOfYear)
-        .lte("date_achat", endOfYear);
+        .eq("category", "Fournisseur")
+        .gte("expense_date", startOfYear)
+        .lte("expense_date", endOfYear);
 
       if (supplierInvoicesMonthly && supplierInvoicesMonthly.length > 0) {
         const monthMap = new Map<string, number>();
         supplierInvoicesMonthly.forEach((expense) => {
-          const date = new Date(expense.date_achat);
+          const date = new Date(expense.expense_date!);
           const monthKey = date.toLocaleDateString("fr-FR", { month: "short" });
-          const total = expense.prix * expense.quantite;
+          const total = (expense.amount || 0) * (expense.quantite || 1);
           monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + total);
         });
 
@@ -206,17 +206,17 @@ export const AnnualCharts = ({ projectId }: AnnualChartsProps) => {
       // 7. Factures fournisseurs annuelles
       const { data: supplierInvoicesData } = await supabase
         .from("project_expenses")
-        .select("prix, quantite, fournisseur, date_achat")
+        .select("amount, quantite, supplier, expense_date")
         .is("project_id", null)
-        .eq("categorie", "Fournisseur")
-        .gte("date_achat", startOfYear)
-        .lte("date_achat", endOfYear);
+        .eq("category", "Fournisseur")
+        .gte("expense_date", startOfYear)
+        .lte("expense_date", endOfYear);
 
       if (supplierInvoicesData && supplierInvoicesData.length > 0) {
         const supplierMap = new Map<string, number>();
         supplierInvoicesData.forEach((expense) => {
-          const supplier = expense.fournisseur || "Fournisseur inconnu";
-          const total = expense.prix * expense.quantite;
+          const supplier = expense.supplier || "Fournisseur inconnu";
+          const total = (expense.amount || 0) * (expense.quantite || 1);
           supplierMap.set(supplier, (supplierMap.get(supplier) || 0) + total);
         });
         const supplierData = Array.from(supplierMap.entries())

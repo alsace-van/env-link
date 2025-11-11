@@ -13,19 +13,16 @@ import { Input } from "@/components/ui/input";
 
 interface Expense {
   id: string;
-  nom_accessoire: string;
-  marque?: string;
-  prix: number;
-  prix_vente_ttc?: number;
-  marge_pourcent?: number;
-  quantite: number;
-  date_achat: string;
-  categorie: string;
-  statut_paiement: "non_paye" | "paye";
-  statut_livraison: "commande" | "en_livraison" | "livre";
-  fournisseur?: string;
-  notes?: string;
-  accessory_id?: string;
+  description: string | null;
+  amount: number | null;
+  prix_vente_ttc: number | null;
+  quantite: number | null;
+  expense_date: string | null;
+  category: string | null;
+  payment_status: string | null;
+  supplier: string | null;
+  notes: string | null;
+  invoice_number: string | null;
   selectedOptions?: Array<{
     nom: string;
     prix_reference: number;
@@ -66,13 +63,13 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
       .from("project_expenses")
       .select("*")
       .eq("project_id", projectId)
-      .order("date_achat", { ascending: false });
+      .order("expense_date", { ascending: false });
 
     if (error) {
       toast.error("Erreur lors du chargement des dépenses");
       console.error(error);
     } else {
-      const expensesData = (data || []) as Expense[];
+      const expensesData = data || [];
 
       // Load selected options for each expense
       const expensesWithOptions = await Promise.all(
@@ -164,13 +161,13 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
   };
 
   const cycleDeliveryStatus = async (expense: Expense) => {
-    const statusOrder: Expense["statut_livraison"][] = ["commande", "en_livraison", "livre"];
-    const currentIndex = statusOrder.indexOf(expense.statut_livraison);
+    const statusOrder = ["pending", "in_transit", "delivered"];
+    const currentIndex = statusOrder.indexOf(expense.payment_status || "pending");
     const nextStatus = statusOrder[(currentIndex + 1) % statusOrder.length];
 
     const { error } = await supabase
       .from("project_expenses")
-      .update({ statut_livraison: nextStatus })
+      .update({ payment_status: nextStatus })
       .eq("id", expense.id);
 
     if (error) {

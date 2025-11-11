@@ -27,23 +27,23 @@ interface BankBalance {
 
 interface Expense {
   id: string;
-  nom_accessoire: string;
-  fournisseur?: string;
-  prix: number;
-  quantite: number;
-  date_achat?: string;
-  date_paiement?: string;
-  delai_paiement?: string;
-  statut_paiement: string;
-  facture_url?: string;
+  description: string | null;
+  supplier: string | null;
+  amount: number | null;
+  quantite: number | null;
+  expense_date: string | null;
+  payment_status: string | null;
+  invoice_number: string | null;
+  notes: string | null;
+  prix_vente_ttc: number | null;
 }
 
 interface Payment {
   id: string;
-  type_paiement: string;
+  mode_paiement: string | null;
   montant: number;
   date_paiement: string;
-  notes?: string;
+  notes: string | null;
 }
 
 interface BilanComptableProps {
@@ -105,8 +105,8 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       .from("project_expenses")
       .select("*")
       .is("project_id", null)
-      .not("fournisseur", "is", null)
-      .order("date_achat", { ascending: false });
+      .not("supplier", "is", null)
+      .order("expense_date", { ascending: false });
 
     if (error) {
       console.error("Error loading expenses:", error);
@@ -209,7 +209,9 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         return;
       }
     } else {
-      const { error } = await supabase.from("project_bank_balance").insert([balanceData]);
+      const { data: userData } = await supabase.auth.getUser();
+      const balanceDataWithUser = { ...balanceData, user_id: userData.user?.id };
+      const { error } = await supabase.from("project_bank_balance").insert([balanceDataWithUser]);
 
       if (error) {
         toast.error("Erreur lors de la création");
