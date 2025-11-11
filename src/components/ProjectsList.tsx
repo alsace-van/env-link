@@ -247,7 +247,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
     const { error } = await supabase
       .from("projects")
       .update({
-        nom_projet: (formData.get("nom_projet") as string) || null,
+        nom: (formData.get("nom_projet") as string) || null,
         nom_proprietaire: formData.get("nom_proprietaire") as string,
         adresse_proprietaire: (formData.get("adresse_proprietaire") as string) || null,
         telephone_proprietaire: (formData.get("telephone_proprietaire") as string) || null,
