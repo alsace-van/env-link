@@ -218,6 +218,30 @@ export type Database = {
           },
         ]
       }
+      admin_actions_log: {
+        Row: {
+          action: string
+          admin_id: string
+          created_at: string | null
+          details: Json | null
+          id: string
+        }
+        Insert: {
+          action: string
+          admin_id: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+        }
+        Update: {
+          action?: string
+          admin_id?: string
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+        }
+        Relationships: []
+      }
       admin_messages: {
         Row: {
           created_at: string | null
@@ -336,6 +360,56 @@ export type Database = {
           },
         ]
       }
+      client_appointments: {
+        Row: {
+          appointment_date: string
+          appointment_time: string
+          client_name: string
+          created_at: string | null
+          description: string | null
+          duration_minutes: number | null
+          id: string
+          project_id: string
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          appointment_date: string
+          appointment_time: string
+          client_name: string
+          created_at?: string | null
+          description?: string | null
+          duration_minutes?: number | null
+          id?: string
+          project_id: string
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          appointment_date?: string
+          appointment_time?: string
+          client_name?: string
+          created_at?: string | null
+          description?: string | null
+          duration_minutes?: number | null
+          id?: string
+          project_id?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_appointments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           address: string | null
@@ -439,6 +513,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notices_database: {
+        Row: {
+          annee: string | null
+          categorie: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          marque: string
+          modele: string
+          notice_url: string
+          tags: string[] | null
+          titre: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          annee?: string | null
+          categorie?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          marque: string
+          modele: string
+          notice_url: string
+          tags?: string[] | null
+          titre: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          annee?: string | null
+          categorie?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          marque?: string
+          modele?: string
+          notice_url?: string
+          tags?: string[] | null
+          titre?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       official_documents: {
         Row: {
@@ -683,6 +802,85 @@ export type Database = {
           },
         ]
       }
+      project_monthly_charges: {
+        Row: {
+          created_at: string | null
+          id: string
+          jour_mois: number
+          montant: number
+          nom_charge: string
+          project_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          jour_mois: number
+          montant: number
+          nom_charge: string
+          project_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          jour_mois?: number
+          montant?: number
+          nom_charge?: string
+          project_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_monthly_charges_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_notes: {
+        Row: {
+          content: string | null
+          created_at: string | null
+          id: string
+          project_id: string
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string | null
+          id?: string
+          project_id: string
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_notes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_payment_transactions: {
         Row: {
           created_at: string | null
@@ -720,6 +918,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "project_payment_transactions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_photos: {
+        Row: {
+          annotations: Json | null
+          created_at: string | null
+          description: string | null
+          id: string
+          photo_url: string
+          project_id: string
+          type: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          annotations?: Json | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          photo_url: string
+          project_id: string
+          type?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          annotations?: Json | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          photo_url?: string
+          project_id?: string
+          type?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_photos_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -1128,6 +1370,109 @@ export type Database = {
           subtitle?: string | null
           title?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      technical_schemas: {
+        Row: {
+          created_at: string | null
+          id: string
+          project_id: string
+          schema_data: Json
+          schema_name: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          project_id: string
+          schema_data: Json
+          schema_name: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          schema_data?: Json
+          schema_name?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technical_schemas_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_filled_documents: {
+        Row: {
+          created_at: string | null
+          document_name: string
+          filled_data: Json
+          id: string
+          pdf_url: string | null
+          project_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          document_name: string
+          filled_data: Json
+          id?: string
+          pdf_url?: string | null
+          project_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          document_name?: string
+          filled_data?: Json
+          id?: string
+          pdf_url?: string | null
+          project_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_filled_documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: string
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
