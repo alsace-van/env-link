@@ -103,9 +103,6 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
         prix_vente_ttc: accessoryToAdd.prix_vente_ttc,
         marge_pourcent: accessoryToAdd.marge_pourcent,
         poids_kg: accessoryToAdd.poids_kg,
-        longueur_mm: accessoryToAdd.longueur_mm,
-        largeur_mm: accessoryToAdd.largeur_mm,
-        hauteur_mm: accessoryToAdd.hauteur_mm,
         puissance_watts: accessoryToAdd.puissance_watts,
         intensite_amperes: accessoryToAdd.intensite_amperes,
       });
