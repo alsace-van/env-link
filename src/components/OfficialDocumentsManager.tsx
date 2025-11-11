@@ -18,7 +18,7 @@ interface OfficialDocumentsManagerProps {
   projectId: string;
 }
 
-export default function OfficialDocumentsManager({ projectId }: OfficialDocumentsManagerProps) {
+export function OfficialDocumentsManager({ projectId }: OfficialDocumentsManagerProps) {
   const [documents, setDocuments] = useState<OfficialDocument[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<OfficialDocument[]>([]);
   const [loading, setLoading] = useState(true);
