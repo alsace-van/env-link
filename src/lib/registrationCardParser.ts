@@ -200,12 +200,20 @@ export interface VehicleRegistrationData {
   numeroChassisVIN?: string;
   marque?: string;
   denominationCommerciale?: string;
+  dimension?: string;
   masseEnChargeMax?: number;
   masseVide?: number;
   categorie?: string;
   genreNational?: string;
   carrosserieCE?: string;
   carrosserieNationale?: string;
+  energie?: string;
+  puissanceFiscale?: number;
+  cylindree?: number;
+  ptra?: number;
+  longueur?: number;
+  largeur?: number;
+  hauteur?: number;
 }
 
 /**

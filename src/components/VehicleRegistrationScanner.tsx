@@ -110,7 +110,7 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
 
         // Classification
         genreNational: scanData.genre || scanData.J || undefined,
-        carrosserie: scanData.carrosserie || scanData.J1 || undefined,
+        carrosserieCE: scanData.carrosserie || scanData.J1 || undefined,
 
         // Motorisation
         energie: scanData.energie || scanData.P3 || undefined,
@@ -235,7 +235,7 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
         marque: scanData.marque || scanData.D1 || undefined,
         denominationCommerciale: scanData.modele || scanData.D3 || undefined, // ✅ D3 = dénomination commerciale (EXPERT)
         genreNational: scanData.genre || scanData.J || undefined,
-        carrosserie: scanData.carrosserie || scanData.J1 || undefined,
+        carrosserieCE: scanData.carrosserie || scanData.J1 || undefined,
         energie: scanData.energie || scanData.P3 || undefined,
         puissanceFiscale: scanData.puissance_fiscale || (scanData.P6 ? parseInt(scanData.P6) : undefined),
         cylindree: scanData.cylindree || (scanData.P1 ? parseInt(scanData.P1) : undefined),
