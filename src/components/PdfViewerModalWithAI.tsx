@@ -58,9 +58,6 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title, noticeId, exist
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Ouvrir dans un nouvel onglet
               </Button>
-              <Button variant="ghost" size="sm" onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
             </div>
           </div>
         </DialogHeader>
