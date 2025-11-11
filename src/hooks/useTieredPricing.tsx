@@ -20,11 +20,11 @@ export const useTieredPricing = (productId: string | undefined) => {
     if (!productId) return;
 
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error} = await supabase
       .from("product_tiered_pricing")
-      .select("article_position, discount_percent")
+      .select("min_quantity as article_position, prix_unitaire as discount_percent")
       .eq("product_id", productId)
-      .order("article_position");
+      .order("min_quantity");
 
     if (!error && data) {
       setTiers(data);

@@ -47,7 +47,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
       .from("project_installment_payments")
       .select("*")
       .eq("project_id", projectId)
-      .order("date_debut", { ascending: true });
+      .order("date_debut", { ascending: true }) as any;
 
     if (error) {
       console.error("Error loading installments:", error);
@@ -84,7 +84,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
       const { error } = await supabase
         .from("project_installment_payments")
         .update(installmentData)
-        .eq("id", editingId);
+        .eq("id", editingId) as any;
 
       if (error) {
         toast.error("Erreur lors de la modification");
@@ -95,7 +95,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
     } else {
       const { error } = await supabase
         .from("project_installment_payments")
-        .insert([installmentData]);
+        .insert([installmentData]) as any;
 
       if (error) {
         toast.error("Erreur lors de l'ajout");
@@ -130,7 +130,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
     const { error } = await supabase
       .from("project_installment_payments")
       .delete()
-      .eq("id", id);
+      .eq("id", id) as any;
 
     if (error) {
       toast.error("Erreur lors de la suppression");

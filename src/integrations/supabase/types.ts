@@ -501,53 +501,107 @@ export type Database = {
       }
       project_expenses: {
         Row: {
+          accessory_id: string | null
           amount: number | null
+          categorie: string | null
           category: string | null
           created_at: string | null
+          date_achat: string | null
+          date_paiement: string | null
+          delai_paiement: string | null
           description: string | null
           expense_date: string | null
+          facture_url: string | null
+          fournisseur: string | null
           id: string
+          intensite_amperes: number | null
           invoice_number: string | null
+          marque: string | null
+          nom_accessoire: string | null
           notes: string | null
           payment_status: string | null
+          prix: number | null
+          prix_unitaire: number | null
           prix_vente_ttc: number | null
           project_id: string
+          puissance_watts: number | null
           quantite: number | null
+          statut_livraison: string | null
+          statut_paiement: string | null
           supplier: string | null
+          temps_production_heures: number | null
+          temps_utilisation_heures: number | null
+          type_electrique: string | null
           updated_at: string | null
           user_id: string | null
         }
         Insert: {
+          accessory_id?: string | null
           amount?: number | null
+          categorie?: string | null
           category?: string | null
           created_at?: string | null
+          date_achat?: string | null
+          date_paiement?: string | null
+          delai_paiement?: string | null
           description?: string | null
           expense_date?: string | null
+          facture_url?: string | null
+          fournisseur?: string | null
           id?: string
+          intensite_amperes?: number | null
           invoice_number?: string | null
+          marque?: string | null
+          nom_accessoire?: string | null
           notes?: string | null
           payment_status?: string | null
+          prix?: number | null
+          prix_unitaire?: number | null
           prix_vente_ttc?: number | null
           project_id: string
+          puissance_watts?: number | null
           quantite?: number | null
+          statut_livraison?: string | null
+          statut_paiement?: string | null
           supplier?: string | null
+          temps_production_heures?: number | null
+          temps_utilisation_heures?: number | null
+          type_electrique?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
         Update: {
+          accessory_id?: string | null
           amount?: number | null
+          categorie?: string | null
           category?: string | null
           created_at?: string | null
+          date_achat?: string | null
+          date_paiement?: string | null
+          delai_paiement?: string | null
           description?: string | null
           expense_date?: string | null
+          facture_url?: string | null
+          fournisseur?: string | null
           id?: string
+          intensite_amperes?: number | null
           invoice_number?: string | null
+          marque?: string | null
+          nom_accessoire?: string | null
           notes?: string | null
           payment_status?: string | null
+          prix?: number | null
+          prix_unitaire?: number | null
           prix_vente_ttc?: number | null
           project_id?: string
+          puissance_watts?: number | null
           quantite?: number | null
+          statut_livraison?: string | null
+          statut_paiement?: string | null
           supplier?: string | null
+          temps_production_heures?: number | null
+          temps_utilisation_heures?: number | null
+          type_electrique?: string | null
           updated_at?: string | null
           user_id?: string | null
         }

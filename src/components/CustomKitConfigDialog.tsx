@@ -111,7 +111,7 @@ const CustomKitConfigDialog = ({
       .from("shop_custom_kits")
       .select("allowed_category_ids")
       .eq("product_id", productId)
-      .single();
+      .single() as any;
 
     if (kitError) {
       console.error("Erreur lors du chargement du kit:", kitError);
@@ -211,9 +211,9 @@ const CustomKitConfigDialog = ({
     // Charger les prix dégressifs pour tous les accessoires
     const { data: tieredPricingData } = await supabase
       .from("accessory_tiered_pricing")
-      .select("accessory_id, article_position, discount_percent")
+      .select("accessory_id, min_quantity as article_position, prix_unitaire as discount_percent")
       .in("accessory_id", accessoryIds)
-      .order("article_position");
+      .order("min_quantity") as any;
 
     const tieredPricingMap = new Map<string, any[]>();
     (tieredPricingData || []).forEach((tier) => {

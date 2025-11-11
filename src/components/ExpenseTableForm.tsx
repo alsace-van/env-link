@@ -45,7 +45,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       .from("project_expenses")
       .select("fournisseur")
       .is("project_id", null)
-      .not("fournisseur", "is", null);
+      .not("fournisseur", "is", null) as any;
 
     if (data) {
       const uniqueFournisseurs = Array.from(new Set(data.map((d) => d.fournisseur).filter(Boolean)));

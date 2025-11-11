@@ -16,11 +16,14 @@ import { toast } from "sonner";
 
 interface ElectricalItem {
   id: string;
-  description: string | null;
-  category: string | null;
-  quantite: number | null;
-  amount: number | null;
-  notes: string | null;
+  nom_accessoire: string;
+  type_electrique: string;
+  quantite: number;
+  puissance_watts?: number | null;
+  intensite_amperes?: number | null;
+  temps_utilisation_heures?: number | null;
+  temps_production_heures?: number | null;
+  prix_unitaire?: number | null;
 }
 
 interface DraftItem extends Omit<ElectricalItem, "id"> {

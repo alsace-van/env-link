@@ -176,12 +176,12 @@ const ExpenseFormDialog = ({
   }, [formData.nom_accessoire, catalogAccessories]);
 
   const loadExistingMarques = async () => {
-    const { data: expensesData } = await supabase.from("project_expenses").select("marque").not("marque", "is", null);
+    const { data: expensesData } = await supabase.from("project_expenses").select("marque").not("marque", "is", null) as any;
 
     const { data: catalogData } = await supabase.from("accessories_catalog").select("nom").not("nom", "is", null);
 
     const marques = new Set<string>();
-    expensesData?.forEach((e) => e.marque && marques.add(e.marque));
+    expensesData?.forEach((e: any) => e.marque && marques.add(e.marque));
     catalogData?.forEach((c) => {
       const match = c.nom.match(/^([A-Z][a-zA-Z0-9]*)/);
       if (match) marques.add(match[1]);
@@ -440,9 +440,16 @@ const ExpenseFormDialog = ({
 
         // Ajouter les nouvelles
         if (selectedOptions.length > 0) {
-          await supabase
-            .from("expense_selected_options")
-            .insert(selectedOptions.map((optId) => ({ expense_id: expense.id, option_id: optId })));
+          const optionsToInsert = selectedOptions.map((optId) => {
+            const option = availableOptions.find((opt) => opt.id === optId);
+            return {
+              expense_id: expense.id,
+              option_id: optId,
+              option_name: option?.nom || "",
+              prix_vente_ttc: option?.prix || 0,
+            };
+          });
+          await supabase.from("expense_selected_options").insert(optionsToInsert);
         }
 
         toast.success("Dépense modifiée avec succès");
@@ -516,9 +523,16 @@ const ExpenseFormDialog = ({
       } else {
         // Ajouter les options sélectionnées
         if (selectedOptions.length > 0 && newExpense) {
-          await supabase
-            .from("expense_selected_options")
-            .insert(selectedOptions.map((optId) => ({ expense_id: newExpense.id, option_id: optId })));
+          const optionsToInsert = selectedOptions.map((optId) => {
+            const option = availableOptions.find((opt) => opt.id === optId);
+            return {
+              expense_id: newExpense.id,
+              option_id: optId,
+              option_name: option?.nom || "",
+              prix_vente_ttc: option?.prix || 0,
+            };
+          });
+          await supabase.from("expense_selected_options").insert(optionsToInsert);
         }
 
         if (finalAccessoryId && !selectedAccessoryId) {

@@ -97,7 +97,7 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
         prix: accessoryToAdd.prix_reference || 0,
         quantite: 1,
         fournisseur: accessoryToAdd.fournisseur,
-        categorie: accessory.categories?.nom || accessoryToAdd.categorie,
+        categorie: accessory.categories?.nom || accessory.category_id || "",
         type_electrique: accessoryToAdd.type_electrique,
         accessory_id: accessoryToAdd.id,
         prix_vente_ttc: accessoryToAdd.prix_vente_ttc,

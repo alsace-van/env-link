@@ -22,9 +22,9 @@ export const useAccessoryTieredPricing = (accessoryId: string | undefined) => {
     setLoading(true);
     const { data, error } = await supabase
       .from("accessory_tiered_pricing")
-      .select("article_position, discount_percent")
+      .select("min_quantity as article_position, prix_unitaire as discount_percent")
       .eq("accessory_id", accessoryId)
-      .order("article_position");
+      .order("min_quantity");
 
     if (!error && data) {
       setTiers(data);
