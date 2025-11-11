@@ -82,8 +82,12 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   };
 
   const handleFileSelect = (file: File) => {
-    // Vérifier le type de fichier (PDF uniquement)
-    if (file.type !== "application/pdf") {
+    // Vérifier le type de fichier (PDF uniquement) - accepter plusieurs types MIME pour PDF
+    const isPDF = file.type === "application/pdf" || 
+                  file.type === "application/x-pdf" || 
+                  file.name.toLowerCase().endsWith('.pdf');
+    
+    if (!isPDF) {
       toast.error("Seuls les fichiers PDF sont acceptés");
       return;
     }
@@ -96,7 +100,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
 
     setSelectedFile(file);
     if (!titre) {
-      setTitre(file.name.replace(".pdf", ""));
+      setTitre(file.name.replace(/\.pdf$/i, ""));
     }
   };
 
