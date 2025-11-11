@@ -180,6 +180,51 @@ export type Database = {
           },
         ]
       }
+      accessory_shipping_fees: {
+        Row: {
+          accessory_id: string
+          created_at: string | null
+          id: string
+          shipping_fee_id: string
+          updated_at: string | null
+          visible_boutique: boolean | null
+          visible_depenses: boolean | null
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string | null
+          id?: string
+          shipping_fee_id: string
+          updated_at?: string | null
+          visible_boutique?: boolean | null
+          visible_depenses?: boolean | null
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string | null
+          id?: string
+          shipping_fee_id?: string
+          updated_at?: string | null
+          visible_boutique?: boolean | null
+          visible_depenses?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessory_shipping_fees_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accessory_shipping_fees_shipping_fee_id_fkey"
+            columns: ["shipping_fee_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_fees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       accessory_tiered_pricing: {
         Row: {
           accessory_id: string
@@ -1301,6 +1346,74 @@ export type Database = {
         }
         Relationships: []
       }
+      shipping_fee_tiers: {
+        Row: {
+          created_at: string | null
+          id: string
+          quantity_from: number
+          quantity_to: number | null
+          shipping_fee_id: string
+          total_price: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          quantity_from: number
+          quantity_to?: number | null
+          shipping_fee_id: string
+          total_price: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          quantity_from?: number
+          quantity_to?: number | null
+          shipping_fee_id?: string
+          total_price?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_fee_tiers_shipping_fee_id_fkey"
+            columns: ["shipping_fee_id"]
+            isOneToOne: false
+            referencedRelation: "shipping_fees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipping_fees: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          montant: number
+          nom: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          montant: number
+          nom: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          montant?: number
+          nom?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       shop_custom_kits: {
         Row: {
           allowed_category_ids: string[] | null
@@ -1370,6 +1483,42 @@ export type Database = {
           subtitle?: string | null
           title?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -1451,6 +1600,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_logins: {
+        Row: {
+          created_at: string | null
+          id: string
+          ip_address: string | null
+          login_at: string | null
+          user_agent: string | null
+          user_email: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          login_at?: string | null
+          user_agent?: string | null
+          user_email: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          login_at?: string | null
+          user_agent?: string | null
+          user_email?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
