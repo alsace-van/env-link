@@ -98,39 +98,39 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
       console.log(`📊 ${data.detected_fields_count || 0} champs détectés`);
       console.log("📋 Champs détectés:", data.detected_fields || []);
 
-      // ✅ MAPPING CORRECT : Gemini utilise les codes officiels (E, A, D1, etc.)
-      // On mappe vers les noms attendus par ScanConfirmationModal
+      // ✅ MAPPING : Gemini retourne des noms lisibles (vin, immatriculation, marque...)
+      // On essaie d'abord les noms lisibles, puis les codes officiels en fallback
       const scanData = data.data;
       const mappedData: VehicleRegistrationData = {
-        // ✅ Champs critiques (codes officiels → noms TypeScript)
-        numeroChassisVIN: scanData.E || undefined, // E → numeroChassisVIN
-        immatriculation: scanData.A || undefined, // A → immatriculation
-        marque: scanData.D1 || undefined, // D1 → marque
-        modele: scanData.D2 || undefined, // D2 → modele
-        denominationCommerciale: scanData.D3 || undefined, // D3 → denominationCommerciale
+        // ✅ Champs critiques
+        numeroChassisVIN: scanData.vin || scanData.E || undefined,
+        immatriculation: scanData.immatriculation || scanData.A || undefined,
+        marque: scanData.marque || scanData.D1 || undefined,
+        modele: scanData.modele || scanData.D2 || undefined,
+        denominationCommerciale: scanData.denominationCommerciale || scanData.D3 || undefined,
 
         // Classification
-        genreNational: scanData.J || undefined, // J → genreNational
-        carrosserie: scanData.J1 || undefined, // J1 → carrosserie
+        genreNational: scanData.genre || scanData.J || undefined,
+        carrosserie: scanData.carrosserie || scanData.J1 || undefined,
 
         // Motorisation
-        energie: scanData.P3 || undefined, // P3 → energie
-        puissanceFiscale: scanData.P6 ? parseInt(scanData.P6) : undefined, // P6 → puissanceFiscale
-        cylindree: scanData.P1 ? parseInt(scanData.P1) : undefined, // P1 → cylindree
+        energie: scanData.energie || scanData.P3 || undefined,
+        puissanceFiscale: scanData.puissance_fiscale || (scanData.P6 ? parseInt(scanData.P6) : undefined),
+        cylindree: scanData.cylindree || (scanData.P1 ? parseInt(scanData.P1) : undefined),
 
         // Masses
-        masseVide: scanData.G ? parseInt(scanData.G) : undefined, // G → masseVide
-        masseEnChargeMax: scanData.F1 ? parseInt(scanData.F1) : undefined, // F1 → masseEnChargeMax (PTAC)
-        ptra: scanData.F2 ? parseInt(scanData.F2) : undefined, // F2 → ptra
+        masseVide: scanData.poids_vide || (scanData.G ? parseInt(scanData.G) : undefined),
+        masseEnChargeMax: scanData.ptac || (scanData.F1 ? parseInt(scanData.F1) : undefined),
+        ptra: scanData.ptra || (scanData.F2 ? parseInt(scanData.F2) : undefined),
 
         // Dimensions
-        longueur: scanData.L ? parseInt(scanData.L) : undefined, // L → longueur
-        largeur: scanData.B ? parseInt(scanData.B) : undefined, // B → largeur
-        hauteur: scanData.H ? parseInt(scanData.H) : undefined, // H → hauteur
+        longueur: scanData.longueur || (scanData.L ? parseInt(scanData.L) : undefined),
+        largeur: scanData.largeur || (scanData.B ? parseInt(scanData.B) : undefined),
+        hauteur: scanData.hauteur || (scanData.H ? parseInt(scanData.H) : undefined),
 
         // Autres
-        nombrePlaces: scanData.S1 ? parseInt(scanData.S1) : undefined, // S1 → nombrePlaces
-        datePremiereImmatriculation: scanData.B1 || undefined, // B1 → datePremiereImmatriculation
+        nombrePlaces: scanData.places_assises || (scanData.S1 ? parseInt(scanData.S1) : undefined),
+        datePremiereImmatriculation: scanData.date_premiere_immatriculation || scanData.B1 || undefined,
 
         confidence: scanData.confidence || 90,
       };
@@ -237,24 +237,24 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
 
       const scanData = data.data;
       const mappedData: VehicleRegistrationData = {
-        numeroChassisVIN: scanData.E || undefined,
-        immatriculation: scanData.A || undefined,
-        marque: scanData.D1 || undefined,
-        modele: scanData.D2 || undefined,
-        denominationCommerciale: scanData.D3 || undefined,
-        genreNational: scanData.J || undefined,
-        carrosserie: scanData.J1 || undefined,
-        energie: scanData.P3 || undefined,
-        puissanceFiscale: scanData.P6 ? parseInt(scanData.P6) : undefined,
-        cylindree: scanData.P1 ? parseInt(scanData.P1) : undefined,
-        masseVide: scanData.G ? parseInt(scanData.G) : undefined,
-        masseEnChargeMax: scanData.F1 ? parseInt(scanData.F1) : undefined,
-        ptra: scanData.F2 ? parseInt(scanData.F2) : undefined,
-        longueur: scanData.L ? parseInt(scanData.L) : undefined,
-        largeur: scanData.B ? parseInt(scanData.B) : undefined,
-        hauteur: scanData.H ? parseInt(scanData.H) : undefined,
-        nombrePlaces: scanData.S1 ? parseInt(scanData.S1) : undefined,
-        datePremiereImmatriculation: scanData.B1 || undefined,
+        numeroChassisVIN: scanData.vin || scanData.E || undefined,
+        immatriculation: scanData.immatriculation || scanData.A || undefined,
+        marque: scanData.marque || scanData.D1 || undefined,
+        modele: scanData.modele || scanData.D2 || undefined,
+        denominationCommerciale: scanData.denominationCommerciale || scanData.D3 || undefined,
+        genreNational: scanData.genre || scanData.J || undefined,
+        carrosserie: scanData.carrosserie || scanData.J1 || undefined,
+        energie: scanData.energie || scanData.P3 || undefined,
+        puissanceFiscale: scanData.puissance_fiscale || (scanData.P6 ? parseInt(scanData.P6) : undefined),
+        cylindree: scanData.cylindree || (scanData.P1 ? parseInt(scanData.P1) : undefined),
+        masseVide: scanData.poids_vide || (scanData.G ? parseInt(scanData.G) : undefined),
+        masseEnChargeMax: scanData.ptac || (scanData.F1 ? parseInt(scanData.F1) : undefined),
+        ptra: scanData.ptra || (scanData.F2 ? parseInt(scanData.F2) : undefined),
+        longueur: scanData.longueur || (scanData.L ? parseInt(scanData.L) : undefined),
+        largeur: scanData.largeur || (scanData.B ? parseInt(scanData.B) : undefined),
+        hauteur: scanData.hauteur || (scanData.H ? parseInt(scanData.H) : undefined),
+        nombrePlaces: scanData.places_assises || (scanData.S1 ? parseInt(scanData.S1) : undefined),
+        datePremiereImmatriculation: scanData.date_premiere_immatriculation || scanData.B1 || undefined,
         confidence: scanData.confidence || 90,
       };
 
