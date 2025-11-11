@@ -140,7 +140,7 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
         )
       `,
       )
-      .eq("user_id", user.id)
+      .eq("created_by", user.id)
       .order("created_at", { ascending: false });
 
     setIsLoading(false);

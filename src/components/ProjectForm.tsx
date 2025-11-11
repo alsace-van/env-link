@@ -389,6 +389,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
     const projectData = {
       created_by: user.id,
+      user_id: user.id,
       nom: (formData.get("nom_projet") as string) || "Nouveau projet",
       nom_proprietaire: formData.get("nom_proprietaire") as string,
       adresse_proprietaire: formData.get("adresse_proprietaire") as string,
