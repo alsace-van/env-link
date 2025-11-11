@@ -422,9 +422,6 @@ const ExpenseFormDialog = ({
           notes: formData.notes || null,
           type_electrique: formData.type_electrique || null,
           poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         })
@@ -508,9 +505,6 @@ const ExpenseFormDialog = ({
           accessory_id: finalAccessoryId,
           type_electrique: formData.type_electrique || null,
           poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         })
