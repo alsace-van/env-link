@@ -400,7 +400,7 @@ export const ScanConfirmationModal = ({
           {/* ============================================ */}
           {/* SECTION 3 : MARQUE & MODÈLE */}
           {/* ============================================ */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             {/* MARQUE */}
             <div className="space-y-2 p-4 border rounded-lg bg-slate-50">
               <div className="flex items-center justify-between">
@@ -482,38 +482,6 @@ export const ScanConfirmationModal = ({
               ) : (
                 <div className="text-center p-2 text-gray-500 text-sm italic">Non détecté</div>
               )}
-            </div>
-
-            {/* DIMENSION */}
-            <div className="space-y-2 p-4 border rounded-lg bg-slate-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm font-semibold">Dimension</Label>
-                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                    Manuel
-                  </Badge>
-                </div>
-              </div>
-
-              <Select
-                value={editedData.dimension || ""}
-                onValueChange={(value) => handleFieldChange("dimension", value)}
-              >
-                <SelectTrigger className="font-semibold text-lg">
-                  <SelectValue placeholder="Sélectionner..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="L1H1">L1H1</SelectItem>
-                  <SelectItem value="L1H2">L1H2</SelectItem>
-                  <SelectItem value="L2H1">L2H1</SelectItem>
-                  <SelectItem value="L2H2">L2H2</SelectItem>
-                  <SelectItem value="L3H1">L3H1</SelectItem>
-                  <SelectItem value="L3H2">L3H2</SelectItem>
-                  <SelectItem value="L3H3">L3H3</SelectItem>
-                  <SelectItem value="L4H2">L4H2</SelectItem>
-                  <SelectItem value="L4H3">L4H3</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
 
