@@ -208,8 +208,11 @@ export type Database = {
           created_at: string | null
           id: string
           is_global: boolean | null
+          is_read: boolean | null
           message: string
           read_at: string | null
+          recipient_id: string | null
+          sender_id: string | null
           subject: string
           updated_at: string | null
           user_id: string | null
@@ -218,8 +221,11 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_global?: boolean | null
+          is_read?: boolean | null
           message: string
           read_at?: string | null
+          recipient_id?: string | null
+          sender_id?: string | null
           subject: string
           updated_at?: string | null
           user_id?: string | null
@@ -228,13 +234,60 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_global?: boolean | null
+          is_read?: boolean | null
           message?: string
           read_at?: string | null
+          recipient_id?: string | null
+          sender_id?: string | null
           subject?: string
           updated_at?: string | null
           user_id?: string | null
         }
         Relationships: []
+      }
+      administrative_documents: {
+        Row: {
+          created_at: string | null
+          file_name: string
+          file_size: number | null
+          file_url: string
+          id: string
+          mime_type: string | null
+          project_id: string
+          updated_at: string | null
+          uploaded_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          file_name: string
+          file_size?: number | null
+          file_url: string
+          id?: string
+          mime_type?: string | null
+          project_id: string
+          updated_at?: string | null
+          uploaded_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          file_name?: string
+          file_size?: number | null
+          file_url?: string
+          id?: string
+          mime_type?: string | null
+          project_id?: string
+          updated_at?: string | null
+          uploaded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "administrative_documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       categories: {
         Row: {
@@ -268,6 +321,48 @@ export type Database = {
           },
         ]
       }
+      clients: {
+        Row: {
+          address: string | null
+          city: string | null
+          country: string | null
+          created_at: string | null
+          email: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          phone: string | null
+          postal_code: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          phone?: string | null
+          postal_code?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       expense_selected_options: {
         Row: {
           created_at: string | null
@@ -293,15 +388,7 @@ export type Database = {
           option_name?: string
           prix_vente_ttc?: number
         }
-        Relationships: [
-          {
-            foreignKeyName: "expense_selected_options_expense_id_fkey"
-            columns: ["expense_id"]
-            isOneToOne: false
-            referencedRelation: "project_expenses"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       expenses: {
         Row: {
@@ -414,50 +501,59 @@ export type Database = {
       }
       project_expenses: {
         Row: {
-          categorie: string | null
+          amount: number | null
+          category: string | null
           created_at: string | null
-          date_achat: string | null
-          designation: string
-          fournisseur: string | null
+          description: string | null
+          expense_date: string | null
           id: string
+          invoice_number: string | null
           notes: string | null
-          prix: number
+          payment_status: string | null
+          prix_vente_ttc: number | null
           project_id: string
-          quantite: number
+          quantite: number | null
+          supplier: string | null
           updated_at: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
-          categorie?: string | null
+          amount?: number | null
+          category?: string | null
           created_at?: string | null
-          date_achat?: string | null
-          designation: string
-          fournisseur?: string | null
+          description?: string | null
+          expense_date?: string | null
           id?: string
+          invoice_number?: string | null
           notes?: string | null
-          prix?: number
+          payment_status?: string | null
+          prix_vente_ttc?: number | null
           project_id: string
-          quantite?: number
+          quantite?: number | null
+          supplier?: string | null
           updated_at?: string | null
-          user_id: string
+          user_id?: string | null
         }
         Update: {
-          categorie?: string | null
+          amount?: number | null
+          category?: string | null
           created_at?: string | null
-          date_achat?: string | null
-          designation?: string
-          fournisseur?: string | null
+          description?: string | null
+          expense_date?: string | null
           id?: string
+          invoice_number?: string | null
           notes?: string | null
-          prix?: number
+          payment_status?: string | null
+          prix_vente_ttc?: number | null
           project_id?: string
-          quantite?: number
+          quantite?: number | null
+          supplier?: string | null
           updated_at?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "project_expenses_project_id_fkey"
+            foreignKeyName: "fk_project_expenses_project"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -558,99 +654,228 @@ export type Database = {
       }
       projects: {
         Row: {
+          adresse_proprietaire: string | null
+          budget: number | null
           budget_total: number | null
           carrosserie: string | null
+          charge_utile_kg: number | null
+          clargeur_mm: number | null
+          client_id: string | null
           client_name: string | null
+          code_postal_proprietaire: string | null
+          commentaires_dreal: string | null
           created_at: string | null
+          created_by: string | null
           cylindree: number | null
+          date_premiere_circulation: string | null
           date_premiere_immatriculation: string | null
           denomination_commerciale: string | null
+          description: string | null
           dimension: string | null
+          email_proprietaire: string | null
+          end_date: string | null
           energie: string | null
           genre_national: string | null
           hauteur: number | null
+          hauteur_mm: number | null
           id: string
           immatriculation: string | null
           largeur: number | null
+          largeur_mm: number | null
           longueur: number | null
+          longueur_mm: number | null
           marque: string | null
           marque_officielle: string | null
+          marque_vehicule: string | null
           masse_en_charge_max: number | null
+          masse_ordre_marche_kg: number | null
           masse_vide: number | null
           modele: string | null
           modele_officiel: string | null
+          modele_vehicule: string | null
+          name: string | null
           nom: string
+          nom_projet: string | null
           nom_proprietaire: string | null
           nombre_places: number | null
+          notes_rti: string | null
+          numero_chassis: string | null
           numero_chassis_vin: string | null
+          photo_url: string | null
+          poids_vide_kg: number | null
+          prenom_proprietaire: string | null
+          ptac_kg: number | null
           ptra: number | null
           puissance_fiscale: number | null
+          rti_status: string | null
+          rti_submission_date: string | null
+          rti_validation_date: string | null
+          start_date: string | null
+          status: string | null
           statut: string | null
+          telephone_proprietaire: string | null
+          type_mine: string | null
           user_id: string | null
+          vehicle_catalog_id: string | null
+          vehicle_catalog_id_v2: string | null
+          vehicle_model: string | null
+          ville_proprietaire: string | null
+          vin: string | null
         }
         Insert: {
+          adresse_proprietaire?: string | null
+          budget?: number | null
           budget_total?: number | null
           carrosserie?: string | null
+          charge_utile_kg?: number | null
+          clargeur_mm?: number | null
+          client_id?: string | null
           client_name?: string | null
+          code_postal_proprietaire?: string | null
+          commentaires_dreal?: string | null
           created_at?: string | null
+          created_by?: string | null
           cylindree?: number | null
+          date_premiere_circulation?: string | null
           date_premiere_immatriculation?: string | null
           denomination_commerciale?: string | null
+          description?: string | null
           dimension?: string | null
+          email_proprietaire?: string | null
+          end_date?: string | null
           energie?: string | null
           genre_national?: string | null
           hauteur?: number | null
+          hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
           largeur?: number | null
+          largeur_mm?: number | null
           longueur?: number | null
+          longueur_mm?: number | null
           marque?: string | null
           marque_officielle?: string | null
+          marque_vehicule?: string | null
           masse_en_charge_max?: number | null
+          masse_ordre_marche_kg?: number | null
           masse_vide?: number | null
           modele?: string | null
           modele_officiel?: string | null
+          modele_vehicule?: string | null
+          name?: string | null
           nom: string
+          nom_projet?: string | null
           nom_proprietaire?: string | null
           nombre_places?: number | null
+          notes_rti?: string | null
+          numero_chassis?: string | null
           numero_chassis_vin?: string | null
+          photo_url?: string | null
+          poids_vide_kg?: number | null
+          prenom_proprietaire?: string | null
+          ptac_kg?: number | null
           ptra?: number | null
           puissance_fiscale?: number | null
+          rti_status?: string | null
+          rti_submission_date?: string | null
+          rti_validation_date?: string | null
+          start_date?: string | null
+          status?: string | null
           statut?: string | null
+          telephone_proprietaire?: string | null
+          type_mine?: string | null
           user_id?: string | null
+          vehicle_catalog_id?: string | null
+          vehicle_catalog_id_v2?: string | null
+          vehicle_model?: string | null
+          ville_proprietaire?: string | null
+          vin?: string | null
         }
         Update: {
+          adresse_proprietaire?: string | null
+          budget?: number | null
           budget_total?: number | null
           carrosserie?: string | null
+          charge_utile_kg?: number | null
+          clargeur_mm?: number | null
+          client_id?: string | null
           client_name?: string | null
+          code_postal_proprietaire?: string | null
+          commentaires_dreal?: string | null
           created_at?: string | null
+          created_by?: string | null
           cylindree?: number | null
+          date_premiere_circulation?: string | null
           date_premiere_immatriculation?: string | null
           denomination_commerciale?: string | null
+          description?: string | null
           dimension?: string | null
+          email_proprietaire?: string | null
+          end_date?: string | null
           energie?: string | null
           genre_national?: string | null
           hauteur?: number | null
+          hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
           largeur?: number | null
+          largeur_mm?: number | null
           longueur?: number | null
+          longueur_mm?: number | null
           marque?: string | null
           marque_officielle?: string | null
+          marque_vehicule?: string | null
           masse_en_charge_max?: number | null
+          masse_ordre_marche_kg?: number | null
           masse_vide?: number | null
           modele?: string | null
           modele_officiel?: string | null
+          modele_vehicule?: string | null
+          name?: string | null
           nom?: string
+          nom_projet?: string | null
           nom_proprietaire?: string | null
           nombre_places?: number | null
+          notes_rti?: string | null
+          numero_chassis?: string | null
           numero_chassis_vin?: string | null
+          photo_url?: string | null
+          poids_vide_kg?: number | null
+          prenom_proprietaire?: string | null
+          ptac_kg?: number | null
           ptra?: number | null
           puissance_fiscale?: number | null
+          rti_status?: string | null
+          rti_submission_date?: string | null
+          rti_validation_date?: string | null
+          start_date?: string | null
+          status?: string | null
           statut?: string | null
+          telephone_proprietaire?: string | null
+          type_mine?: string | null
           user_id?: string | null
+          vehicle_catalog_id?: string | null
+          vehicle_catalog_id_v2?: string | null
+          vehicle_model?: string | null
+          ville_proprietaire?: string | null
+          vin?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "projects_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_vehicle_catalog_id_fkey"
+            columns: ["vehicle_catalog_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rti_submissions: {
         Row: {
@@ -771,6 +996,80 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      vehicle_registration: {
+        Row: {
+          carrosserie: string | null
+          co2: number | null
+          created_at: string | null
+          cylindree: number | null
+          date_premiere_immatriculation: string | null
+          energie: string | null
+          genre: string | null
+          id: string
+          immatriculation: string | null
+          marque: string | null
+          modele: string | null
+          places_assises: number | null
+          poids_vide: number | null
+          project_id: string | null
+          ptac: number | null
+          puissance_fiscale: number | null
+          type: string | null
+          updated_at: string | null
+          vin: string | null
+        }
+        Insert: {
+          carrosserie?: string | null
+          co2?: number | null
+          created_at?: string | null
+          cylindree?: number | null
+          date_premiere_immatriculation?: string | null
+          energie?: string | null
+          genre?: string | null
+          id?: string
+          immatriculation?: string | null
+          marque?: string | null
+          modele?: string | null
+          places_assises?: number | null
+          poids_vide?: number | null
+          project_id?: string | null
+          ptac?: number | null
+          puissance_fiscale?: number | null
+          type?: string | null
+          updated_at?: string | null
+          vin?: string | null
+        }
+        Update: {
+          carrosserie?: string | null
+          co2?: number | null
+          created_at?: string | null
+          cylindree?: number | null
+          date_premiere_immatriculation?: string | null
+          energie?: string | null
+          genre?: string | null
+          id?: string
+          immatriculation?: string | null
+          marque?: string | null
+          modele?: string | null
+          places_assises?: number | null
+          poids_vide?: number | null
+          project_id?: string | null
+          ptac?: number | null
+          puissance_fiscale?: number | null
+          type?: string | null
+          updated_at?: string | null
+          vin?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_registration_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vehicles_catalog: {
         Row: {
