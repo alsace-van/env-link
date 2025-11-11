@@ -25,9 +25,10 @@ interface AddSupplierExpenseModalProps {
   onClose: () => void;
   onSuccess: () => void;
   selectedDate: Date;
+  projectId: string | null;
 }
 
-export const AddSupplierExpenseModal = ({ isOpen, onClose, onSuccess, selectedDate }: AddSupplierExpenseModalProps) => {
+export const AddSupplierExpenseModal = ({ isOpen, onClose, onSuccess, selectedDate, projectId }: AddSupplierExpenseModalProps) => {
   const [productName, setProductName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unitPrice, setUnitPrice] = useState("");
@@ -82,6 +83,7 @@ export const AddSupplierExpenseModal = ({ isOpen, onClose, onSuccess, selectedDa
         .insert([
           {
             user_id: user.user.id,
+            project_id: projectId || null,
             product_name: productName.trim(),
             quantity: quantityNum,
             unit_price: unitPriceNum,

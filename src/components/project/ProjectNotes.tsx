@@ -55,7 +55,14 @@ export const ProjectNotes = ({ projectId }: ProjectNotesProps) => {
   const addNote = async () => {
     if (!newNote.title.trim() || !projectId) return;
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
+
     const { error } = await supabase.from("project_notes").insert({
+      user_id: user.id,
       project_id: projectId,
       title: newNote.title,
       content: newNote.content,

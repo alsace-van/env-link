@@ -33,6 +33,9 @@ export const AddTaskModal = ({ isOpen, onClose, onSuccess, projectId, selectedDa
     setIsLoading(true);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non authentifié");
+
       // Créer la date avec l'heure sélectionnée
       const dueDate = setMinutes(setHours(selectedDate, selectedHour), 0);
 
@@ -40,10 +43,11 @@ export const AddTaskModal = ({ isOpen, onClose, onSuccess, projectId, selectedDa
         .from("project_todos")
         .insert([
           {
+            user_id: user.id,
             project_id: projectId,
             title: title.trim(),
             description: description.trim() || null,
-            due_date: dueDate.toISOString(),
+            due_date: format(dueDate, "yyyy-MM-dd"),
             completed: false,
           },
         ]);

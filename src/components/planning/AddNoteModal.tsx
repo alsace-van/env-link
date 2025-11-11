@@ -30,14 +30,17 @@ export const AddNoteModal = ({ isOpen, onClose, onSuccess, projectId }: AddNoteM
     setIsLoading(true);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Non authentifié");
+
       const { error } = await supabase
         .from("project_notes")
         .insert([
           {
+            user_id: user.id,
             project_id: projectId,
             title: title.trim(),
             content: content.trim() || null,
-            archived: false,
           },
         ]);
 

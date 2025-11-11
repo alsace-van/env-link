@@ -58,7 +58,14 @@ export const ProjectTodoList = ({ projectId }: ProjectTodoListProps) => {
   const addTodo = async () => {
     if (!newTodo.trim() || !projectId) return;
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
+
     const { error } = await supabase.from("project_todos").insert({
+      user_id: user.id,
       project_id: projectId,
       title: newTodo,
       due_date: dueDate ? format(dueDate, "yyyy-MM-dd") : null,

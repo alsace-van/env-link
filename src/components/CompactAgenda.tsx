@@ -1202,6 +1202,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         onClose={() => setIsAddExpenseOpen(false)}
         onSuccess={handleModalSuccess}
         selectedDate={currentDate}
+        projectId={projectId}
       />
       <AddAppointmentModal
         isOpen={isAddAppointmentOpen}

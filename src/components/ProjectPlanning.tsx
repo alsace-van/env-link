@@ -469,6 +469,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
         onClose={() => setShowAddExpenseModal(false)}
         onSuccess={() => {}} // Plus besoin de recharger manuellement
         selectedDate={currentDate}
+        projectId={projectId}
       />
 
       <AddAppointmentModal

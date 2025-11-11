@@ -698,20 +698,26 @@ export type Database = {
           marque: string | null
           nom_accessoire: string | null
           notes: string | null
+          order_date: string | null
           payment_status: string | null
           poids_kg: number | null
           prix: number | null
           prix_unitaire: number | null
           prix_vente_ttc: number | null
+          product_name: string | null
           project_id: string
           puissance_watts: number | null
           quantite: number | null
+          quantity: number | null
           statut_livraison: string | null
           statut_paiement: string | null
           supplier: string | null
+          supplier_id: string | null
           temps_production_heures: number | null
           temps_utilisation_heures: number | null
+          total_amount: number | null
           type_electrique: string | null
+          unit_price: number | null
           updated_at: string | null
           user_id: string | null
         }
@@ -734,20 +740,26 @@ export type Database = {
           marque?: string | null
           nom_accessoire?: string | null
           notes?: string | null
+          order_date?: string | null
           payment_status?: string | null
           poids_kg?: number | null
           prix?: number | null
           prix_unitaire?: number | null
           prix_vente_ttc?: number | null
+          product_name?: string | null
           project_id: string
           puissance_watts?: number | null
           quantite?: number | null
+          quantity?: number | null
           statut_livraison?: string | null
           statut_paiement?: string | null
           supplier?: string | null
+          supplier_id?: string | null
           temps_production_heures?: number | null
           temps_utilisation_heures?: number | null
+          total_amount?: number | null
           type_electrique?: string | null
+          unit_price?: number | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -770,20 +782,26 @@ export type Database = {
           marque?: string | null
           nom_accessoire?: string | null
           notes?: string | null
+          order_date?: string | null
           payment_status?: string | null
           poids_kg?: number | null
           prix?: number | null
           prix_unitaire?: number | null
           prix_vente_ttc?: number | null
+          product_name?: string | null
           project_id?: string
           puissance_watts?: number | null
           quantite?: number | null
+          quantity?: number | null
           statut_livraison?: string | null
           statut_paiement?: string | null
           supplier?: string | null
+          supplier_id?: string | null
           temps_production_heures?: number | null
           temps_utilisation_heures?: number | null
+          total_amount?: number | null
           type_electrique?: string | null
+          unit_price?: number | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -793,6 +811,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_expenses_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -890,6 +915,7 @@ export type Database = {
       }
       project_notes: {
         Row: {
+          archived: boolean | null
           content: string | null
           created_at: string | null
           id: string
@@ -899,6 +925,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archived?: boolean | null
           content?: string | null
           created_at?: string | null
           id?: string
@@ -908,6 +935,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          archived?: boolean | null
           content?: string | null
           created_at?: string | null
           id?: string

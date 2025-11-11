@@ -30,6 +30,7 @@ interface ProjectNote {
   title: string;
   content: string | null;
   project_id: string;
+  user_id: string;
   archived: boolean;
   created_at: string;
   updated_at: string;
@@ -37,16 +38,35 @@ interface ProjectNote {
 
 interface SupplierExpense {
   id: string;
-  product_name: string;
-  total_amount: number;
-  order_date: string | null;
-  notes: string | null;
-  quantity: number;
-  unit_price: number;
-  supplier_id: string | null;
+  project_id: string;
   user_id: string;
-  created_at: string | null;
-  updated_at: string | null;
+  accessory_id: string | null;
+  nom_accessoire: string | null;
+  marque: string | null;
+  fournisseur: string | null;
+  categorie: string | null;
+  description: string | null;
+  quantite: number | null;
+  prix_unitaire: number | null;
+  prix_vente_ttc: number | null;
+  date_achat: string | null;
+  date_paiement: string | null;
+  delai_paiement: string | null;
+  statut_paiement: string | null;
+  statut_livraison: string | null;
+  facture_url: string | null;
+  amount: number | null;
+  expense_date: string | null;
+  // New fields added to DB
+  product_name: string | null;
+  total_amount: number | null;
+  order_date: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  supplier_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
   suppliers?: {
     name: string;
   };
