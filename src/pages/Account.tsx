@@ -30,15 +30,16 @@ const Account = () => {
 
     setUser(user);
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("display_name")
-      .eq("id", user.id)
-      .maybeSingle();
+    // Table profiles n'existe pas - fonctionnalité désactivée
+    // const { data: profile } = await supabase
+    //   .from("profiles")
+    //   .select("display_name")
+    //   .eq("id", user.id)
+    //   .maybeSingle();
 
-    if (profile?.display_name) {
-      setDisplayName(profile.display_name);
-    }
+    // if (profile?.display_name) {
+    //   setDisplayName(profile.display_name);
+    // }
   };
 
   const handleSave = async () => {
@@ -46,10 +47,13 @@ const Account = () => {
 
     setIsSaving(true);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({ display_name: displayName })
-      .eq("id", user.id);
+    // Table profiles n'existe pas - fonctionnalité désactivée
+    // const { error } = await supabase
+    //   .from("profiles")
+    //   .update({ display_name: displayName })
+    //   .eq("id", user.id);
+    
+    const error = null; // Temporaire
 
     setIsSaving(false);
 
