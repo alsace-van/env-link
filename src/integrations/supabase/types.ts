@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           available_in_shop: boolean | null
           category_id: string | null
+          couleur: string | null
           created_at: string
           delivery_date: string | null
           description: string | null
@@ -37,6 +38,10 @@ export type Database = {
           poids_kg: number | null
           prix_reference: number | null
           prix_vente_ttc: number | null
+          promo_active: boolean | null
+          promo_end_date: string | null
+          promo_price: number | null
+          promo_start_date: string | null
           puissance_watts: number | null
           stock_notes: string | null
           stock_quantity: number | null
@@ -51,6 +56,7 @@ export type Database = {
         Insert: {
           available_in_shop?: boolean | null
           category_id?: string | null
+          couleur?: string | null
           created_at?: string
           delivery_date?: string | null
           description?: string | null
@@ -70,6 +76,10 @@ export type Database = {
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          promo_active?: boolean | null
+          promo_end_date?: string | null
+          promo_price?: number | null
+          promo_start_date?: string | null
           puissance_watts?: number | null
           stock_notes?: string | null
           stock_quantity?: number | null
@@ -84,6 +94,7 @@ export type Database = {
         Update: {
           available_in_shop?: boolean | null
           category_id?: string | null
+          couleur?: string | null
           created_at?: string
           delivery_date?: string | null
           description?: string | null
@@ -103,6 +114,10 @@ export type Database = {
           poids_kg?: number | null
           prix_reference?: number | null
           prix_vente_ttc?: number | null
+          promo_active?: boolean | null
+          promo_end_date?: string | null
+          promo_price?: number | null
+          promo_start_date?: string | null
           puissance_watts?: number | null
           stock_notes?: string | null
           stock_quantity?: number | null
@@ -520,6 +535,7 @@ export type Database = {
           nom_accessoire: string | null
           notes: string | null
           payment_status: string | null
+          poids_kg: number | null
           prix: number | null
           prix_unitaire: number | null
           prix_vente_ttc: number | null
@@ -555,6 +571,7 @@ export type Database = {
           nom_accessoire?: string | null
           notes?: string | null
           payment_status?: string | null
+          poids_kg?: number | null
           prix?: number | null
           prix_unitaire?: number | null
           prix_vente_ttc?: number | null
@@ -590,6 +607,7 @@ export type Database = {
           nom_accessoire?: string | null
           notes?: string | null
           payment_status?: string | null
+          poids_kg?: number | null
           prix?: number | null
           prix_unitaire?: number | null
           prix_vente_ttc?: number | null
@@ -608,6 +626,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "fk_project_expenses_project"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_installment_payments: {
+        Row: {
+          created_at: string | null
+          date_debut: string
+          id: string
+          montant_mensualite: number
+          montant_total: number
+          nom_paiement: string
+          nombre_mensualites_restantes: number
+          nombre_mensualites_total: number
+          project_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          date_debut: string
+          id?: string
+          montant_mensualite: number
+          montant_total: number
+          nom_paiement: string
+          nombre_mensualites_restantes: number
+          nombre_mensualites_total: number
+          project_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          date_debut?: string
+          id?: string
+          montant_mensualite?: number
+          montant_total?: number
+          nom_paiement?: string
+          nombre_mensualites_restantes?: number
+          nombre_mensualites_total?: number
+          project_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_installment_payments_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -729,14 +797,18 @@ export type Database = {
           email_proprietaire: string | null
           end_date: string | null
           energie: string | null
+          furniture_data: Json | null
           genre_national: string | null
           hauteur: number | null
           hauteur_mm: number | null
           id: string
           immatriculation: string | null
           largeur: number | null
+          largeur_chargement_mm: number | null
           largeur_mm: number | null
+          layout_canvas_data: string | null
           longueur: number | null
+          longueur_chargement_mm: number | null
           longueur_mm: number | null
           marque: string | null
           marque_officielle: string | null
@@ -798,14 +870,18 @@ export type Database = {
           email_proprietaire?: string | null
           end_date?: string | null
           energie?: string | null
+          furniture_data?: Json | null
           genre_national?: string | null
           hauteur?: number | null
           hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
           largeur?: number | null
+          largeur_chargement_mm?: number | null
           largeur_mm?: number | null
+          layout_canvas_data?: string | null
           longueur?: number | null
+          longueur_chargement_mm?: number | null
           longueur_mm?: number | null
           marque?: string | null
           marque_officielle?: string | null
@@ -867,14 +943,18 @@ export type Database = {
           email_proprietaire?: string | null
           end_date?: string | null
           energie?: string | null
+          furniture_data?: Json | null
           genre_national?: string | null
           hauteur?: number | null
           hauteur_mm?: number | null
           id?: string
           immatriculation?: string | null
           largeur?: number | null
+          largeur_chargement_mm?: number | null
           largeur_mm?: number | null
+          layout_canvas_data?: string | null
           longueur?: number | null
+          longueur_chargement_mm?: number | null
           longueur_mm?: number | null
           marque?: string | null
           marque_officielle?: string | null
