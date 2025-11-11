@@ -165,6 +165,39 @@ export type Database = {
           },
         ]
       }
+      admin_messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_global: boolean | null
+          message: string
+          read_at: string | null
+          subject: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_global?: boolean | null
+          message: string
+          read_at?: string | null
+          subject: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_global?: boolean | null
+          message?: string
+          read_at?: string | null
+          subject?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -225,6 +258,139 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "expenses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      official_documents: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          file_url: string
+          id: string
+          is_active: boolean | null
+          name: string
+          updated_at: string | null
+          version: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          file_url: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          updated_at?: string | null
+          version?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          file_url?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          updated_at?: string | null
+          version?: string | null
+        }
+        Relationships: []
+      }
+      project_expenses: {
+        Row: {
+          categorie: string | null
+          created_at: string | null
+          date_achat: string | null
+          designation: string
+          fournisseur: string | null
+          id: string
+          notes: string | null
+          prix: number
+          project_id: string
+          quantite: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          categorie?: string | null
+          created_at?: string | null
+          date_achat?: string | null
+          designation: string
+          fournisseur?: string | null
+          id?: string
+          notes?: string | null
+          prix?: number
+          project_id: string
+          quantite?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          categorie?: string | null
+          created_at?: string | null
+          date_achat?: string | null
+          designation?: string
+          fournisseur?: string | null
+          id?: string
+          notes?: string | null
+          prix?: number
+          project_id?: string
+          quantite?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_expenses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_payment_transactions: {
+        Row: {
+          created_at: string | null
+          date_paiement: string
+          id: string
+          mode_paiement: string | null
+          montant: number
+          notes: string | null
+          project_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          date_paiement: string
+          id?: string
+          mode_paiement?: string | null
+          montant: number
+          notes?: string | null
+          project_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          date_paiement?: string
+          id?: string
+          mode_paiement?: string | null
+          montant?: number
+          notes?: string | null
+          project_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_payment_transactions_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -325,6 +491,87 @@ export type Database = {
         }
         Relationships: []
       }
+      rti_submissions: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          dreal_comments: string | null
+          form_data: Json
+          id: string
+          json_data_url: string | null
+          pdf_url: string | null
+          project_id: string
+          rejection_date: string | null
+          status: string | null
+          submission_date: string | null
+          updated_at: string | null
+          validation_date: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          dreal_comments?: string | null
+          form_data: Json
+          id?: string
+          json_data_url?: string | null
+          pdf_url?: string | null
+          project_id: string
+          rejection_date?: string | null
+          status?: string | null
+          submission_date?: string | null
+          updated_at?: string | null
+          validation_date?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          dreal_comments?: string | null
+          form_data?: Json
+          id?: string
+          json_data_url?: string | null
+          pdf_url?: string | null
+          project_id?: string
+          rejection_date?: string | null
+          status?: string | null
+          submission_date?: string | null
+          updated_at?: string | null
+          validation_date?: string | null
+        }
+        Relationships: []
+      }
+      shop_welcome_config: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          subtitle: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          subtitle?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          subtitle?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       vehicles_catalog: {
         Row: {
           dimension: string | null
@@ -366,7 +613,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      count_rti_by_status: {
+        Args: never
+        Returns: {
+          count: number
+          status: string
+        }[]
+      }
+      get_latest_rti: {
+        Args: { p_project_id: string }
+        Returns: {
+          created_at: string
+          form_data: Json
+          id: string
+          status: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
