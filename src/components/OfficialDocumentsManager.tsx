@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Download, ExternalLink, Filter, Loader2, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import RTIAutoFillModal from './RTIAutoFillModal';
 
 interface OfficialDocument {
