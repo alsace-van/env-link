@@ -192,7 +192,7 @@ export const PDFFormFiller = ({
             ...acc,
             [field.name]: field.value
           }), {}),
-        });
+        } as any);
 
       if (dbError) throw dbError;
 

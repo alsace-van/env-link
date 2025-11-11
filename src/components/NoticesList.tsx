@@ -73,7 +73,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
       .select("role")
       .eq("user_id", user.id)
       .eq("role", "admin")
-      .maybeSingle();
+      .maybeSingle() as any;
 
     setIsAdmin(!!roleData);
   };
@@ -84,7 +84,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
       const { data, error } = await supabase
         .from("notices_database")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false }) as any;
 
       if (error) {
         console.error("Error loading notices:", error);
@@ -92,7 +92,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         return;
       }
 
-      setNotices(data || []);
+      setNotices((data || []) as any);
     } catch (error) {
       console.error(error);
       toast.error("Erreur lors du chargement des notices");
@@ -104,10 +104,10 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const handleDelete = async (id: string) => {
     try {
       // First, unlink any accessories
-      await supabase.from("accessories_catalog").update({ notice_id: null }).eq("notice_id", id);
+      await supabase.from("accessories_catalog").update({ notice_id: null } as any).eq("notice_id", id);
 
       // Then delete the notice
-      const { error } = await supabase.from("notices_database").delete().eq("id", id);
+      const { error } = await supabase.from("notices_database").delete().eq("id", id) as any;
 
       if (error) {
         toast.error("Erreur lors de la suppression");

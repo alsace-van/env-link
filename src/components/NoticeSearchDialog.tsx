@@ -95,7 +95,7 @@ export const NoticeSearchDialog = ({
     try {
       const { error } = await supabase
         .from("accessories_catalog")
-        .update({ notice_id: noticeId })
+        .update({ notice_id: noticeId } as any)
         .eq("id", accessoryId);
 
       if (error) {

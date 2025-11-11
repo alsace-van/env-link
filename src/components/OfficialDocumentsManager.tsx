@@ -50,7 +50,7 @@ export function OfficialDocumentsManager({ projectId }: OfficialDocumentsManager
 
       if (fetchError) throw fetchError;
 
-      setDocuments(data || []);
+      setDocuments((data || []) as any);
     } catch (err) {
       console.error('Erreur lors du chargement des documents:', err);
       setError('Impossible de charger les documents officiels');

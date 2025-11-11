@@ -36,7 +36,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
         .from("project_photos")
         .update({
           comment: comment.trim() || null,
-        })
+        } as any)
         .eq("id", photo.id);
 
       if (error) throw error;

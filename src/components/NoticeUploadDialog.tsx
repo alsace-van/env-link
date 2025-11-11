@@ -69,7 +69,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
     const { data, error } = await supabase
       .from("notices_database")
       .select("categorie")
-      .not("categorie", "is", null);
+      .not("categorie", "is", null) as any;
 
     if (error) {
       console.error("Erreur lors du chargement des catégories:", error);
@@ -77,7 +77,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
     }
 
     // Extraire les catégories uniques et les trier
-    const categories = [...new Set(data.map(item => item.categorie).filter(Boolean))].sort();
+    const categories = [...new Set(data.map((item: any) => item.categorie).filter(Boolean))].sort();
     setExistingCategories(categories as string[]);
   };
 
@@ -191,7 +191,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
           url_notice: finalUrl,
           file_size: selectedFile ? selectedFile.size : null,
           created_by: user.id,
-        })
+        } as any)
         .select()
         .single();
 
@@ -205,7 +205,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
       if (selectedAccessoryId && notice) {
         const { error: linkError } = await supabase
           .from("accessories_catalog")
-          .update({ notice_id: notice.id })
+          .update({ notice_id: notice.id } as any)
           .eq("id", selectedAccessoryId);
 
         if (linkError) {

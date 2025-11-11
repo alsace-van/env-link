@@ -36,7 +36,7 @@ const PhotoGallery = ({ projectId, type, refresh, onPhotoClick }: PhotoGalleryPr
       .select("*")
       .eq("project_id", projectId)
       .eq("type", type)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }) as any;
 
     setIsLoading(false);
 

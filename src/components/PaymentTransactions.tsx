@@ -142,9 +142,18 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
       }
     } else {
       // Insert new transaction
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Vous devez être connecté");
+        return;
+      }
+      
       const { error } = await supabase
         .from("project_payment_transactions")
-        .insert([transactionData]);
+        .insert([{
+          ...transactionData,
+          user_id: user.id
+        }]) as any;
 
       if (error) {
         toast.error("Erreur lors de l'ajout du paiement");
