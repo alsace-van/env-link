@@ -54,18 +54,41 @@ export const OfficialDocumentsLibrary = ({ projectId }: OfficialDocumentsLibrary
     }
   };
 
-  const handleOpenFiller = (doc: OfficialDocument) => {
-    setSelectedDoc(doc);
-    setFillerOpen(true);
+  const handleOpenFiller = async (doc: OfficialDocument) => {
+    try {
+      // Vérifier que le fichier est bien dans le storage Supabase
+      if (!doc.file_url.includes('supabase.co/storage')) {
+        toast.error('Ce document doit être uploadé dans le système. Contactez un administrateur.');
+        return;
+      }
+      
+      setSelectedDoc(doc);
+      setFillerOpen(true);
+    } catch (error) {
+      console.error('Erreur:', error);
+      toast.error('Impossible d\'ouvrir le document');
+    }
   };
 
-  const handleDownload = (doc: OfficialDocument) => {
-    const link = document.createElement("a");
-    link.href = doc.file_url;
-    link.download = `${doc.name}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (doc: OfficialDocument) => {
+    try {
+      // Télécharger le fichier depuis Supabase Storage
+      const response = await fetch(doc.file_url);
+      if (!response.ok) throw new Error('Erreur de téléchargement');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${doc.name}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Erreur lors du téléchargement:', error);
+      toast.error('Impossible de télécharger le document');
+    }
   };
 
   const categories = [...new Set(documents.map(d => d.category).filter(Boolean))];
