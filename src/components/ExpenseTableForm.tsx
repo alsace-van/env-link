@@ -41,10 +41,13 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   }, [projectId]);
 
   const loadFournisseurs = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { data } = await supabase
       .from("project_expenses")
       .select("fournisseur")
-      .is("project_id", null)
+      .eq("user_id", user.id)
       .not("fournisseur", "is", null) as any;
 
     if (data) {
