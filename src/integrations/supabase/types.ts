@@ -738,7 +738,7 @@ export type Database = {
           prix_unitaire: number | null
           prix_vente_ttc: number | null
           product_name: string | null
-          project_id: string
+          project_id: string | null
           puissance_watts: number | null
           quantite: number | null
           quantity: number | null
@@ -780,7 +780,7 @@ export type Database = {
           prix_unitaire?: number | null
           prix_vente_ttc?: number | null
           product_name?: string | null
-          project_id: string
+          project_id?: string | null
           puissance_watts?: number | null
           quantite?: number | null
           quantity?: number | null
@@ -822,7 +822,7 @@ export type Database = {
           prix_unitaire?: number | null
           prix_vente_ttc?: number | null
           product_name?: string | null
-          project_id?: string
+          project_id?: string | null
           puissance_watts?: number | null
           quantite?: number | null
           quantity?: number | null
