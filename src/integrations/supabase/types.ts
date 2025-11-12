@@ -1421,6 +1421,7 @@ export type Database = {
           montant: number
           nom: string
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -1430,6 +1431,7 @@ export type Database = {
           montant: number
           nom: string
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -1439,6 +1441,7 @@ export type Database = {
           montant?: number
           nom?: string
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -1557,6 +1560,7 @@ export type Database = {
           project_id: string
           schema_data: Json
           schema_name: string
+          schema_number: number
           updated_at: string | null
           user_id: string
         }
@@ -1566,6 +1570,7 @@ export type Database = {
           project_id: string
           schema_data: Json
           schema_name: string
+          schema_number?: number
           updated_at?: string | null
           user_id: string
         }
@@ -1575,6 +1580,7 @@ export type Database = {
           project_id?: string
           schema_data?: Json
           schema_name?: string
+          schema_number?: number
           updated_at?: string | null
           user_id?: string
         }

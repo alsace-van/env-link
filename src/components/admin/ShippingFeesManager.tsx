@@ -57,7 +57,6 @@ export const ShippingFeesManager = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // @ts-expect-error - Table shipping_fees not in Supabase types
       const result: any = await supabase
         .from("shipping_fees")
         .select("*")

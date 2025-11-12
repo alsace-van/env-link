@@ -140,12 +140,16 @@ export const ShippingFeeDialog = ({ open, onClose, fee }: ShippingFeeDialogProps
             .eq("shipping_fee_id", feeId);
         }
       } else {
-        const { data: newFee, error } = await supabase
+        const result: any = await supabase
           .from("shipping_fees")
-          .insert(feeData)
+          .insert({
+            ...feeData,
+            user_id: user.id
+          })
           .select()
           .single();
-
+        
+        const { data: newFee, error } = result;
         if (error) throw error;
         feeId = newFee.id;
       }

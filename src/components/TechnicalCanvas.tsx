@@ -939,7 +939,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     }
 
     try {
-      // @ts-expect-error - Supabase type issue with delete
       const result: any = supabase
         .from("technical_schemas")
         .delete()
