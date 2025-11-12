@@ -6,7 +6,7 @@ import { Trash2, Loader2 } from "lucide-react";
 
 interface Photo {
   id: string;
-  url: string;
+  photo_url: string;
   description?: string;
   comment?: string;
   annotations?: any;
@@ -46,34 +46,13 @@ const PhotoGallery = ({ projectId, type, refresh, onPhotoClick }: PhotoGalleryPr
       return;
     }
 
-    // Generate signed URLs for private bucket photos
+    // Since bucket is public, use URLs directly
     if (data) {
-      const photosWithSignedUrls = await Promise.all(
-        data.map(async (photo) => {
-          let storagePath = photo.url;
-          
-          // Check if URL is already a full URL (old format) or just a path
-          if (photo.url.startsWith('http')) {
-            // Old format with full URL - extract path and generate signed URL
-            const urlParts = photo.url.split('/project-photos/');
-            if (urlParts.length === 2) {
-              storagePath = urlParts[1];
-              const { data: signedUrlData } = await supabase.storage
-                .from('project-photos')
-                .createSignedUrl(storagePath, 3600); // 1 hour expiration
-              return { ...photo, url: signedUrlData?.signedUrl || photo.url, storagePath };
-            }
-          } else {
-            // New format with just path - generate signed URL
-            const { data: signedUrlData } = await supabase.storage
-              .from('project-photos')
-              .createSignedUrl(photo.url, 3600); // 1 hour expiration
-            return { ...photo, url: signedUrlData?.signedUrl || photo.url, storagePath: photo.url };
-          }
-          return { ...photo, storagePath };
-        })
-      );
-      setPhotos(photosWithSignedUrls);
+      const photosWithUrls = data.map((photo) => ({
+        ...photo,
+        storagePath: photo.photo_url.split('/project-photos/')[1] || photo.photo_url
+      }));
+      setPhotos(photosWithUrls);
     } else {
       setPhotos([]);
     }
@@ -88,7 +67,7 @@ const PhotoGallery = ({ projectId, type, refresh, onPhotoClick }: PhotoGalleryPr
 
     // Use storagePath if available, otherwise extract from URL
     const filePath = photo.storagePath || (() => {
-      const urlParts = photo.url.split("/project-photos/");
+      const urlParts = photo.photo_url.split("/project-photos/");
       return urlParts.length === 2 ? urlParts[1].split('?')[0] : null;
     })();
 
@@ -149,7 +128,7 @@ const PhotoGallery = ({ projectId, type, refresh, onPhotoClick }: PhotoGalleryPr
           onClick={() => onPhotoClick(photo)}
         >
           <img
-            src={photo.url}
+            src={photo.photo_url}
             alt={photo.description || "Photo"}
             className="w-full h-full object-cover transition-transform group-hover:scale-105"
           />

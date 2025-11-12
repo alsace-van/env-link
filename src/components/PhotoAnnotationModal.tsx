@@ -9,7 +9,7 @@ import { Save } from "lucide-react";
 
 interface Photo {
   id: string;
-  url: string;
+  photo_url: string;
   description?: string;
   comment?: string;
   annotations?: any;
@@ -65,7 +65,7 @@ const PhotoAnnotationModal = ({ photo, isOpen, onClose, onSave }: PhotoAnnotatio
           {/* Image */}
           <div className="flex-1 relative bg-muted rounded-lg overflow-hidden min-h-[400px]">
             <img
-              src={photo.url}
+              src={photo.photo_url}
               alt={photo.description || "Photo"}
               className="absolute inset-0 w-full h-full object-contain"
             />

@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Photo {
   id: string;
-  url: string;
+  photo_url: string;
   description?: string;
   comment?: string;
   annotations?: any;
