@@ -33,10 +33,25 @@ export const OfficialDocumentsLibrary = ({ projectId }: OfficialDocumentsLibrary
   }, []);
 
   const loadDocuments = async () => {
-    setLoading(true);
-    // Official documents table doesn't exist - show empty state
-    setDocuments([]);
-    setLoading(false);
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase
+        .from('official_documents')
+        .select('*')
+        .eq('is_active', true)
+        .order('category', { ascending: true })
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      setDocuments((data || []) as OfficialDocument[]);
+    } catch (err) {
+      console.error('Erreur lors du chargement des documents:', err);
+      toast.error('Impossible de charger les documents officiels');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleOpenFiller = (doc: OfficialDocument) => {
