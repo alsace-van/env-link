@@ -129,8 +129,8 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
         if (data) {
           setSchemaId((data as any).id);
-          if ((data as any).canvas_data) {
-            scope.project.activeLayer.importJSON((data as any).canvas_data);
+          if ((data as any).schema_data) {
+            scope.project.activeLayer.importJSON((data as any).schema_data);
             scope.view.update();
             console.log("Dessins chargés pour schéma", schemaNumber);
           }
@@ -642,18 +642,22 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         // Update existing schema
         const { error } = await (supabase as any)
           .from("technical_schemas")
-          .update({ canvas_data: json })
+          .update({ schema_data: json })
           .eq("id", schemaId);
 
         if (error) throw error;
       } else {
         // Create new schema
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("Non authentifié");
+
         const { data, error } = await (supabase as any)
           .from("technical_schemas")
           .insert({
             project_id: projectId,
+            user_id: user.id,
             schema_number: schemaNumber,
-            canvas_data: json,
+            schema_data: json,
           })
           .select()
           .single();
