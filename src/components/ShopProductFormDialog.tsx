@@ -134,7 +134,7 @@ export const ShopProductFormDialog = ({
         .from("shop_custom_kits")
         .select("allowed_category_ids")
         .eq("product_id", editProduct.id)
-        .single();
+        .maybeSingle();
 
       if (!error && data) {
         setSelectedCategories(data.allowed_category_ids || []);
