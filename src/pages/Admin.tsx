@@ -29,7 +29,7 @@ import { SendMessageDialog } from "@/components/admin/SendMessageDialog";
 import { AdminActionsLog } from "@/components/admin/AdminActionsLog";
 import { LoginHistoryCard } from "@/components/admin/LoginHistoryCard";
 import { ShopWelcomeConfigDialog } from "@/components/admin/ShopWelcomeConfigDialog";
-import { OfficialDocumentsManager } from "@/components/OfficialDocumentsManager";
+import { AdminOfficialDocumentsManager } from "@/components/admin/AdminOfficialDocumentsManager";
 import { AdminNoticesManager } from "@/components/admin/AdminNoticesManager";
 import { ShippingFeesManager } from "@/components/admin/ShippingFeesManager";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -327,7 +327,7 @@ const Admin = () => {
             </TabsContent>
 
             <TabsContent value="documents">
-              <OfficialDocumentsManager projectId="" />
+              <AdminOfficialDocumentsManager />
             </TabsContent>
 
             <TabsContent value="manuals">
