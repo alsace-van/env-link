@@ -327,7 +327,7 @@ const Admin = () => {
             </TabsContent>
 
             <TabsContent value="documents">
-              <OfficialDocumentsManager />
+              <OfficialDocumentsManager projectId="" />
             </TabsContent>
 
             <TabsContent value="manuals">

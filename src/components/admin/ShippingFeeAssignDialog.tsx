@@ -12,7 +12,7 @@ interface Accessory {
   id: string;
   nom: string;
   marque: string | null;
-  prix_vente: number | null;
+  prix_vente_ttc: number | null;
   has_shipping_fee: boolean;
 }
 
@@ -73,7 +73,7 @@ export const ShippingFeeAssignDialog = ({ open, onClose, fee }: ShippingFeeAssig
 
       const { data: accessoriesData, error: accessoriesError } = await supabase
         .from("accessories_catalog")
-        .select("id, nom, marque, prix_vente")
+        .select("id, nom, marque, prix_vente_ttc")
         .eq("user_id", user.id)
         .order("nom");
 
@@ -297,7 +297,7 @@ export const ShippingFeeAssignDialog = ({ open, onClose, fee }: ShippingFeeAssig
                           />
                         </div>
                         <div className="text-right text-sm">
-                          {acc.prix_vente ? `${acc.prix_vente.toFixed(2)} €` : "-"}
+                          {acc.prix_vente_ttc ? `${acc.prix_vente_ttc.toFixed(2)} €` : "-"}
                         </div>
                       </div>
                     );

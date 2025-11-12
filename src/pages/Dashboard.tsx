@@ -37,7 +37,8 @@ const Dashboard = () => {
       // Track login
       await supabase.from("user_logins").insert({
         user_id: session.user.id,
-        ip_address: null, // Would need additional setup to get IP
+        user_email: session.user.email || '',
+        ip_address: null,
         user_agent: navigator.userAgent,
       });
     }

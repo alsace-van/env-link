@@ -118,11 +118,8 @@ export const ShippingFeeDialog = ({ open, onClose, fee }: ShippingFeeDialogProps
 
       const feeData = {
         nom: nom.trim(),
-        type,
-        fixed_price: type === 'fixed' ? parseFloat(fixedPrice) : null,
+        montant: type === 'fixed' ? parseFloat(fixedPrice) : 0,
         description: description.trim() || null,
-        message_pickup: type === 'pickup' ? messagePickup.trim() || null : null,
-        user_id: user.id,
       };
 
       let feeId: string;

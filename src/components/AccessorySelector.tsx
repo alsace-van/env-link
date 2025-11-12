@@ -101,7 +101,6 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
         type_electrique: accessoryToAdd.type_electrique,
         accessory_id: accessoryToAdd.id,
         prix_vente_ttc: accessoryToAdd.prix_vente_ttc,
-        marge_pourcent: accessoryToAdd.marge_pourcent,
         poids_kg: accessoryToAdd.poids_kg,
         puissance_watts: accessoryToAdd.puissance_watts,
         intensite_amperes: accessoryToAdd.intensite_amperes,
