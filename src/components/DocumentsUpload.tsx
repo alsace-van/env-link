@@ -3,8 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Upload, X, FileText, Download, Loader2, Edit2, Check } from "lucide-react";
+import { Upload, X, FileText, Download, Loader2, Edit2, Check, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { PdfViewerModal } from "./PdfViewerModal";
 
 interface Document {
   id: string;
@@ -25,6 +26,8 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [previewPdfTitle, setPreviewPdfTitle] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Charger les documents
@@ -312,6 +315,19 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
                       </>
                     ) : (
                       <>
+                        {doc.mime_type === "application/pdf" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setPreviewPdfUrl(doc.file_url);
+                              setPreviewPdfTitle(doc.file_name);
+                            }}
+                            title="Prévisualiser"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -344,6 +360,18 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
             </Card>
           ))}
         </div>
+      )}
+
+      {previewPdfUrl && (
+        <PdfViewerModal
+          isOpen={!!previewPdfUrl}
+          onClose={() => {
+            setPreviewPdfUrl(null);
+            setPreviewPdfTitle("");
+          }}
+          pdfUrl={previewPdfUrl}
+          title={previewPdfTitle}
+        />
       )}
     </div>
   );
