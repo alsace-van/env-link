@@ -130,11 +130,14 @@ export const ShopProductFormDialog = ({
 
     // Charger les accessoires ou catégories selon le type
     if (editProduct.type === "custom_kit") {
-      const { data, error } = await supabase
+      // @ts-ignore - Type inference too deep issue with Supabase types
+      const response: any = await supabase
         .from("shop_custom_kits")
         .select("allowed_category_ids")
         .eq("product_id", editProduct.id)
-        .single();
+        .maybeSingle();
+      
+      const { data, error } = response;
 
       if (!error && data) {
         setSelectedCategories(data.allowed_category_ids || []);
@@ -314,7 +317,7 @@ export const ShopProductFormDialog = ({
             is_active: isActive,
           } as any)
           .select()
-          .single();
+          .maybeSingle();
 
         if (productError) throw productError;
 
