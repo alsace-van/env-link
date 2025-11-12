@@ -231,8 +231,10 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   };
 
   const totalPaid = useMemo(() => 
-    transactions.reduce((sum, t) => sum + t.montant, 0), 
-    [transactions]
+    transactions
+      .filter(t => t.project_id === currentProjectId)
+      .reduce((sum, t) => sum + t.montant, 0), 
+    [transactions, currentProjectId]
   );
   
   const remaining = useMemo(() => 
@@ -279,9 +281,9 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
         </div>
       </div>
 
-      {transactions.length > 0 && (
+      {transactions.filter(t => t.project_id === currentProjectId).length > 0 && (
         <div className="space-y-0.5">
-          {transactions.map((transaction) => (
+          {transactions.filter(t => t.project_id === currentProjectId).map((transaction) => (
             <div key={transaction.id} className="flex items-center justify-between py-0.5 px-1.5 hover:bg-muted/50 rounded text-sm border-b">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1">
