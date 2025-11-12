@@ -224,20 +224,23 @@ Sois concis mais précis. Maximum 500 mots.`
       console.error('Erreur Gemini AI:', aiResponse.status, errorText)
       
       if (aiResponse.status === 429) {
+        // Retourner 200 avec un message d'erreur dans le JSON pour que le frontend puisse l'afficher
         return new Response(
-          JSON.stringify({ error: 'Limite de requêtes atteinte, veuillez réessayer plus tard' }),
+          JSON.stringify({ 
+            error: '⚠️ Quota Gemini AI dépassé\n\nVotre clé API Gemini gratuite a atteint sa limite. Vous devez :\n\n1. Attendre 60 secondes et réessayer\n2. Ou upgrader vers un plan payant Gemini sur https://aistudio.google.com/\n\nErreur Gemini: ' + errorText.substring(0, 200)
+          }),
           {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 429,
+            status: 200,
           }
         )
       }
       
       return new Response(
-        JSON.stringify({ error: 'Erreur lors de la génération du résumé', details: errorText }),
+        JSON.stringify({ error: 'Erreur lors de la génération du résumé: ' + errorText.substring(0, 300) }),
         {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
+          status: 200,
         }
       )
     }
