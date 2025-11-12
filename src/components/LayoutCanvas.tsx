@@ -70,10 +70,19 @@ export const LayoutCanvas = ({
     hauteur_sol_mm: 0,
   });
 
+  // Calcul de l'échelle pour adapter la zone de chargement au canvas (avec marge)
+  const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
+
+  const scaledLoadAreaLength = loadAreaLength * scale;
+  const scaledLoadAreaWidth = loadAreaWidth * scale;
+
   const activeToolRef = useRef(activeTool);
   const colorRef = useRef(color);
   const strokeWidthRef = useRef(strokeWidth);
   const furnitureItemsRef = useRef(furnitureItems);
+  const scaleRef = useRef(scale);
+  const loadAreaLengthRef = useRef(loadAreaLength);
+  const loadAreaWidthRef = useRef(loadAreaWidth);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -91,67 +100,14 @@ export const LayoutCanvas = ({
     furnitureItemsRef.current = furnitureItems;
   }, [furnitureItems]);
 
-  // Charger le poids des accessoires depuis les dépenses
   useEffect(() => {
-    const loadAccessoriesWeight = async () => {
-      const { data, error } = await supabase
-        .from("project_expenses")
-        .select("poids_kg, quantite")
-        .eq("project_id", projectId)
-        .not("poids_kg", "is", null) as any;
+    scaleRef.current = scale;
+  }, [scale]);
 
-      if (!error && data) {
-        const total = data.reduce((sum: number, item: any) => {
-          return sum + (item.poids_kg || 0) * (item.quantite || 1);
-        }, 0);
-        setAccessoriesWeight(total);
-      }
-    };
-
-    loadAccessoriesWeight();
-  }, [projectId]);
-
-  // Charger les données des meubles au montage
   useEffect(() => {
-    const loadFurnitureData = async () => {
-      try {
-        const { data, error } = await supabase.from("projects").select("furniture_data").eq("id", projectId).single() as any;
-
-        if (error) throw error;
-
-        if (data?.furniture_data && Array.isArray(data.furniture_data)) {
-          const newMap = new Map<string, FurnitureData>();
-          data.furniture_data.forEach((item: any) => {
-            newMap.set(item.id, {
-              id: item.id,
-              longueur_mm: item.longueur_mm,
-              largeur_mm: item.largeur_mm,
-              hauteur_mm: item.hauteur_mm,
-              poids_kg: item.poids_kg,
-              hauteur_sol_mm: item.hauteur_sol_mm || 0,
-            });
-          });
-          setFurnitureItems(newMap);
-        }
-      } catch (error) {
-        console.error("Error loading furniture data:", error);
-      }
-    };
-
-    loadFurnitureData();
-  }, [projectId]);
-
-  // Calculer le poids total depuis la liste des meubles
-  useEffect(() => {
-    const furnitureWeight = Array.from(furnitureItems.values()).reduce((sum, item) => sum + item.poids_kg, 0);
-    setTotalWeight(furnitureWeight + accessoriesWeight);
-  }, [furnitureItems, accessoriesWeight]);
-
-  // Calcul de l'échelle pour adapter la zone de chargement au canvas (avec marge)
-  const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
-
-  const scaledLoadAreaLength = loadAreaLength * scale;
-  const scaledLoadAreaWidth = loadAreaWidth * scale;
+    loadAreaLengthRef.current = loadAreaLength;
+    loadAreaWidthRef.current = loadAreaWidth;
+  }, [loadAreaLength, loadAreaWidth]);
 
   // Fonction pour supprimer un meuble depuis la liste
   const handleDeleteFromList = async (furnitureId: string) => {
@@ -351,7 +307,7 @@ export const LayoutCanvas = ({
       if (activeToolRef.current === "measure" && currentMeasureLine) {
         currentMeasureLine.segments[1].point = event.point;
 
-        const distance = currentMeasureLine.length / scale;
+        const distance = currentMeasureLine.length / scaleRef.current;
 
         if (currentMeasureText) {
           currentMeasureText.remove();
@@ -689,8 +645,17 @@ export const LayoutCanvas = ({
           const text = child.children[1] as paper.PointText;
 
           if (rect && text) {
-            const scaledWidth = furnitureForm.longueur_mm * scale;
-            const scaledHeight = furnitureForm.largeur_mm * scale;
+            const currentScale = scaleRef.current;
+            const scaledWidth = furnitureForm.longueur_mm * currentScale;
+            const scaledHeight = furnitureForm.largeur_mm * currentScale;
+            
+            console.log("📏 Édition meuble:", {
+              longueur_mm: furnitureForm.longueur_mm,
+              largeur_mm: furnitureForm.largeur_mm,
+              scaledWidth,
+              scaledHeight,
+              echelle: currentScale
+            });
 
             const center = rect.bounds.center;
 
@@ -735,16 +700,30 @@ export const LayoutCanvas = ({
       });
 
       setTimeout(() => {
-        const scaledWidth = furnitureForm.longueur_mm * scale;
-        const scaledHeight = furnitureForm.largeur_mm * scale;
+        const currentScale = scaleRef.current;
+        const scaledWidth = furnitureForm.longueur_mm * currentScale;
+        const scaledHeight = furnitureForm.largeur_mm * currentScale;
 
-        const center = pendingRectangle!.bounds.center;
+        // Calculer le centre de la zone de chargement
+        const loadAreaCenterX = (CANVAS_WIDTH - loadAreaLengthRef.current * currentScale) / 2 + (loadAreaLengthRef.current * currentScale) / 2;
+        const loadAreaCenterY = (CANVAS_HEIGHT - loadAreaWidthRef.current * currentScale) / 2 + (loadAreaWidthRef.current * currentScale) / 2;
+        const center = new paper.Point(loadAreaCenterX, loadAreaCenterY);
 
         const newBounds = new paper.Rectangle(
           center.subtract(new paper.Point(scaledWidth / 2, scaledHeight / 2)),
           new paper.Size(scaledWidth, scaledHeight),
         );
         pendingRectangle!.bounds = newBounds;
+        
+        console.log("📏 Création meuble:", {
+          longueur_mm: furnitureForm.longueur_mm,
+          largeur_mm: furnitureForm.largeur_mm,
+          scaledWidth,
+          scaledHeight,
+          echelle: currentScale,
+          zone_longueur_mm: loadAreaLengthRef.current,
+          zone_largeur_mm: loadAreaWidthRef.current
+        });
 
         const text = new paper.PointText({
           point: pendingRectangle!.bounds.center,
