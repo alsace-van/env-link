@@ -143,17 +143,45 @@ export const LayoutCanvas = ({
     // Setup Paper.js
     paper.setup(canvasRef.current);
 
-    // Dessiner le contour de la zone de chargement
-    const loadAreaOutline = new paper.Path.Rectangle({
-      point: [(CANVAS_WIDTH - scaledLoadAreaLength) / 2, (CANVAS_HEIGHT - scaledLoadAreaWidth) / 2],
-      size: [scaledLoadAreaLength, scaledLoadAreaWidth],
-      strokeColor: new paper.Color("#3b82f6"),
-      strokeWidth: 3,
-      dashArray: [10, 5],
-      locked: true,
-    });
+    // Fonction pour dessiner le contour de la zone de chargement
+    const drawLoadAreaOutline = () => {
+      // Supprimer l'ancien rectangle s'il existe
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child.data?.isLoadAreaOutline) {
+          child.remove();
+        }
+      });
 
-    loadAreaOutline.sendToBack();
+      const currentScale = scaleRef.current;
+      const currentLength = loadAreaLengthRef.current;
+      const currentWidth = loadAreaWidthRef.current;
+      
+      const scaledLength = currentLength * currentScale;
+      const scaledWidth = currentWidth * currentScale;
+      
+      console.log("🔵 Dessin rectangle bleu:", {
+        longueur: currentLength,
+        largeur: currentWidth,
+        echelle: currentScale,
+        scaledLength,
+        scaledWidth
+      });
+
+      const loadAreaOutline = new paper.Path.Rectangle({
+        point: [(CANVAS_WIDTH - scaledLength) / 2, (CANVAS_HEIGHT - scaledWidth) / 2],
+        size: [scaledLength, scaledWidth],
+        strokeColor: new paper.Color("#3b82f6"),
+        strokeWidth: 3,
+        dashArray: [10, 5],
+        locked: true,
+      });
+      
+      loadAreaOutline.data.isLoadAreaOutline = true;
+      loadAreaOutline.sendToBack();
+    };
+
+    // Dessiner le contour initial
+    drawLoadAreaOutline();
 
     let currentPath: paper.Path.Rectangle | null = null;
     let selectedItem: paper.Item | null = null;
@@ -589,8 +617,15 @@ export const LayoutCanvas = ({
         if (data?.layout_canvas_data && typeof data.layout_canvas_data === "string") {
           paper.project.clear();
           paper.project.importJSON(data.layout_canvas_data);
+          
+          // Redessiner le rectangle bleu après le chargement
+          setTimeout(() => drawLoadAreaOutline(), 10);
+          
           saveState();
           toast.success("Plan d'aménagement chargé");
+        } else {
+          // Pas de données sauvegardées, juste redessiner le rectangle
+          drawLoadAreaOutline();
         }
 
         if (data?.furniture_data && Array.isArray(data.furniture_data)) {
