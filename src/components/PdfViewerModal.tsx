@@ -29,10 +29,10 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModa
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0 overflow-hidden">
+      <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl font-semibold">{title}</DialogTitle>
+            <DialogTitle className="text-xl font-semibold truncate">{title}</DialogTitle>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleDownload} title="Télécharger">
                 <Download className="h-4 w-4 mr-2" />
@@ -46,27 +46,27 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title }: PdfViewerModa
           </div>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col min-h-0 px-6 pb-6 pt-4 gap-4">
+        <div className="flex-1 min-h-0 px-6 pb-6 pt-4">
           {pdfUrl ? (
-            <>
+            <div className="w-full h-full flex flex-col gap-4">
               {/* Message informatif */}
               <Alert className="bg-blue-50 border-blue-200 flex-shrink-0">
                 <AlertCircle className="h-4 w-4 text-blue-600" />
                 <AlertDescription className="text-sm text-blue-800">
-                  Si le PDF ne s'affiche pas, cliquez sur "Ouvrir" pour le voir dans un nouvel onglet.
+                  Si le PDF ne s'affiche pas correctement, cliquez sur "Ouvrir" pour le voir dans un nouvel onglet.
                 </AlertDescription>
               </Alert>
 
-              {/* Viewer natif avec iframe pour le scroll */}
-              <div className="flex-1 min-h-0 rounded-lg border shadow-sm overflow-hidden">
-                <iframe
-                  src={pdfUrl}
-                  className="w-full h-full"
+              {/* Viewer avec embed qui supporte mieux le scroll */}
+              <div className="flex-1 min-h-0">
+                <embed
+                  src={`${pdfUrl}#view=FitH&toolbar=1&navpanes=1&scrollbar=1`}
+                  type="application/pdf"
+                  className="w-full h-full rounded-lg border shadow-sm"
                   title={title}
-                  style={{ border: 'none' }}
                 />
               </div>
-            </>
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">Chargement du PDF...</div>
           )}
