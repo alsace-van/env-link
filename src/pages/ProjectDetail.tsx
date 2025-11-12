@@ -1233,11 +1233,11 @@ const ProjectDetail = () => {
                         <LayoutCanvas
                           key={layoutCanvasKey}
                           projectId={project.id}
-                          vehicleLength={project.longueur_mm || 3000}
-                          vehicleWidth={project.largeur_mm || 1800}
+                          vehicleLength={project.longueur_mm || project.longueur_chargement_mm || 3000}
+                          vehicleWidth={project.largeur_mm || project.largeur_chargement_mm || 1800}
                           loadAreaLength={project.longueur_chargement_mm || Math.round((project.longueur_mm || 3000) * 0.7)}
                           loadAreaWidth={project.largeur_chargement_mm || Math.round((project.largeur_mm || 1800) * 0.9)}
-                          maxLoad={project.charge_utile_kg || 500}
+                          maxLoad={project.charge_utile_kg || (project.ptac_kg && project.poids_vide_kg ? project.ptac_kg - project.poids_vide_kg : 500)}
                         />
                       </TabsContent>
 

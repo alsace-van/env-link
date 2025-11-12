@@ -830,7 +830,7 @@ export const LayoutCanvas = ({
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Jauge de Poids</h3>
               <div className="text-sm text-muted-foreground">
-                Véhicule : {vehicleLength}mm x {vehicleWidth}mm
+                Surface utile : {loadAreaLength}mm x {loadAreaWidth}mm
               </div>
             </div>
 
