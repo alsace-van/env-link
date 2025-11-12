@@ -564,6 +564,7 @@ const ExpenseFormDialog = ({
         setAvailableOptions([]);
         setSelectedOptions([]);
         onSuccess();
+        onClose(); // Fermer la modale après succès
       }
     }
 
