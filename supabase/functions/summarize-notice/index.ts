@@ -103,7 +103,21 @@ serve(async (req) => {
     }
 
     // Télécharger le PDF depuis Supabase Storage
-    console.log('Téléchargement du PDF:', notice.url_notice)
+    // Essayer différents champs possibles pour le chemin du fichier
+    const filePath = notice.url_notice || notice.pdf_url || notice.file_url || notice.notice_url || notice.file_path
+    
+    console.log('Téléchargement du PDF:', filePath)
+    console.log('Notice data:', JSON.stringify(notice, null, 2))
+    
+    if (!filePath) {
+      return new Response(
+        JSON.stringify({ error: 'Chemin du fichier PDF introuvable dans la notice' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        }
+      )
+    }
     
     // Créer un client avec service_role pour accéder au storage
     const supabaseAdmin = createClient(
@@ -113,7 +127,7 @@ serve(async (req) => {
 
     const { data: fileData, error: fileError } = await supabaseAdmin.storage
       .from('notice-files')
-      .download(notice.url_notice)
+      .download(filePath)
 
     if (fileError || !fileData) {
       console.error('Erreur téléchargement PDF:', fileError)
