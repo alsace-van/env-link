@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -230,8 +230,15 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
     setIsAdding(true);
   };
 
-  const totalPaid = transactions.reduce((sum, t) => sum + t.montant, 0);
-  const remaining = totalSales - totalPaid;
+  const totalPaid = useMemo(() => 
+    transactions.reduce((sum, t) => sum + t.montant, 0), 
+    [transactions]
+  );
+  
+  const remaining = useMemo(() => 
+    totalSales - totalPaid, 
+    [totalSales, totalPaid]
+  );
 
   const handleMontantChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setNewTransaction(prev => ({ ...prev, montant: parseFloat(e.target.value) || 0 }));
@@ -253,7 +260,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
     }));
   }, [remaining]);
 
-  const PaymentContent = () => (
+  const PaymentContent = useMemo(() => (
     <>
       <div className="space-y-0.5 text-sm border-b pb-1.5">
         <div className="flex justify-between">
@@ -348,6 +355,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
                 value={newTransaction.montant || ''}
                 onChange={handleMontantChange}
                 className="h-8 text-sm"
+                autoFocus={false}
               />
             </div>
 
@@ -387,7 +395,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
         </div>
       )}
     </>
-  );
+  ), [transactions, totalSales, totalPaid, remaining, isAdding, editingId, newTransaction, handleMontantChange, handleDateChange, handleNotesChange, handleTypeChange, handleAddNew, editTransaction, deleteTransaction, addOrUpdateTransaction, cancelEdit]);
 
   return (
     <>
@@ -406,7 +414,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
           </div>
         </CardHeader>
         <CardContent className="space-y-1.5">
-          <PaymentContent />
+          {PaymentContent}
         </CardContent>
       </Card>
 
@@ -417,7 +425,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
           </DialogHeader>
           <ScrollArea className="h-[calc(90vh-100px)] pr-4">
             <div className="space-y-1.5">
-              <PaymentContent />
+              {PaymentContent}
             </div>
           </ScrollArea>
         </DialogContent>
