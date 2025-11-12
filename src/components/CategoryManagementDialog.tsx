@@ -13,6 +13,7 @@ interface Category {
   nom: string;
   parent_id: string | null;
   user_id: string;
+  icon?: string;
 }
 
 interface CategoryManagementDialogProps {
@@ -22,11 +23,15 @@ interface CategoryManagementDialogProps {
   categories: Category[];
 }
 
+const emojiOptions = ['💧', '⚡', '🔥', '🪟', '🔧', '🪵', '🎨', '📦', '🏗️', '🔌', '🚿', '🌡️', '🪜', '🔩', '🛠️'];
+
 const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: CategoryManagementDialogProps) => {
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState("📦");
   const [parentCategoryId, setParentCategoryId] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategoryIcon, setEditCategoryIcon] = useState("📦");
   const [editParentCategoryId, setEditParentCategoryId] = useState<string | null>(null);
 
   const handleAddCategory = async () => {
@@ -46,6 +51,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
       nom: trimmedName,
       parent_id: parentCategoryId,
       user_id: userData.user.id,
+      icon: newCategoryIcon,
     });
 
     if (error) {
@@ -54,6 +60,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
     } else {
       toast.success("Catégorie créée");
       setNewCategoryName("");
+      setNewCategoryIcon("📦");
       setParentCategoryId(null);
       onSuccess();
     }
@@ -88,6 +95,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
       .update({
         nom: editCategoryName.trim(),
         parent_id: editParentCategoryId,
+        icon: editCategoryIcon,
       })
       .eq("id", editingCategory.id);
 
@@ -98,6 +106,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
       toast.success("Catégorie modifiée");
       setEditingCategory(null);
       setEditCategoryName("");
+      setEditCategoryIcon("📦");
       setEditParentCategoryId(null);
       onSuccess();
     }
@@ -116,7 +125,10 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
           className="flex items-center justify-between py-2 px-2 hover:bg-accent rounded"
           style={{ marginLeft: `${level * 16}px` }}
         >
-          <span className="text-sm">{category.nom}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{category.icon || '📦'}</span>
+            <span className="text-sm">{category.nom}</span>
+          </div>
           <div className="flex gap-1">
             <Button
               variant="ghost"
@@ -124,6 +136,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
               onClick={() => {
                 setEditingCategory(category);
                 setEditCategoryName(category.nom);
+                setEditCategoryIcon(category.icon || '📦');
                 setEditParentCategoryId(category.parent_id);
               }}
               className="h-8 w-8"
@@ -181,6 +194,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
                         e.stopPropagation();
                         setEditingCategory(null);
                         setEditCategoryName("");
+                        setEditCategoryIcon("📦");
                         setEditParentCategoryId(null);
                       }
                       // Backspace, Delete, et toutes les autres touches fonctionnent normalement
@@ -190,6 +204,26 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
                     autoComplete="off"
                     spellCheck="false"
                   />
+                </div>
+
+                <div>
+                  <Label>Icône</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {emojiOptions.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setEditCategoryIcon(emoji)}
+                        className={`text-2xl p-2 rounded border-2 transition-all ${
+                          editCategoryIcon === emoji
+                            ? 'border-primary bg-primary/10 scale-110'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -224,6 +258,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
                     onClick={() => {
                       setEditingCategory(null);
                       setEditCategoryName("");
+                      setEditCategoryIcon("📦");
                       setEditParentCategoryId(null);
                     }}
                   >
@@ -256,6 +291,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
                         e.preventDefault();
                         e.stopPropagation();
                         setNewCategoryName("");
+                        setNewCategoryIcon("📦");
                         setParentCategoryId(null);
                       }
                       // Backspace, Delete, et toutes les autres touches fonctionnent normalement
@@ -264,6 +300,26 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
                     autoComplete="off"
                     spellCheck="false"
                   />
+                </div>
+
+                <div>
+                  <Label>Icône</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {emojiOptions.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setNewCategoryIcon(emoji)}
+                        className={`text-2xl p-2 rounded border-2 transition-all ${
+                          newCategoryIcon === emoji
+                            ? 'border-primary bg-primary/10 scale-110'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>

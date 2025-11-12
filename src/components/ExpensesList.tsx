@@ -60,8 +60,28 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
     loadPaymentTransactions();
   }, [projectId, refreshTrigger]);
 
+  const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
+
   const loadExpenses = async () => {
     setIsLoading(true);
+    
+    // Charger les icônes des catégories
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) {
+      const { data: categoriesData } = await supabase
+        .from("categories")
+        .select("nom, icon")
+        .eq("user_id", userData.user.id);
+      
+      if (categoriesData) {
+        const iconsMap: Record<string, string> = {};
+        categoriesData.forEach((cat: any) => {
+          iconsMap[cat.nom] = cat.icon || '📦';
+        });
+        setCategoryIcons(iconsMap);
+      }
+    }
+    
     const { data, error } = await supabase
       .from("project_expenses")
       .select("*")
@@ -287,6 +307,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
               size="sm"
               onClick={() => setSelectedCategory(cat)}
             >
+              <span className="mr-1.5">{categoryIcons[cat] || '📦'}</span>
               {cat} ({groupedByCategory[cat].length})
             </Button>
           ))}
@@ -302,7 +323,8 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
                   <div className="flex-1 space-y-1.5">
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="text-xs flex items-center gap-1">
+                        <span>{categoryIcons[expense.categorie] || '📦'}</span>
                         {expense.categorie}
                       </Badge>
                       {expense.marque && (
@@ -490,6 +512,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
               <AccordionItem key={category} value={category} className="border rounded-lg px-4">
                 <AccordionTrigger className="hover:no-underline">
                   <div className="flex items-center gap-2">
+                    <span className="text-xl">{categoryIcons[category] || '📦'}</span>
                     <span className="font-semibold">{category}</span>
                     <Badge variant="secondary">{groupedByCategory[category].length} article(s)</Badge>
                   </div>

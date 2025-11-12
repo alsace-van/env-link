@@ -376,6 +376,7 @@ export type Database = {
       categories: {
         Row: {
           created_at: string
+          icon: string | null
           id: string
           nom: string
           parent_id: string | null
@@ -383,6 +384,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          icon?: string | null
           id?: string
           nom: string
           parent_id?: string | null
@@ -390,6 +392,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          icon?: string | null
           id?: string
           nom?: string
           parent_id?: string | null
