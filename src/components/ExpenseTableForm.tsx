@@ -193,7 +193,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     );
 
     const expensesToInsert = rowsWithUrls.map((row) => ({
-      project_id: null,
+      project_id: projectId,
+      user_id: user.id,
       nom_accessoire: row.nom_accessoire,
       fournisseur: row.fournisseur,
       date_achat: row.date_achat,
