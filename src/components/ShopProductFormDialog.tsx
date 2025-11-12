@@ -314,7 +314,7 @@ export const ShopProductFormDialog = ({
             is_active: isActive,
           } as any)
           .select()
-          .single();
+          .maybeSingle();
 
         if (productError) throw productError;
 
