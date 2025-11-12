@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -145,9 +145,24 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
     setEditingId(null);
   };
 
-  const totalCharges = charges.reduce((sum, charge) => sum + charge.montant, 0);
+  const totalCharges = useMemo(() => 
+    charges.reduce((sum, charge) => sum + charge.montant, 0), 
+    [charges]
+  );
 
-  const ChargesContent = () => (
+  const handleNomChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, nom_charge: e.target.value }));
+  }, []);
+
+  const handleMontantChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, montant: e.target.value }));
+  }, []);
+
+  const handleJourChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, jour_mois: e.target.value }));
+  }, []);
+
+  const ChargesContent = useMemo(() => (
     <>
       {charges.length > 0 && (
         <div className="space-y-0.5">
@@ -205,9 +220,10 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
             <Input
               id="nom_charge"
               value={formData.nom_charge}
-              onChange={(e) => setFormData({ ...formData, nom_charge: e.target.value })}
+              onChange={handleNomChange}
               placeholder="Loyer, assurance..."
               className="h-8 text-xs"
+              autoFocus={false}
             />
           </div>
 
@@ -219,9 +235,10 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
                 type="number"
                 step="0.01"
                 value={formData.montant}
-                onChange={(e) => setFormData({ ...formData, montant: e.target.value })}
+                onChange={handleMontantChange}
                 placeholder="0.00"
                 className="h-8 text-xs"
+                autoFocus={false}
               />
             </div>
 
@@ -233,9 +250,10 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
                 min="1"
                 max="31"
                 value={formData.jour_mois}
-                onChange={(e) => setFormData({ ...formData, jour_mois: e.target.value })}
+                onChange={handleJourChange}
                 placeholder="15"
                 className="h-8 text-xs"
+                autoFocus={false}
               />
             </div>
           </div>
@@ -255,7 +273,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
         <p className="text-center py-2 text-xs text-muted-foreground">Aucune charge</p>
       )}
     </>
-  );
+  ), [charges, totalCharges, isAdding, editingId, formData, handleNomChange, handleMontantChange, handleJourChange, handleEdit, handleDelete, handleSave, resetForm]);
 
   return (
     <>
@@ -274,7 +292,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
           </div>
         </CardHeader>
         <CardContent className="space-y-1.5">
-          <ChargesContent />
+          {ChargesContent}
         </CardContent>
       </Card>
 
@@ -285,7 +303,7 @@ export const MonthlyCharges = ({ projectId }: MonthlyChargesProps) => {
           </DialogHeader>
           <ScrollArea className="h-[calc(90vh-100px)] pr-4">
             <div className="space-y-1.5">
-              <ChargesContent />
+              {ChargesContent}
             </div>
           </ScrollArea>
         </DialogContent>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -155,12 +155,39 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
     setEditingId(null);
   };
 
-  const totalRestant = installments.reduce(
-    (sum, inst) => sum + inst.montant_mensualite * inst.nombre_mensualites_restantes,
-    0
+  const totalRestant = useMemo(() => 
+    installments.reduce(
+      (sum, inst) => sum + inst.montant_mensualite * inst.nombre_mensualites_restantes,
+      0
+    ), 
+    [installments]
   );
 
-  const InstallmentsContent = () => (
+  const handleNomChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, nom_paiement: e.target.value }));
+  }, []);
+
+  const handleMontantTotalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, montant_total: e.target.value }));
+  }, []);
+
+  const handleMontantMensualiteChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, montant_mensualite: e.target.value }));
+  }, []);
+
+  const handleNombreTotalChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, nombre_mensualites_total: e.target.value }));
+  }, []);
+
+  const handleNombreRestantesChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, nombre_mensualites_restantes: e.target.value }));
+  }, []);
+
+  const handleDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData(prev => ({ ...prev, date_debut: e.target.value }));
+  }, []);
+
+  const InstallmentsContent = useMemo(() => (
     <>
       {installments.length > 0 && (
         <div className="space-y-0.5">
@@ -218,9 +245,10 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
             <Input
               id="nom_paiement"
               value={formData.nom_paiement}
-              onChange={(e) => setFormData({ ...formData, nom_paiement: e.target.value })}
+              onChange={handleNomChange}
               placeholder="Crédit, leasing..."
               className="h-8 text-xs"
+              autoFocus={false}
             />
           </div>
 
@@ -232,9 +260,10 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                 type="number"
                 step="0.01"
                 value={formData.montant_total}
-                onChange={(e) => setFormData({ ...formData, montant_total: e.target.value })}
+                onChange={handleMontantTotalChange}
                 placeholder="0"
                 className="h-8 text-xs"
+                autoFocus={false}
               />
             </div>
 
@@ -245,11 +274,10 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                 type="number"
                 step="0.01"
                 value={formData.montant_mensualite}
-                onChange={(e) =>
-                  setFormData({ ...formData, montant_mensualite: e.target.value })
-                }
+                onChange={handleMontantMensualiteChange}
                 placeholder="0"
                 className="h-8 text-xs"
+                autoFocus={false}
               />
             </div>
           </div>
@@ -261,11 +289,10 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                 id="nombre_mensualites_total"
                 type="number"
                 value={formData.nombre_mensualites_total}
-                onChange={(e) =>
-                  setFormData({ ...formData, nombre_mensualites_total: e.target.value })
-                }
+                onChange={handleNombreTotalChange}
                 placeholder="12"
                 className="h-8 text-xs"
+                autoFocus={false}
               />
             </div>
 
@@ -275,11 +302,10 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                 id="nombre_mensualites_restantes"
                 type="number"
                 value={formData.nombre_mensualites_restantes}
-                onChange={(e) =>
-                  setFormData({ ...formData, nombre_mensualites_restantes: e.target.value })
-                }
+                onChange={handleNombreRestantesChange}
                 placeholder="8"
                 className="h-8 text-xs"
+                autoFocus={false}
               />
             </div>
 
@@ -289,8 +315,9 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
                 id="date_debut"
                 type="date"
                 value={formData.date_debut}
-                onChange={(e) => setFormData({ ...formData, date_debut: e.target.value })}
+                onChange={handleDateChange}
                 className="h-8 text-xs"
+                autoFocus={false}
               />
             </div>
           </div>
@@ -312,7 +339,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
         </p>
       )}
     </>
-  );
+  ), [installments, totalRestant, isAdding, editingId, formData, handleNomChange, handleMontantTotalChange, handleMontantMensualiteChange, handleNombreTotalChange, handleNombreRestantesChange, handleDateChange, handleEdit, handleDelete, handleSave, resetForm]);
 
   return (
     <>
@@ -331,7 +358,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
           </div>
         </CardHeader>
         <CardContent className="space-y-1.5">
-          <InstallmentsContent />
+          {InstallmentsContent}
         </CardContent>
       </Card>
 
@@ -342,7 +369,7 @@ export const InstallmentPayments = ({ projectId }: InstallmentPaymentsProps) => 
           </DialogHeader>
           <ScrollArea className="h-[calc(90vh-100px)] pr-4">
             <div className="space-y-1.5">
-              <InstallmentsContent />
+              {InstallmentsContent}
             </div>
           </ScrollArea>
         </DialogContent>
