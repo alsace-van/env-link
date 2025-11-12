@@ -5,11 +5,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Settings } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
 import { Input } from "@/components/ui/input";
+import CategoryManagementDialog from "./CategoryManagementDialog";
 
 interface Expense {
   id: string;
@@ -54,6 +55,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
   const [categories, setCategories] = useState<string[]>([]);
   const [paymentTransactions, setPaymentTransactions] = useState<PaymentTransaction[]>([]);
   const [totalSales, setTotalSales] = useState(0);
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
 
   useEffect(() => {
     loadExpenses();
@@ -61,6 +63,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
   }, [projectId, refreshTrigger]);
 
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
+  const [userCategories, setUserCategories] = useState<Array<{ id: string; nom: string; icon?: string; parent_id: string | null; user_id: string }>>([]);
 
   const loadExpenses = async () => {
     setIsLoading(true);
@@ -70,7 +73,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
     if (userData.user) {
       const { data: categoriesData } = await supabase
         .from("categories")
-        .select("nom, icon")
+        .select("id, nom, icon, parent_id, user_id")
         .eq("user_id", userData.user.id);
       
       if (categoriesData) {
@@ -79,6 +82,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
           iconsMap[cat.nom] = cat.icon || '📦';
         });
         setCategoryIcons(iconsMap);
+        setUserCategories(categoriesData);
       }
     }
     
@@ -292,7 +296,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
       </div>
 
       {categories.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <Button
             variant={selectedCategory === null ? "default" : "outline"}
             size="sm"
@@ -311,6 +315,14 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
               {cat} ({groupedByCategory[cat].length})
             </Button>
           ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsCategoryDialogOpen(true)}
+          >
+            <Settings className="h-4 w-4 mr-1" />
+            Gérer les catégories
+          </Button>
         </div>
       )}
 
@@ -746,6 +758,16 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
           setIsDialogOpen(false);
           setEditingExpense(null);
         }}
+      />
+
+      <CategoryManagementDialog
+        isOpen={isCategoryDialogOpen}
+        onClose={() => setIsCategoryDialogOpen(false)}
+        onSuccess={() => {
+          loadExpenses();
+          onExpenseChange();
+        }}
+        categories={userCategories}
       />
     </div>
   );
