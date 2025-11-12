@@ -398,6 +398,7 @@ export function AdminOfficialDocumentsManager() {
           isOpen={true}
           onClose={() => setViewingPdfUrl(null)}
           pdfUrl={viewingPdfUrl}
+          title="Document officiel"
         />
       )}
     </div>
