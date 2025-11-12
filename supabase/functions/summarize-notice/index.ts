@@ -103,11 +103,14 @@ serve(async (req) => {
     }
 
     // Télécharger le PDF depuis Supabase Storage
-    // Essayer différents champs possibles pour le chemin du fichier
-    const filePath = notice.url_notice || notice.pdf_url || notice.file_url || notice.notice_url || notice.file_path
+    // Essayer différents champs possibles pour le chemin du fichier (notice_url est le bon champ)
+    const filePath = notice.notice_url || notice.url_notice || notice.pdf_url || notice.file_url || notice.file_path
     
-    console.log('Téléchargement du PDF:', filePath)
-    console.log('Notice data:', JSON.stringify(notice, null, 2))
+    console.log('=== DEBUG EDGE FUNCTION ===')
+    console.log('Notice ID:', noticeId)
+    console.log('File path trouvé:', filePath)
+    console.log('Notice complète:', JSON.stringify(notice, null, 2))
+    console.log('==========================')
     
     if (!filePath) {
       return new Response(
