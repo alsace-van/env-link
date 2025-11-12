@@ -996,6 +996,7 @@ export type Database = {
           montant: number
           notes: string | null
           project_id: string
+          type_paiement: string | null
           updated_at: string | null
           user_id: string
         }
@@ -1007,6 +1008,7 @@ export type Database = {
           montant: number
           notes?: string | null
           project_id: string
+          type_paiement?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -1018,6 +1020,7 @@ export type Database = {
           montant?: number
           notes?: string | null
           project_id?: string
+          type_paiement?: string | null
           updated_at?: string | null
           user_id?: string
         }
