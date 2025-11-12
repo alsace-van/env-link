@@ -44,6 +44,8 @@ interface FurnitureBoxProps {
   furniture: FurnitureItem;
   mmToUnits3D: number;
   canvasScale: number;
+  loadAreaLength: number;
+  loadAreaWidth: number;
   isSelected?: boolean;
   onSelect?: () => void;
 }
@@ -169,7 +171,7 @@ const TransformGizmo = ({ position, onMove, onDragStart, onDragEnd }: TransformG
   );
 };
 
-const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, isSelected, onSelect }: FurnitureBoxProps) => {
+const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, loadAreaLength, loadAreaWidth, isSelected, onSelect }: FurnitureBoxProps) => {
   let widthMm, depthMm;
 
   // Vérifier si les dimensions du canvas sont valides (non nulles et > 10px)
@@ -209,20 +211,22 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, isSelected, onSelec
   const posXpixelsRel = furniture.position?.x || 0;
   const posYpixelsRel = furniture.position?.y || 0;
 
+  // Convertir position canvas (pixels) en mm
   const posXmm = posXpixelsRel / canvasScale;
   const posZmm = posYpixelsRel / canvasScale;
 
-  const posX3D = posXmm * mmToUnits3D;
-  const posZ3D = posZmm * mmToUnits3D;
+  // Convertir en coordonnées 3D centrées (0,0 au centre de la zone de chargement)
+  const posX3D = (posXmm - loadAreaLength / 2) * mmToUnits3D;
+  const posZ3D = (posZmm - loadAreaWidth / 2) * mmToUnits3D;
 
   // Utiliser hauteur_sol_mm pour positionner le meuble en hauteur
   const hauteurSolMm = furniture.hauteur_sol_mm || 0;
   const posY3D = hauteurSolMm * mmToUnits3D + height3D / 2;
 
-  console.log(`Position (pixels relatifs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
-  console.log(`Position (mm): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
+  console.log(`Position (pixels abs): (${posXpixelsRel.toFixed(1)}, ${posYpixelsRel.toFixed(1)})`);
+  console.log(`Position (mm abs): (${posXmm.toFixed(1)}, ${posZmm.toFixed(1)})`);
   console.log(`Hauteur sol (mm): ${hauteurSolMm}`);
-  console.log(`Position (3D): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)})`);
+  console.log(`Position (3D centrée): (${posX3D.toFixed(2)}, ${posY3D.toFixed(2)}, ${posZ3D.toFixed(2)})`);
 
   const textSize = Math.max(0.2, Math.min(0.5, 0.3));
   const textOffsetY = height3D / 2 + textSize * 1.2;
@@ -478,8 +482,8 @@ const Scene = ({
     const posYpixelsRel = selectedFurniture.position.y || 0;
     const posXmm = posXpixelsRel / canvasScale;
     const posZmm = posYpixelsRel / canvasScale;
-    const posX3D = posXmm * mmToUnits3D;
-    const posZ3D = posZmm * mmToUnits3D;
+    const posX3D = (posXmm - loadAreaLength / 2) * mmToUnits3D;
+    const posZ3D = (posZmm - loadAreaWidth / 2) * mmToUnits3D;
 
     const heightMm = selectedFurniture.hauteur_mm || 100;
     const height3D = heightMm * mmToUnits3D;
@@ -509,6 +513,8 @@ const Scene = ({
           furniture={item}
           mmToUnits3D={mmToUnits3D}
           canvasScale={canvasScale}
+          loadAreaLength={loadAreaLength}
+          loadAreaWidth={loadAreaWidth}
           isSelected={moveMode && item.id === selectedFurnitureId}
           onSelect={() => (moveMode ? onSelectFurniture(item.id) : undefined)}
         />
@@ -743,10 +749,11 @@ export const Layout3DView = ({
                       console.log(`  Centre: (${rectCenterX.toFixed(1)}, ${rectCenterY.toFixed(1)}) pixels`);
                       console.log(`  Dimensions: ${widthPx.toFixed(1)}px × ${heightPx.toFixed(1)}px`);
 
-                      const relativeX = rectCenterX - centerX;
-                      const relativeY = rectCenterY - centerY;
+                      // Position relative au coin haut-gauche du canvas (pas au centre)
+                      const relativeX = rectCenterX;
+                      const relativeY = rectCenterY;
 
-                      console.log(`  Position relative: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
+                      console.log(`  Position absolue: (${relativeX.toFixed(1)}, ${relativeY.toFixed(1)}) pixels`);
 
                       const widthMm = widthPx / scale;
                       const heightMm = heightPx / scale;
