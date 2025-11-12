@@ -570,11 +570,21 @@ export const LayoutCanvas = ({
       try {
         const { data, error } = await supabase
           .from("projects")
-          .select("layout_canvas_data, furniture_data")
+          .select("layout_canvas_data, furniture_data, longueur_chargement_mm, largeur_chargement_mm")
           .eq("id", projectId)
           .single() as any;
 
         if (error) throw error;
+
+        // Charger les dimensions de la zone de chargement
+        if (data?.longueur_chargement_mm && data?.largeur_chargement_mm) {
+          console.log("📐 Dimensions chargées:", {
+            longueur: data.longueur_chargement_mm,
+            largeur: data.largeur_chargement_mm
+          });
+          setLoadAreaLength(data.longueur_chargement_mm);
+          setLoadAreaWidth(data.largeur_chargement_mm);
+        }
 
         if (data?.layout_canvas_data && typeof data.layout_canvas_data === "string") {
           paper.project.clear();
