@@ -101,12 +101,11 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   };
 
   const loadExpenses = async () => {
-    // Charger toutes les dépenses fournisseurs du projet
+    // Charger uniquement les dépenses liées à ce projet spécifique
     const { data, error } = await supabase
       .from("project_expenses")
       .select("*")
       .eq("project_id", projectId)
-      .not("fournisseur", "is", null)
       .order("date_achat", { ascending: false });
 
     if (error) {

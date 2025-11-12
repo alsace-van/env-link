@@ -47,6 +47,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const { data } = await supabase
       .from("project_expenses")
       .select("fournisseur")
+      .is("project_id", null)
       .eq("user_id", user.id)
       .not("fournisseur", "is", null) as any;
 
@@ -196,7 +197,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     );
 
     const expensesToInsert = rowsWithUrls.map((row) => ({
-      project_id: projectId,
+      project_id: null, // Dépenses fournisseurs globales, pas liées à un projet
       user_id: user.id,
       nom_accessoire: row.nom_accessoire,
       fournisseur: row.fournisseur,
