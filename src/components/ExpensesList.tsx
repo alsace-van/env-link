@@ -202,7 +202,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
     } else {
       toast.success("Statut de livraison mis à jour");
       loadExpenses();
-      onExpenseChange();
+      onExpenseChange?.();
     }
   };
 
@@ -218,7 +218,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
     } else {
       toast.success("Dépense supprimée");
       loadExpenses();
-      onExpenseChange();
+      onExpenseChange?.();
     }
   };
 
@@ -236,7 +236,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
     } else {
       toast.success("Quantité mise à jour");
       loadExpenses();
-      onExpenseChange();
+      onExpenseChange?.();
     }
   };
 
@@ -754,7 +754,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
         expense={editingExpense}
         onSuccess={() => {
           loadExpenses();
-          onExpenseChange();
+          onExpenseChange?.();
           setIsDialogOpen(false);
           setEditingExpense(null);
         }}
@@ -765,7 +765,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
         onClose={() => setIsCategoryDialogOpen(false)}
         onSuccess={() => {
           loadExpenses();
-          onExpenseChange();
+          onExpenseChange?.();
         }}
         categories={userCategories}
       />
