@@ -604,6 +604,36 @@ export type Database = {
         }
         Relationships: []
       }
+      official_document_categories: {
+        Row: {
+          color: string
+          created_at: string | null
+          display_order: number
+          icon: string
+          id: string
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string
+          created_at?: string | null
+          display_order?: number
+          icon?: string
+          id?: string
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string
+          created_at?: string | null
+          display_order?: number
+          icon?: string
+          id?: string
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       official_documents: {
         Row: {
           category: string | null

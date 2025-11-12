@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, Eye, Filter, Loader2, AlertCircle, Plus, Trash2, Edit, Upload } from 'lucide-react';
+import { FileText, Download, Eye, Filter, Loader2, AlertCircle, Plus, Trash2, Edit, Upload, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -15,16 +15,25 @@ import {
 } from '@/components/ui/alert-dialog';
 import { OfficialDocumentUploadDialog } from './OfficialDocumentUploadDialog';
 import { PdfViewerModal } from '@/components/PdfViewerModal';
+import { CategoryManagementDialog } from './CategoryManagementDialog';
 
 interface OfficialDocument {
   id: string;
   name: string;
   description: string;
-  category: 'Homologation' | 'Administratif' | 'Technique' | 'Certificat';
+  category: string;
   file_url: string;
   version: string;
   is_active: boolean;
   created_at: string;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  display_order: number;
 }
 
 export function AdminOfficialDocumentsManager() {
@@ -36,16 +45,31 @@ export function AdminOfficialDocumentsManager() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
   const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
-
-  const categories = ['all', 'Homologation', 'Administratif', 'Technique', 'Certificat'];
+  const [categoryManagementOpen, setCategoryManagementOpen] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   useEffect(() => {
     loadDocuments();
+    loadCategories();
   }, []);
 
   useEffect(() => {
     filterDocuments();
   }, [selectedCategory, documents]);
+
+  const loadCategories = async () => {
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('official_document_categories')
+        .select('*')
+        .order('display_order', { ascending: true });
+
+      if (fetchError) throw fetchError;
+      setCategories(data || []);
+    } catch (err) {
+      console.error('Erreur lors du chargement des catégories:', err);
+    }
+  };
 
   const loadDocuments = async () => {
     try {
@@ -143,29 +167,27 @@ export function AdminOfficialDocumentsManager() {
     }
   };
 
-  const getCategoryColor = (category: string) => {
-    const colors = {
-      Homologation: 'bg-blue-100 text-blue-800 border-blue-200',
-      Administratif: 'bg-green-100 text-green-800 border-green-200',
-      Technique: 'bg-purple-100 text-purple-800 border-purple-200',
-      Certificat: 'bg-orange-100 text-orange-800 border-orange-200',
+  const getCategoryColor = (categoryName: string) => {
+    const category = categories.find(c => c.name === categoryName);
+    if (!category) return 'bg-gray-100 text-gray-800 border-gray-200';
+    
+    const colorMap: Record<string, string> = {
+      blue: 'bg-blue-100 text-blue-800 border-blue-200',
+      green: 'bg-green-100 text-green-800 border-green-200',
+      purple: 'bg-purple-100 text-purple-800 border-purple-200',
+      orange: 'bg-orange-100 text-orange-800 border-orange-200',
+      red: 'bg-red-100 text-red-800 border-red-200',
+      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      pink: 'bg-pink-100 text-pink-800 border-pink-200',
+      gray: 'bg-gray-100 text-gray-800 border-gray-200',
     };
-    return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800 border-gray-200';
+    
+    return colorMap[category.color] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'Homologation':
-        return '🚐';
-      case 'Administratif':
-        return '📋';
-      case 'Technique':
-        return '🔧';
-      case 'Certificat':
-        return '✅';
-      default:
-        return '📄';
-    }
+  const getCategoryIcon = (categoryName: string) => {
+    const category = categories.find(c => c.name === categoryName);
+    return category?.icon || '📄';
   };
 
   if (loading) {
@@ -199,7 +221,7 @@ export function AdminOfficialDocumentsManager() {
 
   return (
     <div className="space-y-6">
-      {/* Header avec bouton d'ajout */}
+      {/* Header avec boutons */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Documents Officiels</h2>
@@ -208,10 +230,16 @@ export function AdminOfficialDocumentsManager() {
           </p>
         </div>
 
-        <Button onClick={() => setUploadDialogOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Ajouter un document
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setCategoryManagementOpen(true)}>
+            <Settings className="w-4 h-4 mr-2" />
+            Gérer les catégories
+          </Button>
+          <Button onClick={() => setUploadDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Ajouter un document
+          </Button>
+        </div>
       </div>
 
       {/* Filtres par catégorie */}
@@ -220,19 +248,26 @@ export function AdminOfficialDocumentsManager() {
           <Filter className="w-4 h-4" />
           <span className="font-medium">Filtrer :</span>
         </div>
+        <Button
+          variant={selectedCategory === 'all' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setSelectedCategory('all')}
+        >
+          Tous
+          <span className="ml-2">{documents.length}</span>
+        </Button>
         {categories.map((category) => (
           <Button
-            key={category}
-            variant={selectedCategory === category ? 'default' : 'outline'}
+            key={category.id}
+            variant={selectedCategory === category.name ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setSelectedCategory(category)}
+            onClick={() => setSelectedCategory(category.name)}
           >
-            {category === 'all' ? 'Tous' : category}
-            {category !== 'all' && (
-              <span className="ml-2">
-                {documents.filter(d => d.category === category).length}
-              </span>
-            )}
+            <span className="mr-1">{category.icon}</span>
+            {category.name}
+            <span className="ml-2">
+              {documents.filter(d => d.category === category.name).length}
+            </span>
           </Button>
         ))}
       </div>
@@ -366,11 +401,19 @@ export function AdminOfficialDocumentsManager() {
         </div>
       </div>
 
+      {/* Dialog de gestion des catégories */}
+      <CategoryManagementDialog
+        open={categoryManagementOpen}
+        onOpenChange={setCategoryManagementOpen}
+        onCategoryUpdated={loadCategories}
+      />
+
       {/* Dialog d'upload */}
       <OfficialDocumentUploadDialog
         open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
         onSuccess={loadDocuments}
+        categories={categories}
       />
 
       {/* Dialog de confirmation de suppression */}

@@ -21,23 +21,33 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+interface Category {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  display_order: number;
+}
+
 interface OfficialDocumentUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  categories: Category[];
 }
 
 export function OfficialDocumentUploadDialog({
   open,
   onOpenChange,
   onSuccess,
+  categories,
 }: OfficialDocumentUploadDialogProps) {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    category: 'Administratif' as 'Homologation' | 'Administratif' | 'Technique' | 'Certificat',
+    category: categories[0]?.name || '',
     version: '',
   });
 
@@ -102,7 +112,7 @@ export function OfficialDocumentUploadDialog({
       setFormData({
         name: '',
         description: '',
-        category: 'Administratif',
+        category: categories[0]?.name || '',
         version: '',
       });
       setFile(null);
@@ -174,10 +184,12 @@ export function OfficialDocumentUploadDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Homologation">🚐 Homologation</SelectItem>
-                <SelectItem value="Administratif">📋 Administratif</SelectItem>
-                <SelectItem value="Technique">🔧 Technique</SelectItem>
-                <SelectItem value="Certificat">✅ Certificat</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.name}>
+                    <span className="mr-2">{cat.icon}</span>
+                    {cat.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
