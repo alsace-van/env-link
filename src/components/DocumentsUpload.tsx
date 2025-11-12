@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Upload, X, FileText, Download, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Upload, X, FileText, Download, Loader2, Edit2, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface Document {
@@ -22,6 +23,8 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Charger les documents
@@ -112,7 +115,6 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
           .from("administrative_documents")
           .insert({
             project_id: projectId,
-            user_id: user.id,
             file_name: file.name,
             file_url: urlData.publicUrl,
             file_size: file.size,
@@ -174,6 +176,40 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
+  const startEdit = (doc: Document) => {
+    setEditingId(doc.id);
+    setEditingName(doc.file_name);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingName("");
+  };
+
+  const saveEdit = async (docId: string) => {
+    if (!editingName.trim()) {
+      toast.error("Le nom ne peut pas être vide");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("administrative_documents")
+        .update({ file_name: editingName.trim() })
+        .eq("id", docId);
+
+      if (error) throw error;
+
+      toast.success("Nom modifié avec succès");
+      setEditingId(null);
+      setEditingName("");
+      loadDocuments();
+    } catch (error) {
+      console.error("Erreur lors de la modification:", error);
+      toast.error("Erreur lors de la modification");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Zone de drop */}
@@ -231,33 +267,77 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
           {documents.map((doc) => (
             <Card key={doc.id}>
               <CardContent className="p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{doc.file_name}</p>
+                      {editingId === doc.id ? (
+                        <Input
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="h-8"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveEdit(doc.id);
+                            if (e.key === "Escape") cancelEdit();
+                          }}
+                        />
+                      ) : (
+                        <p className="font-medium truncate">{doc.file_name}</p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {formatFileSize(doc.file_size)} • {new Date(doc.uploaded_at).toLocaleDateString("fr-FR")}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => window.open(doc.file_url, "_blank")}
-                      title="Télécharger"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(doc)}
-                      title="Supprimer"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    {editingId === doc.id ? (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => saveEdit(doc.id)}
+                          title="Enregistrer"
+                        >
+                          <Check className="h-4 w-4 text-green-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={cancelEdit}
+                          title="Annuler"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => startEdit(doc)}
+                          title="Modifier le nom"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => window.open(doc.file_url, "_blank")}
+                          title="Télécharger"
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDelete(doc)}
+                          title="Supprimer"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </CardContent>
