@@ -97,6 +97,28 @@ interface Project {
     marque: string;
     modele: string;
   };
+  // Informations complémentaires carte grise
+  prenom_proprietaire?: string;
+  ville_proprietaire?: string;
+  code_postal_proprietaire?: string;
+  date_premiere_immatriculation?: string;
+  puissance_fiscale?: number;
+  cylindree?: number;
+  masse_vide?: number;
+  masse_en_charge_max?: number;
+  numero_chassis_vin?: string;
+  vin?: string;
+  denomination_commerciale?: string;
+  genre_national?: string;
+  carrosserie?: string;
+  energie?: string;
+  ptra?: number;
+  masse_ordre_marche_kg?: number;
+  marque_officielle?: string;
+  modele_officiel?: string;
+  nombre_places?: number;
+  marque_vehicule?: string;
+  modele_vehicule?: string;
 }
 
 // Composant Widget Agenda Compact pour l'entête
@@ -963,16 +985,16 @@ const ProjectDetail = () => {
                       <p className="font-medium">{project.nom_projet}</p>
                     </div>
                   )}
-                  {project.numero_chassis && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">N° de châssis :</span>
-                      <p className="font-medium">{project.numero_chassis}</p>
-                    </div>
-                  )}
                   {project.immatriculation && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Immatriculation :</span>
                       <p className="font-medium">{project.immatriculation}</p>
+                    </div>
+                  )}
+                  {(project.vin || project.numero_chassis_vin || project.numero_chassis) && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">N° de châssis (VIN) :</span>
+                      <p className="font-medium">{project.vin || project.numero_chassis_vin || project.numero_chassis}</p>
                     </div>
                   )}
                   {project.type_mine && (
@@ -981,19 +1003,73 @@ const ProjectDetail = () => {
                       <p className="font-medium">{project.type_mine}</p>
                     </div>
                   )}
+                  {(project.marque_officielle || project.marque_vehicule || project.marque_custom) && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Marque :</span>
+                      <p className="font-medium">{project.marque_officielle || project.marque_vehicule || project.marque_custom}</p>
+                    </div>
+                  )}
+                  {(project.modele_officiel || project.modele_vehicule || project.modele_custom) && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Modèle :</span>
+                      <p className="font-medium">{project.modele_officiel || project.modele_vehicule || project.modele_custom}</p>
+                    </div>
+                  )}
+                  {project.denomination_commerciale && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Dénomination commerciale :</span>
+                      <p className="font-medium">{project.denomination_commerciale}</p>
+                    </div>
+                  )}
+                  {project.genre_national && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Genre :</span>
+                      <p className="font-medium">{project.genre_national}</p>
+                    </div>
+                  )}
+                  {project.carrosserie && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Carrosserie :</span>
+                      <p className="font-medium">{project.carrosserie}</p>
+                    </div>
+                  )}
+                  {project.energie && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Énergie :</span>
+                      <p className="font-medium">{project.energie}</p>
+                    </div>
+                  )}
+                  {project.nombre_places && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Nombre de places :</span>
+                      <p className="font-medium">{project.nombre_places}</p>
+                    </div>
+                  )}
+                  {project.puissance_fiscale && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Puissance fiscale :</span>
+                      <p className="font-medium">{project.puissance_fiscale} CV</p>
+                    </div>
+                  )}
+                  {project.cylindree && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Cylindrée :</span>
+                      <p className="font-medium">{project.cylindree} cm³</p>
+                    </div>
+                  )}
                   {project.date_premiere_circulation && (
                     <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Date de circulation :</span>
+                      <span className="text-muted-foreground shrink-0">1ère mise en circulation :</span>
                       <p className="font-medium">
                         {new Date(project.date_premiere_circulation).toLocaleDateString("fr-FR")}
                       </p>
                     </div>
                   )}
-                  {(project.marque_custom || project.modele_custom) && (
+                  {project.date_premiere_immatriculation && (
                     <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Véhicule :</span>
+                      <span className="text-muted-foreground shrink-0">1ère immatriculation :</span>
                       <p className="font-medium">
-                        {project.marque_custom} {project.modele_custom}
+                        {new Date(project.date_premiere_immatriculation).toLocaleDateString("fr-FR")}
                       </p>
                     </div>
                   )}
@@ -1002,14 +1078,22 @@ const ProjectDetail = () => {
                 {/* Propriétaire */}
                 <div className="space-y-1.5 mb-4 pt-4 border-t">
                   <h4 className="text-xs font-semibold text-muted-foreground mb-2">Propriétaire</h4>
-                  <div className="flex gap-2 text-xs">
-                    <span className="text-muted-foreground shrink-0">Nom :</span>
-                    <p className="font-medium">{project.nom_proprietaire}</p>
-                  </div>
+                  {(project.prenom_proprietaire || project.nom_proprietaire) && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Nom :</span>
+                      <p className="font-medium">{project.prenom_proprietaire} {project.nom_proprietaire}</p>
+                    </div>
+                  )}
                   {project.adresse_proprietaire && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Adresse :</span>
                       <p className="font-medium">{project.adresse_proprietaire}</p>
+                    </div>
+                  )}
+                  {(project.code_postal_proprietaire || project.ville_proprietaire) && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0">Ville :</span>
+                      <p className="font-medium">{project.code_postal_proprietaire} {project.ville_proprietaire}</p>
                     </div>
                   )}
                   {project.telephone_proprietaire && (
@@ -1081,13 +1165,19 @@ const ProjectDetail = () => {
                     )}
 
                     {/* Poids */}
-                    {(project.poids_vide_kg || project.charge_utile_kg || project.ptac_kg) && (
+                    {(project.poids_vide_kg || project.masse_vide || project.masse_ordre_marche_kg || project.charge_utile_kg || project.ptac_kg || project.masse_en_charge_max || project.ptra) && (
                       <div className="space-y-2 border-l-4 border-green-200 dark:border-green-800 pl-3">
                         <h4 className="text-xs font-semibold text-green-700 dark:text-green-400">Poids</h4>
-                        {project.poids_vide_kg && (
+                        {(project.poids_vide_kg || project.masse_vide) && (
                           <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">À vide :</span>
-                            <p className="font-medium">{project.poids_vide_kg} kg</p>
+                            <span className="text-muted-foreground shrink-0">Poids à vide :</span>
+                            <p className="font-medium">{project.poids_vide_kg || project.masse_vide} kg</p>
+                          </div>
+                        )}
+                        {project.masse_ordre_marche_kg && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">Masse en ordre de marche :</span>
+                            <p className="font-medium">{project.masse_ordre_marche_kg} kg</p>
                           </div>
                         )}
                         {project.charge_utile_kg && (
@@ -1096,10 +1186,16 @@ const ProjectDetail = () => {
                             <p className="font-medium">{project.charge_utile_kg} kg</p>
                           </div>
                         )}
-                        {project.ptac_kg && (
+                        {(project.ptac_kg || project.masse_en_charge_max) && (
                           <div className="flex gap-2 text-xs">
                             <span className="text-muted-foreground shrink-0">PTAC :</span>
-                            <p className="font-medium">{project.ptac_kg} kg</p>
+                            <p className="font-medium">{project.ptac_kg || project.masse_en_charge_max} kg</p>
+                          </div>
+                        )}
+                        {project.ptra && (
+                          <div className="flex gap-2 text-xs">
+                            <span className="text-muted-foreground shrink-0">PTRA :</span>
+                            <p className="font-medium">{project.ptra} kg</p>
                           </div>
                         )}
                       </div>
