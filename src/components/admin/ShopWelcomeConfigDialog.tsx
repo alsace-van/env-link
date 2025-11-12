@@ -39,11 +39,13 @@ export const ShopWelcomeConfigDialog = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data, error } = await supabase
+    // @ts-expect-error - Table shop_welcome_config not in Supabase types
+    const result: any = await supabase
       .from("shop_welcome_config")
       .select("*")
       .eq("user_id", user.id)
       .maybeSingle();
+    const { data, error } = result;
 
     if (error) {
       console.error("Erreur:", error);

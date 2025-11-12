@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -233,6 +233,26 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
   const totalPaid = transactions.reduce((sum, t) => sum + t.montant, 0);
   const remaining = totalSales - totalPaid;
 
+  const handleMontantChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTransaction(prev => ({ ...prev, montant: parseFloat(e.target.value) || 0 }));
+  }, []);
+
+  const handleDateChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTransaction(prev => ({ ...prev, date_paiement: e.target.value }));
+  }, []);
+
+  const handleNotesChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setNewTransaction(prev => ({ ...prev, notes: e.target.value }));
+  }, []);
+
+  const handleTypeChange = useCallback((value: "acompte" | "solde") => {
+    setNewTransaction(prev => ({ 
+      ...prev, 
+      type_paiement: value,
+      montant: value === "solde" ? remaining : prev.montant
+    }));
+  }, [remaining]);
+
   const PaymentContent = () => (
     <>
       <div className="space-y-0.5 text-sm border-b pb-1.5">
@@ -307,13 +327,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
             <Label className="text-sm">Type</Label>
             <Select
               value={newTransaction.type_paiement}
-              onValueChange={(value: "acompte" | "solde") => {
-                setNewTransaction({ 
-                  ...newTransaction, 
-                  type_paiement: value,
-                  montant: value === "solde" ? remaining : newTransaction.montant
-                });
-              }}
+              onValueChange={handleTypeChange}
             >
               <SelectTrigger className="h-8 text-sm">
                 <SelectValue />
@@ -331,10 +345,8 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
               <Input
                 type="number"
                 step="0.01"
-                value={newTransaction.montant}
-                onChange={(e) =>
-                  setNewTransaction({ ...newTransaction, montant: parseFloat(e.target.value) || 0 })
-                }
+                value={newTransaction.montant || ''}
+                onChange={handleMontantChange}
                 className="h-8 text-sm"
               />
             </div>
@@ -344,9 +356,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
               <Input
                 type="date"
                 value={newTransaction.date_paiement}
-                onChange={(e) =>
-                  setNewTransaction({ ...newTransaction, date_paiement: e.target.value })
-                }
+                onChange={handleDateChange}
                 className="h-8 text-sm"
               />
             </div>
@@ -356,9 +366,7 @@ const PaymentTransactions = ({ totalSales, onPaymentChange, currentProjectId }: 
             <Label className="text-sm">Notes</Label>
             <Textarea
               value={newTransaction.notes}
-              onChange={(e) =>
-                setNewTransaction({ ...newTransaction, notes: e.target.value })
-              }
+              onChange={handleNotesChange}
               placeholder="Notes..."
               className="h-16 text-sm resize-none"
             />

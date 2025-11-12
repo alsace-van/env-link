@@ -107,11 +107,13 @@ const CustomKitConfigDialog = ({
     setLoading(true);
 
     // Charger la configuration du kit
-    const { data: kitData, error: kitError } = await supabase
+    // @ts-expect-error - Table shop_custom_kits not in Supabase types
+    const result: any = await supabase
       .from("shop_custom_kits")
       .select("allowed_category_ids")
       .eq("product_id", productId)
-      .single() as any;
+      .single();
+    const { data: kitData, error: kitError } = result;
 
     if (kitError) {
       console.error("Erreur lors du chargement du kit:", kitError);

@@ -64,11 +64,13 @@ export const KitAccessoryPricingDialog = ({
     setLoading(true);
 
     // Récupérer les catégories autorisées pour ce kit
-    const { data: kitData } = await supabase
+    // @ts-expect-error - Table shop_custom_kits not in Supabase types
+    const result: any = await supabase
       .from("shop_custom_kits")
       .select("allowed_category_ids")
       .eq("product_id", productId)
-      .single() as any;
+      .single();
+    const { data: kitData } = result;
 
     if (!kitData || !kitData.allowed_category_ids) {
       setLoading(false);

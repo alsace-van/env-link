@@ -124,10 +124,13 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const handleDelete = async (id: string) => {
     try {
       // First, unlink any accessories
-      await supabase.from("accessories_catalog").update({ notice_id: null } as any).eq("notice_id", id);
+      // @ts-expect-error - Supabase type issue with update
+      const result1: any = supabase.from("accessories_catalog").update({ notice_id: null } as any).eq("notice_id", id);
+      await result1;
 
       // Then delete the notice
-      const { error } = await supabase.from("notices_database").delete().eq("id", id) as any;
+      const result2: any = await supabase.from("notices_database").delete().eq("id", id);
+      const { error } = result2;
 
       if (error) {
         toast.error("Erreur lors de la suppression");

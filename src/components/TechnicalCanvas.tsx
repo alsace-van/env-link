@@ -939,11 +939,13 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     }
 
     try {
-      await supabase
+      // @ts-expect-error - Supabase type issue with delete
+      const result: any = supabase
         .from("technical_schemas")
         .delete()
         .eq("project_id", projectId)
         .eq("schema_number", schemaNumber);
+      await result;
 
       setSchemas(prev => prev.filter(s => s !== schemaNumber));
       
