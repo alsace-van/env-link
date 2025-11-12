@@ -485,10 +485,17 @@ const ExpenseFormDialog = ({
         }
       }
 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Vous devez être connecté");
+        return;
+      }
+
       const { data: newExpense, error } = await supabase
         .from("project_expenses")
         .insert({
           project_id: projectId,
+          user_id: user.id,
           nom_accessoire: formData.nom_accessoire,
           marque: formData.marque || null,
           prix: parseFloat(formData.prix_achat),
