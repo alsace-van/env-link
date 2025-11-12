@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Download, ExternalLink, Filter, Loader2, AlertCircle, Plus, Trash2, Edit, Upload } from 'lucide-react';
+import { FileText, Download, Eye, Filter, Loader2, AlertCircle, Plus, Trash2, Edit, Upload } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { OfficialDocumentUploadDialog } from './OfficialDocumentUploadDialog';
+import { PdfViewerModal } from '@/components/PdfViewerModal';
 
 interface OfficialDocument {
   id: string;
@@ -34,6 +35,7 @@ export function AdminOfficialDocumentsManager() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
+  const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
 
   const categories = ['all', 'Homologation', 'Administratif', 'Technique', 'Certificat'];
 
@@ -131,8 +133,14 @@ export function AdminOfficialDocumentsManager() {
     }
   };
 
-  const handleOpenDocument = (url: string) => {
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const handleViewDocument = (url: string) => {
+    // Si c'est un PDF, ouvrir dans le viewer intégré
+    if (url.toLowerCase().endsWith('.pdf') || url.includes('.pdf')) {
+      setViewingPdfUrl(url);
+    } else {
+      // Pour les autres types de fichiers, ouvrir dans un nouvel onglet
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const getCategoryColor = (category: string) => {
@@ -292,10 +300,24 @@ export function AdminOfficialDocumentsManager() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleOpenDocument(doc.file_url)}
-                    title="Ouvrir le document"
+                    onClick={() => handleViewDocument(doc.file_url)}
+                    title="Voir le document"
                   >
-                    <ExternalLink className="w-4 h-4" />
+                    <Eye className="w-4 h-4" />
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    asChild
+                  >
+                    <a
+                      href={doc.file_url}
+                      download
+                      title="Télécharger le document"
+                    >
+                      <Download className="w-4 h-4" />
+                    </a>
                   </Button>
 
                   <Button
@@ -369,6 +391,15 @@ export function AdminOfficialDocumentsManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Viewer PDF */}
+      {viewingPdfUrl && (
+        <PdfViewerModal
+          isOpen={true}
+          onClose={() => setViewingPdfUrl(null)}
+          pdfUrl={viewingPdfUrl}
+        />
+      )}
     </div>
   );
 }
