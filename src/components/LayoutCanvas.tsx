@@ -405,8 +405,39 @@ export const LayoutCanvas = ({
             createHandles(rect);
           }
         } else if (selectedItem && !selectedItem.locked) {
-          selectedItem.position = selectedItem.position.add(event.delta);
+          // Calculer la nouvelle position
+          const newPosition = selectedItem.position.add(event.delta);
+          
+          // Obtenir les limites du rectangle bleu (zone de chargement)
+          const currentScale = scaleRef.current;
+          const currentLength = loadAreaLengthRef.current;
+          const currentWidth = loadAreaWidthRef.current;
+          const scaledLength = currentLength * currentScale;
+          const scaledWidth = currentWidth * currentScale;
+          
+          const loadAreaLeft = (CANVAS_WIDTH - scaledLength) / 2;
+          const loadAreaTop = (CANVAS_HEIGHT - scaledWidth) / 2;
+          const loadAreaRight = loadAreaLeft + scaledLength;
+          const loadAreaBottom = loadAreaTop + scaledWidth;
+          
+          // Obtenir les limites de l'objet sélectionné
+          const itemBounds = selectedItem.bounds;
+          const halfWidth = itemBounds.width / 2;
+          const halfHeight = itemBounds.height / 2;
+          
+          // Contraindre la position pour rester dans la zone de chargement
+          const constrainedX = Math.max(
+            loadAreaLeft + halfWidth,
+            Math.min(loadAreaRight - halfWidth, newPosition.x)
+          );
+          const constrainedY = Math.max(
+            loadAreaTop + halfHeight,
+            Math.min(loadAreaBottom - halfHeight, newPosition.y)
+          );
+          
+          selectedItem.position = new paper.Point(constrainedX, constrainedY);
           itemWasMoved = true; // Marquer que l'élément a été déplacé
+          
           if (handles.length > 0) {
             if (selectedItem instanceof paper.Group && selectedItem.children[0]) {
               createHandles(selectedItem.children[0]);

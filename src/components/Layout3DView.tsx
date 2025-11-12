@@ -208,10 +208,24 @@ const FurnitureBox = ({ furniture, mmToUnits3D, canvasScale, loadAreaLength, loa
 
   console.log(`Dimensions 3D finales: ${width3D.toFixed(2)} × ${depth3D.toFixed(2)} × ${height3D.toFixed(2)} unités`);
 
-  const posXpixelsRel = furniture.position?.x || 0;
-  const posYpixelsRel = furniture.position?.y || 0;
+  // Position en pixels absolus sur le canvas (0,0 = coin supérieur gauche du canvas)
+  const posXpixelsAbs = furniture.position?.x || 0;
+  const posYpixelsAbs = furniture.position?.y || 0;
 
-  // Convertir position canvas (pixels) en mm
+  // Le canvas 2D a la zone de chargement centrée
+  // On doit soustraire l'offset du canvas pour obtenir la position relative à la zone de chargement
+  const CANVAS_WIDTH = 800;
+  const CANVAS_HEIGHT = 600;
+  const scaledLoadAreaLength = loadAreaLength * canvasScale;
+  const scaledLoadAreaWidth = loadAreaWidth * canvasScale;
+  const canvasOffsetX = (CANVAS_WIDTH - scaledLoadAreaLength) / 2;
+  const canvasOffsetY = (CANVAS_HEIGHT - scaledLoadAreaWidth) / 2;
+  
+  // Position en pixels relative à la zone de chargement (0,0 = coin supérieur gauche de la zone)
+  const posXpixelsRel = posXpixelsAbs - canvasOffsetX;
+  const posYpixelsRel = posYpixelsAbs - canvasOffsetY;
+  
+  // Convertir position canvas (pixels) en mm relatif à la zone
   const posXmm = posXpixelsRel / canvasScale;
   const posZmm = posYpixelsRel / canvasScale;
 
