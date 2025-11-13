@@ -110,17 +110,16 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const updatedRows = rows.map((row) => (row.id === id ? { ...row, [field]: value } : row));
     setRows(updatedRows);
 
-    // Vérifier si la dernière ligne a été modifiée et contient des données
+    // Vérifier si la dernière ligne a été modifiée et contient suffisamment de données
     const lastRow = updatedRows[updatedRows.length - 1];
     if (lastRow && lastRow.id === id) {
-      // Si on modifie la dernière ligne et qu'elle a au moins un champ rempli, ajouter une nouvelle ligne vide
-      const hasData =
-        lastRow.nom_accessoire.trim() !== "" ||
-        (lastRow.type === "sortie" && lastRow.fournisseur.trim() !== "") ||
-        (lastRow.type === "entree" && lastRow.project_id) ||
+      // Ajouter une nouvelle ligne seulement si les champs essentiels sont remplis
+      const hasEssentialData =
+        lastRow.nom_accessoire.trim() !== "" &&
+        lastRow.fournisseur.trim() !== "" &&
         lastRow.prix_vente_ttc.trim() !== "";
 
-      if (hasData) {
+      if (hasEssentialData) {
         // Vérifier qu'il n'y a pas déjà une ligne vide à la fin
         addNewRow();
       }
