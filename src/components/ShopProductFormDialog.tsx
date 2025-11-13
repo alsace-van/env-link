@@ -62,9 +62,11 @@ interface ProductFormDialogProps {
   trigger?: React.ReactNode;
   onSuccess?: () => void;
   editProduct?: any;
+  forceOpen?: boolean;
+  onClose?: () => void;
 }
 
-export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: ProductFormDialogProps) => {
+export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct, forceOpen, onClose }: ProductFormDialogProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productType, setProductType] = useState<"simple" | "composed" | "custom_kit">("simple");
@@ -106,8 +108,10 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
   useEffect(() => {
     if (editProduct) {
       setOpen(true);
+    } else if (forceOpen) {
+      setOpen(true);
     }
-  }, [editProduct]);
+  }, [editProduct, forceOpen]);
 
   const loadAccessories = async () => {
     const { data, error } = await supabase
@@ -330,7 +334,19 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
       if (editProduct) {
         // Mode édition
         if (productType === "custom_kit") {
-          // Pour les kits sur-mesure, l'ID est l'ID du kit lui-même
+          // Vérifier que le kit existe dans la base de données
+          const { data: existingKit, error: checkError } = await supabase
+            .from("shop_custom_kits")
+            .select("id")
+            .eq("id", editProduct.id)
+            .maybeSingle();
+
+          if (checkError) throw checkError;
+
+          if (!existingKit) {
+            throw new Error("Le kit n'existe pas dans la base de données");
+          }
+
           // Supprimer les anciens accessoires du kit
           await supabase
             .from("shop_custom_kit_accessories" as any)
@@ -473,6 +489,7 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
   const handleClose = () => {
     setOpen(false);
     resetForm();
+    onClose?.();
   };
 
   const resetForm = () => {
