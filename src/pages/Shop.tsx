@@ -2,10 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AccessoiresShopList } from "@/components/AccessoiresShopList";
+import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
+import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card } from "@/components/ui/card";
-import { ArrowLeft, ShoppingBag } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, ShoppingBag, Settings, Package } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 
@@ -14,16 +18,37 @@ interface Project {
   nom: string;
 }
 
+interface ShopProduct {
+  id: string;
+  name: string;
+  description: string | null;
+  type: "simple" | "composed" | "custom_kit";
+  price: number;
+  is_active: boolean;
+  base_price?: number;
+}
+
 const Shop = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [shopProducts, setShopProducts] = useState<ShopProduct[]>([]);
+  const [refreshProducts, setRefreshProducts] = useState(0);
+  const [selectedKit, setSelectedKit] = useState<ShopProduct | null>(null);
+  const [isKitDialogOpen, setIsKitDialogOpen] = useState(false);
 
   useEffect(() => {
     checkUser();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadShopProducts();
+    }
+  }, [user, refreshProducts]);
 
   const checkUser = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -33,8 +58,67 @@ const Shop = () => {
     } else {
       setUser(session.user);
       await loadProjects(session.user.id);
+      await checkAdminStatus(session.user.id);
     }
     setLoading(false);
+  };
+
+  const checkAdminStatus = async (userId: string) => {
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    
+    setIsAdmin(!!data);
+  };
+
+  const loadShopProducts = async () => {
+    try {
+      // Charger les produits simples et composés
+      const { data: productsData, error: productsError } = await supabase
+        .from("shop_products" as any)
+        .select("*")
+        .eq("is_active", true)
+        .order("name") as any;
+
+      if (productsError) throw productsError;
+
+      // Charger les kits sur-mesure
+      const { data: kitsData, error: kitsError } = await supabase
+        .from("shop_custom_kits")
+        .select("*")
+        .eq("is_active", true)
+        .order("nom");
+
+      if (kitsError) throw kitsError;
+
+      // Fusionner les deux listes
+      const allProducts: ShopProduct[] = [
+        ...(productsData || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          type: p.type,
+          price: p.price || 0,
+          is_active: p.is_active,
+        })),
+        ...(kitsData || []).map((k: any) => ({
+          id: k.id,
+          name: k.nom,
+          description: k.description,
+          type: "custom_kit" as const,
+          price: 0,
+          is_active: k.is_active,
+          base_price: k.prix_base,
+        })),
+      ];
+
+      setShopProducts(allProducts);
+    } catch (error) {
+      console.error("Erreur chargement produits:", error);
+    }
   };
 
   const loadProjects = async (userId: string) => {
@@ -123,6 +207,17 @@ const Shop = () => {
           <div className="flex items-center gap-3">
             <ShoppingBag className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Boutique</h1>
+            {isAdmin && (
+              <ShopProductFormDialog
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Gérer les produits
+                  </Button>
+                }
+                onSuccess={() => setRefreshProducts(prev => prev + 1)}
+              />
+            )}
           </div>
         </div>
       </header>
@@ -158,14 +253,107 @@ const Shop = () => {
             </div>
 
             {selectedProjectId && (
-              <AccessoiresShopList
-                projectId={selectedProjectId}
-                onAddToProject={handleAddToProject}
-              />
+              <Tabs defaultValue="products" className="w-full">
+                <TabsList className="grid w-full max-w-md grid-cols-2">
+                  <TabsTrigger value="products">Produits configurés</TabsTrigger>
+                  <TabsTrigger value="accessories">Accessoires simples</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="products" className="space-y-4 mt-6">
+                  {shopProducts.length === 0 ? (
+                    <Card>
+                      <CardContent className="pt-6 text-center">
+                        <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                        <p className="text-muted-foreground">
+                          Aucun produit configuré pour le moment.
+                        </p>
+                        {isAdmin && (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            Utilisez le bouton "Gérer les produits" pour créer des articles, bundles ou kits sur-mesure.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {shopProducts.map((product) => (
+                        <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                          <CardHeader>
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <CardTitle className="text-lg">{product.name}</CardTitle>
+                                {product.type === "custom_kit" && (
+                                  <Badge variant="secondary" className="mt-1">
+                                    Kit sur-mesure
+                                  </Badge>
+                                )}
+                                {product.type === "composed" && (
+                                  <Badge variant="secondary" className="mt-1">
+                                    Bundle
+                                  </Badge>
+                                )}
+                              </div>
+                              {product.type !== "custom_kit" && (
+                                <div className="text-right">
+                                  <p className="text-2xl font-bold text-primary">
+                                    {product.price.toFixed(2)} €
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            {product.description && (
+                              <CardDescription className="mb-4">
+                                {product.description}
+                              </CardDescription>
+                            )}
+                            <Button 
+                              className="w-full"
+                              onClick={() => {
+                                if (product.type === "custom_kit") {
+                                  setSelectedKit(product);
+                                  setIsKitDialogOpen(true);
+                                } else {
+                                  toast.info("Fonctionnalité en développement");
+                                }
+                              }}
+                            >
+                              <ShoppingBag className="h-4 w-4 mr-2" />
+                              {product.type === "custom_kit" ? "Configurer" : "Ajouter au panier"}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="accessories" className="mt-6">
+                  <AccessoiresShopList
+                    projectId={selectedProjectId}
+                    onAddToProject={handleAddToProject}
+                  />
+                </TabsContent>
+              </Tabs>
             )}
           </>
         )}
       </main>
+
+      {selectedKit && (
+        <CustomKitConfigDialog
+          productId={selectedKit.id}
+          productName={selectedKit.name}
+          basePrice={selectedKit.base_price || 0}
+          open={isKitDialogOpen}
+          onOpenChange={setIsKitDialogOpen}
+          onAddToCart={(config, totalPrice) => {
+            toast.success(`Kit ajouté : ${totalPrice.toFixed(2)} €`);
+            setIsKitDialogOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 };
