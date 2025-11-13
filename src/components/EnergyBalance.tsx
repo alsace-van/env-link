@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -66,6 +66,9 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedDraftItems, setSelectedDraftItems] = useState<Set<string>>(new Set());
+  
+  // Debounce ref for time updates
+  const timeUpdateTimeouts = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   useEffect(() => {
     loadElectricalItems();
@@ -250,7 +253,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     return batteryCapacity / totalConsumption;
   };
 
-  const handleTimeUpdate = async (
+  const handleTimeUpdate = (
     itemId: string,
     field: "temps_utilisation_heures" | "temps_production_heures",
     value: string,
@@ -268,18 +271,33 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
       return;
     }
 
-    const { error } = await supabase
-      .from("project_expenses")
-      .update({ [field]: numValue })
-      .eq("id", itemId);
+    // Mise à jour immédiate de l'état local pour un retour visuel rapide
+    setItems((prevItems) =>
+      prevItems.map((i) => (i.id === itemId ? { ...i, [field]: numValue } : i))
+    );
 
-    if (error) {
-      console.error("Erreur lors de la mise à jour:", error);
-      toast.error("Erreur lors de la mise à jour");
-    } else {
-      toast.success(item?.type_electrique === "stockage" ? "Autonomie mise à jour" : "Temps mis à jour");
-      loadElectricalItems();
+    // Annuler le timeout précédent s'il existe
+    const timeoutKey = `${itemId}-${field}`;
+    if (timeUpdateTimeouts.current[timeoutKey]) {
+      clearTimeout(timeUpdateTimeouts.current[timeoutKey]);
     }
+
+    // Débounce de 800ms avant de sauvegarder en base de données
+    timeUpdateTimeouts.current[timeoutKey] = setTimeout(async () => {
+      const { error } = await supabase
+        .from("project_expenses")
+        .update({ [field]: numValue })
+        .eq("id", itemId);
+
+      if (error) {
+        console.error("Erreur lors de la mise à jour:", error);
+        toast.error("Erreur lors de la mise à jour");
+        // Recharger les données en cas d'erreur pour retrouver l'état correct
+        loadElectricalItems();
+      }
+      
+      delete timeUpdateTimeouts.current[timeoutKey];
+    }, 800);
   };
 
   const renderSummaryCards = (itemsList: ElectricalItem[]) => {
