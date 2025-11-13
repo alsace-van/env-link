@@ -1811,37 +1811,49 @@ export type Database = {
       }
       vehicles_catalog: {
         Row: {
+          created_at: string | null
           dimension: string | null
           hauteur_mm: number | null
           id: string
+          largeur_chargement_mm: number | null
           largeur_mm: number | null
+          longueur_chargement_mm: number | null
           longueur_mm: number | null
           marque: string
           modele: string
           poids_vide_kg: number | null
           ptac_kg: number | null
+          updated_at: string | null
         }
         Insert: {
+          created_at?: string | null
           dimension?: string | null
           hauteur_mm?: number | null
           id?: string
+          largeur_chargement_mm?: number | null
           largeur_mm?: number | null
+          longueur_chargement_mm?: number | null
           longueur_mm?: number | null
           marque: string
           modele: string
           poids_vide_kg?: number | null
           ptac_kg?: number | null
+          updated_at?: string | null
         }
         Update: {
+          created_at?: string | null
           dimension?: string | null
           hauteur_mm?: number | null
           id?: string
+          largeur_chargement_mm?: number | null
           largeur_mm?: number | null
+          longueur_chargement_mm?: number | null
           longueur_mm?: number | null
           marque?: string
           modele?: string
           poids_vide_kg?: number | null
           ptac_kg?: number | null
+          updated_at?: string | null
         }
         Relationships: []
       }
