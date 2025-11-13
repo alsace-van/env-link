@@ -183,12 +183,30 @@ const Shop = () => {
     }
 
     try {
-      const { error } = await supabase
+      // D'abord, trouver le product_id associé au kit
+      const { data: kitData, error: kitFetchError } = await supabase
+        .from("shop_custom_kits")
+        .select("id")
+        .eq("id", kitId)
+        .maybeSingle();
+
+      if (kitFetchError) throw kitFetchError;
+
+      // Supprimer les accessoires du kit
+      if (kitData) {
+        await supabase
+          .from("shop_custom_kit_accessories" as any)
+          .delete()
+          .eq("custom_kit_id", kitData.id);
+      }
+
+      // Supprimer le kit de shop_custom_kits
+      const { error: kitDeleteError } = await supabase
         .from("shop_custom_kits")
         .delete()
         .eq("id", kitId);
 
-      if (error) throw error;
+      if (kitDeleteError) throw kitDeleteError;
 
       toast.success("Kit sur-mesure supprimé avec succès");
       setRefreshProducts(prev => prev + 1);
