@@ -530,27 +530,24 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       </Card>
 
       {/* Formulaire d'ajout rapide */}
-      {bankBalance && (
-        <ExpenseTableForm
-          projectId={projectId}
-          onSuccess={() => {
-            loadBankLines();
-            setPaymentRefresh((prev) => prev + 1);
-          }}
-        />
-      )}
+      <ExpenseTableForm
+        projectId={projectId}
+        onSuccess={() => {
+          loadBankLines();
+          setPaymentRefresh((prev) => prev + 1);
+        }}
+      />
 
       {/* Sorties à payer */}
-      {bankBalance && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Sorties à payer</CardTitle>
-            <CardDescription>
-              Dépenses non payées en attente de validation manuelle
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {filteredBankLines.filter(line => line.type === "sortie" && line.statut_paiement !== "paye").length > 0 ? (
+      <Card>
+        <CardHeader>
+          <CardTitle>Sorties à payer</CardTitle>
+          <CardDescription>
+            Dépenses non payées en attente de validation manuelle
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {filteredBankLines.filter(line => line.type === "sortie" && line.statut_paiement !== "paye").length > 0 ? (
               <div className="space-y-2">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -604,21 +601,19 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
               <p className="text-sm text-muted-foreground text-center py-4">
                 Aucune sortie en attente de paiement
               </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Lignes bancaires */}
-      {bankBalance && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Lignes bancaires</CardTitle>
-            <CardDescription>
-              Toutes les entrées et sorties d'argent (seules les sorties validées sont déduites du solde)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle>Lignes bancaires</CardTitle>
+          <CardDescription>
+            Toutes les entrées et sorties d'argent (seules les sorties validées sont déduites du solde)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
             {filteredBankLines.length > 0 ? (
               <div className="space-y-2">
                 <div className="overflow-x-auto">
@@ -725,9 +720,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
             )}
           </CardContent>
         </Card>
-      )}
 
-      {/* Financial Sidebar */}
       <FinancialSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
