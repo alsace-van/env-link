@@ -13,10 +13,13 @@ interface ExpenseTableFormProps {
   onSuccess: () => void;
 }
 
-interface ExpenseRow {
+interface BankLineRow {
   id: string;
+  type: "entree" | "sortie";
   nom_accessoire: string;
   fournisseur: string;
+  project_id?: string;
+  type_paiement?: string;
   date_achat: string;
   date_paiement: string;
   statut_paiement: string;
@@ -27,18 +30,35 @@ interface ExpenseRow {
 }
 
 const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
-  const [rows, setRows] = useState<ExpenseRow[]>([]);
+  const [rows, setRows] = useState<BankLineRow[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; nom: string }>>([]);
   const [uploading, setUploading] = useState<Set<string>>(new Set());
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   useEffect(() => {
     loadFournisseurs();
+    loadProjects();
     // Ajouter une ligne vide au démarrage pour permettre la saisie immédiate
     if (rows.length === 0) {
       addNewRow();
     }
   }, [projectId]);
+
+  const loadProjects = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("projects")
+      .select("id, nom")
+      .eq("user_id", user.id)
+      .order("nom");
+
+    if (data) {
+      setProjects(data);
+    }
+  };
 
   const loadFournisseurs = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -62,8 +82,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       ...rows,
       {
         id: crypto.randomUUID(),
+        type: "sortie",
         nom_accessoire: "",
         fournisseur: "",
+        project_id: "",
+        type_paiement: "acompte",
         date_achat: new Date().toISOString().slice(0, 16),
         date_paiement: "",
         statut_paiement: "non_paye",
@@ -83,7 +106,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     }
   };
 
-  const updateRow = (id: string, field: keyof ExpenseRow, value: string | File) => {
+  const updateRow = (id: string, field: keyof BankLineRow, value: string | File) => {
     const updatedRows = rows.map((row) => (row.id === id ? { ...row, [field]: value } : row));
     setRows(updatedRows);
 
@@ -93,7 +116,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       // Si on modifie la dernière ligne et qu'elle a au moins un champ rempli, ajouter une nouvelle ligne vide
       const hasData =
         lastRow.nom_accessoire.trim() !== "" ||
-        lastRow.fournisseur.trim() !== "" ||
+        (lastRow.type === "sortie" && lastRow.fournisseur.trim() !== "") ||
+        (lastRow.type === "entree" && lastRow.project_id) ||
         lastRow.prix_vente_ttc.trim() !== "";
 
       if (hasData) {
@@ -121,8 +145,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     setRows([
       {
         id: crypto.randomUUID(),
+        type: "sortie",
         nom_accessoire: "",
         fournisseur: "",
+        project_id: "",
+        type_paiement: "acompte",
         date_achat: new Date().toISOString().slice(0, 16),
         date_paiement: "",
         statut_paiement: "non_paye",
@@ -135,7 +162,12 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   const saveRows = async () => {
     // Filtrer les lignes vides
-    const rowsToSave = rows.filter((row) => row.nom_accessoire.trim() || row.fournisseur.trim() || row.prix_vente_ttc);
+    const rowsToSave = rows.filter((row) => 
+      row.nom_accessoire.trim() || 
+      row.fournisseur.trim() || 
+      row.project_id ||
+      row.prix_vente_ttc
+    );
 
     if (rowsToSave.length === 0) {
       toast.error("Aucune ligne à enregistrer");
@@ -145,15 +177,19 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     // Validation
     for (const row of rowsToSave) {
       if (!row.nom_accessoire.trim()) {
-        toast.error("Le nom de la dépense est requis pour toutes les lignes");
+        toast.error("Le nom/description est requis pour toutes les lignes");
         return;
       }
-      if (!row.fournisseur.trim()) {
-        toast.error("Le fournisseur est requis pour toutes les factures fournisseurs");
+      if (row.type === "sortie" && !row.fournisseur.trim()) {
+        toast.error("Le fournisseur est requis pour les sorties d'argent");
+        return;
+      }
+      if (row.type === "entree" && !row.project_id) {
+        toast.error("Le projet est requis pour les entrées d'argent");
         return;
       }
       if (!row.prix_vente_ttc || parseFloat(row.prix_vente_ttc) <= 0) {
-        toast.error("Le montant TTC est requis et doit être positif");
+        toast.error("Le montant est requis et doit être positif");
         return;
       }
     }
@@ -196,45 +232,77 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       }),
     );
 
-    const expensesToInsert = rowsWithUrls.map((row) => ({
-      project_id: null, // Dépenses fournisseurs globales, pas liées à un projet
-      user_id: user.id,
-      nom_accessoire: row.nom_accessoire,
-      fournisseur: row.fournisseur,
-      date_achat: row.date_achat,
-      date_paiement: row.date_paiement || null,
-      statut_paiement: row.statut_paiement,
-      delai_paiement: row.delai_paiement,
-      prix: parseFloat(row.prix_vente_ttc),
-      prix_vente_ttc: parseFloat(row.prix_vente_ttc),
-      quantite: 1,
-      categorie: "Fournisseur",
-      statut_livraison: "commande",
-      facture_url: row.facture_url || null,
-    }));
+    // Séparer les entrées et sorties
+    const entries = rowsWithUrls.filter(row => row.type === "entree");
+    const expenses = rowsWithUrls.filter(row => row.type === "sortie");
 
-    const { error } = await supabase.from("project_expenses").insert(expensesToInsert);
+    // Insérer les entrées d'argent (paiements)
+    if (entries.length > 0) {
+      const paymentsToInsert = entries.map((row) => ({
+        project_id: row.project_id!,
+        user_id: user.id,
+        montant: parseFloat(row.prix_vente_ttc),
+        date_paiement: row.date_achat.split('T')[0], // Prendre seulement la date
+        type_paiement: row.type_paiement || "acompte",
+        mode_paiement: "virement",
+        notes: row.nom_accessoire,
+      }));
 
-    if (error) {
-      toast.error("Erreur lors de l'enregistrement des dépenses");
-      console.error(error);
-    } else {
-      toast.success(`${rowsToSave.length} dépense(s) ajoutée(s) avec succès`);
-      // Réinitialiser avec une ligne vide
-      setRows([
-        {
-          id: crypto.randomUUID(),
-          nom_accessoire: "",
-          fournisseur: "",
-          date_achat: new Date().toISOString().slice(0, 16),
-          date_paiement: "",
-          statut_paiement: "non_paye",
-          delai_paiement: "commande",
-          prix_vente_ttc: "",
-        },
-      ]);
-      onSuccess();
+      const { error: paymentError } = await supabase.from("project_payment_transactions").insert(paymentsToInsert);
+
+      if (paymentError) {
+        toast.error("Erreur lors de l'enregistrement des entrées d'argent");
+        console.error(paymentError);
+        return;
+      }
     }
+
+    // Insérer les sorties d'argent (dépenses)
+    if (expenses.length > 0) {
+      const expensesToInsert = expenses.map((row) => ({
+        project_id: null, // Dépenses fournisseurs globales, pas liées à un projet
+        user_id: user.id,
+        nom_accessoire: row.nom_accessoire,
+        fournisseur: row.fournisseur,
+        date_achat: row.date_achat,
+        date_paiement: row.date_paiement || null,
+        statut_paiement: row.statut_paiement,
+        delai_paiement: row.delai_paiement,
+        prix: parseFloat(row.prix_vente_ttc),
+        prix_vente_ttc: parseFloat(row.prix_vente_ttc),
+        quantite: 1,
+        categorie: "Fournisseur",
+        statut_livraison: "commande",
+        facture_url: row.facture_url || null,
+      }));
+
+      const { error: expenseError } = await supabase.from("project_expenses").insert(expensesToInsert);
+
+      if (expenseError) {
+        toast.error("Erreur lors de l'enregistrement des sorties d'argent");
+        console.error(expenseError);
+        return;
+      }
+    }
+
+    toast.success(`${rowsToSave.length} ligne(s) bancaire(s) ajoutée(s) avec succès`);
+    // Réinitialiser avec une ligne vide
+    setRows([
+      {
+        id: crypto.randomUUID(),
+        type: "sortie",
+        nom_accessoire: "",
+        fournisseur: "",
+        project_id: "",
+        type_paiement: "acompte",
+        date_achat: new Date().toISOString().slice(0, 16),
+        date_paiement: "",
+        statut_paiement: "non_paye",
+        delai_paiement: "commande",
+        prix_vente_ttc: "",
+      },
+    ]);
+    onSuccess();
   };
 
   // Removed automatic row creation on mount to show empty table with headers
@@ -247,122 +315,21 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
+    // Fonction désactivée pour les lignes bancaires - utiliser le formulaire
     e.preventDefault();
-    const pastedData = e.clipboardData.getData("text");
-
-    if (!pastedData.trim()) {
-      toast.error("Aucune donnée à coller");
-      return;
-    }
-
-    // Parse TSV data (Tab-separated values from Excel)
-    const lines = pastedData.trim().split("\n");
-    const newRows: ExpenseRow[] = [];
-
-    lines.forEach((line) => {
-      const columns = line.split("\t").map((col) => col.trim());
-
-      // Expected format: Nom | Fournisseur | Date achat | Date paiement | Statut | Délai | Montant
-      if (columns.length >= 2) {
-        const [nom, fournisseur, dateAchat, datePaiement, statut, delai, montant] = columns;
-
-        // Parse dates - handle various formats
-        const parseDateAchat = () => {
-          if (!dateAchat) return new Date().toISOString().slice(0, 16);
-          try {
-            // Try to parse DD/MM/YYYY HH:mm or DD/MM/YYYY
-            const dateParts = dateAchat.split(/[/ :]/);
-            if (dateParts.length >= 3) {
-              const day = dateParts[0].padStart(2, "0");
-              const month = dateParts[1].padStart(2, "0");
-              const year = dateParts[2];
-              const hour = dateParts[3]?.padStart(2, "0") || "12";
-              const minute = dateParts[4]?.padStart(2, "0") || "00";
-              return `${year}-${month}-${day}T${hour}:${minute}`;
-            }
-            return new Date().toISOString().slice(0, 16);
-          } catch {
-            return new Date().toISOString().slice(0, 16);
-          }
-        };
-
-        const parseDatePaiement = () => {
-          if (!datePaiement) return "";
-          try {
-            const dateParts = datePaiement.split(/[/ :]/);
-            if (dateParts.length >= 3) {
-              const day = dateParts[0].padStart(2, "0");
-              const month = dateParts[1].padStart(2, "0");
-              const year = dateParts[2];
-              const hour = dateParts[3]?.padStart(2, "0") || "12";
-              const minute = dateParts[4]?.padStart(2, "0") || "30";
-              return `${year}-${month}-${day}T${hour}:${minute}`;
-            }
-            return "";
-          } catch {
-            return "";
-          }
-        };
-
-        // Parse statut
-        const parseStatut = () => {
-          if (!statut) return "non_paye";
-          const lower = statut.toLowerCase();
-          if (lower.includes("payé") || lower.includes("paye")) return "paye";
-          return "non_paye";
-        };
-
-        // Parse délai
-        const parseDelai = () => {
-          if (!delai) return "commande";
-          const lower = delai.toLowerCase();
-          if (lower.includes("30") || lower.includes("jours")) return "30_jours";
-          return "commande";
-        };
-
-        // Parse montant - remove spaces and replace comma with dot
-        const parseMontant = () => {
-          if (!montant) return "";
-          return montant.replace(/\s/g, "").replace(",", ".");
-        };
-
-        newRows.push({
-          id: crypto.randomUUID(),
-          nom_accessoire: nom || "",
-          fournisseur: fournisseur || "",
-          date_achat: parseDateAchat(),
-          date_paiement: parseDatePaiement(),
-          statut_paiement: parseStatut(),
-          delai_paiement: parseDelai(),
-          prix_vente_ttc: parseMontant(),
-        });
-      }
-    });
-
-    if (newRows.length === 0) {
-      toast.error("Aucune ligne valide trouvée dans les données collées");
-      return;
-    }
-
-    // Add pasted rows to existing rows
-    setRows([...rows, ...newRows]);
-
-    toast.success(`${newRows.length} ligne(s) ajoutée(s) depuis Excel`);
+    toast.info("Utilisez le formulaire pour saisir les lignes bancaires");
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ajouter des factures fournisseurs</CardTitle>
+        <CardTitle>Ajouter des lignes bancaires</CardTitle>
         <div className="bg-muted p-3 rounded-lg mt-3 space-y-2">
-          <p className="text-sm font-medium">📋 Comment ça marche ?</p>
-          <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-            <li>Créez votre tableau Excel avec les mêmes colonnes que ci-dessous</li>
-            <li>Remplissez vos données dans Excel</li>
-            <li>Sélectionnez tout (en-têtes + données) et copiez (Ctrl+C ou Cmd+C)</li>
-            <li>Cliquez dans le tableau ci-dessous et collez (Ctrl+V ou Cmd+V)</li>
-            <li>Cliquez sur "Enregistrer tout"</li>
-          </ol>
+          <p className="text-sm font-medium">💰 Entrées et sorties d'argent</p>
+          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+            <li><strong>Entrée :</strong> Paiement client (acompte ou solde) - sélectionnez le projet concerné</li>
+            <li><strong>Sortie :</strong> Dépense fournisseur - renseignez le fournisseur et la facture</li>
+          </ul>
         </div>
       </CardHeader>
       <CardContent>
@@ -375,13 +342,12 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/80 border-b-2 border-gray-400">
-                <TableHead className="min-w-[180px] font-semibold border-r-2 border-gray-400">Nom</TableHead>
-                <TableHead className="min-w-[140px] font-semibold border-r-2 border-gray-400">Fournisseur</TableHead>
-                <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">Date dépense</TableHead>
-                <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">Date paiement</TableHead>
-                <TableHead className="min-w-[120px] font-semibold border-r-2 border-gray-400">Statut</TableHead>
-                <TableHead className="min-w-[130px] font-semibold border-r-2 border-gray-400">Délai</TableHead>
-                <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Montant TTC</TableHead>
+                <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Type</TableHead>
+                <TableHead className="min-w-[180px] font-semibold border-r-2 border-gray-400">Description</TableHead>
+                <TableHead className="min-w-[140px] font-semibold border-r-2 border-gray-400">Projet / Fournisseur</TableHead>
+                <TableHead className="min-w-[120px] font-semibold border-r-2 border-gray-400">Type paiement</TableHead>
+                <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">Date</TableHead>
+                <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Montant</TableHead>
                 <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Facture</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
               </TableRow>
@@ -389,34 +355,97 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                    Commencez à saisir dans les champs ci-dessus ou collez vos données (Ctrl+V ou Cmd+V)
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    Commencez à saisir dans les champs ci-dessous
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((row) => (
                   <TableRow key={row.id} className="border-b border-gray-300">
                     <TableCell className="border-r-2 border-gray-300">
+                      <Select
+                        value={row.type}
+                        onValueChange={(value: "entree" | "sortie") => updateRow(row.id, "type", value)}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="entree">💰 Entrée</SelectItem>
+                          <SelectItem value="sortie">📤 Sortie</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="border-r-2 border-gray-300">
                       <Input
                         value={row.nom_accessoire}
                         onChange={(e) => updateRow(row.id, "nom_accessoire", e.target.value)}
-                        placeholder="Article..."
+                        placeholder={row.type === "entree" ? "Ex: Paiement client..." : "Ex: Achat matériel..."}
                         className="h-9"
                       />
                     </TableCell>
                     <TableCell className="border-r-2 border-gray-300">
-                      <Input
-                        value={row.fournisseur}
-                        onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
-                        placeholder="Fournisseur..."
-                        className="h-9"
-                        list={`fournisseurs-${row.id}`}
-                      />
-                      <datalist id={`fournisseurs-${row.id}`}>
-                        {fournisseurs.map((f) => (
-                          <option key={f} value={f} />
-                        ))}
-                      </datalist>
+                      {row.type === "entree" ? (
+                        <Select
+                          value={row.project_id || ""}
+                          onValueChange={(value) => updateRow(row.id, "project_id", value)}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Sélectionner projet..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projects.map((project) => (
+                              <SelectItem key={project.id} value={project.id}>
+                                {project.nom}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <>
+                          <Input
+                            value={row.fournisseur}
+                            onChange={(e) => updateRow(row.id, "fournisseur", e.target.value)}
+                            placeholder="Fournisseur..."
+                            className="h-9"
+                            list={`fournisseurs-${row.id}`}
+                          />
+                          <datalist id={`fournisseurs-${row.id}`}>
+                            {fournisseurs.map((f) => (
+                              <option key={f} value={f} />
+                            ))}
+                          </datalist>
+                        </>
+                      )}
+                    </TableCell>
+                    <TableCell className="border-r-2 border-gray-300">
+                      {row.type === "entree" ? (
+                        <Select
+                          value={row.type_paiement || "acompte"}
+                          onValueChange={(value) => updateRow(row.id, "type_paiement", value)}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="acompte">Acompte</SelectItem>
+                            <SelectItem value="solde">Solde</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Select
+                          value={row.statut_paiement}
+                          onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="non_paye">Non payé</SelectItem>
+                            <SelectItem value="paye">Payé</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                     </TableCell>
                     <TableCell className="border-r-2 border-gray-300">
                       <Input
@@ -425,42 +454,6 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         onChange={(e) => updateRow(row.id, "date_achat", e.target.value)}
                         className="h-9"
                       />
-                    </TableCell>
-                    <TableCell className="border-r-2 border-gray-300">
-                      <Input
-                        type="datetime-local"
-                        value={row.date_paiement}
-                        onChange={(e) => updateRow(row.id, "date_paiement", e.target.value)}
-                        className="h-9"
-                      />
-                    </TableCell>
-                    <TableCell className="border-r-2 border-gray-300">
-                      <Select
-                        value={row.statut_paiement}
-                        onValueChange={(value) => updateRow(row.id, "statut_paiement", value)}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="non_paye">Non payé</SelectItem>
-                          <SelectItem value="paye">Payé</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="border-r-2 border-gray-300">
-                      <Select
-                        value={row.delai_paiement}
-                        onValueChange={(value) => updateRow(row.id, "delai_paiement", value)}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="commande">À la commande</SelectItem>
-                          <SelectItem value="30_jours">30 jours</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </TableCell>
                     <TableCell className="border-r-2 border-gray-300">
                       <Input
@@ -474,39 +467,43 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                       />
                     </TableCell>
                     <TableCell className="border-r-2 border-gray-300">
-                      <div className="flex items-center gap-1">
-                        {row.facture_file || row.facture_url ? (
-                          <div className="flex items-center gap-1">
-                            <FileText className="h-4 w-4 text-green-600" />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => removeInvoice(row.id)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <>
-                            <input
-                              ref={(el) => (fileInputRefs.current[row.id] = el)}
-                              type="file"
-                              accept=".pdf,.jpg,.jpeg,.png"
-                              className="hidden"
-                              onChange={(e) => handleFileSelect(row.id, e.target.files?.[0] || null)}
-                            />
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-9 px-2"
-                              onClick={() => fileInputRefs.current[row.id]?.click()}
-                            >
-                              <Upload className="h-3 w-3" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                      {row.type === "sortie" ? (
+                        <div className="flex items-center gap-1">
+                          {row.facture_file || row.facture_url ? (
+                            <div className="flex items-center gap-1">
+                              <FileText className="h-4 w-4 text-green-600" />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => removeInvoice(row.id)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                ref={(el) => (fileInputRefs.current[row.id] = el)}
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                className="hidden"
+                                onChange={(e) => handleFileSelect(row.id, e.target.files?.[0] || null)}
+                              />
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 px-2"
+                                onClick={() => fileInputRefs.current[row.id]?.click()}
+                              >
+                                <Upload className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeRow(row.id)}>
@@ -533,11 +530,10 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
           <Button
             onClick={saveRows}
             size="sm"
-            disabled={rows.every((row) => !row.nom_accessoire && !row.fournisseur && !row.prix_vente_ttc)}
+            disabled={rows.every((row) => !row.nom_accessoire && !row.fournisseur && !row.project_id && !row.prix_vente_ttc)}
           >
             <Save className="h-4 w-4 mr-2" />
-            Enregistrer tout ({rows.filter((row) => row.nom_accessoire || row.fournisseur || row.prix_vente_ttc).length}
-            )
+            Enregistrer tout ({rows.filter((row) => row.nom_accessoire || row.fournisseur || row.project_id || row.prix_vente_ttc).length})
           </Button>
         </div>
       </CardContent>
