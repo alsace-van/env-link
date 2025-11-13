@@ -140,7 +140,7 @@ export const ShopProductFormDialog = ({
       if (!error && data) {
         // Charger les accessoires du kit
         const { data: kitAccessoriesData } = await supabase
-          .from("shop_custom_kit_accessories")
+          .from("shop_custom_kit_accessories" as any)
           .select("accessory_id, default_quantity")
           .eq("custom_kit_id", data.id);
         
@@ -313,7 +313,7 @@ export const ShopProductFormDialog = ({
           
           if (kitData) {
             await supabase
-              .from("shop_custom_kit_accessories")
+              .from("shop_custom_kit_accessories" as any)
               .delete()
               .eq("custom_kit_id", kitData.id);
             
@@ -325,7 +325,7 @@ export const ShopProductFormDialog = ({
             }));
 
             const { error: kitAccessoriesError } = await supabase
-              .from("shop_custom_kit_accessories")
+              .from("shop_custom_kit_accessories" as any)
               .insert(kitAccessoriesData);
 
             if (kitAccessoriesError) throw kitAccessoriesError;
@@ -388,7 +388,7 @@ export const ShopProductFormDialog = ({
             }));
 
             const { error: kitAccessoriesError } = await supabase
-              .from("shop_custom_kit_accessories")
+              .from("shop_custom_kit_accessories" as any)
               .insert(kitAccessoriesData);
 
             if (kitAccessoriesError) throw kitAccessoriesError;
@@ -616,6 +616,135 @@ export const ShopProductFormDialog = ({
               rows={3}
             />
           </div>
+
+          {productType === "custom_kit" && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Sélectionnez les accessoires qui feront partie de ce kit personnalisable.
+                Les clients pourront choisir la quantité lors de la configuration.
+              </p>
+              
+              {/* Interface de sélection d'accessoires */}
+              <div className="space-y-2">
+                <Label>Accessoires du kit</Label>
+                <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={comboboxOpen}
+                      className="w-full justify-between"
+                    >
+                      Sélectionner un accessoire
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Rechercher un accessoire..."
+                        value={searchValue}
+                        onValueChange={setSearchValue}
+                      />
+                      <CommandList>
+                        <CommandEmpty>Aucun accessoire trouvé.</CommandEmpty>
+                        <CommandGroup>
+                          {accessories
+                            .filter(acc =>
+                              selectedCategoryFilter === "all" ||
+                              acc.category_id === selectedCategoryFilter
+                            )
+                            .filter(acc => !kitAccessories.find(ka => ka.id === acc.id))
+                            .map((acc) => (
+                              <CommandItem
+                                key={acc.id}
+                                value={acc.nom}
+                                onSelect={() => {
+                                  setKitAccessories([...kitAccessories, { id: acc.id, quantity: 1 }]);
+                                  setComboboxOpen(false);
+                                  setSearchValue("");
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    kitAccessories.find(ka => ka.id === acc.id) ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {acc.nom} {acc.marque && `(${acc.marque})`}
+                              </CommandItem>
+                            ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+
+                {/* Liste des accessoires sélectionnés */}
+                <div className="space-y-2 mt-4">
+                  {kitAccessories.map((item) => {
+                    const accessory = accessories.find(a => a.id === item.id);
+                    return (
+                      <Card key={item.id}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="font-medium">{accessory?.nom}</p>
+                              {accessory?.marque && (
+                                <p className="text-sm text-muted-foreground">{accessory.marque}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    const newQuantity = Math.max(1, item.quantity - 1);
+                                    setKitAccessories(
+                                      kitAccessories.map(a =>
+                                        a.id === item.id ? { ...a, quantity: newQuantity } : a
+                                      )
+                                    );
+                                  }}
+                                >
+                                  -
+                                </Button>
+                                <span className="w-12 text-center">{item.quantity}</span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    setKitAccessories(
+                                      kitAccessories.map(a =>
+                                        a.id === item.id ? { ...a, quantity: a.quantity + 1 } : a
+                                      )
+                                    );
+                                  }}
+                                >
+                                  +
+                                </Button>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setKitAccessories(kitAccessories.filter(a => a.id !== item.id))}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           {productType !== "custom_kit" && (
             <div>
