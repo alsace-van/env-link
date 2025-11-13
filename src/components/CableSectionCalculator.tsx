@@ -5,12 +5,17 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+type CalculationMode = "section" | "current" | "length";
 
 export const CableSectionCalculator = () => {
+  const [calculationMode, setCalculationMode] = useState<CalculationMode>("section");
   const [current, setCurrent] = useState<number>(0);
   const [power, setPower] = useState<number>(0);
   const [length, setLength] = useState<number>(0);
   const [voltage, setVoltage] = useState<number>(12);
+  const [selectedSection, setSelectedSection] = useState<number>(0);
 
   // Gestionnaire pour le changement de puissance
   const handlePowerChange = (value: number) => {
@@ -60,20 +65,39 @@ export const CableSectionCalculator = () => {
     120: 207,
   };
 
+  const calculateMaxCurrent = () => {
+    if (selectedSection <= 0 || length <= 0) return null;
+
+    const maxCurrentBySection = maxCurrentBySectionMap[selectedSection] || 0;
+    const resistance = (resistivity * length * 2) / selectedSection;
+    const maxVoltageDropAllowed = voltage * 0.03; // 3% max
+    const maxCurrentByVoltageDrop = maxVoltageDropAllowed / resistance;
+
+    return Math.min(maxCurrentBySection, maxCurrentByVoltageDrop);
+  };
+
+  const calculateMaxLength = () => {
+    if (current <= 0 || selectedSection <= 0) return null;
+
+    const maxCurrentBySection = maxCurrentBySectionMap[selectedSection] || 0;
+    if (current > maxCurrentBySection) return 0; // Intensité trop élevée pour cette section
+
+    const maxVoltageDropAllowed = voltage * 0.03; // 3% max
+    const resistance = maxVoltageDropAllowed / current;
+    const maxLength = (resistance * selectedSection) / (resistivity * 2);
+
+    return maxLength;
+  };
+
   const calculateResults = () => {
     if (current <= 0 || length <= 0) return [];
 
     return standardSections.map((section) => {
-      // Calcul de la chute de tension (V)
-      const resistance = (resistivity * length * 2) / section; // *2 pour aller-retour
+      const resistance = (resistivity * length * 2) / section;
       const voltageDrop = current * resistance;
       const voltageDropPercent = (voltageDrop / voltage) * 100;
-
-      // Intensité maximale admissible
       const maxCurrent = maxCurrentBySectionMap[section] || 0;
-
-      // Vérification des critères
-      const voltageOk = voltageDropPercent <= 3; // Max 3% de chute de tension
+      const voltageOk = voltageDropPercent <= 3;
       const currentOk = current <= maxCurrent;
       const recommended = voltageOk && currentOk;
 
@@ -89,8 +113,10 @@ export const CableSectionCalculator = () => {
     });
   };
 
-  const results = calculateResults();
+  const results = calculationMode === "section" ? calculateResults() : [];
   const recommendedSection = results.find((r) => r.recommended);
+  const maxCurrentResult = calculationMode === "current" ? calculateMaxCurrent() : null;
+  const maxLengthResult = calculationMode === "length" ? calculateMaxLength() : null;
 
   return (
     <Card>
@@ -99,6 +125,22 @@ export const CableSectionCalculator = () => {
         <CardDescription>Calcul pour câbles souples en cuivre - Courant continu 12V</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="space-y-2">
+          <Label htmlFor="mode" className="text-base font-semibold">
+            Mode de calcul
+          </Label>
+          <Select value={calculationMode} onValueChange={(value) => setCalculationMode(value as CalculationMode)}>
+            <SelectTrigger className="h-12 text-lg">
+              <SelectValue placeholder="Sélectionner le mode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="section">Calculer la section minimale</SelectItem>
+              <SelectItem value="current">Calculer l'intensité maximale</SelectItem>
+              <SelectItem value="length">Calculer la longueur maximale</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-2">
             <Label htmlFor="power" className="text-base font-semibold">
@@ -117,7 +159,7 @@ export const CableSectionCalculator = () => {
           </div>
           <div className="space-y-2">
             <Label htmlFor="current" className="text-base font-semibold">
-              Intensité (A)
+              Intensité (A) {calculationMode === "current" && "- Résultat"}
             </Label>
             <Input
               id="current"
@@ -128,11 +170,12 @@ export const CableSectionCalculator = () => {
               onChange={(e) => handleCurrentChange(Number(e.target.value))}
               placeholder="Ex: 10"
               className="h-12 text-lg"
+              disabled={calculationMode === "current"}
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="length" className="text-base font-semibold">
-              Longueur du câble (m)
+              Longueur du câble (m) {calculationMode === "length" && "- Résultat"}
             </Label>
             <Input
               id="length"
@@ -143,6 +186,7 @@ export const CableSectionCalculator = () => {
               onChange={(e) => setLength(Number(e.target.value))}
               placeholder="Ex: 5"
               className="h-12 text-lg"
+              disabled={calculationMode === "length"}
             />
             <p className="text-xs text-muted-foreground">Aller-retour déjà pris en compte</p>
           </div>
@@ -161,9 +205,63 @@ export const CableSectionCalculator = () => {
               className="h-12 text-lg"
             />
           </div>
+          {(calculationMode === "current" || calculationMode === "length") && (
+            <div className="space-y-2">
+              <Label htmlFor="section" className="text-base font-semibold">
+                Section (mm²)
+              </Label>
+              <Select 
+                value={selectedSection > 0 ? selectedSection.toString() : ""} 
+                onValueChange={(value) => setSelectedSection(Number(value))}
+              >
+                <SelectTrigger className="h-12 text-lg">
+                  <SelectValue placeholder="Choisir" />
+                </SelectTrigger>
+                <SelectContent>
+                  {standardSections.map((s) => (
+                    <SelectItem key={s} value={s.toString()}>
+                      {s} mm²
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
-        {current > 0 && length > 0 && (
+        {calculationMode === "current" && maxCurrentResult !== null && selectedSection > 0 && length > 0 && (
+          <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-500">
+            <CheckCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              <span className="font-semibold text-xl">Intensité maximale : {maxCurrentResult.toFixed(1)} A</span>
+              <br />
+              <span className="text-sm">
+                Pour une section de {selectedSection} mm² sur {length} m avec une chute de tension max de 3%
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {calculationMode === "length" && maxLengthResult !== null && selectedSection > 0 && current > 0 && (
+          <Alert className={maxLengthResult > 0 ? "bg-purple-50 dark:bg-purple-950 border-purple-500" : "bg-red-50 dark:bg-red-950 border-red-500"}>
+            <CheckCircle className={maxLengthResult > 0 ? "h-4 w-4 text-purple-600 dark:text-purple-400" : "h-4 w-4 text-red-600 dark:text-red-400"} />
+            <AlertDescription className={maxLengthResult > 0 ? "text-purple-800 dark:text-purple-200" : "text-red-800 dark:text-red-200"}>
+              <span className="font-semibold text-xl">
+                {maxLengthResult > 0 ? `Longueur maximale : ${maxLengthResult.toFixed(1)} m` : "Section insuffisante"}
+              </span>
+              <br />
+              <span className="text-sm">
+                {maxLengthResult > 0 ? (
+                  <>Pour {current} A avec une section de {selectedSection} mm² et une chute de tension max de 3%</>
+                ) : (
+                  <>L'intensité de {current} A dépasse la capacité maximale d'une section de {selectedSection} mm² ({maxCurrentBySectionMap[selectedSection]} A max)</>
+                )}
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {calculationMode === "section" && current > 0 && length > 0 && (
           <>
             {recommendedSection ? (
               <div className="p-4 rounded-lg border-2 border-primary bg-primary/5">
