@@ -185,22 +185,11 @@ const Shop = () => {
     }
 
     try {
-      // D'abord, trouver le product_id associé au kit
-      const { data: kitData, error: kitFetchError } = await supabase
-        .from("shop_custom_kits")
-        .select("id")
-        .eq("id", kitId)
-        .maybeSingle();
-
-      if (kitFetchError) throw kitFetchError;
-
-      // Supprimer les accessoires du kit
-      if (kitData) {
-        await supabase
-          .from("shop_custom_kit_accessories" as any)
-          .delete()
-          .eq("custom_kit_id", kitData.id);
-      }
+      // Supprimer les accessoires du kit d'abord
+      await supabase
+        .from("shop_custom_kit_accessories" as any)
+        .delete()
+        .eq("custom_kit_id", kitId);
 
       // Supprimer le kit de shop_custom_kits
       const { error: kitDeleteError } = await supabase
@@ -210,8 +199,10 @@ const Shop = () => {
 
       if (kitDeleteError) throw kitDeleteError;
 
+      // Mettre à jour immédiatement la liste locale
+      setShopProducts(prev => prev.filter(p => p.id !== kitId));
+      
       toast.success("Kit sur-mesure supprimé avec succès");
-      setRefreshProducts(prev => prev + 1);
     } catch (error) {
       console.error("Erreur lors de la suppression:", error);
       toast.error("Erreur lors de la suppression du kit");
