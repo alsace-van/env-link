@@ -39,6 +39,8 @@ const Shop = () => {
   const [refreshProducts, setRefreshProducts] = useState(0);
   const [selectedKit, setSelectedKit] = useState<ShopProduct | null>(null);
   const [isKitDialogOpen, setIsKitDialogOpen] = useState(false);
+  const [editingKit, setEditingKit] = useState<ShopProduct | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
     checkUser();
@@ -216,10 +218,9 @@ const Shop = () => {
     }
   };
 
-  const handleEditKit = (kit: ShopProduct) => {
-    // Pour l'instant, on affiche simplement un toast
-    // À développer: ouvrir un dialog d'édition
-    toast.info("Fonctionnalité d'édition en développement");
+  const handleEditKit = async (kit: ShopProduct) => {
+    setEditingKit(kit);
+    setIsEditDialogOpen(true);
   };
 
   if (loading) {
@@ -421,6 +422,19 @@ const Shop = () => {
           onAddToCart={(config, totalPrice) => {
             toast.success(`Kit ajouté : ${totalPrice.toFixed(2)} €`);
             setIsKitDialogOpen(false);
+          }}
+        />
+      )}
+
+      {editingKit && (
+        <ShopProductFormDialog
+          editProduct={editingKit}
+          trigger={null}
+          onSuccess={() => {
+            setRefreshProducts(prev => prev + 1);
+            setIsEditDialogOpen(false);
+            setEditingKit(null);
+            toast.success("Kit modifié avec succès");
           }}
         />
       )}
