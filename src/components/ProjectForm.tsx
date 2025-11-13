@@ -35,9 +35,11 @@ interface VehicleCatalog {
 
 interface ProjectFormProps {
   onProjectCreated: () => void;
+  existingProject?: any; // Projet existant à éditer
+  isEditMode?: boolean; // Mode édition
 }
 
-const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
+const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: ProjectFormProps) => {
   const [vehicles, setVehicles] = useState<VehicleCatalog[]>([]);
   const [selectedMarque, setSelectedMarque] = useState<string>("");
   const [selectedModele, setSelectedModele] = useState<string>("");
@@ -90,7 +92,39 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
   useEffect(() => {
     loadVehicles();
-  }, []);
+    
+    // Pré-remplir les champs si on est en mode édition
+    if (isEditMode && existingProject) {
+      console.log("🔄 Mode édition : pré-remplissage des champs", existingProject);
+      
+      // Pré-remplir les données du véhicule
+      if (existingProject.marque_vehicule) {
+        setSelectedMarque(existingProject.marque_vehicule);
+      }
+      if (existingProject.modele_vehicule) {
+        setSelectedModele(existingProject.modele_vehicule);
+      }
+      
+      // Pré-remplir les données de la carte grise
+      setManualImmatriculation(existingProject.immatriculation || "");
+      setManualNumeroChassis(existingProject.numero_chassis || existingProject.vin || "");
+      setManualDateMiseCirculation(existingProject.date_premiere_circulation || "");
+      setManualTypeMine(existingProject.type_mine || "");
+      
+      // Pré-remplir les dimensions personnalisées
+      if (existingProject.poids_vide_kg) {
+        setCustomPoidsVide(existingProject.poids_vide_kg.toString());
+      }
+      if (existingProject.ptac_kg) {
+        setCustomPtac(existingProject.ptac_kg.toString());
+      }
+      
+      // Pré-remplir la photo
+      if (existingProject.photo_url) {
+        setPhotoPreview(existingProject.photo_url);
+      }
+    }
+  }, [isEditMode, existingProject]);
 
   // ✅ useEffect pour remplir les champs avec les données scannées
   // IMPORTANT: On écrase TOUJOURS les champs avec les nouvelles données scannées
@@ -400,16 +434,16 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       date_premiere_circulation: manualDateMiseCirculation || null,
       date_premiere_immatriculation: scannedData?.datePremiereImmatriculation || null,
       type_mine: manualTypeMine || null,
-      photo_url: photoUrl,
+      photo_url: photoUrl || (isEditMode && existingProject?.photo_url) || null,
       vehicle_catalog_id: selectedVehicle?.id || null,
       // Informations scannées de la carte grise
       marque_officielle: scannedData?.marque || null,
-      marque_vehicule: scannedData?.marque || null,
+      marque_vehicule: scannedData?.marque || selectedMarque || null,
       modele_officiel: scannedData?.denominationCommerciale || null,
-      modele_vehicule: scannedData?.denominationCommerciale || null,
+      modele_vehicule: scannedData?.denominationCommerciale || selectedModele || null,
       denomination_commerciale: scannedData?.denominationCommerciale || null,
-      vin: scannedData?.numeroChassisVIN || null,
-      numero_chassis_vin: scannedData?.numeroChassisVIN || null,
+      vin: scannedData?.numeroChassisVIN || manualNumeroChassis || null,
+      numero_chassis_vin: scannedData?.numeroChassisVIN || manualNumeroChassis || null,
       genre_national: scannedData?.genreNational || null,
       carrosserie: scannedData?.carrosserieCE || scannedData?.carrosserieNationale || null,
       energie: scannedData?.energie || null,
@@ -428,7 +462,19 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
       ptac_kg: customPtac ? parseInt(customPtac) : selectedVehicle?.ptac_kg || scannedData?.masseEnChargeMax || null,
     };
 
-    const { error } = await supabase.from("projects").insert(projectData);
+    let result;
+    if (isEditMode && existingProject) {
+      // Mode édition : update
+      result = await supabase
+        .from("projects")
+        .update(projectData)
+        .eq("id", existingProject.id);
+    } else {
+      // Mode création : insert
+      result = await supabase.from("projects").insert(projectData);
+    }
+
+    const { error } = result;
 
     setIsLoading(false);
 
@@ -465,9 +511,11 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
-            Nouveau Projet
+            {isEditMode ? "Modifier le Projet" : "Nouveau Projet"}
           </CardTitle>
-          <CardDescription>Créez un nouveau projet d'aménagement</CardDescription>
+          <CardDescription>
+            {isEditMode ? "Modifiez les informations du projet" : "Créez un nouveau projet d'aménagement"}
+          </CardDescription>
           <Button
             type="button"
             variant={showScanner ? "outline" : "default"}
@@ -487,7 +535,13 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
 
               <div className="space-y-2">
                 <Label htmlFor="nom_projet">Nom du projet</Label>
-                <Input id="nom_projet" name="nom_projet" disabled={isLoading} placeholder="Aménagement camping-car" />
+                <Input 
+                  id="nom_projet" 
+                  name="nom_projet" 
+                  disabled={isLoading} 
+                  placeholder="Aménagement camping-car"
+                  defaultValue={isEditMode ? existingProject?.nom : ""}
+                />
               </div>
 
               <div className="space-y-2">
@@ -518,6 +572,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                   required
                   disabled={isLoading}
                   placeholder="Jean Dupont"
+                  defaultValue={isEditMode ? existingProject?.nom_proprietaire : ""}
                 />
               </div>
 
@@ -528,6 +583,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                   name="adresse_proprietaire"
                   disabled={isLoading}
                   placeholder="123 rue de la Paix, 75000 Paris"
+                  defaultValue={isEditMode ? existingProject?.adresse_proprietaire : ""}
                 />
               </div>
 
@@ -539,6 +595,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                   type="tel"
                   disabled={isLoading}
                   placeholder="06 12 34 56 78"
+                  defaultValue={isEditMode ? existingProject?.telephone_proprietaire : ""}
                 />
               </div>
 
@@ -550,6 +607,7 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
                   type="email"
                   disabled={isLoading}
                   placeholder="contact@example.com"
+                  defaultValue={isEditMode ? existingProject?.email_proprietaire : ""}
                 />
               </div>
             </div>
@@ -797,7 +855,10 @@ const ProjectForm = ({ onProjectCreated }: ProjectFormProps) => {
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Création..." : "Créer le projet"}
+              {isLoading 
+                ? (isEditMode ? "Modification..." : "Création...") 
+                : (isEditMode ? "Mettre à jour le projet" : "Créer le projet")
+              }
             </Button>
           </form>
         </CardContent>

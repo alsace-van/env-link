@@ -57,6 +57,7 @@ import { AdminMessagesNotification } from "@/components/AdminMessagesNotificatio
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
 import { OfficialDocumentsLibrary } from "@/components/OfficialDocumentsLibrary";
+import ProjectForm from "@/components/ProjectForm";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -1396,229 +1397,33 @@ const ProjectDetail = () => {
           <DialogHeader>
             <DialogTitle>Modifier les informations du projet</DialogTitle>
             <DialogDescription>
-              Modifiez les dimensions du véhicule et les informations du propriétaire
+              Modifiez toutes les informations du projet, scannez une nouvelle carte grise si nécessaire
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-6">
-            {/* Section Informations générales */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-b pb-2">Informations générales</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="nom_projet">Nom du projet</Label>
-                  <Input
-                    id="nom_projet"
-                    value={editFormData.nom_projet}
-                    onChange={(e) => setEditFormData({ ...editFormData, nom_projet: e.target.value })}
-                    placeholder="Ex: Aménagement fourgon"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="numero_chassis">Numéro de châssis (VIN)</Label>
-                  <Input
-                    id="numero_chassis"
-                    value={editFormData.numero_chassis}
-                    onChange={(e) => setEditFormData({ ...editFormData, numero_chassis: e.target.value })}
-                    placeholder="Ex: VF3LCYHZPHS123456"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="immatriculation">Immatriculation</Label>
-                  <Input
-                    id="immatriculation"
-                    value={editFormData.immatriculation}
-                    onChange={(e) => setEditFormData({ ...editFormData, immatriculation: e.target.value })}
-                    placeholder="Ex: AB-123-CD"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="type_mine">Type mine</Label>
-                  <Input
-                    id="type_mine"
-                    value={editFormData.type_mine}
-                    onChange={(e) => setEditFormData({ ...editFormData, type_mine: e.target.value })}
-                    placeholder="Ex: VP1234567890"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="date_mise_circulation">Date de mise en circulation</Label>
-                  <Input
-                    id="date_mise_circulation"
-                    type="date"
-                    value={editFormData.date_premiere_circulation}
-                    onChange={(e) => setEditFormData({ ...editFormData, date_premiere_circulation: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="marque_custom">Marque (personnalisée)</Label>
-                  <Input
-                    id="marque_custom"
-                    value={editFormData.marque_custom}
-                    onChange={(e) => setEditFormData({ ...editFormData, marque_custom: e.target.value })}
-                    placeholder="Ex: Citroën"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="modele_custom">Modèle (personnalisé)</Label>
-                  <Input
-                    id="modele_custom"
-                    value={editFormData.modele_custom}
-                    onChange={(e) => setEditFormData({ ...editFormData, modele_custom: e.target.value })}
-                    placeholder="Ex: Jumper L3H2"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section Propriétaire */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-b pb-2">Informations du propriétaire</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="nom_proprietaire">Nom du propriétaire *</Label>
-                  <Input
-                    id="nom_proprietaire"
-                    value={editFormData.nom_proprietaire}
-                    onChange={(e) => setEditFormData({ ...editFormData, nom_proprietaire: e.target.value })}
-                    placeholder="Nom complet"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="telephone_proprietaire">Téléphone</Label>
-                  <Input
-                    id="telephone_proprietaire"
-                    value={editFormData.telephone_proprietaire}
-                    onChange={(e) => setEditFormData({ ...editFormData, telephone_proprietaire: e.target.value })}
-                    placeholder="Ex: 06 12 34 56 78"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email_proprietaire">Email</Label>
-                  <Input
-                    id="email_proprietaire"
-                    type="email"
-                    value={editFormData.email_proprietaire}
-                    onChange={(e) => setEditFormData({ ...editFormData, email_proprietaire: e.target.value })}
-                    placeholder="email@exemple.fr"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="adresse_proprietaire">Adresse</Label>
-                  <Input
-                    id="adresse_proprietaire"
-                    value={editFormData.adresse_proprietaire}
-                    onChange={(e) => setEditFormData({ ...editFormData, adresse_proprietaire: e.target.value })}
-                    placeholder="Adresse complète"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section Dimensions */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-b pb-2">Dimensions du véhicule</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="longueur">Longueur totale (mm)</Label>
-                  <Input
-                    id="longueur"
-                    type="number"
-                    value={editFormData.longueur_mm}
-                    onChange={(e) => setEditFormData({ ...editFormData, longueur_mm: e.target.value })}
-                    placeholder="Ex: 5413"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="largeur">Largeur totale (mm)</Label>
-                  <Input
-                    id="largeur"
-                    type="number"
-                    value={editFormData.largeur_mm}
-                    onChange={(e) => setEditFormData({ ...editFormData, largeur_mm: e.target.value })}
-                    placeholder="Ex: 2050"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="hauteur">Hauteur totale (mm)</Label>
-                  <Input
-                    id="hauteur"
-                    type="number"
-                    value={editFormData.hauteur_mm}
-                    onChange={(e) => setEditFormData({ ...editFormData, hauteur_mm: e.target.value })}
-                    placeholder="Ex: 2524"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="longueur_chargement">Longueur utile (mm)</Label>
-                  <Input
-                    id="longueur_chargement"
-                    type="number"
-                    value={editFormData.longueur_chargement_mm}
-                    onChange={(e) => setEditFormData({ ...editFormData, longueur_chargement_mm: e.target.value })}
-                    placeholder="Ex: 3705"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="largeur_chargement">Largeur utile (mm)</Label>
-                  <Input
-                    id="largeur_chargement"
-                    type="number"
-                    value={editFormData.largeur_chargement_mm}
-                    onChange={(e) => setEditFormData({ ...editFormData, largeur_chargement_mm: e.target.value })}
-                    placeholder="Ex: 1870"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section Poids */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold border-b pb-2">Poids</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="poids_vide">Poids à vide (kg)</Label>
-                  <Input
-                    id="poids_vide"
-                    type="number"
-                    value={editFormData.poids_vide_kg}
-                    onChange={(e) => setEditFormData({ ...editFormData, poids_vide_kg: e.target.value })}
-                    placeholder="Ex: 2100"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="charge_utile">Charge utile (kg)</Label>
-                  <Input
-                    id="charge_utile"
-                    type="number"
-                    value={editFormData.charge_utile_kg}
-                    onChange={(e) => setEditFormData({ ...editFormData, charge_utile_kg: e.target.value })}
-                    placeholder="Ex: 1400"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="ptac">PTAC (kg)</Label>
-                  <Input
-                    id="ptac"
-                    type="number"
-                    value={editFormData.ptac_kg}
-                    onChange={(e) => setEditFormData({ ...editFormData, ptac_kg: e.target.value })}
-                    placeholder="Ex: 3500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsEditDimensionsOpen(false)}>
-                Annuler
-              </Button>
-              <Button onClick={handleSaveDimensions}>Enregistrer</Button>
-            </div>
-          </div>
+          <ProjectForm 
+            existingProject={project}
+            isEditMode={true}
+            onProjectCreated={async () => {
+              setIsEditDimensionsOpen(false);
+              // Recharger le projet
+              const { data: updatedProject } = await supabase
+                .from("projects")
+                .select(`
+                  *,
+                  vehicles_catalog (
+                    marque,
+                    modele
+                  )
+                `)
+                .eq("id", id)
+                .single();
+              
+              if (updatedProject) {
+                setProject(updatedProject);
+              }
+              toast.success("Projet modifié avec succès");
+            }}
+          />
         </DialogContent>
       </Dialog>
 
