@@ -4,54 +4,33 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ShoppingCart, Package, Edit, Trash2, Eye, Settings, ShoppingBag, Percent } from "lucide-react";
+import { ArrowLeft, Package, Edit, Trash2, Settings } from "lucide-react";
 import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
 import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
-import { ShoppingCartSidebar } from "@/components/ShoppingCartSidebar";
-import { SimpleProductDialog } from "@/components/SimpleProductDialog";
-import { CustomerFormDialog } from "@/components/CustomerFormDialog";
-import { useCart } from "@/hooks/useCart";
-import { useShopCustomer } from "@/hooks/useShopCustomer";
 import { toast } from "sonner";
 import logo from "@/assets/logo.png";
 
-interface ShopProduct {
+interface CustomKit {
   id: string;
-  name: string;
+  nom: string;
   description: string;
-  type: string;
-  price: number;
+  prix_base: number;
   is_active: boolean;
   created_at: string;
-  promo_active?: boolean;
-  promo_price?: number;
-  promo_start_date?: string;
-  promo_end_date?: string;
-  hasOptions?: boolean;
   image_url?: string;
-  accessory_image?: string;
 }
 
 const Shop = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [products, setProducts] = useState<ShopProduct[]>([]);
+  const [customKits, setCustomKits] = useState<CustomKit[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [selectedKitProduct, setSelectedKitProduct] = useState<ShopProduct | null>(null);
-  const [selectedSimpleProduct, setSelectedSimpleProduct] = useState<ShopProduct | null>(null);
-  const [cartOpen, setCartOpen] = useState(false);
-
-  // Nouveaux états pour le checkout
-  const [customerFormOpen, setCustomerFormOpen] = useState(false);
-  const [userProjects, setUserProjects] = useState<any[]>([]);
-  const [selectedProject, setSelectedProject] = useState<any>(null);
-
-  const cart = useCart(user?.id);
-  const shopCustomer = useShopCustomer(user?.id);
+  const [selectedKit, setSelectedKit] = useState<CustomKit | null>(null);
+  const [editingKit, setEditingKit] = useState<CustomKit | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -60,8 +39,7 @@ const Shop = () => {
   useEffect(() => {
     if (user) {
       checkAdminStatus(user.id);
-      loadProducts();
-      loadUserProjects();
+      loadCustomKits();
     }
   }, [user, refreshKey]);
 
@@ -88,20 +66,10 @@ const Shop = () => {
     setIsAdmin(!!data);
   };
 
-  const loadProducts = async () => {
+  const loadCustomKits = async () => {
     setLoading(true);
 
     try {
-      // Charger les produits simples et composés
-      const { data: productsData, error: productsError } = (await supabase
-        .from("shop_products" as any)
-        .select("*")
-        .eq("is_active", true)
-        .order("name")) as any;
-
-      if (productsError) throw productsError;
-
-      // Charger les kits sur-mesure
       const { data: kitsData, error: kitsError } = await supabase
         .from("shop_custom_kits")
         .select("*")
@@ -110,581 +78,236 @@ const Shop = () => {
 
       if (kitsError) throw kitsError;
 
-      // Fusionner les deux listes et récupérer les images
-      const productsWithOptions = await Promise.all(
-        [
-          ...(productsData || []),
-          ...(kitsData || []).map((k: any) => ({
-            id: k.id,
-            name: k.nom,
-            description: k.description,
-            type: "custom_kit" as const,
-            price: k.prix_base || 0,
-            is_active: k.is_active,
-            created_at: k.created_at,
-          })),
-        ].map(async (product) => {
-          // Récupérer l'image de l'accessoire associé
-          const { data: productItems } = await supabase
-            .from("shop_product_items")
-            .select("accessories_catalog(image_url)")
-            .eq("product_id", product.id)
-            .limit(1)
-            .maybeSingle();
+      // Utiliser une Map pour éviter les doublons
+      const uniqueKits = new Map();
+      (kitsData || []).forEach((kit: any) => {
+        if (!uniqueKits.has(kit.id)) {
+          uniqueKits.set(kit.id, {
+            id: kit.id,
+            nom: kit.nom,
+            description: kit.description || "",
+            prix_base: kit.prix_base || 0,
+            is_active: kit.is_active,
+            created_at: kit.created_at,
+            image_url: kit.image_url,
+          });
+        }
+      });
 
-          const accessoryImage = productItems?.accessories_catalog?.image_url || null;
-
-          if (product.type === "simple") {
-            const hasOptions = await checkProductHasOptions(product.id);
-            return { ...product, hasOptions, accessory_image: accessoryImage };
-          }
-          return { ...product, accessory_image: accessoryImage };
-        }),
-      );
-      setProducts(productsWithOptions);
-    } catch (error) {
-      console.error("Erreur chargement produits:", error);
+      setCustomKits(Array.from(uniqueKits.values()));
+    } catch (error: any) {
+      console.error("Erreur lors du chargement des kits:", error);
       toast.error("Erreur lors du chargement des produits");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const checkProductHasOptions = async (productId: string) => {
-    // Récupérer l'accessoire du produit
-    const { data: productItems } = await supabase
-      .from("shop_product_items")
-      .select("accessory_id")
-      .eq("product_id", productId)
-      .limit(1)
-      .maybeSingle();
-
-    if (!productItems) return false;
-
-    // Vérifier s'il y a des options
-    const { data: options } = await supabase
-      .from("accessory_options")
-      .select("id")
-      .eq("accessory_id", productItems.accessory_id)
-      .limit(1);
-
-    return (options && options.length > 0) || false;
+  const handleEditKit = (kit: CustomKit) => {
+    setEditingKit(kit);
+    setIsEditDialogOpen(true);
   };
 
-  const getEffectivePrice = (product: ShopProduct) => {
-    if (product.promo_active && product.promo_price) {
-      const now = new Date();
-      const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
-      const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
+  const handleDeleteKit = async (kitId: string) => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer ce kit ?")) return;
 
-      if ((!start || now >= start) && (!end || now <= end)) {
-        return product.promo_price;
-      }
-    }
-    return product.price;
-  };
+    try {
+      const { error } = await supabase
+        .from("shop_custom_kits")
+        .delete()
+        .eq("id", kitId);
 
-  const isOnPromo = (product: ShopProduct) => {
-    if (!product.promo_active || !product.promo_price) return false;
+      if (error) throw error;
 
-    const now = new Date();
-    const start = product.promo_start_date ? new Date(product.promo_start_date) : null;
-    const end = product.promo_end_date ? new Date(product.promo_end_date) : null;
-
-    return (!start || now >= start) && (!end || now <= end);
-  };
-
-  const handleDelete = async (productId: string) => {
-    if (!confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) return;
-
-    const { error } = await supabase.from("shop_products").delete().eq("id", productId);
-
-    if (error) {
+      toast.success("Kit supprimé avec succès");
+      setRefreshKey((prev) => prev + 1);
+    } catch (error: any) {
       console.error("Erreur lors de la suppression:", error);
-      toast.error("Erreur lors de la suppression");
-    } else {
-      toast.success("Produit supprimé");
-      setRefreshKey((prev) => prev + 1);
+      toast.error("Erreur lors de la suppression du kit");
     }
   };
 
-  const handleToggleActive = async (productId: string, currentStatus: boolean) => {
-    const { error } = await supabase.from("shop_products").update({ is_active: !currentStatus }).eq("id", productId);
-
-    if (error) {
-      console.error("Erreur:", error);
-      toast.error("Erreur lors de la mise à jour");
-    } else {
-      toast.success(currentStatus ? "Produit masqué" : "Produit activé");
-      setRefreshKey((prev) => prev + 1);
-    }
-  };
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case "simple":
-        return "Simple";
-      case "composed":
-        return "Bundle";
-      case "custom_kit":
-        return "Kit sur-mesure";
-      default:
-        return type;
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "simple":
-        return "default";
-      case "composed":
-        return "secondary";
-      case "custom_kit":
-        return "outline";
-      default:
-        return "default";
-    }
-  };
-
-  const handleAddToCart = async (productId: string, price: number) => {
-    const success = await cart.addToCart(productId, price, 1);
-    if (success) {
-      cart.refresh();
-    }
-  };
-
-  const handleAddSimpleProductToCart = async (
-    totalPrice: number,
-    selectedOptions: string[],
-    optionsDetails?: any[],
-  ) => {
-    if (!selectedSimpleProduct) return;
-
-    const configuration =
-      selectedOptions.length > 0
-        ? {
-            selectedOptions: optionsDetails || selectedOptions.map((id) => ({ id, name: "Option", price: 0 })),
-          }
-        : undefined;
-
-    const success = await cart.addToCart(selectedSimpleProduct.id, totalPrice, 1, configuration);
-    if (success) {
-      cart.refresh();
-      setSelectedSimpleProduct(null);
-    }
-  };
-
-  const handleAddKitToCart = async (configuration: any, totalPrice: number) => {
-    if (!selectedKitProduct) return;
-    const success = await cart.addToCart(selectedKitProduct.id, totalPrice, 1, configuration);
-    if (success) {
-      cart.refresh();
-      setSelectedKitProduct(null);
-    }
-  };
-
-  // Charger les projets de l'utilisateur
-  const loadUserProjects = async () => {
-    if (!user) return;
-
+  const handleToggleActive = async (kitId: string, currentStatus: boolean) => {
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setUserProjects(data || []);
-
-      if (data && data.length > 0) {
-        setSelectedProject(data[0]);
-      }
-    } catch (error) {
-      console.error("Erreur lors du chargement des projets:", error);
-    }
-  };
-
-  // Flow de checkout
-  const handleCheckout = async () => {
-    if (!user) {
-      toast.error("Veuillez vous connecter pour passer commande");
-      return;
-    }
-
-    if (cart.cartItems.length === 0) {
-      toast.error("Votre panier est vide");
-      return;
-    }
-
-    // Vérifier si l'utilisateur a complété ses infos client
-    if (!shopCustomer.hasCustomerInfo) {
-      setCustomerFormOpen(true);
-      return;
-    }
-
-    // Passer directement au traitement de la commande
-    proceedToOrder();
-  };
-
-  // Soumettre les informations client
-  const handleCustomerFormSubmit = async (formData: any) => {
-    const success = await shopCustomer.createOrUpdateCustomer({
-      company_name: formData.companyName,
-      first_name: formData.firstName,
-      last_name: formData.lastName,
-      email: formData.email,
-      phone: formData.phone,
-      billing_address: formData.billingAddress,
-      billing_postal_code: formData.billingPostalCode,
-      billing_city: formData.billingCity,
-      billing_country: formData.billingCountry,
-      vat_number: formData.vatNumber,
-      shipping_same_as_billing: formData.shippingSameAsBilling,
-      shipping_recipient_name: formData.shippingRecipientName,
-      shipping_address: formData.shippingAddress,
-      shipping_postal_code: formData.shippingPostalCode,
-      shipping_city: formData.shippingCity,
-      shipping_country: formData.shippingCountry,
-    });
-
-    if (success) {
-      setCustomerFormOpen(false);
-      proceedToOrder();
-    }
-  };
-
-  // Créer la commande et ajouter aux dépenses du projet
-  const proceedToOrder = async () => {
-    try {
-      if (!user || !shopCustomer.customer) {
-        toast.error("Informations manquantes");
-        return;
-      }
-
-      // Générer un numéro de commande
-      const orderNumber = `ENV-${Date.now()}`;
-      const totalAmount = cart.getTotalPrice();
-
-      // Créer la commande
-      const { data: order, error: orderError } = await supabase
-        .from("shop_orders")
-        .insert({
-          user_id: user.id,
-          customer_id: shopCustomer.customer.id,
-          order_number: orderNumber,
-          total_amount: totalAmount,
-          status: "pending",
-          payment_method: "deferred",
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Créer les items de commande
-      const orderItems = cart.cartItems.map((item) => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        product_name: item.product?.name || "Produit",
-        quantity: item.quantity,
-        unit_price: item.price_at_addition,
-        configuration: item.configuration,
-      }));
-
-      const { error: itemsError } = await supabase.from("shop_order_items").insert(orderItems);
-
-      if (itemsError) throw itemsError;
-
-      // Si un projet est sélectionné, ajouter aux dépenses
-      if (selectedProject) {
-        await addOrderToProjectExpenses(order.id, orderItems);
-      }
-
-      // Vider le panier
-      await cart.clearCart();
-
-      toast.success(`Commande ${orderNumber} créée avec succès !`);
-      setCartOpen(false);
-
-      // Recharger les produits
-      setRefreshKey((prev) => prev + 1);
-    } catch (error) {
-      console.error("Erreur lors de la commande:", error);
-      toast.error("Erreur lors de la création de la commande");
-    }
-  };
-
-  // Ajouter la commande aux dépenses du projet
-  const addOrderToProjectExpenses = async (orderId: string, orderItems: any[]) => {
-    try {
-      if (!selectedProject) return;
-
-      // Ajouter aux dépenses générales du projet
-      const expenses = orderItems.map((item) => ({
-        project_id: selectedProject.id,
-        user_id: user.id,
-        designation: item.product_name,
-        prix: item.unit_price,
-        quantite: item.quantity,
-        fournisseur: "Alsace Van Création - Boutique",
-        categorie: "Accessoires",
-      }));
-
-      const { error } = await supabase.from("project_expenses").insert(expenses);
+      const { error } = await supabase
+        .from("shop_custom_kits")
+        .update({ is_active: !currentStatus })
+        .eq("id", kitId);
 
       if (error) throw error;
 
-      // Marquer la commande comme ajoutée aux dépenses
-      await supabase.from("shop_orders").update({ added_to_expenses: true }).eq("id", orderId);
-
-      toast.success("Achats ajoutés aux dépenses du projet");
-    } catch (error) {
-      console.error("Erreur lors de l'ajout aux dépenses:", error);
-      toast.error("Erreur lors de l'ajout aux dépenses");
+      toast.success(
+        !currentStatus ? "Kit activé avec succès" : "Kit désactivé avec succès"
+      );
+      setRefreshKey((prev) => prev + 1);
+    } catch (error: any) {
+      console.error("Erreur lors de la mise à jour:", error);
+      toast.error("Erreur lors de la mise à jour du statut");
     }
+  };
+
+  const handleKitClick = (kit: CustomKit) => {
+    setSelectedKit(kit);
+  };
+
+  const handleAddToCart = (configuration: any, totalPrice: number) => {
+    console.log("Configuration ajoutée au panier:", configuration, totalPrice);
+    toast.success("Configuration ajoutée au panier");
+    setSelectedKit(null);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Chargement...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-background">
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Retour
-            </Button>
-            <img src={logo} alt="Alsace Van Création" className="h-16 w-auto object-contain" />
-            <div className="flex-1">
-              <h1 className="text-xl font-bold">Boutique</h1>
-              <p className="text-sm text-muted-foreground">Découvrez nos produits et équipements</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setCartOpen(true)} className="relative">
-                <ShoppingBag className="h-4 w-4 mr-2" />
-                Panier
-                {cart.getTotalItems() > 0 && (
-                  <Badge
-                    variant="destructive"
-                    className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
-                  >
-                    {cart.getTotalItems()}
-                  </Badge>
-                )}
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <div className="bg-card border-b sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
+                <ArrowLeft className="h-5 w-5" />
               </Button>
-              {isAdmin && (
-                <ShopProductFormDialog
-                  trigger={
-                    <Button variant="outline" size="sm">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Gérer les produits
-                    </Button>
-                  }
-                  onSuccess={() => setRefreshKey((prev) => prev + 1)}
-                />
-              )}
+              <img src={logo} alt="Logo" className="h-10" />
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">Boutique</h1>
+                <p className="text-sm text-muted-foreground">
+                  Kits électriques personnalisables
+                </p>
+              </div>
             </div>
+            {isAdmin && (
+              <Button
+                onClick={() => {
+                  setEditingKit(null);
+                  setIsEditDialogOpen(true);
+                }}
+                className="gap-2"
+              >
+                <Package className="h-4 w-4" />
+                Gérer les produits
+              </Button>
+            )}
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto px-4 py-8">
-        {userProjects.length === 0 ? (
-          <Card className="p-8 text-center mb-6">
-            <p className="text-muted-foreground mb-4">
-              Créez un projet pour faciliter la gestion de vos achats et dépenses
-            </p>
-            <Button onClick={() => navigate("/dashboard")}>Créer un projet</Button>
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {customKits.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                Aucun kit disponible pour le moment
+              </p>
+            </CardContent>
           </Card>
         ) : (
-          <Card className="mb-6 p-4">
-            <div className="flex items-center gap-4">
-              <Package className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-sm font-medium">Projet sélectionné</p>
-                <p className="text-sm text-muted-foreground">{selectedProject?.nom || "Aucun"}</p>
-              </div>
-              {userProjects.length > 1 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="ml-auto"
-                  onClick={() => {
-                    const currentIndex = userProjects.findIndex((p) => p.id === selectedProject?.id);
-                    const nextIndex = (currentIndex + 1) % userProjects.length;
-                    setSelectedProject(userProjects[nextIndex]);
-                  }}
-                >
-                  Changer de projet
-                </Button>
-              )}
-            </div>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Produits disponibles</CardTitle>
-            <CardDescription>Parcourez notre catalogue et ajoutez des produits à votre panier</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {products.length === 0 ? (
-              <div className="text-center py-8">
-                <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">Aucun produit disponible pour le moment</p>
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {products.map((product) => (
-                  <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                    {product.accessory_image && (
-                      <div className="aspect-video w-full overflow-hidden bg-white flex items-center justify-center p-4">
-                        <img
-                          src={product.accessory_image}
-                          alt={product.name}
-                          className="h-full w-full object-contain"
-                        />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {customKits.map((kit) => (
+              <Card key={kit.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                <div className="aspect-video bg-muted relative">
+                  {kit.image_url ? (
+                    <img
+                      src={kit.image_url}
+                      alt={kit.nom}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Package className="h-12 w-12 text-muted-foreground" />
+                    </div>
+                  )}
+                  <Badge className="absolute top-2 right-2">Kit sur mesure</Badge>
+                </div>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>{kit.nom}</span>
+                    {isAdmin && (
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditKit(kit);
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteKit(kit.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleActive(kit.id, kit.is_active);
+                          }}
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
                       </div>
                     )}
-                    <CardHeader>
-                      <CardTitle className="text-lg">{product.name}</CardTitle>
-                      <div className="flex gap-2 flex-wrap">
-                        <Badge variant={getTypeColor(product.type) as any}>{getTypeLabel(product.type)}</Badge>
-                        {product.hasOptions && (
-                          <Badge variant="outline" className="text-xs">
-                            Options disponibles
-                          </Badge>
-                        )}
-                      </div>
-                      {product.description && (
-                        <CardDescription className="line-clamp-3">{product.description}</CardDescription>
-                      )}
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <div className="flex items-end justify-between">
-                          <div>
-                            {isOnPromo(product) ? (
-                              <>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Badge variant="destructive" className="text-xs">
-                                    PROMO
-                                  </Badge>
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                  <span className="text-2xl font-bold text-primary">
-                                    {getEffectivePrice(product).toFixed(2)} €
-                                  </span>
-                                  <span className="text-lg text-muted-foreground line-through">
-                                    {product.price.toFixed(2)} €
-                                  </span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Économisez{" "}
-                                  {(((product.price - getEffectivePrice(product)) / product.price) * 100).toFixed(0)}%
-                                </p>
-                              </>
-                            ) : (
-                              <div className="text-2xl font-bold text-primary">{product.price.toFixed(2)} €</div>
-                            )}
-                          </div>
-                        </div>
-                        {product.type === "custom_kit" ? (
-                          <Button className="w-full" onClick={() => setSelectedKitProduct(product)}>
-                            <Settings className="h-4 w-4 mr-2" />
-                            Configurer
-                          </Button>
-                        ) : product.type === "simple" && product.hasOptions ? (
-                          <Button className="w-full" onClick={() => setSelectedSimpleProduct(product)}>
-                            <ShoppingCart className="h-4 w-4 mr-2" />
-                            Choisir les options
-                          </Button>
-                        ) : (
-                          <Button
-                            className="w-full"
-                            onClick={() => handleAddToCart(product.id, getEffectivePrice(product))}
-                          >
-                            <ShoppingCart className="h-4 w-4 mr-2" />
-                            Ajouter au panier
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </main>
+                  </CardTitle>
+                  <CardDescription>{kit.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold">
+                      À partir de {kit.prix_base.toFixed(2)} €
+                    </span>
+                    <Button onClick={() => handleKitClick(kit)}>
+                      Configurer
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {selectedKitProduct && (
+      {/* Dialogs */}
+      <ShopProductFormDialog
+        editProduct={editingKit}
+        onSuccess={() => {
+          setRefreshKey((prev) => prev + 1);
+          setEditingKit(null);
+          setIsEditDialogOpen(false);
+        }}
+        forceOpen={isEditDialogOpen}
+        onClose={() => {
+          setIsEditDialogOpen(false);
+          setEditingKit(null);
+        }}
+      />
+
+      {selectedKit && (
         <CustomKitConfigDialog
-          productId={selectedKitProduct.id}
-          productName={selectedKitProduct.name}
-          basePrice={selectedKitProduct.price}
-          open={!!selectedKitProduct}
-          onOpenChange={(open) => !open && setSelectedKitProduct(null)}
-          onAddToCart={handleAddKitToCart}
+          productId={selectedKit.id}
+          productName={selectedKit.nom}
+          basePrice={selectedKit.prix_base}
+          open={!!selectedKit}
+          onOpenChange={(open) => !open && setSelectedKit(null)}
+          onAddToCart={handleAddToCart}
         />
       )}
-
-      {selectedSimpleProduct && (
-        <SimpleProductDialog
-          open={!!selectedSimpleProduct}
-          onOpenChange={(open) => !open && setSelectedSimpleProduct(null)}
-          productId={selectedSimpleProduct.id}
-          productName={selectedSimpleProduct.name}
-          basePrice={getEffectivePrice(selectedSimpleProduct)}
-          onAddToCart={handleAddSimpleProductToCart}
-        />
-      )}
-
-      <ShoppingCartSidebar
-        open={cartOpen}
-        onOpenChange={setCartOpen}
-        cartItems={cart.cartItems}
-        totalPrice={cart.getTotalPrice()}
-        onUpdateQuantity={cart.updateQuantity}
-        onRemoveItem={cart.removeFromCart}
-        onClearCart={cart.clearCart}
-        onCheckout={handleCheckout}
-      />
-
-      <CustomerFormDialog
-        open={customerFormOpen}
-        onOpenChange={setCustomerFormOpen}
-        onSubmit={handleCustomerFormSubmit}
-        initialData={
-          shopCustomer.customer
-            ? {
-                companyName: shopCustomer.customer.company_name,
-                firstName: shopCustomer.customer.first_name,
-                lastName: shopCustomer.customer.last_name,
-                email: shopCustomer.customer.email,
-                phone: shopCustomer.customer.phone,
-                billingAddress: shopCustomer.customer.billing_address,
-                billingPostalCode: shopCustomer.customer.billing_postal_code,
-                billingCity: shopCustomer.customer.billing_city,
-                billingCountry: shopCustomer.customer.billing_country,
-                vatNumber: shopCustomer.customer.vat_number,
-                shippingSameAsBilling: shopCustomer.customer.shipping_same_as_billing,
-                shippingRecipientName: shopCustomer.customer.shipping_recipient_name,
-                shippingAddress: shopCustomer.customer.shipping_address,
-                shippingPostalCode: shopCustomer.customer.shipping_postal_code,
-                shippingCity: shopCustomer.customer.shipping_city,
-                shippingCountry: shopCustomer.customer.shipping_country,
-              }
-            : undefined
-        }
-      />
     </div>
   );
 };
