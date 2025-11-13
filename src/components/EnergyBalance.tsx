@@ -237,10 +237,10 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   const calculateBatteryCapacity = (itemsList: ElectricalItem[]) => {
     const storage = itemsList.filter((item) => item.type_electrique === "stockage");
     return storage.reduce((total, item) => {
-      const power = item.puissance_watts || 0;
-      const autonomy = item.temps_production_heures || 0;
+      // Pour les batteries, puissance_watts représente la capacité en Wh
+      const capacity = item.puissance_watts || 0;
       const quantity = item.quantite || 1;
-      return total + power * autonomy * quantity;
+      return total + capacity * quantity;
     }, 0);
   };
 
@@ -423,7 +423,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
         case "utilisation":
           return "Temps d'utilisation (h/24h)";
         case "autonomie":
-          return "Durée d'autonomie (h)";
+          return "Capacité (Wh)";
         default:
           return "";
       }
@@ -472,14 +472,14 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                       item.quantite
                     )}
                   </TableCell>
-                  {showTimeField && (
+                  {showTimeField && showTimeField !== "autonomie" && (
                     <TableCell className="text-right">
                       <Input
                         type="number"
                         min="0"
-                        max={showTimeField === "autonomie" ? undefined : 24}
+                        max="24"
                         step="0.5"
-                        placeholder={showTimeField === "autonomie" ? "0h" : "0-24h"}
+                        placeholder="0-24h"
                         value={
                           showTimeField === "utilisation"
                             ? (item.temps_utilisation_heures ?? "")
@@ -502,6 +502,13 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                         }}
                         className="w-24 ml-auto"
                       />
+                    </TableCell>
+                  )}
+                  {showTimeField === "autonomie" && (
+                    <TableCell className="text-right">
+                      <span className="text-muted-foreground">
+                        {item.puissance_watts ? `${item.puissance_watts} Wh` : "Non renseigné"}
+                      </span>
                     </TableCell>
                   )}
                   {isDraft && (
