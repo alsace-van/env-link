@@ -870,6 +870,40 @@ export const LayoutCanvas = ({
     }
   };
 
+  // Calculer le poids total des meubles
+  useEffect(() => {
+    const furnitureWeight = Array.from(furnitureItems.values()).reduce(
+      (sum, item) => sum + (item.poids_kg || 0),
+      0
+    );
+    
+    // Récupérer le poids des accessoires depuis les dépenses du projet
+    const fetchAccessoriesWeight = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("project_expenses")
+          .select("poids_kg, quantite")
+          .eq("project_id", projectId);
+
+        if (error) throw error;
+
+        const accessoriesTotal = data?.reduce(
+          (sum, expense) => sum + ((expense.poids_kg || 0) * (expense.quantite || 1)),
+          0
+        ) || 0;
+
+        setAccessoriesWeight(accessoriesTotal);
+        setTotalWeight(furnitureWeight + accessoriesTotal);
+      } catch (error) {
+        console.error("Erreur lors du calcul du poids des accessoires:", error);
+        setAccessoriesWeight(0);
+        setTotalWeight(furnitureWeight);
+      }
+    };
+
+    fetchAccessoriesWeight();
+  }, [furnitureItems, projectId]);
+
   const weightPercentage = (totalWeight / maxLoad) * 100;
   const remainingWeight = maxLoad - totalWeight;
 
