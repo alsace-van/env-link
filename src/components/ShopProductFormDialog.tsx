@@ -343,7 +343,7 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
             .update({
               nom: productName,
               description,
-              prix_base: parseFloat(price) || 0,
+              prix_base: 0,
               is_active: isActive,
             })
             .eq("id", editProduct.id);
@@ -406,7 +406,7 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
               user_id: user.id,
               nom: productName,
               description,
-              prix_base: parseFloat(price) || 0,
+              prix_base: 0,
               is_active: isActive,
             })
             .select()
@@ -693,22 +693,6 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
               {/* Interface améliorée pour les kits sur-mesure */}
               {productType === "custom_kit" && (
                 <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="base_price">Prix de base du kit (€)</Label>
-                    <Input
-                      id="base_price"
-                      type="number"
-                      step="0.01"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      placeholder="0.00"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Prix de base avant l'ajout des accessoires (peut être 0)
-                    </p>
-                  </div>
-
-                  <Separator />
 
                   <div className="flex items-center justify-between">
                     <div>
