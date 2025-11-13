@@ -5,12 +5,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Settings } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Settings, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
 import { Input } from "@/components/ui/input";
 import CategoryManagementDialog from "./CategoryManagementDialog";
+import { NoticeSearchDialog } from "./NoticeSearchDialog";
 
 interface Expense {
   id: string;
@@ -56,6 +57,8 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
   const [paymentTransactions, setPaymentTransactions] = useState<PaymentTransaction[]>([]);
   const [totalSales, setTotalSales] = useState(0);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [isNoticeDialogOpen, setIsNoticeDialogOpen] = useState(false);
+  const [selectedExpenseForNotice, setSelectedExpenseForNotice] = useState<Expense | null>(null);
 
   useEffect(() => {
     loadExpenses();
@@ -238,6 +241,11 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
       loadExpenses();
       onExpenseChange?.();
     }
+  };
+
+  const handleLinkNotice = (expense: Expense) => {
+    setSelectedExpenseForNotice(expense);
+    setIsNoticeDialogOpen(true);
   };
 
   const getDeliveryInfo = (status: Expense["statut_livraison"]) => {
@@ -445,6 +453,24 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
                           </TooltipContent>
                         </Tooltip>
 
+                        {expense.accessory_id && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleLinkNotice(expense)}
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Notice</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div
@@ -649,6 +675,24 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
                                   </TooltipContent>
                                 </Tooltip>
 
+                                {expense.accessory_id && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => handleLinkNotice(expense)}
+                                      >
+                                        <FileText className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Notice</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <div
@@ -733,6 +777,24 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
         }}
         categories={userCategories}
       />
+
+      {selectedExpenseForNotice && selectedExpenseForNotice.accessory_id && (
+        <NoticeSearchDialog
+          isOpen={isNoticeDialogOpen}
+          onClose={() => {
+            setIsNoticeDialogOpen(false);
+            setSelectedExpenseForNotice(null);
+          }}
+          accessoryId={selectedExpenseForNotice.accessory_id}
+          accessoryMarque={selectedExpenseForNotice.marque}
+          accessoryNom={selectedExpenseForNotice.nom_accessoire}
+          onSuccess={() => {
+            loadExpenses();
+            setIsNoticeDialogOpen(false);
+            setSelectedExpenseForNotice(null);
+          }}
+        />
+      )}
     </div>
   );
 };
