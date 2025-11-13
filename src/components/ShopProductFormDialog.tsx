@@ -103,6 +103,12 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
     }
   }, [open, editProduct]);
 
+  useEffect(() => {
+    if (editProduct) {
+      setOpen(true);
+    }
+  }, [editProduct]);
+
   const loadAccessories = async () => {
     const { data, error } = await supabase
       .from("accessories_catalog")
@@ -142,11 +148,11 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
 
     // Charger les accessoires ou catégories selon le type
     if (editProduct.type === "custom_kit") {
-      // @ts-ignore - Type inference too deep issue with Supabase types
+      // Pour les kits sur-mesure, l'ID passé est l'ID du kit lui-même
       const { data, error } = await supabase
         .from("shop_custom_kits")
         .select("id, prix_base")
-        .eq("product_id", editProduct.id)
+        .eq("id", editProduct.id)
         .maybeSingle();
 
       if (!error && data) {
@@ -323,20 +329,56 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
 
       if (editProduct) {
         // Mode édition
-        const { error: productError } = await supabase
-          .from("shop_products" as any)
-          .update({
-            name: productName,
-            description,
-            price: parseFloat(price) || 0,
-            is_active: isActive,
-          } as any)
-          .eq("id", editProduct.id);
+        if (productType === "custom_kit") {
+          // Pour les kits sur-mesure, l'ID est l'ID du kit lui-même
+          // Supprimer les anciens accessoires du kit
+          await supabase
+            .from("shop_custom_kit_accessories" as any)
+            .delete()
+            .eq("custom_kit_id", editProduct.id);
 
-        if (productError) throw productError;
+          // Mettre à jour les infos du kit
+          const { error: kitError } = await supabase
+            .from("shop_custom_kits")
+            .update({
+              nom: productName,
+              description,
+              prix_base: parseFloat(price) || 0,
+              is_active: isActive,
+            })
+            .eq("id", editProduct.id);
 
-        // Supprimer les anciens items/kit
-        if (productType === "simple" || productType === "composed") {
+          if (kitError) throw kitError;
+
+          // Ajouter les nouveaux accessoires
+          if (kitAccessories.length > 0) {
+            const kitAccessoriesData = kitAccessories.map((acc) => ({
+              custom_kit_id: editProduct.id,
+              accessory_id: acc.id,
+              default_quantity: acc.quantity,
+            }));
+
+            const { error: kitAccessoriesError } = await supabase
+              .from("shop_custom_kit_accessories" as any)
+              .insert(kitAccessoriesData);
+
+            if (kitAccessoriesError) throw kitAccessoriesError;
+          }
+        } else {
+          // Pour les produits simples et composés, modifier dans shop_products
+          const { error: productError } = await supabase
+            .from("shop_products" as any)
+            .update({
+              name: productName,
+              description,
+              price: parseFloat(price) || 0,
+              is_active: isActive,
+            } as any)
+            .eq("id", editProduct.id);
+
+          if (productError) throw productError;
+
+          // Supprimer les anciens items
           await supabase
             .from("shop_product_items" as any)
             .delete()
@@ -351,32 +393,29 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
           const { error: itemsError } = await supabase.from("shop_product_items" as any).insert(items as any);
 
           if (itemsError) throw itemsError;
-        } else if (productType === "custom_kit") {
-          // Supprimer les anciens accessoires du kit
-          const { data: kitData } = await supabase
+        }
+
+        toast.success("Produit modifié avec succès");
+      } else {
+        // Mode création
+        if (productType === "custom_kit") {
+          // Pour les kits sur-mesure, créer directement dans shop_custom_kits
+          const { data: kitData, error: kitError } = await supabase
             .from("shop_custom_kits")
-            .select("id")
-            .eq("product_id", editProduct.id)
+            .insert({
+              user_id: user.id,
+              nom: productName,
+              description,
+              prix_base: parseFloat(price) || 0,
+              is_active: isActive,
+            })
+            .select()
             .maybeSingle();
 
-          if (kitData) {
-            await supabase
-              .from("shop_custom_kit_accessories" as any)
-              .delete()
-              .eq("custom_kit_id", kitData.id);
+          if (kitError) throw kitError;
 
-            // Mettre à jour les infos du kit
-            await supabase
-              .from("shop_custom_kits" as any)
-              .update({
-                nom: productName,
-                description,
-                prix_base: parseFloat(price) || 0,
-                is_active: isActive,
-              } as any)
-              .eq("id", kitData.id);
-
-            // Ajouter les nouveaux accessoires
+          // Ajouter les accessoires du kit
+          if (kitData && kitAccessories.length > 0) {
             const kitAccessoriesData = kitAccessories.map((acc) => ({
               custom_kit_id: kitData.id,
               accessory_id: acc.id,
@@ -389,28 +428,24 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
 
             if (kitAccessoriesError) throw kitAccessoriesError;
           }
-        }
+        } else {
+          // Pour les produits simples et composés, créer dans shop_products
+          const { data: product, error: productError } = await supabase
+            .from("shop_products" as any)
+            .insert({
+              user_id: user.id,
+              name: productName,
+              description,
+              type: productType,
+              price: parseFloat(price) || 0,
+              is_active: isActive,
+            } as any)
+            .select()
+            .maybeSingle();
 
-        toast.success("Produit modifié avec succès");
-      } else {
-        // Mode création
-        const { data: product, error: productError } = await supabase
-          .from("shop_products" as any)
-          .insert({
-            user_id: user.id,
-            name: productName,
-            description,
-            type: productType,
-            price: parseFloat(price) || 0,
-            is_active: isActive,
-          } as any)
-          .select()
-          .maybeSingle();
+          if (productError) throw productError;
 
-        if (productError) throw productError;
-
-        // Ajouter les items selon le type
-        if (productType === "simple" || productType === "composed") {
+          // Ajouter les items
           const items = selectedAccessories.map((acc) => ({
             product_id: (product as any).id,
             accessory_id: acc.id,
@@ -420,37 +455,6 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
           const { error: itemsError } = await supabase.from("shop_product_items" as any).insert(items as any);
 
           if (itemsError) throw itemsError;
-        } else if (productType === "custom_kit") {
-          // Créer le kit sur-mesure avec le lien vers le produit
-          const { data: kitData, error: kitError } = await supabase
-            .from("shop_custom_kits" as any)
-            .insert({
-              product_id: (product as any).id,
-              user_id: user.id,
-              nom: productName,
-              description,
-              prix_base: parseFloat(price) || 0,
-              is_active: isActive,
-            } as any)
-            .select()
-            .maybeSingle();
-
-          if (kitError) throw kitError;
-
-          // Ajouter les accessoires du kit
-          if (kitData) {
-            const kitAccessoriesData = kitAccessories.map((acc) => ({
-              custom_kit_id: (kitData as any).id,
-              accessory_id: acc.id,
-              default_quantity: acc.quantity,
-            }));
-
-            const { error: kitAccessoriesError } = await supabase
-              .from("shop_custom_kit_accessories" as any)
-              .insert(kitAccessoriesData);
-
-            if (kitAccessoriesError) throw kitAccessoriesError;
-          }
         }
 
         toast.success("Produit créé avec succès");
