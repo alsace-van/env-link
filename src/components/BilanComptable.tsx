@@ -49,8 +49,8 @@ interface Payment {
 }
 
 interface BilanComptableProps {
-  projectId: string;
-  projectName: string;
+  projectId?: string;
+  projectName?: string;
 }
 
 export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) => {
@@ -75,6 +75,12 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   }, [projectId, paymentRefresh]);
 
   const loadBankBalance = async () => {
+    if (!projectId) {
+      // Mode global: pas de solde bancaire spécifique à un projet
+      setBankBalance(null);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("project_bank_balance")
       .select("*")
@@ -162,6 +168,12 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   };
 
   const loadPayments = async () => {
+    if (!projectId) {
+      // Mode global: pas de paiements spécifiques à un projet
+      setPayments([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("project_payment_transactions")
       .select("*")
@@ -234,6 +246,11 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   };
 
   const handleSaveBalance = async () => {
+    if (!projectId) {
+      toast.error("Fonction disponible uniquement dans un projet");
+      return;
+    }
+
     if (!balanceForm.solde_depart || !balanceForm.date_heure_depart) {
       toast.error("Veuillez remplir tous les champs");
       return;

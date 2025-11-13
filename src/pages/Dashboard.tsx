@@ -7,7 +7,7 @@ import UserMenu from "@/components/UserMenu";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { BackupSettingsDialog } from "@/components/BackupSettingsDialog";
 import { Button } from "@/components/ui/button";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingBag, Package, TrendingUp } from "lucide-react";
 import logo from "@/assets/logo.png";
 
 const Dashboard = () => {
@@ -80,6 +80,22 @@ const Dashboard = () => {
           </div>
           <div className="flex items-center gap-2">
             <BackupSettingsDialog userId={user?.id} />
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate("/catalog")}
+            >
+              <Package className="h-4 w-4 mr-2" />
+              Catalogue
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate("/bilan-comptable")}
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Bilan Comptable
+            </Button>
             <Button 
               variant="default" 
               size="sm"
