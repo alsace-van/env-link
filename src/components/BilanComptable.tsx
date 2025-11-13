@@ -100,27 +100,39 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     if (!user) return;
 
     // Charger les dépenses (sorties)
-    const { data: expensesData, error: expensesError } = await supabase
+    let expensesQuery = supabase
       .from("project_expenses")
       .select("*")
-      .is("project_id", null)
       .not("fournisseur", "is", null)
-      .eq("user_id", user.id)
-      .order("date_achat", { ascending: false });
+      .eq("user_id", user.id);
+
+    // En mode projet: filtrer par projet spécifique
+    // En mode global: charger toutes les dépenses
+    if (projectId) {
+      expensesQuery = expensesQuery.eq("project_id", projectId);
+    }
+
+    const { data: expensesData, error: expensesError } = await expensesQuery.order("date_achat", { ascending: false });
 
     if (expensesError) {
       console.error("Error loading expenses:", expensesError);
     }
 
-    // Charger tous les paiements (entrées) de tous les projets
-    const { data: paymentsData, error: paymentsError } = await supabase
+    // Charger les paiements (entrées)
+    let paymentsQuery = supabase
       .from("project_payment_transactions")
       .select(`
         *,
         projects!inner(nom, user_id)
       `)
-      .eq("projects.user_id", user.id)
-      .order("date_paiement", { ascending: false });
+      .eq("projects.user_id", user.id);
+
+    // En mode projet: filtrer par projet spécifique
+    if (projectId) {
+      paymentsQuery = paymentsQuery.eq("project_id", projectId);
+    }
+
+    const { data: paymentsData, error: paymentsError } = await paymentsQuery.order("date_paiement", { ascending: false });
 
     if (paymentsError) {
       console.error("Error loading payments:", paymentsError);
