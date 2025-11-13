@@ -7,7 +7,7 @@ import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, ShoppingBag, Settings, Package } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Settings, Package, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -177,6 +177,33 @@ const Shop = () => {
     }
   };
 
+  const handleDeleteKit = async (kitId: string) => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer ce kit sur-mesure ?")) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("shop_custom_kits")
+        .delete()
+        .eq("id", kitId);
+
+      if (error) throw error;
+
+      toast.success("Kit sur-mesure supprimé avec succès");
+      setRefreshProducts(prev => prev + 1);
+    } catch (error) {
+      console.error("Erreur lors de la suppression:", error);
+      toast.error("Erreur lors de la suppression du kit");
+    }
+  };
+
+  const handleEditKit = (kit: ShopProduct) => {
+    // Pour l'instant, on affiche simplement un toast
+    // À développer: ouvrir un dialog d'édition
+    toast.info("Fonctionnalité d'édition en développement");
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -308,20 +335,45 @@ const Shop = () => {
                                 {product.description}
                               </CardDescription>
                             )}
-                            <Button 
-                              className="w-full"
-                              onClick={() => {
-                                if (product.type === "custom_kit") {
-                                  setSelectedKit(product);
-                                  setIsKitDialogOpen(true);
-                                } else {
-                                  toast.info("Fonctionnalité en développement");
-                                }
-                              }}
-                            >
-                              <ShoppingBag className="h-4 w-4 mr-2" />
-                              {product.type === "custom_kit" ? "Configurer" : "Ajouter au panier"}
-                            </Button>
+                            <div className="space-y-2">
+                              <Button 
+                                className="w-full"
+                                onClick={() => {
+                                  if (product.type === "custom_kit") {
+                                    setSelectedKit(product);
+                                    setIsKitDialogOpen(true);
+                                  } else {
+                                    toast.info("Fonctionnalité en développement");
+                                  }
+                                }}
+                              >
+                                <ShoppingBag className="h-4 w-4 mr-2" />
+                                {product.type === "custom_kit" ? "Configurer" : "Ajouter au panier"}
+                              </Button>
+                              
+                              {isAdmin && product.type === "custom_kit" && (
+                                <div className="flex gap-2">
+                                  <Button 
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1"
+                                    onClick={() => handleEditKit(product)}
+                                  >
+                                    <Pencil className="h-4 w-4 mr-2" />
+                                    Modifier
+                                  </Button>
+                                  <Button 
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1"
+                                    onClick={() => handleDeleteKit(product.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Supprimer
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
                           </CardContent>
                         </Card>
                       ))}
