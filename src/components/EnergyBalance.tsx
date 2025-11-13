@@ -443,35 +443,59 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 {isDraft && <TableHead className="w-12"></TableHead>}
                 <TableHead>Nom</TableHead>
                 <TableHead className="text-right">Quantité</TableHead>
+                <TableHead className="text-right">Puissance unitaire</TableHead>
                 {showTimeField && <TableHead className="text-right">{getTimeLabel()}</TableHead>}
+                <TableHead className="text-right">
+                  {showTimeField === "production" ? "Production totale" : 
+                   showTimeField === "utilisation" ? "Consommation totale" : 
+                   showTimeField === "autonomie" ? "Capacité totale" : "Total"}
+                </TableHead>
                 {isDraft && <TableHead className="text-right w-24">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {itemsList.map((item) => (
-                <TableRow key={item.id}>
-                  {isDraft && (
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedDraftItems.has(item.id)}
-                        onCheckedChange={() => toggleDraftItemSelection(item.id)}
-                      />
-                    </TableCell>
-                  )}
-                  <TableCell className="font-medium">{item.nom_accessoire}</TableCell>
-                  <TableCell className="text-right">
-                    {isDraft ? (
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.quantite}
-                        onChange={(e) => handleUpdateDraftItem(item.id, "quantite", parseInt(e.target.value) || 1)}
-                        className="w-20 ml-auto"
-                      />
-                    ) : (
-                      item.quantite
+              {itemsList.map((item) => {
+                const power = item.puissance_watts || 0;
+                const quantity = item.quantite || 1;
+                const usageTime = item.temps_utilisation_heures || 0;
+                const productionTime = item.temps_production_heures || 0;
+                
+                let totalValue = 0;
+                if (showTimeField === "production") {
+                  totalValue = power * productionTime * quantity;
+                } else if (showTimeField === "utilisation") {
+                  totalValue = power * usageTime * quantity;
+                } else if (showTimeField === "autonomie") {
+                  totalValue = power * quantity; // Capacité totale
+                }
+                
+                return (
+                  <TableRow key={item.id}>
+                    {isDraft && (
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedDraftItems.has(item.id)}
+                          onCheckedChange={() => toggleDraftItemSelection(item.id)}
+                        />
+                      </TableCell>
                     )}
-                  </TableCell>
+                    <TableCell className="font-medium">{item.nom_accessoire}</TableCell>
+                    <TableCell className="text-right">
+                      {isDraft ? (
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.quantite}
+                          onChange={(e) => handleUpdateDraftItem(item.id, "quantite", parseInt(e.target.value) || 1)}
+                          className="w-20 ml-auto"
+                        />
+                      ) : (
+                        item.quantite
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {power > 0 ? `${power} W` : "-"}
+                    </TableCell>
                   {showTimeField && showTimeField !== "autonomie" && (
                     <TableCell className="text-right">
                       <Input
@@ -511,6 +535,19 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                       </span>
                     </TableCell>
                   )}
+                  <TableCell className="text-right font-semibold">
+                    {totalValue > 0 ? (
+                      <span className={
+                        showTimeField === "production" ? "text-green-600 dark:text-green-400" :
+                        showTimeField === "utilisation" ? "text-red-600 dark:text-red-400" :
+                        "text-blue-600 dark:text-blue-400"
+                      }>
+                        {showTimeField === "autonomie" ? `${totalValue.toFixed(0)} Wh` : `${totalValue.toFixed(1)} Wh/j`}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                   {isDraft && (
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => handleDeleteDraftItem(item.id)}>
@@ -519,7 +556,8 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                     </TableCell>
                   )}
                 </TableRow>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         </div>
