@@ -249,12 +249,12 @@ export const CableSectionCalculator = () => {
             <CheckCircle className={maxLengthResult > 0 ? "h-4 w-4 text-purple-600 dark:text-purple-400" : "h-4 w-4 text-red-600 dark:text-red-400"} />
             <AlertDescription className={maxLengthResult > 0 ? "text-purple-800 dark:text-purple-200" : "text-red-800 dark:text-red-200"}>
               <span className="font-semibold text-xl">
-                {maxLengthResult > 0 ? `Longueur maximale : ${maxLengthResult.toFixed(1)} m` : "Section insuffisante"}
+                {maxLengthResult > 0 ? `Longueur maximale : ${maxLengthResult.toFixed(1)} m (distance simple)` : "Section insuffisante"}
               </span>
               <br />
               <span className="text-sm">
                 {maxLengthResult > 0 ? (
-                  <>Pour {current} A avec une section de {selectedSection} mm² et une chute de tension max de 3%</>
+                  <>Pour {current} A avec une section de {selectedSection} mm² et une chute de tension max de 3%. Câble total nécessaire : {(maxLengthResult * 2).toFixed(1)} m</>
                 ) : (
                   <>L'intensité de {current} A dépasse la capacité maximale d'une section de {selectedSection} mm² ({maxCurrentBySectionMap[selectedSection]} A max)</>
                 )}
