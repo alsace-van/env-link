@@ -748,6 +748,7 @@ export type Database = {
           supplier_id: string | null
           temps_production_heures: number | null
           temps_utilisation_heures: number | null
+          todo_id: string | null
           total_amount: number | null
           type_electrique: string | null
           unit_price: number | null
@@ -790,6 +791,7 @@ export type Database = {
           supplier_id?: string | null
           temps_production_heures?: number | null
           temps_utilisation_heures?: number | null
+          todo_id?: string | null
           total_amount?: number | null
           type_electrique?: string | null
           unit_price?: number | null
@@ -832,6 +834,7 @@ export type Database = {
           supplier_id?: string | null
           temps_production_heures?: number | null
           temps_utilisation_heures?: number | null
+          todo_id?: string | null
           total_amount?: number | null
           type_electrique?: string | null
           unit_price?: number | null
@@ -851,6 +854,13 @@ export type Database = {
             columns: ["supplier_id"]
             isOneToOne: false
             referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_expenses_todo_id_fkey"
+            columns: ["todo_id"]
+            isOneToOne: false
+            referencedRelation: "project_todos"
             referencedColumns: ["id"]
           },
         ]

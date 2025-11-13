@@ -36,6 +36,7 @@ interface BankLine {
   type_paiement?: string;
   statut_paiement?: string;
   facture_url?: string;
+  todo_id?: string; // ID de la tâche associée
 }
 
 interface Payment {
@@ -134,6 +135,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
           montant: expense.prix * expense.quantite,
           statut_paiement: expense.statut_paiement,
           facture_url: expense.facture_url,
+          todo_id: expense.todo_id,
         });
       });
     }
@@ -350,7 +352,36 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       return;
     }
 
+    // Supprimer la tâche associée si elle existe
+    if (line.todo_id) {
+      await supabase.from("project_todos").delete().eq("id", line.todo_id);
+    }
+
     toast.success("Ligne bancaire supprimée");
+    loadBankLines();
+    setPaymentRefresh((prev) => prev + 1);
+  };
+
+  const validatePayment = async (line: BankLine) => {
+    if (line.type !== "sortie") return;
+
+    const { error } = await supabase
+      .from("project_expenses")
+      .update({ statut_paiement: "paye" })
+      .eq("id", line.id);
+
+    if (error) {
+      toast.error("Erreur lors de la validation");
+      console.error(error);
+      return;
+    }
+
+    // Supprimer la tâche associée
+    if (line.todo_id) {
+      await supabase.from("project_todos").delete().eq("id", line.todo_id);
+    }
+
+    toast.success("Paiement validé");
     loadBankLines();
     setPaymentRefresh((prev) => prev + 1);
   };
@@ -480,13 +511,82 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         />
       )}
 
+      {/* Sorties à payer */}
+      {bankBalance && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sorties à payer</CardTitle>
+            <CardDescription>
+              Dépenses non payées en attente de validation manuelle
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {filteredBankLines.filter(line => line.type === "sortie" && line.statut_paiement !== "paye").length > 0 ? (
+              <div className="space-y-2">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2 px-2">Date</th>
+                        <th className="text-left py-2 px-2">Description</th>
+                        <th className="text-left py-2 px-2">Fournisseur</th>
+                        <th className="text-right py-2 px-2">Montant</th>
+                        <th className="text-right py-2 px-2">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredBankLines
+                        .filter(line => line.type === "sortie" && line.statut_paiement !== "paye")
+                        .map((line) => (
+                          <tr key={line.id} className="border-b hover:bg-muted/50">
+                            <td className="py-2 px-2">{format(new Date(line.date), "dd/MM/yyyy")}</td>
+                            <td className="py-2 px-2">{line.description}</td>
+                            <td className="py-2 px-2">{line.fournisseur}</td>
+                            <td className="py-2 px-2 text-right font-semibold text-destructive">
+                              -{line.montant.toFixed(2)} €
+                            </td>
+                            <td className="py-2 px-2 text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => validatePayment(line)}
+                                  className="h-7"
+                                >
+                                  ✓ Valider
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteBankLine(line)}
+                                  className="h-7"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Aucune sortie en attente de paiement
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Lignes bancaires */}
       {bankBalance && (
         <Card>
           <CardHeader>
             <CardTitle>Lignes bancaires</CardTitle>
             <CardDescription>
-              Toutes les entrées et sorties d'argent (seules les dépenses payées sont déduites du solde actuel)
+              Toutes les entrées et sorties d'argent (seules les sorties validées sont déduites du solde)
             </CardDescription>
           </CardHeader>
           <CardContent>

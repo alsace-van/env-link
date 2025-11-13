@@ -276,12 +276,47 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         facture_url: row.facture_url || null,
       }));
 
-      const { error: expenseError } = await supabase.from("project_expenses").insert(expensesToInsert);
+      const { data: insertedExpenses, error: expenseError } = await supabase
+        .from("project_expenses")
+        .insert(expensesToInsert)
+        .select();
 
       if (expenseError) {
         toast.error("Erreur lors de l'enregistrement des sorties d'argent");
         console.error(expenseError);
         return;
+      }
+
+      // Créer automatiquement une tâche pour chaque sortie non payée
+      if (insertedExpenses) {
+        const todosToCreate = insertedExpenses
+          .filter((expense: any) => expense.statut_paiement !== "paye")
+          .map((expense: any) => ({
+            user_id: user.id,
+            project_id: projectId,
+            title: `Payer: ${expense.nom_accessoire}`,
+            description: `Fournisseur: ${expense.fournisseur}\nMontant: ${expense.prix.toFixed(2)} €`,
+            priority: "high",
+            completed: false,
+          }));
+
+        if (todosToCreate.length > 0) {
+          const { data: createdTodos } = await supabase
+            .from("project_todos")
+            .insert(todosToCreate)
+            .select();
+
+          // Mettre à jour les dépenses avec l'ID de la tâche
+          if (createdTodos) {
+            for (let i = 0; i < createdTodos.length; i++) {
+              const expense = insertedExpenses.filter((e: any) => e.statut_paiement !== "paye")[i];
+              await supabase
+                .from("project_expenses")
+                .update({ todo_id: createdTodos[i].id })
+                .eq("id", expense.id);
+            }
+          }
+        }
       }
     }
 
