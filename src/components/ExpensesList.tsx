@@ -349,31 +349,13 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesLi
                     <div className="space-y-0.5 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <span>Prix achat: {expense.prix.toFixed(2)} € × </span>
-                        <div className="flex items-center gap-0.5">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-4 w-4"
-                            onClick={() => updateQuantity(expense.id, expense.quantite - 1)}
-                          >
-                            <Minus className="h-2 w-2" />
-                          </Button>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={expense.quantite}
-                            onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
-                            className="h-5 w-10 text-center text-xs p-0"
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-4 w-4"
-                            onClick={() => updateQuantity(expense.id, expense.quantite + 1)}
-                          >
-                            <Plus className="h-2 w-2" />
-                          </Button>
-                        </div>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={expense.quantite}
+                          onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+                          className="h-5 w-12 text-center text-xs p-1"
+                        />
                       </div>
 
                       {expense.prix_vente_ttc && (
