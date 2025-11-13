@@ -188,7 +188,9 @@ export const CableSectionCalculator = () => {
               className="h-12 text-lg"
               disabled={calculationMode === "length"}
             />
-            <p className="text-xs text-muted-foreground">Aller-retour déjà pris en compte</p>
+            <p className="text-xs text-muted-foreground">
+              Distance simple. Ex: 2m = 2m aller + 2m retour = 4m de câble total
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="voltage" className="text-base font-semibold">
