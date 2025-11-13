@@ -18,6 +18,7 @@ import {
   Package,
   Filter,
   Truck,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
@@ -39,6 +40,7 @@ import AccessoryCatalogFormDialog from "@/components/AccessoryCatalogFormDialog"
 import CategoryManagementDialog from "@/components/CategoryManagementDialog";
 import AccessoryImportExportDialog from "@/components/AccessoryImportExportDialog";
 import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
+import { NoticeSearchDialog } from "@/components/NoticeSearchDialog";
 
 interface Category {
   id: string;
@@ -111,10 +113,17 @@ const AccessoriesCatalogView = () => {
   const [expandedSubCategories, setExpandedSubCategories] = useState<Set<string>>(new Set());
   const [expandedOptions, setExpandedOptions] = useState<Set<string>>(new Set());
   const [isShippingFeesOpen, setIsShippingFeesOpen] = useState(false);
+  const [isNoticeDialogOpen, setIsNoticeDialogOpen] = useState(false);
+  const [selectedAccessoryForNotice, setSelectedAccessoryForNotice] = useState<Accessory | null>(null);
   
   const handleStatusChange = () => {
     loadAccessories();
     refreshData(); // Rafraîchir les données du planning pour afficher les nouvelles livraisons
+  };
+
+  const handleLinkNotice = (accessory: Accessory) => {
+    setSelectedAccessoryForNotice(accessory);
+    setIsNoticeDialogOpen(true);
   };
 
   useEffect(() => {
@@ -529,6 +538,14 @@ const AccessoriesCatalogView = () => {
                                                 <Button
                                                   variant="ghost"
                                                   size="icon"
+                                                  onClick={() => handleLinkNotice(accessory)}
+                                                  title="Lier une notice"
+                                                >
+                                                  <FileText className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                  variant="ghost"
+                                                  size="icon"
                                                   onClick={() => handleEdit(accessory)}
                                                 >
                                                   <Edit className="h-4 w-4" />
@@ -866,6 +883,24 @@ const AccessoriesCatalogView = () => {
             onClose={() => setIsShippingFeesOpen(false)}
             onFeesChange={loadAccessories}
           />
+
+          {selectedAccessoryForNotice && (
+            <NoticeSearchDialog
+              isOpen={isNoticeDialogOpen}
+              onClose={() => {
+                setIsNoticeDialogOpen(false);
+                setSelectedAccessoryForNotice(null);
+              }}
+              accessoryId={selectedAccessoryForNotice.id}
+              accessoryMarque={selectedAccessoryForNotice.marque}
+              accessoryNom={selectedAccessoryForNotice.nom}
+              onSuccess={() => {
+                loadAccessories();
+                setIsNoticeDialogOpen(false);
+                setSelectedAccessoryForNotice(null);
+              }}
+            />
+          )}
 
           {/* Bouton rond fixe pour les frais de port */}
           <Button
