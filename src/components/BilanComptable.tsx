@@ -99,20 +99,15 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Charger les dépenses (sorties)
-    let expensesQuery = supabase
+    // Charger uniquement les dépenses SANS project_id (factures fournisseurs globales)
+    // Les dépenses avec project_id sont le détail des factures et ne doivent pas apparaître ici
+    const { data: expensesData, error: expensesError } = await supabase
       .from("project_expenses")
       .select("*")
+      .is("project_id", null)
       .not("fournisseur", "is", null)
-      .eq("user_id", user.id);
-
-    // En mode projet: filtrer par projet spécifique
-    // En mode global: charger toutes les dépenses
-    if (projectId) {
-      expensesQuery = expensesQuery.eq("project_id", projectId);
-    }
-
-    const { data: expensesData, error: expensesError } = await expensesQuery.order("date_achat", { ascending: false });
+      .eq("user_id", user.id)
+      .order("date_achat", { ascending: false });
 
     if (expensesError) {
       console.error("Error loading expenses:", expensesError);
