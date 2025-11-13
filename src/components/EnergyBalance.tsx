@@ -442,15 +442,15 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
               <TableRow>
                 {isDraft && <TableHead className="w-12"></TableHead>}
                 <TableHead>Nom</TableHead>
-                <TableHead className="text-right">Quantité</TableHead>
-                <TableHead className="text-right">Puissance unitaire</TableHead>
-                {showTimeField && <TableHead className="text-right">{getTimeLabel()}</TableHead>}
-                <TableHead className="text-right">
+                <TableHead className="text-center w-24">Quantité</TableHead>
+                <TableHead className="text-center w-40">Puissance unitaire</TableHead>
+                {showTimeField && <TableHead className="text-center w-48">{getTimeLabel()}</TableHead>}
+                <TableHead className="text-center w-44">
                   {showTimeField === "production" ? "Production totale" : 
                    showTimeField === "utilisation" ? "Consommation totale" : 
                    showTimeField === "autonomie" ? "Capacité totale" : "Total"}
                 </TableHead>
-                {isDraft && <TableHead className="text-right w-24">Actions</TableHead>}
+                {isDraft && <TableHead className="text-center w-24">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -480,24 +480,24 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                       </TableCell>
                     )}
                     <TableCell className="font-medium">{item.nom_accessoire}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
                       {isDraft ? (
                         <Input
                           type="number"
                           min="1"
                           value={item.quantite}
                           onChange={(e) => handleUpdateDraftItem(item.id, "quantite", parseInt(e.target.value) || 1)}
-                          className="w-20 ml-auto"
+                          className="w-20 mx-auto"
                         />
                       ) : (
                         item.quantite
                       )}
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
+                    <TableCell className="text-center text-muted-foreground">
                       {power > 0 ? `${power} W` : "-"}
                     </TableCell>
                   {showTimeField && showTimeField !== "autonomie" && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
                       <Input
                         type="number"
                         min="0"
@@ -524,18 +524,18 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                             );
                           }
                         }}
-                        className="w-24 ml-auto"
+                        className="w-24 mx-auto"
                       />
                     </TableCell>
                   )}
                   {showTimeField === "autonomie" && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
                       <span className="text-muted-foreground">
                         {item.puissance_watts ? `${item.puissance_watts} Wh` : "Non renseigné"}
                       </span>
                     </TableCell>
                   )}
-                  <TableCell className="text-right font-semibold">
+                  <TableCell className="text-center font-semibold">
                     {totalValue > 0 ? (
                       <span className={
                         showTimeField === "production" ? "text-green-600 dark:text-green-400" :
@@ -549,7 +549,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                     )}
                   </TableCell>
                   {isDraft && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
                       <Button variant="ghost" size="sm" onClick={() => handleDeleteDraftItem(item.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
