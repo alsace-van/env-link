@@ -19,6 +19,8 @@ interface VehicleCatalog {
   longueur_mm: number;
   largeur_mm?: number;
   hauteur_mm?: number;
+  longueur_chargement_mm?: number;
+  largeur_chargement_mm?: number;
   poids_vide_kg?: number;
   charge_utile_kg?: number;
   ptac_kg?: number;
