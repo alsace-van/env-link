@@ -74,8 +74,8 @@ export const ShopProductFormDialog = ({
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
   const [accessoryOptions, setAccessoryOptions] = useState<Array<{ id: string; nom: string; prix_vente_ttc: number }>>([]);
   
-  // Pour kits sur-mesure
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  // Pour kits sur-mesure - désormais on sélectionne des accessoires spécifiques
+  const [kitAccessories, setKitAccessories] = useState<Array<{ id: string; quantity: number }>>([]);
   const [categories, setCategories] = useState<{ id: string; nom: string }[]>([]);
 
   useEffect(() => {
@@ -131,16 +131,25 @@ export const ShopProductFormDialog = ({
     // Charger les accessoires ou catégories selon le type
     if (editProduct.type === "custom_kit") {
       // @ts-ignore - Type inference too deep issue with Supabase types
-      const response: any = await supabase
+      const { data, error } = await supabase
         .from("shop_custom_kits")
-        .select("allowed_category_ids")
+        .select("id")
         .eq("product_id", editProduct.id)
         .maybeSingle();
-      
-      const { data, error } = response;
 
       if (!error && data) {
-        setSelectedCategories(data.allowed_category_ids || []);
+        // Charger les accessoires du kit
+        const { data: kitAccessoriesData } = await supabase
+          .from("shop_custom_kit_accessories")
+          .select("accessory_id, default_quantity")
+          .eq("custom_kit_id", data.id);
+        
+        if (kitAccessoriesData) {
+          setKitAccessories(kitAccessoriesData.map((ka: any) => ({
+            id: ka.accessory_id,
+            quantity: ka.default_quantity
+          })));
+        }
       }
     } else {
       const { data, error } = await supabase
@@ -248,8 +257,8 @@ export const ShopProductFormDialog = ({
       return;
     }
 
-    if (productType === "custom_kit" && selectedCategories.length === 0) {
-      toast.error("Un kit sur-mesure doit proposer au moins une catégorie");
+    if (productType === "custom_kit" && kitAccessories.length === 0) {
+      toast.error("Un kit sur-mesure doit contenir au moins un accessoire");
       return;
     }
 
@@ -295,12 +304,32 @@ export const ShopProductFormDialog = ({
 
           if (itemsError) throw itemsError;
         } else if (productType === "custom_kit") {
-          const { error: kitError } = await supabase
+          // Supprimer les anciens accessoires du kit
+          const { data: kitData } = await supabase
             .from("shop_custom_kits")
-            .update({ allowed_category_ids: selectedCategories })
-            .eq("product_id", editProduct.id);
+            .select("id")
+            .eq("product_id", editProduct.id)
+            .single();
+          
+          if (kitData) {
+            await supabase
+              .from("shop_custom_kit_accessories")
+              .delete()
+              .eq("custom_kit_id", kitData.id);
+            
+            // Ajouter les nouveaux accessoires
+            const kitAccessoriesData = kitAccessories.map(acc => ({
+              custom_kit_id: kitData.id,
+              accessory_id: acc.id,
+              default_quantity: acc.quantity,
+            }));
 
-          if (kitError) throw kitError;
+            const { error: kitAccessoriesError } = await supabase
+              .from("shop_custom_kit_accessories")
+              .insert(kitAccessoriesData);
+
+            if (kitAccessoriesError) throw kitAccessoriesError;
+          }
         }
 
         toast.success("Produit modifié avec succès");
@@ -335,15 +364,35 @@ export const ShopProductFormDialog = ({
 
           if (itemsError) throw itemsError;
         } else if (productType === "custom_kit") {
-          // Créer le kit sur-mesure avec les catégories
-          const { error: kitError } = await supabase
+          // Créer le kit sur-mesure
+          const { data: kitData, error: kitError } = await supabase
             .from("shop_custom_kits" as any)
             .insert({
-              product_id: (product as any).id,
-              allowed_category_ids: selectedCategories,
-            } as any);
+              user_id: user.id,
+              nom: productName,
+              description,
+              prix_base: parseFloat(price) || 0,
+              is_active: isActive,
+            } as any)
+            .select()
+            .maybeSingle();
 
           if (kitError) throw kitError;
+
+          // Ajouter les accessoires du kit
+          if (kitData) {
+            const kitAccessoriesData = kitAccessories.map(acc => ({
+              custom_kit_id: (kitData as any).id,
+              accessory_id: acc.id,
+              default_quantity: acc.quantity,
+            }));
+
+            const { error: kitAccessoriesError } = await supabase
+              .from("shop_custom_kit_accessories")
+              .insert(kitAccessoriesData);
+
+            if (kitAccessoriesError) throw kitAccessoriesError;
+          }
         }
 
         toast.success("Produit créé avec succès");
@@ -371,7 +420,7 @@ export const ShopProductFormDialog = ({
     setIsActive(true);
     setProductType("simple");
     setSelectedAccessories([]);
-    setSelectedCategories([]);
+    setKitAccessories([]);
     setSelectedCategoryFilter("all");
     setSearchValue("");
     setAccessoryOptions([]);
@@ -579,33 +628,6 @@ export const ShopProductFormDialog = ({
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="0.00"
               />
-            </div>
-          )}
-
-          {productType === "custom_kit" && (
-            <div>
-              <Label>Catégories d'accessoires disponibles dans le kit *</Label>
-              <p className="text-xs text-muted-foreground mb-2">
-                Le client pourra composer son kit en choisissant des accessoires parmi ces catégories. 
-                Le prix sera calculé automatiquement.
-              </p>
-              <div className="border rounded-md p-4 max-h-60 overflow-y-auto space-y-2">
-                {categories.map((cat) => (
-                  <div key={cat.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      checked={selectedCategories.includes(cat.id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedCategories([...selectedCategories, cat.id]);
-                        } else {
-                          setSelectedCategories(selectedCategories.filter(id => id !== cat.id));
-                        }
-                      }}
-                    />
-                    <span className="text-sm">{cat.nom}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
