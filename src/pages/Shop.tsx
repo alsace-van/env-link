@@ -245,15 +245,17 @@ const Shop = () => {
             <ShoppingBag className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Boutique</h1>
             {isAdmin && (
-              <ShopProductFormDialog
-                trigger={
-                  <Button variant="outline" size="sm">
-                    <Settings className="h-4 w-4 mr-2" />
-                    Gérer les produits
-                  </Button>
-                }
-                onSuccess={() => setRefreshProducts(prev => prev + 1)}
-              />
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  setEditingKit(null);
+                  setIsEditDialogOpen(true);
+                }}
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Gérer les produits
+              </Button>
             )}
           </div>
         </div>
@@ -417,15 +419,19 @@ const Shop = () => {
         />
       )}
 
-      {editingKit && (
+      {isEditDialogOpen && (
         <ShopProductFormDialog
           editProduct={editingKit}
           trigger={null}
+          forceOpen={true}
           onSuccess={() => {
             setRefreshProducts(prev => prev + 1);
             setIsEditDialogOpen(false);
             setEditingKit(null);
-            toast.success("Kit modifié avec succès");
+          }}
+          onClose={() => {
+            setIsEditDialogOpen(false);
+            setEditingKit(null);
           }}
         />
       )}
