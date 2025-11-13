@@ -145,11 +145,14 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
       // @ts-ignore - Type inference too deep issue with Supabase types
       const { data, error } = await supabase
         .from("shop_custom_kits")
-        .select("id")
+        .select("id, prix_base")
         .eq("product_id", editProduct.id)
         .maybeSingle();
 
       if (!error && data) {
+        // Utiliser le prix_base du kit au lieu du prix du produit
+        setPrice(data.prix_base?.toString() || "0");
+
         // Charger les accessoires du kit
         const { data: kitAccessoriesData } = await supabase
           .from("shop_custom_kit_accessories" as any)
@@ -325,7 +328,7 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
           .update({
             name: productName,
             description,
-            price: productType === "custom_kit" ? 0 : parseFloat(price),
+            price: parseFloat(price) || 0,
             is_active: isActive,
           } as any)
           .eq("id", editProduct.id);
@@ -354,13 +357,24 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
             .from("shop_custom_kits")
             .select("id")
             .eq("product_id", editProduct.id)
-            .single();
+            .maybeSingle();
 
           if (kitData) {
             await supabase
               .from("shop_custom_kit_accessories" as any)
               .delete()
               .eq("custom_kit_id", kitData.id);
+
+            // Mettre à jour les infos du kit
+            await supabase
+              .from("shop_custom_kits" as any)
+              .update({
+                nom: productName,
+                description,
+                prix_base: parseFloat(price) || 0,
+                is_active: isActive,
+              } as any)
+              .eq("id", kitData.id);
 
             // Ajouter les nouveaux accessoires
             const kitAccessoriesData = kitAccessories.map((acc) => ({
@@ -387,7 +401,7 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
             name: productName,
             description,
             type: productType,
-            price: productType === "custom_kit" ? 0 : parseFloat(price),
+            price: parseFloat(price) || 0,
             is_active: isActive,
           } as any)
           .select()
@@ -407,10 +421,11 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
 
           if (itemsError) throw itemsError;
         } else if (productType === "custom_kit") {
-          // Créer le kit sur-mesure
+          // Créer le kit sur-mesure avec le lien vers le produit
           const { data: kitData, error: kitError } = await supabase
             .from("shop_custom_kits" as any)
             .insert({
+              product_id: (product as any).id,
               user_id: user.id,
               nom: productName,
               description,
@@ -674,6 +689,21 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct }: Produ
               {/* Interface améliorée pour les kits sur-mesure */}
               {productType === "custom_kit" && (
                 <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="base_price">Prix de base du kit (€)</Label>
+                    <Input
+                      id="base_price"
+                      type="number"
+                      step="0.01"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                      placeholder="0.00"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Prix de base avant l'ajout des accessoires (peut être 0)
+                    </p>
+                  </div>
+
                   <Separator />
 
                   <div className="flex items-center justify-between">
