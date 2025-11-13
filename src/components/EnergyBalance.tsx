@@ -234,6 +234,16 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     }, 0);
   };
 
+  const calculateTotalProduction = (itemsList: ElectricalItem[]) => {
+    const producers = itemsList.filter((item) => item.type_electrique === "producteur");
+    return producers.reduce((total, item) => {
+      const power = item.puissance_watts || 0;
+      const productionTime = item.temps_production_heures || 0;
+      const quantity = item.quantite || 1;
+      return total + power * productionTime * quantity;
+    }, 0);
+  };
+
   const calculateBatteryCapacity = (itemsList: ElectricalItem[]) => {
     const storage = itemsList.filter((item) => item.type_electrique === "stockage");
     return storage.reduce((total, item) => {
@@ -246,11 +256,15 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
 
   const calculateRemainingAutonomy = (itemsList: ElectricalItem[]) => {
     const totalConsumption = calculateTotalConsumption(itemsList);
+    const totalProduction = calculateTotalProduction(itemsList);
     const batteryCapacity = calculateBatteryCapacity(itemsList);
 
-    if (totalConsumption === 0) return null;
+    // Consommation nette = consommation - production
+    const netConsumption = totalConsumption - totalProduction;
 
-    return batteryCapacity / totalConsumption;
+    if (netConsumption <= 0) return null; // Autonomie infinie si production >= consommation
+
+    return batteryCapacity / netConsumption;
   };
 
   const handleTimeUpdate = (
@@ -365,10 +379,12 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const renderAutonomyCard = (itemsList: ElectricalItem[]) => {
-    const { storage } = categorizeItems(itemsList);
+    const { storage, producers } = categorizeItems(itemsList);
     const totalConsumption = calculateTotalConsumption(itemsList);
+    const totalProduction = calculateTotalProduction(itemsList);
     const batteryCapacity = calculateBatteryCapacity(itemsList);
     const remainingAutonomy = calculateRemainingAutonomy(itemsList);
+    const netConsumption = totalConsumption - totalProduction;
 
     if (storage.length === 0 || totalConsumption === 0) return null;
 
@@ -381,11 +397,17 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <div className="text-sm text-muted-foreground">Consommation quotidienne</div>
               <div className="text-xl font-bold text-red-600 dark:text-red-400">
                 {totalConsumption.toFixed(1)} Wh/jour
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-muted-foreground">Production quotidienne</div>
+              <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                {totalProduction.toFixed(1)} Wh/jour
               </div>
             </div>
             <div>
@@ -394,11 +416,24 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
             </div>
           </div>
 
-          {remainingAutonomy !== null && (
+          {netConsumption > 0 && remainingAutonomy !== null && (
             <div className="pt-3 border-t">
-              <div className="text-sm text-muted-foreground mb-1">Autonomie estimée</div>
+              <div className="text-sm text-muted-foreground mb-1">
+                Autonomie estimée (consommation nette: {netConsumption.toFixed(1)} Wh/jour)
+              </div>
               <div className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">
                 {remainingAutonomy.toFixed(1)} jours
+              </div>
+            </div>
+          )}
+          
+          {netConsumption <= 0 && producers.length > 0 && (
+            <div className="pt-3 border-t">
+              <div className="text-sm text-green-600 dark:text-green-400 mb-1">
+                ⚡ Production excédentaire: {Math.abs(netConsumption).toFixed(1)} Wh/jour
+              </div>
+              <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                Autonomie infinie
               </div>
             </div>
           )}
