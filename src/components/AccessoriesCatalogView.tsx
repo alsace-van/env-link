@@ -24,6 +24,7 @@ import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import StockStatusManager from "@/components/StockStatusManager";
+import { useProjectData } from "@/contexts/ProjectDataContext";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -89,6 +90,7 @@ interface Accessory {
 }
 
 const AccessoriesCatalogView = () => {
+  const { refreshData } = useProjectData();
   const [accessories, setAccessories] = useState<Accessory[]>([]);
   const [filteredAccessories, setFilteredAccessories] = useState<Accessory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -109,6 +111,11 @@ const AccessoriesCatalogView = () => {
   const [expandedSubCategories, setExpandedSubCategories] = useState<Set<string>>(new Set());
   const [expandedOptions, setExpandedOptions] = useState<Set<string>>(new Set());
   const [isShippingFeesOpen, setIsShippingFeesOpen] = useState(false);
+  
+  const handleStatusChange = () => {
+    loadAccessories();
+    refreshData(); // Rafraîchir les données du planning pour afficher les nouvelles livraisons
+  };
 
   useEffect(() => {
     loadAccessories();
@@ -546,7 +553,7 @@ const AccessoriesCatalogView = () => {
                                                 currentQuantity={accessory.stock_quantity || 0}
                                                 deliveryDate={accessory.delivery_date}
                                                 trackingNumber={accessory.tracking_number}
-                                                onStatusChange={loadAccessories}
+                                                onStatusChange={handleStatusChange}
                                               />
                                             </div>
 
@@ -788,7 +795,7 @@ const AccessoriesCatalogView = () => {
                                                   currentQuantity={accessory.stock_quantity || 0}
                                                   deliveryDate={accessory.delivery_date}
                                                   trackingNumber={accessory.tracking_number}
-                                                  onStatusChange={loadAccessories}
+                                                  onStatusChange={handleStatusChange}
                                                 />
                                               </div>
                                             </div>
