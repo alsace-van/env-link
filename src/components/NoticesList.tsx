@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, Download, Eye, Pencil, Shield, Sparkles } from "lucide-react";
+import { ExternalLink, Trash2, Download, Eye, Pencil, Shield, Sparkles, Search, Filter, X } from "lucide-react";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PdfViewerModal } from "./PdfViewerModalWithAI"; // ✅ MODIFIÉ
 import { NoticeEditDialog } from "./NoticeEditDialog";
 import {
@@ -56,6 +58,13 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [noticeToEdit, setNoticeToEdit] = useState<Notice | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  
+  // Filtres
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
+  const [showWithSummary, setShowWithSummary] = useState<boolean | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     checkAdminRole();
@@ -247,6 +256,52 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     loadNotices();
   };
 
+  // Filtrer les notices
+  const filteredNotices = notices.filter((notice) => {
+    // Recherche textuelle
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        notice.titre.toLowerCase().includes(query) ||
+        notice.marque?.toLowerCase().includes(query) ||
+        notice.modele?.toLowerCase().includes(query) ||
+        notice.description?.toLowerCase().includes(query) ||
+        notice.categorie?.toLowerCase().includes(query);
+      if (!matchesSearch) return false;
+    }
+
+    // Filtre par catégorie
+    if (selectedCategory !== "all" && notice.categorie !== selectedCategory) {
+      return false;
+    }
+
+    // Filtre par type (admin/utilisateur)
+    if (selectedType !== "all") {
+      if (selectedType === "admin" && !notice.is_admin_notice) return false;
+      if (selectedType === "user" && notice.is_admin_notice) return false;
+    }
+
+    // Filtre par résumé IA
+    if (showWithSummary !== null) {
+      if (showWithSummary && !notice.summary) return false;
+      if (!showWithSummary && notice.summary) return false;
+    }
+
+    return true;
+  });
+
+  // Obtenir les catégories uniques
+  const categories = Array.from(new Set(notices.map(n => n.categorie).filter(Boolean)));
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setSelectedCategory("all");
+    setSelectedType("all");
+    setShowWithSummary(null);
+  };
+
+  const hasActiveFilters = searchQuery || selectedCategory !== "all" || selectedType !== "all" || showWithSummary !== null;
+
   if (isLoading) {
     return <div className="text-center py-8">Chargement...</div>;
   }
@@ -279,9 +334,108 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         notice={noticeToEdit}
         onSuccess={handleEditSuccess}
       />
+
+      {/* Barre de recherche et filtres */}
+      <Card className="mb-4">
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            {/* Barre de recherche */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher par titre, marque, modèle, description..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button
+                variant={showFilters ? "default" : "outline"}
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Filtres avancés
+              </Button>
+              {hasActiveFilters && (
+                <Button variant="outline" onClick={resetFilters}>
+                  <X className="h-4 w-4 mr-2" />
+                  Réinitialiser
+                </Button>
+              )}
+            </div>
+
+            {/* Filtres avancés */}
+            {showFilters && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Catégorie</label>
+                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Toutes les catégories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Toutes les catégories</SelectItem>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat} value={cat!}>
+                          {cat}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Type</label>
+                  <Select value={selectedType} onValueChange={setSelectedType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tous les types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les types</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="user">Utilisateur</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Résumé IA</label>
+                  <Select 
+                    value={showWithSummary === null ? "all" : showWithSummary ? "with" : "without"} 
+                    onValueChange={(v) => setShowWithSummary(v === "all" ? null : v === "with")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tous" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous</SelectItem>
+                      <SelectItem value="with">Avec résumé IA</SelectItem>
+                      <SelectItem value="without">Sans résumé IA</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {/* Compteur de résultats */}
+            <div className="text-sm text-muted-foreground">
+              {filteredNotices.length} notice{filteredNotices.length > 1 ? "s" : ""} trouvée{filteredNotices.length > 1 ? "s" : ""}
+              {hasActiveFilters && ` sur ${notices.length}`}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
-      <div className="border rounded-lg">
-      <Table>
+      {filteredNotices.length === 0 ? (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            Aucune notice ne correspond aux critères de recherche.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="border rounded-lg">
+          <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[200px]">Titre</TableHead>
@@ -296,7 +450,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {notices.map((notice) => {
+          {filteredNotices.map((notice) => {
             const canModify = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
             const canDelete = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
             
@@ -401,8 +555,9 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
             </TableRow>
           )})}
         </TableBody>
-      </Table>
-    </div>
+          </Table>
+        </div>
+      )}
     </>
   );
 };
