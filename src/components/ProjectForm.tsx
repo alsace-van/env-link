@@ -28,6 +28,8 @@ interface VehicleCatalog {
   longueur_mm: number;
   largeur_mm?: number;
   hauteur_mm?: number;
+  longueur_chargement_mm?: number;
+  largeur_chargement_mm?: number;
   poids_vide_kg?: number;
   charge_utile_kg?: number;
   ptac_kg?: number;
@@ -803,20 +805,20 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                     </div>
 
                     {/* Surface utile */}
-                    {(matchingVehicle.longueur_mm || matchingVehicle.largeur_mm) && (
+                    {(matchingVehicle.longueur_chargement_mm || matchingVehicle.largeur_chargement_mm) && (
                       <div className="flex-1">
                         <h4 className="font-semibold mb-2 text-blue-600">Surface utile</h4>
                         <div className="space-y-1">
-                          {matchingVehicle.longueur_mm && (
+                          {matchingVehicle.longueur_chargement_mm && (
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">L utile :</span>
-                              <span className="font-medium">{matchingVehicle.longueur_mm} mm</span>
+                              <span className="font-medium">{matchingVehicle.longueur_chargement_mm} mm</span>
                             </div>
                           )}
-                          {matchingVehicle.largeur_mm && (
+                          {matchingVehicle.largeur_chargement_mm && (
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">l utile :</span>
-                              <span className="font-medium">{matchingVehicle.largeur_mm} mm</span>
+                              <span className="font-medium">{matchingVehicle.largeur_chargement_mm} mm</span>
                             </div>
                           )}
                         </div>
