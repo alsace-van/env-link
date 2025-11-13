@@ -87,7 +87,7 @@ const Shop = () => {
 
       if (productsError) throw productsError;
 
-      // Charger les kits sur-mesure
+      // Charger les kits sur-mesure - s'assurer qu'il n'y a pas de duplicatas
       const { data: kitsData, error: kitsError } = await supabase
         .from("shop_custom_kits")
         .select("*")
@@ -96,7 +96,22 @@ const Shop = () => {
 
       if (kitsError) throw kitsError;
 
-      // Fusionner les deux listes
+      console.log("Kits chargés:", kitsData);
+
+      // Fusionner les deux listes - utiliser un Set pour éviter les duplicatas
+      const uniqueKits = new Map<string, any>();
+      (kitsData || []).forEach((k: any) => {
+        uniqueKits.set(k.id, {
+          id: k.id,
+          name: k.nom,
+          description: k.description,
+          type: "custom_kit" as const,
+          price: 0,
+          is_active: k.is_active,
+          base_price: k.prix_base,
+        });
+      });
+
       const allProducts: ShopProduct[] = [
         ...(productsData || []).map((p: any) => ({
           id: p.id,
@@ -106,15 +121,7 @@ const Shop = () => {
           price: p.price || 0,
           is_active: p.is_active,
         })),
-        ...(kitsData || []).map((k: any) => ({
-          id: k.id,
-          name: k.nom,
-          description: k.description,
-          type: "custom_kit" as const,
-          price: 0,
-          is_active: k.is_active,
-          base_price: k.prix_base,
-        })),
+        ...Array.from(uniqueKits.values()),
       ];
 
       setShopProducts(allProducts);

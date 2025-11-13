@@ -1,18 +1,16 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, Plus, Trash2, Copy, Tag, TrendingDown, Eye } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ShoppingCart, Plus, Minus } from "lucide-react";
 import { toast } from "sonner";
-import { useAccessoryTieredPricing } from "@/hooks/useAccessoryTieredPricing";
 
 interface Category {
   id: string;
@@ -23,9 +21,6 @@ interface AccessoryOption {
   id: string;
   nom: string;
   prix_vente_ttc: number;
-  prix_reference?: number;
-  marge_pourcent?: number;
-  marge_nette?: number;
 }
 
 interface Accessory {
@@ -37,26 +32,17 @@ interface Accessory {
   description?: string;
   options?: AccessoryOption[];
   couleur?: string;
-  puissance_watts?: number;
-  poids_kg?: number;
-  longueur_mm?: number;
-  largeur_mm?: number;
-  hauteur_mm?: number;
-  promo_active?: boolean;
-  promo_price?: number;
-  promo_start_date?: string;
-  promo_end_date?: string;
   image_url?: string;
 }
 
-interface CategoryInstance {
-  id: string;
-  categoryId: string;
-  categoryName: string;
-  accessoryId?: string;
+interface SelectedAccessory {
+  accessory_id: string;
+  name: string;
+  category_name: string;
   quantity: number;
+  prix_unitaire: number;
+  selected_options: string[];
   color?: string;
-  selectedOptions: string[];
 }
 
 interface CustomKitConfigDialogProps {
@@ -87,19 +73,16 @@ const CustomKitConfigDialog = ({
   onOpenChange,
   onAddToCart,
 }: CustomKitConfigDialogProps) => {
-  const [allowedCategories, setAllowedCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [accessoriesByCategory, setAccessoriesByCategory] = useState<Map<string, Accessory[]>>(new Map());
-  const [categoryInstances, setCategoryInstances] = useState<CategoryInstance[]>([]);
-  const [accessoryTieredPricing, setAccessoryTieredPricing] = useState<Map<string, any[]>>(new Map());
+  const [selectedAccessories, setSelectedAccessories] = useState<Map<string, SelectedAccessory>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [detailsAccessory, setDetailsAccessory] = useState<Accessory | null>(null);
 
   useEffect(() => {
     if (open) {
       loadKitConfiguration();
     } else {
-      // Reset when closing
-      setCategoryInstances([]);
+      setSelectedAccessories(new Map());
     }
   }, [open, productId]);
 
@@ -107,15 +90,13 @@ const CustomKitConfigDialog = ({
     setLoading(true);
 
     // Charger la configuration du kit
-    // @ts-expect-error - Table shop_custom_kits not in Supabase types
-    const result: any = await supabase
+    const { data: kitData, error: kitError } = await supabase
       .from("shop_custom_kits")
       .select("allowed_category_ids")
-      .eq("product_id", productId)
-      .single();
-    const { data: kitData, error: kitError } = result;
+      .eq("id", productId)
+      .maybeSingle();
 
-    if (kitError) {
+    if (kitError || !kitData) {
       console.error("Erreur lors du chargement du kit:", kitError);
       toast.error("Erreur lors du chargement de la configuration");
       setLoading(false);
@@ -143,37 +124,14 @@ const CustomKitConfigDialog = ({
       return;
     }
 
-    setAllowedCategories(categoriesData || []);
-
-    // Initialiser une instance par catégorie
-    const initialInstances: CategoryInstance[] = (categoriesData || []).map((cat) => ({
-      id: `${cat.id}-${Date.now()}-${Math.random()}`,
-      categoryId: cat.id,
-      categoryName: cat.nom,
-      quantity: 1,
-      selectedOptions: [],
-    }));
-    setCategoryInstances(initialInstances);
+    setCategories(categoriesData || []);
 
     // Charger les accessoires disponibles pour chaque catégorie
     const { data: accessoriesData, error: accessoriesError } = await supabase
       .from("accessories_catalog")
-      .select(
-        "id, nom, marque, prix_vente_ttc, category_id, description, couleur, puissance_watts, poids_kg, longueur_mm, largeur_mm, hauteur_mm, promo_active, promo_price, promo_start_date, promo_end_date, image_url",
-      )
+      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
       .in("category_id", categoryIds)
       .eq("available_in_shop", true);
-
-    // 🔍 LOGS DE DIAGNOSTIC
-    console.log("=== DIAGNOSTIC KIT CONFIGURATION ===");
-    console.log("1. Category IDs configurés:", categoryIds);
-    console.log("2. Nombre d'accessoires trouvés:", accessoriesData?.length || 0);
-    console.log("3. Accessoires:", accessoriesData);
-    if (accessoriesData?.length === 0) {
-      console.warn("⚠️ AUCUN ACCESSOIRE TROUVÉ !");
-      console.warn("Vérifiez que les accessoires ont 'available_in_shop = true'");
-    }
-    console.log("====================================");
 
     if (accessoriesError) {
       console.error("Erreur lors du chargement des accessoires:", accessoriesError);
@@ -184,7 +142,10 @@ const CustomKitConfigDialog = ({
 
     // Charger les options pour tous les accessoires
     const accessoryIds = (accessoriesData || []).map((a: any) => a.id);
-    const { data: optionsData } = await supabase.from("accessory_options").select("*").in("accessory_id", accessoryIds);
+    const { data: optionsData } = await supabase
+      .from("accessory_options")
+      .select("*")
+      .in("accessory_id", accessoryIds);
 
     // Regrouper les options par accessoire
     const optionsByAccessory = new Map<string, AccessoryOption[]>();
@@ -205,758 +166,285 @@ const CustomKitConfigDialog = ({
       accessoriesMap.get(categoryId)!.push({
         ...accessory,
         options: optionsByAccessory.get(accessory.id) || [],
-      } as any);
+      });
     });
 
     setAccessoriesByCategory(accessoriesMap);
-
-    // Charger les prix dégressifs pour tous les accessoires
-    const { data: tieredPricingData } = await supabase
-      .from("accessory_tiered_pricing")
-      .select("accessory_id, min_quantity as article_position, prix_unitaire as discount_percent")
-      .in("accessory_id", accessoryIds)
-      .order("min_quantity") as any;
-
-    const tieredPricingMap = new Map<string, any[]>();
-    (tieredPricingData || []).forEach((tier) => {
-      if (!tieredPricingMap.has(tier.accessory_id)) {
-        tieredPricingMap.set(tier.accessory_id, []);
-      }
-      tieredPricingMap.get(tier.accessory_id)!.push(tier);
-    });
-
-    setAccessoryTieredPricing(tieredPricingMap);
     setLoading(false);
   };
 
-  const duplicateCategory = (categoryId: string) => {
-    const category = allowedCategories.find((c) => c.id === categoryId);
-    if (category) {
-      const newInstance: CategoryInstance = {
-        id: `${categoryId}-${Date.now()}-${Math.random()}`,
-        categoryId: category.id,
-        categoryName: category.nom,
+  const handleAccessorySelect = (categoryId: string, categoryName: string, accessoryId: string) => {
+    const accessories = accessoriesByCategory.get(categoryId) || [];
+    const accessory = accessories.find((a) => a.id === accessoryId);
+    
+    if (!accessory) return;
+
+    const newSelected = new Map(selectedAccessories);
+    const key = `${categoryId}-${accessoryId}`;
+    
+    if (newSelected.has(key)) {
+      newSelected.delete(key);
+    } else {
+      newSelected.set(key, {
+        accessory_id: accessoryId,
+        name: accessory.nom,
+        category_name: categoryName,
         quantity: 1,
-        selectedOptions: [],
-      };
-      setCategoryInstances((prev) => [...prev, newInstance]);
+        prix_unitaire: accessory.prix_vente_ttc || 0,
+        selected_options: [],
+        color: accessory.couleur,
+      });
+    }
+    
+    setSelectedAccessories(newSelected);
+  };
+
+  const updateQuantity = (key: string, delta: number) => {
+    const newSelected = new Map(selectedAccessories);
+    const item = newSelected.get(key);
+    
+    if (item) {
+      const newQuantity = Math.max(1, item.quantity + delta);
+      newSelected.set(key, { ...item, quantity: newQuantity });
+      setSelectedAccessories(newSelected);
     }
   };
 
-  const removeInstance = (instanceId: string) => {
-    setCategoryInstances((prev) => prev.filter((inst) => inst.id !== instanceId));
-  };
-
-  const updateInstanceAccessory = (instanceId: string, accessoryId: string | undefined) => {
-    setCategoryInstances((prev) =>
-      prev.map((inst) =>
-        inst.id === instanceId
-          ? {
-              ...inst,
-              accessoryId,
-              quantity: 1,
-              selectedOptions: [],
-              color: undefined, // Reset color when changing accessory
-            }
-          : inst,
-      ),
-    );
-  };
-
-  const updateInstanceQuantity = (instanceId: string, quantity: number) => {
-    if (quantity < 1) return;
-    setCategoryInstances((prev) => prev.map((inst) => (inst.id === instanceId ? { ...inst, quantity } : inst)));
-  };
-
-  const updateInstanceColor = (instanceId: string, color: string) => {
-    setCategoryInstances((prev) => prev.map((inst) => (inst.id === instanceId ? { ...inst, color } : inst)));
-  };
-
-  const toggleInstanceOption = (instanceId: string, optionId: string) => {
-    setCategoryInstances((prev) =>
-      prev.map((inst) => {
-        if (inst.id === instanceId) {
-          const selectedOptions = inst.selectedOptions.includes(optionId)
-            ? inst.selectedOptions.filter((id) => id !== optionId)
-            : [...inst.selectedOptions, optionId];
-          return { ...inst, selectedOptions };
-        }
-        return inst;
-      }),
-    );
-  };
-
-  const calculateInstancePrice = (instance: CategoryInstance, usePricing = true) => {
-    if (!instance.accessoryId) return 0;
-
-    const accessories = accessoriesByCategory.get(instance.categoryId) || [];
-    const accessory = accessories.find((a) => a.id === instance.accessoryId);
-    if (!accessory) return 0;
-
-    let basePrice = accessory.prix_vente_ttc || 0;
-
-    // Appliquer la promo si active
-    if (usePricing && accessory.promo_active && accessory.promo_price) {
-      const now = new Date();
-      const start = accessory.promo_start_date ? new Date(accessory.promo_start_date) : null;
-      const end = accessory.promo_end_date ? new Date(accessory.promo_end_date) : null;
-
-      if ((!start || now >= start) && (!end || now <= end)) {
-        basePrice = accessory.promo_price;
-      }
+  const toggleOption = (key: string, optionId: string) => {
+    const newSelected = new Map(selectedAccessories);
+    const item = newSelected.get(key);
+    
+    if (item) {
+      const selected_options = item.selected_options.includes(optionId)
+        ? item.selected_options.filter((id) => id !== optionId)
+        : [...item.selected_options, optionId];
+      
+      newSelected.set(key, { ...item, selected_options });
+      setSelectedAccessories(newSelected);
     }
-
-    // Calculer le prix avec options
-    let optionsPrice = 0;
-    instance.selectedOptions.forEach((optionId) => {
-      const option = accessory.options?.find((o) => o.id === optionId);
-      if (option) {
-        optionsPrice += option.prix_vente_ttc;
-      }
-    });
-
-    // Appliquer les prix dégressifs si configurés
-    const tiers = accessoryTieredPricing.get(instance.accessoryId!) || [];
-    if (usePricing && tiers.length > 0) {
-      let totalPrice = 0;
-      for (let position = 1; position <= instance.quantity; position++) {
-        const applicableTier = [...tiers].reverse().find((tier) => position >= tier.article_position);
-
-        let itemPrice = basePrice;
-        if (applicableTier) {
-          itemPrice = basePrice * (1 - applicableTier.discount_percent / 100);
-        }
-        totalPrice += itemPrice + optionsPrice;
-      }
-      return totalPrice;
-    }
-
-    return (basePrice + optionsPrice) * instance.quantity;
   };
 
-  const getAccessoryPricing = (accessoryId: string, quantity: number) => {
-    const tieredPricing = useAccessoryTieredPricing(accessoryId);
-    return tieredPricing;
+  const updateColor = (key: string, color: string) => {
+    const newSelected = new Map(selectedAccessories);
+    const item = newSelected.get(key);
+    
+    if (item) {
+      newSelected.set(key, { ...item, color });
+      setSelectedAccessories(newSelected);
+    }
   };
 
   const calculateTotalPrice = () => {
-    let total = basePrice;
-    categoryInstances.forEach((instance) => {
-      total += calculateInstancePrice(instance);
+    let total = 0;
+    
+    selectedAccessories.forEach((item) => {
+      let itemPrice = item.prix_unitaire;
+      
+      // Ajouter le prix des options sélectionnées
+      const categoryId = Array.from(selectedAccessories.entries())
+        .find(([k, v]) => v === item)?.[0]
+        .split('-')[0];
+      
+      if (categoryId) {
+        const accessories = accessoriesByCategory.get(categoryId) || [];
+        const accessory = accessories.find((a) => a.id === item.accessory_id);
+        
+        if (accessory?.options) {
+          item.selected_options.forEach((optionId) => {
+            const option = accessory.options?.find((o) => o.id === optionId);
+            if (option) {
+              itemPrice += option.prix_vente_ttc;
+            }
+          });
+        }
+      }
+      
+      total += itemPrice * item.quantity;
     });
+    
     return total;
   };
 
-  const getAccessoryById = (categoryId: string, accessoryId: string) => {
-    const accessories = accessoriesByCategory.get(categoryId) || [];
-    return accessories.find((a) => a.id === accessoryId);
-  };
-
   const handleAddToCart = () => {
-    const configuredInstances = categoryInstances.filter((inst) => inst.accessoryId);
-    if (configuredInstances.length === 0) {
-      toast.error("Configurez au moins un accessoire dans le kit");
+    if (selectedAccessories.size === 0) {
+      toast.error("Veuillez sélectionner au moins un accessoire");
       return;
     }
 
-    // Préparer la configuration pour le panier
-    const configuration = {
-      items: configuredInstances.map((inst) => {
-        const accessory = getAccessoryById(inst.categoryId, inst.accessoryId!);
-        const selectedOptionsDetails = inst.selectedOptions.map((optId) => {
-          const option = accessory?.options?.find((o) => o.id === optId);
-          return {
-            id: optId,
-            name: option?.nom,
-            price: option?.prix_vente_ttc,
-          };
-        });
-
-        return {
-          categoryName: inst.categoryName,
-          accessoryId: inst.accessoryId,
-          accessoryName: accessory?.nom,
-          quantity: inst.quantity,
-          color: inst.color,
-          selectedOptions: selectedOptionsDetails,
-          itemPrice: calculateInstancePrice(inst),
-        };
-      }),
-    };
-
+    const configuration = Array.from(selectedAccessories.values());
     const totalPrice = calculateTotalPrice();
-
-    if (onAddToCart) {
-      onAddToCart(configuration, totalPrice);
-    }
-
-    onOpenChange(false);
+    
+    onAddToCart?.(configuration, totalPrice);
   };
+
+  if (loading) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <div className="flex items-center justify-center p-8">
+            <p className="text-muted-foreground">Chargement de la configuration...</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh]">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>{productName}</DialogTitle>
+          <DialogTitle className="text-2xl">Configurer : {productName}</DialogTitle>
           <DialogDescription>
-            Configurez votre kit en choisissant des accessoires. Vous pouvez dupliquer une catégorie pour ajouter
-            plusieurs articles différents.
+            Sélectionnez les accessoires souhaités dans chaque catégorie
           </DialogDescription>
         </DialogHeader>
 
-        {loading ? (
-          <div className="py-12 text-center">
-            <p className="text-muted-foreground">Chargement de la configuration...</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Colonne de gauche - Configuration des instances */}
-            <div className="lg:col-span-2">
-              <ScrollArea className="h-[60vh] pr-4">
-                <div className="space-y-3">
-                  {allowedCategories.map((category) => {
-                    const categoryAccessories = accessoriesByCategory.get(category.id) || [];
-                    const instances = categoryInstances.filter((inst) => inst.categoryId === category.id);
+        <ScrollArea className="flex-1 pr-4">
+          <div className="space-y-4">
+            <Accordion type="multiple" className="w-full">
+              {categories.map((category) => {
+                const accessories = accessoriesByCategory.get(category.id) || [];
+                
+                return (
+                  <AccordionItem key={category.id} value={category.id}>
+                    <AccordionTrigger className="text-lg font-semibold">
+                      {category.nom}
+                      <Badge variant="secondary" className="ml-2">
+                        {accessories.length} article{accessories.length > 1 ? 's' : ''}
+                      </Badge>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="space-y-4 pt-4">
+                        {accessories.map((accessory) => {
+                          const key = `${category.id}-${accessory.id}`;
+                          const isSelected = selectedAccessories.has(key);
+                          const selectedItem = selectedAccessories.get(key);
 
-                    if (categoryAccessories.length === 0) return null;
-
-                    return (
-                      <Card key={category.id}>
-                        <CardHeader className="pb-2 pt-3 px-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <CardTitle className="text-sm">{category.nom}</CardTitle>
-                              <Badge variant="secondary" className="text-xs">
-                                {categoryAccessories.length} accessoires
-                              </Badge>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => duplicateCategory(category.id)}
-                              className="h-7 text-xs px-2"
+                          return (
+                            <div
+                              key={accessory.id}
+                              className={`border rounded-lg p-4 transition-all ${
+                                isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                              }`}
                             >
-                              <Copy className="h-3 w-3 mr-1" />
-                              Dupliquer
-                            </Button>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-2 px-3 pb-3">
-                          {instances.map((instance, idx) => {
-                            const selectedAccessory = instance.accessoryId
-                              ? getAccessoryById(instance.categoryId, instance.accessoryId)
-                              : null;
-
-                            return (
-                              <Card key={instance.id} className="border-primary/20 bg-muted/30">
-                                <CardContent className="p-3">
-                                  <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                      <Badge variant="outline" className="text-xs">
-                                        Choix {idx + 1}
-                                      </Badge>
-                                      {instances.length > 1 && (
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          onClick={() => removeInstance(instance.id)}
-                                          className="text-destructive h-7 px-2"
-                                        >
-                                          <Trash2 className="h-3 w-3 mr-1" />
-                                          Retirer
-                                        </Button>
-                                      )}
-                                    </div>
-
-                                    <div className="space-y-1">
-                                      <Label className="text-xs">Accessoire</Label>
-                                      <Select
-                                        value={instance.accessoryId || "none"}
-                                        onValueChange={(value) =>
-                                          updateInstanceAccessory(instance.id, value === "none" ? undefined : value)
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Sélectionner un accessoire..." />
-                                        </SelectTrigger>
-                                        <SelectContent className="max-w-[400px]">
-                                          {/* Option pour désélectionner */}
-                                          <SelectItem value="none">-</SelectItem>
-                                          {categoryAccessories.map((accessory) => (
-                                            <SelectItem
-                                              key={accessory.id}
-                                              value={accessory.id}
-                                              className="whitespace-normal"
-                                            >
-                                              <div className="flex flex-col gap-0.5 py-1 w-full max-w-full">
-                                                <span className="font-medium break-words whitespace-normal block">
-                                                  {accessory.nom}
-                                                </span>
-                                                <span className="text-xs text-muted-foreground break-words whitespace-normal block">
-                                                  {accessory.prix_vente_ttc?.toFixed(2)} €
-                                                  {accessory.marque && ` - ${accessory.marque}`}
-                                                </span>
-                                                {(accessory.puissance_watts ||
-                                                  accessory.poids_kg ||
-                                                  accessory.longueur_mm) && (
-                                                  <span className="text-xs text-muted-foreground break-words whitespace-normal block">
-                                                    {accessory.puissance_watts && `${accessory.puissance_watts}W`}
-                                                    {accessory.puissance_watts &&
-                                                      (accessory.poids_kg || accessory.longueur_mm) &&
-                                                      " • "}
-                                                    {accessory.poids_kg && `${accessory.poids_kg}kg`}
-                                                    {accessory.poids_kg && accessory.longueur_mm && " • "}
-                                                    {accessory.longueur_mm &&
-                                                      `${accessory.longueur_mm}×${accessory.largeur_mm}×${accessory.hauteur_mm}mm`}
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-
-                                    {selectedAccessory && (
-                                      <div className="space-y-2">
-                                        {/* Bouton Voir les détails */}
-                                        <div className="flex justify-end">
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setDetailsAccessory(selectedAccessory)}
-                                            className="gap-2"
-                                          >
-                                            <Eye className="h-4 w-4" />
-                                            Voir les détails
-                                          </Button>
-                                        </div>
-
-                                        <div
-                                          className={`grid gap-3 ${selectedAccessory.image_url ? "grid-cols-[200px,1fr]" : "grid-cols-1"}`}
-                                        >
-                                        {selectedAccessory.image_url && (
-                                          <div className="rounded-md overflow-hidden border bg-muted/50 h-48">
-                                            <img
-                                              src={selectedAccessory.image_url}
-                                              alt={selectedAccessory.nom}
-                                              className="w-full h-full object-contain"
-                                            />
-                                          </div>
-                                        )}
-
-                                        <div className="space-y-2">
-                                          <div className="grid grid-cols-2 gap-2">
-                                            <div className="space-y-1">
-                                              <Label className="text-xs">Quantité</Label>
-                                              <Input
-                                                type="number"
-                                                min="1"
-                                                value={instance.quantity}
-                                                onChange={(e) =>
-                                                  updateInstanceQuantity(instance.id, parseInt(e.target.value))
-                                                }
-                                                className="h-8 text-sm"
-                                              />
-                                            </div>
-
-                                            {selectedAccessory.couleur &&
-                                              (() => {
-                                                // Parse les couleurs depuis le JSON
-                                                let availableColors: string[] = [];
-                                                try {
-                                                  const parsed = JSON.parse(selectedAccessory.couleur);
-                                                  availableColors = Array.isArray(parsed)
-                                                    ? parsed
-                                                    : [selectedAccessory.couleur];
-                                                } catch {
-                                                  availableColors = [selectedAccessory.couleur];
-                                                }
-
-                                                // Filtrer les couleurs disponibles (insensible à la casse)
-                                                const filteredColors = AVAILABLE_COLORS.filter((color) =>
-                                                  availableColors.some(
-                                                    (ac) => ac.toLowerCase() === color.value.toLowerCase(),
-                                                  ),
-                                                );
-
-                                                if (filteredColors.length === 0) return null;
-
-                                                return (
-                                                  <div className="space-y-1">
-                                                    <Label className="text-xs">Couleur</Label>
-                                                    <div className="flex gap-1.5 flex-wrap">
-                                                      {filteredColors.map((color) => (
-                                                        <button
-                                                          key={color.value}
-                                                          type="button"
-                                                          onClick={() => updateInstanceColor(instance.id, color.value)}
-                                                          className={`w-7 h-7 rounded-full border-2 transition-all ${
-                                                            instance.color === color.value
-                                                              ? "border-primary ring-2 ring-primary ring-offset-2"
-                                                              : "border-muted hover:border-primary/50"
-                                                          }`}
-                                                          style={{
-                                                            backgroundColor:
-                                                              color.value === "blanc"
-                                                                ? "#ffffff"
-                                                                : color.value === "noir"
-                                                                  ? "#000000"
-                                                                  : color.value === "gris"
-                                                                    ? "#6b7280"
-                                                                    : color.value === "rouge"
-                                                                      ? "#ef4444"
-                                                                      : color.value === "bleu"
-                                                                        ? "#3b82f6"
-                                                                        : color.value === "vert"
-                                                                          ? "#22c55e"
-                                                                          : color.value === "jaune"
-                                                                            ? "#eab308"
-                                                                            : color.value === "orange"
-                                                                              ? "#f97316"
-                                                                              : "#6b7280",
-                                                          }}
-                                                          title={color.label}
-                                                        />
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })()}
-                                          </div>
-
-                                          {selectedAccessory.options && selectedAccessory.options.length > 0 && (
-                                            <div className="space-y-1.5">
-                                              <Label className="text-xs">Options disponibles</Label>
-                                              <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                                                {selectedAccessory.options.map((option) => (
-                                                  <div
-                                                    key={option.id}
-                                                    className="flex items-start gap-2 p-2 rounded hover:bg-muted/50 transition-colors"
-                                                  >
-                                                    <Checkbox
-                                                      id={`${instance.id}-${option.id}`}
-                                                      checked={instance.selectedOptions.includes(option.id)}
-                                                      onCheckedChange={() =>
-                                                        toggleInstanceOption(instance.id, option.id)
-                                                      }
-                                                      className="h-4 w-4 mt-0.5 shrink-0"
-                                                    />
-                                                    <label
-                                                      htmlFor={`${instance.id}-${option.id}`}
-                                                      className="text-xs cursor-pointer flex-1 min-w-0 break-words leading-relaxed"
-                                                    >
-                                                      {option.nom}
-                                                    </label>
-                                                    <Badge variant="secondary" className="text-xs shrink-0 ml-2">
-                                                      +{option.prix_vente_ttc.toFixed(2)} €
-                                                    </Badge>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            </div>
-                                          )}
-
-                                          {/* Affichage des remises actives */}
-                                          {instance.accessoryId &&
-                                            (() => {
-                                              const tiers = accessoryTieredPricing.get(instance.accessoryId!) || [];
-                                              const applicableTier = [...tiers]
-                                                .reverse()
-                                                .find((tier) => instance.quantity >= tier.article_position);
-                                              const nextTier = tiers.find(
-                                                (tier) => tier.article_position > instance.quantity,
-                                              );
-
-                                              return (
-                                                <div className="space-y-2">
-                                                  {applicableTier && (
-                                                    <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/20 rounded-md">
-                                                      <TrendingDown className="h-4 w-4 text-green-600" />
-                                                      <span className="text-xs font-medium text-green-700 dark:text-green-400">
-                                                        Prix dégressif: -{applicableTier.discount_percent}% à partir de
-                                                        l'article {applicableTier.article_position}
-                                                      </span>
-                                                    </div>
-                                                  )}
-
-                                                  {nextTier && (
-                                                    <div className="flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-md">
-                                                      <Tag className="h-4 w-4 text-blue-600" />
-                                                      <span className="text-xs text-blue-700 dark:text-blue-400">
-                                                        Achetez {nextTier.article_position - instance.quantity} de plus
-                                                        pour -{nextTier.discount_percent}%
-                                                      </span>
-                                                    </div>
-                                                  )}
-
-                                                  {selectedAccessory.promo_active &&
-                                                    selectedAccessory.promo_price &&
-                                                    (() => {
-                                                      const now = new Date();
-                                                      const start = selectedAccessory.promo_start_date
-                                                        ? new Date(selectedAccessory.promo_start_date)
-                                                        : null;
-                                                      const end = selectedAccessory.promo_end_date
-                                                        ? new Date(selectedAccessory.promo_end_date)
-                                                        : null;
-
-                                                      if ((!start || now >= start) && (!end || now <= end)) {
-                                                        return (
-                                                          <div className="flex items-center gap-2 p-2 bg-orange-500/10 border border-orange-500/20 rounded-md">
-                                                            <Tag className="h-4 w-4 text-orange-600" />
-                                                            <span className="text-xs font-medium text-orange-700 dark:text-orange-400">
-                                                              PROMO: {selectedAccessory.promo_price.toFixed(2)} € (au
-                                                              lieu de{" "}
-                                                              {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €)
-                                                            </span>
-                                                          </div>
-                                                        );
-                                                      }
-                                                      return null;
-                                                    })()}
-                                                </div>
-                                              );
-                                            })()}
-
-                                          <div className="flex justify-between items-center pt-1.5 border-t">
-                                            <span className="text-xs text-muted-foreground">Prix de cet article</span>
-                                            <span className="font-semibold text-sm">
-                                              {calculateInstancePrice(instance).toFixed(2)} €
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                      </div>
+                              <div className="flex items-start gap-4">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => handleAccessorySelect(category.id, category.nom, accessory.id)}
+                                />
+                                
+                                <div className="flex-1 space-y-3">
+                                  <div>
+                                    <h4 className="font-medium">{accessory.nom}</h4>
+                                    {accessory.marque && (
+                                      <p className="text-sm text-muted-foreground">{accessory.marque}</p>
+                                    )}
+                                    {accessory.description && (
+                                      <p className="text-sm text-muted-foreground mt-1">{accessory.description}</p>
                                     )}
                                   </div>
-                                </CardContent>
-                              </Card>
-                            );
-                          })}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </div>
 
-            {/* Colonne de droite - Récapitulatif */}
-            <div className="lg:col-span-1">
-              <Card className="sticky top-0">
-                <CardHeader>
-                  <CardTitle className="text-base">Récapitulatif</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <ScrollArea className="h-[50vh]">
-                    <div className="space-y-3">
-                      <div className="flex justify-between text-sm">
-                        <span>Prix de base du kit</span>
-                        <span className="font-semibold">{basePrice.toFixed(2)} €</span>
-                      </div>
+                                  {isSelected && (
+                                    <>
+                                      {/* Quantité */}
+                                      <div className="flex items-center gap-2">
+                                        <Label className="text-sm">Quantité :</Label>
+                                        <Button
+                                          variant="outline"
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          onClick={() => updateQuantity(key, -1)}
+                                        >
+                                          <Minus className="h-4 w-4" />
+                                        </Button>
+                                        <span className="w-12 text-center">{selectedItem?.quantity}</span>
+                                        <Button
+                                          variant="outline"
+                                          size="icon"
+                                          className="h-8 w-8"
+                                          onClick={() => updateQuantity(key, 1)}
+                                        >
+                                          <Plus className="h-4 w-4" />
+                                        </Button>
+                                      </div>
 
-                      <Separator />
+                                      {/* Couleur */}
+                                      <div className="space-y-2">
+                                        <Label className="text-sm">Couleur :</Label>
+                                        <Select
+                                          value={selectedItem?.color || ""}
+                                          onValueChange={(value) => updateColor(key, value)}
+                                        >
+                                          <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Choisir une couleur" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {AVAILABLE_COLORS.map((color) => (
+                                              <SelectItem key={color.value} value={color.value}>
+                                                {color.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
 
-                      {categoryInstances.filter((inst) => inst.accessoryId).length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">Aucun accessoire configuré</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {categoryInstances
-                            .filter((inst) => inst.accessoryId)
-                            .map((instance) => {
-                              const accessory = getAccessoryById(instance.categoryId, instance.accessoryId!);
-                              if (!accessory) return null;
-
-                              return (
-                                <div key={instance.id} className="text-sm space-y-1 p-2 bg-muted/50 rounded">
-                                  <div className="font-medium">{accessory.nom}</div>
-                                  <div className="text-xs text-muted-foreground">{instance.categoryName}</div>
-                                  <div className="text-xs">
-                                    Qté: {instance.quantity}
-                                    {instance.color && ` • Couleur: ${instance.color}`}
-                                  </div>
-                                  {instance.selectedOptions.length > 0 && (
-                                    <div className="text-xs text-muted-foreground">
-                                      {instance.selectedOptions.length} option(s)
-                                    </div>
+                                      {/* Options */}
+                                      {accessory.options && accessory.options.length > 0 && (
+                                        <div className="space-y-2">
+                                          <Label className="text-sm">Options :</Label>
+                                          <div className="space-y-2 pl-4">
+                                            {accessory.options.map((option) => (
+                                              <div key={option.id} className="flex items-center gap-2">
+                                                <Checkbox
+                                                  checked={selectedItem?.selected_options.includes(option.id)}
+                                                  onCheckedChange={() => toggleOption(key, option.id)}
+                                                />
+                                                <Label className="text-sm cursor-pointer">
+                                                  {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
+                                                </Label>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
                                   )}
-                                  <div className="text-right font-semibold">
-                                    {calculateInstancePrice(instance).toFixed(2)} €
-                                  </div>
                                 </div>
-                              );
-                            })}
-                        </div>
-                      )}
 
-                      <Separator />
-
-                      <div className="flex justify-between items-center text-lg font-bold">
-                        <span>Total</span>
-                        <span>{calculateTotalPrice().toFixed(2)} €</span>
+                                <div className="text-right">
+                                  <p className="text-lg font-bold text-primary">
+                                    {(accessory.prix_vente_ttc || 0).toFixed(2)} €
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-                  </ScrollArea>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
+          </div>
+        </ScrollArea>
 
-                  <div className="mt-4 pt-4 border-t space-y-2">
-                    <Button
-                      className="w-full"
-                      onClick={handleAddToCart}
-                      disabled={categoryInstances.filter((inst) => inst.accessoryId).length === 0}
-                    >
-                      Ajouter au panier
-                    </Button>
-                    <Button className="w-full" variant="outline" onClick={() => onOpenChange(false)}>
-                      Annuler
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+        <DialogFooter className="flex items-center justify-between border-t pt-4">
+          <div className="flex items-center gap-4">
+            <p className="text-sm text-muted-foreground">
+              {selectedAccessories.size} article{selectedAccessories.size > 1 ? 's' : ''} sélectionné{selectedAccessories.size > 1 ? 's' : ''}
+            </p>
+            <div className="text-right">
+              <p className="text-sm text-muted-foreground">Prix total :</p>
+              <p className="text-2xl font-bold text-primary">{calculateTotalPrice().toFixed(2)} €</p>
             </div>
           </div>
-        )}
+          <Button onClick={handleAddToCart} size="lg">
+            <ShoppingCart className="h-5 w-5 mr-2" />
+            Ajouter au panier
+          </Button>
+        </DialogFooter>
       </DialogContent>
-
-      {/* Modale de détails de l'accessoire */}
-      {detailsAccessory && (
-        <Dialog open={!!detailsAccessory} onOpenChange={(open) => !open && setDetailsAccessory(null)}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-2xl">{detailsAccessory.nom}</DialogTitle>
-              {detailsAccessory.marque && (
-                <DialogDescription className="text-base">{detailsAccessory.marque}</DialogDescription>
-              )}
-            </DialogHeader>
-
-            <div className="space-y-6">
-              {/* Image de l'accessoire */}
-              {detailsAccessory.image_url && (
-                <div className="w-full aspect-video rounded-lg overflow-hidden bg-white flex items-center justify-center p-8 border">
-                  <img
-                    src={detailsAccessory.image_url}
-                    alt={detailsAccessory.nom}
-                    className="max-h-full max-w-full object-contain"
-                  />
-                </div>
-              )}
-
-              {/* Prix */}
-              <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-                {detailsAccessory.promo_active && detailsAccessory.promo_price && (() => {
-                  const now = new Date();
-                  const start = detailsAccessory.promo_start_date
-                    ? new Date(detailsAccessory.promo_start_date)
-                    : null;
-                  const end = detailsAccessory.promo_end_date ? new Date(detailsAccessory.promo_end_date) : null;
-
-                  if ((!start || now >= start) && (!end || now <= end)) {
-                    return (
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="destructive" className="text-xs">
-                            PROMO
-                          </Badge>
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-3xl font-bold text-primary">
-                            {detailsAccessory.promo_price.toFixed(2)} €
-                          </span>
-                          <span className="text-xl text-muted-foreground line-through">
-                            {(detailsAccessory.prix_vente_ttc || 0).toFixed(2)} €
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Économisez{" "}
-                          {(
-                            (((detailsAccessory.prix_vente_ttc || 0) - detailsAccessory.promo_price) /
-                              (detailsAccessory.prix_vente_ttc || 1)) *
-                            100
-                          ).toFixed(0)}
-                          %
-                        </p>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-                {(!detailsAccessory.promo_active ||
-                  !detailsAccessory.promo_price ||
-                  (() => {
-                    const now = new Date();
-                    const start = detailsAccessory.promo_start_date
-                      ? new Date(detailsAccessory.promo_start_date)
-                      : null;
-                    const end = detailsAccessory.promo_end_date ? new Date(detailsAccessory.promo_end_date) : null;
-                    return (start && now < start) || (end && now > end);
-                  })()) && (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Prix</p>
-                    <span className="text-3xl font-bold text-primary">
-                      {(detailsAccessory.prix_vente_ttc || 0).toFixed(2)} €
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Caractéristiques techniques */}
-              {(detailsAccessory.puissance_watts ||
-                detailsAccessory.poids_kg ||
-                detailsAccessory.longueur_mm ||
-                detailsAccessory.couleur) && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">Caractéristiques</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {detailsAccessory.puissance_watts && (
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">Puissance</p>
-                        <p className="font-medium">{detailsAccessory.puissance_watts} W</p>
-                      </div>
-                    )}
-                    {detailsAccessory.poids_kg && (
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">Poids</p>
-                        <p className="font-medium">{detailsAccessory.poids_kg} kg</p>
-                      </div>
-                    )}
-                    {detailsAccessory.longueur_mm && (
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">Dimensions</p>
-                        <p className="font-medium">
-                          {detailsAccessory.longueur_mm} × {detailsAccessory.largeur_mm} ×{" "}
-                          {detailsAccessory.hauteur_mm} mm
-                        </p>
-                      </div>
-                    )}
-                    {detailsAccessory.couleur && (
-                      <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">Couleur</p>
-                        <p className="font-medium">{detailsAccessory.couleur}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Description */}
-              {detailsAccessory.description && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">Description</h3>
-                  <DialogDescription className="text-base leading-relaxed whitespace-pre-wrap">
-                    {detailsAccessory.description}
-                  </DialogDescription>
-                </div>
-              )}
-
-              {!detailsAccessory.description && (
-                <div className="text-center py-6 text-muted-foreground">
-                  Aucune description disponible pour cet accessoire
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </Dialog>
   );
 };
