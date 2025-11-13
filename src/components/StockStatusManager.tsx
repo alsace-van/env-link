@@ -199,8 +199,8 @@ export default function StockStatusManager({
       // 1. Mettre à jour le statut de l'accessoire
       const updateData: any = {
         stock_status: "on_order",
-        delivery_date: newDeliveryDate || null,
-        tracking_number: newTrackingNumber || null,
+        delivery_date: newDeliveryDate && newDeliveryDate.trim() !== "" ? newDeliveryDate : null,
+        tracking_number: newTrackingNumber && newTrackingNumber.trim() !== "" ? newTrackingNumber : null,
       };
 
       const { error: accessoryError } = await supabase
@@ -274,8 +274,8 @@ export default function StockStatusManager({
 
       // Ajouter les champs conditionnels selon le statut
       if (selectedStatus === "on_order") {
-        updateData.delivery_date = newDeliveryDate || null;
-        updateData.tracking_number = newTrackingNumber || null;
+        updateData.delivery_date = newDeliveryDate && newDeliveryDate.trim() !== "" ? newDeliveryDate : null;
+        updateData.tracking_number = newTrackingNumber && newTrackingNumber.trim() !== "" ? newTrackingNumber : null;
       } else {
         updateData.delivery_date = null;
         updateData.tracking_number = null;
