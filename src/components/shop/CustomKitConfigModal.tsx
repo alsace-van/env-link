@@ -301,44 +301,54 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                     const selectedAccessory = getSelectedAccessoryDetails(section);
 
                     return (
-                      <div key={section.id} className="border rounded-lg p-4 bg-card">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold">{section.categoryName}</h3>
-                            <Badge variant="secondary" className="text-xs">
-                              {section.accessories.length} accessoires
-                            </Badge>
+                      <div key={section.id} className="rounded-xl border-2 border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden transition-all hover:border-primary/30">
+                        <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-5 py-4 flex items-center justify-between border-b">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                              <span className="text-xl font-bold text-primary">{index + 1}</span>
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-lg">{section.categoryName}</h3>
+                              <p className="text-xs text-muted-foreground">
+                                {section.accessories.length} accessoire{section.accessories.length > 1 ? 's' : ''} disponible{section.accessories.length > 1 ? 's' : ''}
+                              </p>
+                            </div>
                           </div>
                           <div className="flex gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => duplicateSection(section.id)}
-                              className="gap-2"
+                              className="gap-2 hover:bg-primary/10"
                             >
-                              <Copy className="h-3 w-3" />
+                              <Copy className="h-3.5 w-3.5" />
                               Dupliquer
                             </Button>
                             {sections.length > 1 && (
-                              <Button variant="ghost" size="sm" onClick={() => removeSection(section.id)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => removeSection(section.id)}
+                                className="hover:bg-destructive/10 hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
                           </div>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="p-5 space-y-4">
                           <div>
-                            <label className="text-sm font-medium mb-2 block">Choix {index + 1}</label>
-                            <div className="space-y-2">
-                              <label className="text-xs text-muted-foreground block">Accessoire</label>
-                              <Select
-                                value={section.selectedAccessoryId || ""}
-                                onValueChange={(value) => updateSectionAccessory(section.id, value)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="-" />
-                                </SelectTrigger>
+                            <label className="text-sm font-semibold mb-3 block text-foreground">
+                              Sélectionnez un accessoire
+                            </label>
+                            <Select
+                              value={section.selectedAccessoryId || ""}
+                              onValueChange={(value) => updateSectionAccessory(section.id, value)}
+                            >
+                              <SelectTrigger className="h-12 text-base">
+                                <SelectValue placeholder="Choisir un accessoire..." />
+                              </SelectTrigger>
                                  <SelectContent>
                                   {section.accessories.map((accessory) => {
                                     const price = getAccessoryPrice(accessory);
@@ -363,53 +373,71 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                           {/* Afficher les détails de l'accessoire sélectionné */}
                           {selectedAccessory && (
                             <>
-                              <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
-                                {selectedAccessory.image_url && (
-                                  <img
-                                    src={selectedAccessory.image_url}
-                                    alt={selectedAccessory.nom}
-                                    className="w-16 h-16 object-cover rounded"
-                                  />
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-sm">{selectedAccessory.nom}</p>
-                                  {selectedAccessory.marque && (
-                                    <p className="text-xs text-muted-foreground">{selectedAccessory.marque}</p>
+                              <div className="rounded-lg border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-4">
+                                <div className="flex gap-4">
+                                  {selectedAccessory.image_url && (
+                                    <div className="flex-shrink-0">
+                                      <img
+                                        src={selectedAccessory.image_url}
+                                        alt={selectedAccessory.nom}
+                                        className="w-24 h-24 object-cover rounded-lg border-2 border-border shadow-sm"
+                                      />
+                                    </div>
                                   )}
-                                  {selectedAccessory.description && (
-                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                      {selectedAccessory.description}
-                                    </p>
-                                  )}
-                                  {selectedAccessory.couleur && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Couleur: {selectedAccessory.couleur}
-                                    </p>
-                                  )}
-                                  <div className="flex items-center gap-2 mt-1">
-                                    {selectedAccessory.promo_active && 
-                                     getAccessoryPrice(selectedAccessory) < selectedAccessory.prix_vente_ttc && (
-                                      <span className="text-xs line-through text-muted-foreground">
-                                        {selectedAccessory.prix_vente_ttc.toFixed(2)} €
-                                      </span>
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-bold text-base mb-1">{selectedAccessory.nom}</h4>
+                                    {selectedAccessory.marque && (
+                                      <p className="text-sm text-muted-foreground mb-2">
+                                        <span className="font-medium">Marque:</span> {selectedAccessory.marque}
+                                      </p>
                                     )}
-                                    <p className="text-sm font-semibold text-primary">
-                                      {getAccessoryPrice(selectedAccessory).toFixed(2)} €
-                                    </p>
+                                    {selectedAccessory.description && (
+                                      <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                                        {selectedAccessory.description}
+                                      </p>
+                                    )}
+                                    <div className="flex items-center gap-3 mt-2">
+                                      {selectedAccessory.couleur && (
+                                        <div className="flex items-center gap-1.5 text-xs bg-background/50 px-2 py-1 rounded">
+                                          <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: selectedAccessory.couleur }} />
+                                          <span>{selectedAccessory.couleur}</span>
+                                        </div>
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                        {selectedAccessory.promo_active && 
+                                         getAccessoryPrice(selectedAccessory) < selectedAccessory.prix_vente_ttc && (
+                                          <>
+                                            <span className="text-sm line-through text-muted-foreground">
+                                              {selectedAccessory.prix_vente_ttc.toFixed(2)} €
+                                            </span>
+                                            <Badge variant="destructive" className="text-xs">PROMO</Badge>
+                                          </>
+                                        )}
+                                        <p className="text-xl font-bold text-primary">
+                                          {getAccessoryPrice(selectedAccessory).toFixed(2)} €
+                                        </p>
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
 
                               {/* Options */}
                               {selectedAccessory.options && selectedAccessory.options.length > 0 && (
-                                <div className="space-y-2">
-                                  <label className="text-sm font-medium">Options disponibles</label>
-                                  <div className="space-y-2">
+                                <div className="space-y-3 bg-muted/30 rounded-lg p-4">
+                                  <label className="text-sm font-bold text-foreground flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                    Options disponibles
+                                  </label>
+                                  <div className="space-y-2.5">
                                     {selectedAccessory.options.map((option) => (
-                                      <label key={option.id} className="flex items-center gap-2 cursor-pointer">
+                                      <label 
+                                        key={option.id} 
+                                        className="flex items-center gap-3 p-3 bg-background rounded-lg border border-border cursor-pointer transition-all hover:border-primary/50 hover:bg-primary/5"
+                                      >
                                         <input
                                           type="checkbox"
-                                          className="rounded"
+                                          className="w-4 h-4 rounded border-2 border-primary text-primary focus:ring-2 focus:ring-primary/20"
                                           checked={
                                             section.selectedOptions[selectedAccessory.id]?.includes(option.id) || false
                                           }
@@ -422,9 +450,12 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                             updateSectionOptions(section.id, selectedAccessory.id, newOptions);
                                           }}
                                         />
-                                        <span className="text-sm">
-                                          {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
-                                        </span>
+                                        <div className="flex-1 flex items-center justify-between">
+                                          <span className="text-sm font-medium">{option.nom}</span>
+                                          <span className="text-sm font-bold text-primary">
+                                            +{option.prix_vente_ttc.toFixed(2)} €
+                                          </span>
+                                        </div>
                                       </label>
                                     ))}
                                   </div>
@@ -441,20 +472,26 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
             </div>
 
             {/* Panneau droit - Récapitulatif */}
-            <div className="w-80 border-l bg-muted/20 flex flex-col">
-              <div className="p-6">
-                <h3 className="font-semibold mb-4">Récapitulatif</h3>
+            <div className="w-96 border-l bg-gradient-to-b from-muted/30 to-muted/10 flex flex-col">
+              <div className="px-6 py-5 border-b bg-muted/20">
+                <h3 className="font-bold text-xl text-foreground">Récapitulatif</h3>
+                <p className="text-xs text-muted-foreground mt-1">Votre configuration</p>
+              </div>
 
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Prix de base du kit</span>
-                    <span className="font-medium">{(product.prix_base || 0).toFixed(2)} €</span>
+              <ScrollArea className="flex-1">
+                <div className="p-6 space-y-4">
+                  <div className="flex justify-between items-center p-3 bg-background rounded-lg border">
+                    <span className="text-sm font-medium text-muted-foreground">Prix de base du kit</span>
+                    <span className="font-bold text-base">{(product.prix_base || 0).toFixed(2)} €</span>
                   </div>
 
-                  <Separator />
+                  <Separator className="my-4" />
 
-                  {sections.filter((s) => s.selectedAccessoryId).length > 0 && (
-                    <div className="space-y-2">
+                  {sections.filter((s) => s.selectedAccessoryId).length > 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Accessoires sélectionnés
+                      </p>
                       {sections.map((section) => {
                         const accessory = getSelectedAccessoryDetails(section);
                         if (!accessory) return null;
@@ -467,22 +504,25 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                         }, 0);
 
                         return (
-                          <div key={section.id} className="text-sm space-y-1">
-                            <div className="flex justify-between items-start gap-2">
-                              <span className="text-muted-foreground flex-1 line-clamp-1">{accessory.nom}</span>
-                              <span className="font-medium whitespace-nowrap">
+                          <div key={section.id} className="bg-background rounded-lg p-3 border space-y-2">
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm line-clamp-2">{accessory.nom}</p>
+                                <p className="text-xs text-muted-foreground">{section.categoryName}</p>
+                              </div>
+                              <span className="font-bold text-base whitespace-nowrap text-primary">
                                 {accessoryPrice.toFixed(2)} €
                               </span>
                             </div>
                             {selectedOptions.length > 0 && (
-                              <div className="pl-2 space-y-1">
+                              <div className="pl-3 pt-2 border-t space-y-1.5">
                                 {selectedOptions.map((optId) => {
                                   const option = accessory.options?.find((o) => o.id === optId);
                                   if (!option) return null;
                                   return (
-                                    <div key={optId} className="flex justify-between text-xs text-muted-foreground">
-                                      <span>+ {option.nom}</span>
-                                      <span>{option.prix_vente_ttc.toFixed(2)} €</span>
+                                    <div key={optId} className="flex justify-between text-xs">
+                                      <span className="text-muted-foreground">+ {option.nom}</span>
+                                      <span className="font-semibold text-primary">{option.prix_vente_ttc.toFixed(2)} €</span>
                                     </div>
                                   );
                                 })}
@@ -492,31 +532,49 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                         );
                       })}
                     </div>
-                  )}
-
-                  {sections.filter((s) => s.selectedAccessoryId).length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">Aucun accessoire configuré</p>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-3">
+                        <ShoppingCart className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm font-medium text-muted-foreground">Aucun accessoire sélectionné</p>
+                      <p className="text-xs text-muted-foreground mt-1">Choisissez vos accessoires ci-dessus</p>
+                    </div>
                   )}
                 </div>
               </div>
 
-              <div className="mt-auto border-t p-6 space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-semibold">Total</span>
-                  <span className="text-2xl font-bold text-primary">{calculateTotal().toFixed(2)} €</span>
+              </ScrollArea>
+
+              <div className="border-t bg-background/80 backdrop-blur-sm p-6 space-y-4">
+                <div className="flex justify-between items-center p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg">
+                  <span className="text-base font-bold">Total TTC</span>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-primary">{calculateTotal().toFixed(2)} €</div>
+                    {sections.filter((s) => s.selectedAccessoryId).length > 0 && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {sections.filter((s) => s.selectedAccessoryId).length} accessoire(s) configuré(s)
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <Button
                     onClick={handleAddToCart}
                     size="lg"
-                    className="w-full gap-2"
+                    className="w-full gap-2 h-12 text-base font-semibold shadow-lg hover:shadow-xl transition-shadow"
                     disabled={sections.filter((s) => s.selectedAccessoryId).length === 0}
                   >
                     <ShoppingCart className="h-5 w-5" />
                     Ajouter au panier
                   </Button>
-                  <Button onClick={onClose} variant="outline" size="lg" className="w-full">
+                  <Button 
+                    onClick={onClose} 
+                    variant="outline" 
+                    size="lg" 
+                    className="w-full h-11"
+                  >
                     Annuler
                   </Button>
                 </div>
