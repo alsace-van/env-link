@@ -17,6 +17,7 @@ import { AddTaskModal } from "./planning/AddTaskModal";
 import { AddNoteModal } from "./planning/AddNoteModal";
 import { AddSupplierExpenseModal } from "./planning/AddSupplierExpenseModal";
 import { AddAppointmentModal } from "./planning/AddAppointmentModal";
+import { AddDeliveryModal } from "./planning/AddDeliveryModal";
 import { useProjectData } from "@/contexts/ProjectDataContext";
 
 interface ProjectPlanningProps {
@@ -31,6 +32,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   const [showAddNoteModal, setShowAddNoteModal] = useState(false);
   const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
+  const [showAddDeliveryModal, setShowAddDeliveryModal] = useState(false);
   const [selectedHour, setSelectedHour] = useState<number>(9);
 
   // Utiliser le contexte pour les données synchronisées en temps réel
@@ -416,6 +418,10 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                       <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
                       <span>Ajouter un rendez-vous</span>
                     </ContextMenuItem>
+                    <ContextMenuItem onClick={() => setShowAddDeliveryModal(true)}>
+                      <Truck className="mr-2 h-4 w-4 text-emerald-600" />
+                      <span>Ajouter une livraison</span>
+                    </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
               );
@@ -479,6 +485,14 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
         projectId={projectId}
         selectedDate={currentDate}
         selectedHour={selectedHour}
+      />
+
+      <AddDeliveryModal
+        isOpen={showAddDeliveryModal}
+        onClose={() => setShowAddDeliveryModal(false)}
+        onSuccess={() => {}} // Plus besoin de recharger manuellement
+        projectId={projectId}
+        selectedDate={currentDate}
       />
     </>
   );
