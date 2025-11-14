@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
 import paper from "paper";
 import { supabase } from "@/integrations/supabase/client";
+import { getErrorMessage } from "@/lib/utils";
 
 interface TechnicalCanvasProps {
   projectId: string;
@@ -670,8 +671,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
       toast.success("Schéma sauvegardé");
     } catch (error: any) {
       console.error("Erreur lors de la sauvegarde:", error);
-      const errorMessage = error?.message || error?.error_description || "Erreur inconnue";
-      toast.error(`Erreur lors de la sauvegarde: ${errorMessage}`);
+      toast.error(`Erreur lors de la sauvegarde: ${getErrorMessage(error)}`);
     }
   };
 
