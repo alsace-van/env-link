@@ -3,22 +3,23 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Euro, Package, StickyNote, UserCircle, Truck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Euro, Package, StickyNote, UserCircle, Truck, Plus } from "lucide-react";
 import { format, addDays, isSameDay, parseISO, setHours, getHours } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AddTaskModal } from "./planning/AddTaskModal";
 import { AddNoteModal } from "./planning/AddNoteModal";
 import { AddSupplierExpenseModal } from "./planning/AddSupplierExpenseModal";
 import { AddAppointmentModal } from "./planning/AddAppointmentModal";
 import { AddDeliveryModal } from "./planning/AddDeliveryModal";
 import { useProjectData } from "@/contexts/ProjectDataContext";
+import { getErrorMessage } from "@/lib/utils";
 
 interface ProjectPlanningProps {
   projectId: string | null;
@@ -34,6 +35,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   const [showAddAppointmentModal, setShowAddAppointmentModal] = useState(false);
   const [showAddDeliveryModal, setShowAddDeliveryModal] = useState(false);
   const [selectedHour, setSelectedHour] = useState<number>(9);
+  const [hoveredHour, setHoveredHour] = useState<number | null>(null);
 
   // Utiliser le contexte pour les données synchronisées en temps réel
   const { 
@@ -60,10 +62,9 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
       .eq("id", todoId);
 
     if (error) {
-      toast.error("Erreur lors de la mise à jour");
+      toast.error("Erreur lors de la mise à jour: " + getErrorMessage(error));
     } else {
       toast.success(currentStatus ? "Tâche réactivée" : "Tâche terminée");
-      // Pas besoin de recharger manuellement, la subscription le fait automatiquement !
     }
   };
 
@@ -97,52 +98,47 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
 
     return { 
       todos: todosForHour, 
-      expenses: hour === 8 ? expensesForDay : [], // Afficher les dépenses uniquement à 8h
-      charges: hour === 8 ? chargesForDay : [], // Afficher les charges uniquement à 8h
+      expenses: hour === 8 ? expensesForDay : [],
+      charges: hour === 8 ? chargesForDay : [],
       appointments: appointmentsForHour,
-      deliveries: hour === 9 ? deliveriesForDay : [] // Afficher les livraisons à 9h
+      deliveries: hour === 8 ? deliveriesForDay : []
     };
   };
 
   const goToPreviousDay = () => {
-    setCurrentDate(addDays(currentDate, -1));
+    setCurrentDate((prev) => addDays(prev, -1));
   };
 
   const goToNextDay = () => {
-    setCurrentDate(addDays(currentDate, 1));
+    setCurrentDate((prev) => addDays(prev, 1));
   };
 
   const goToToday = () => {
     setCurrentDate(new Date());
   };
 
-  const handleContextMenuOpen = (hour: number) => {
+  const handleOpenModal = (hour: number, type: 'task' | 'appointment' | 'delivery') => {
     setSelectedHour(hour);
+    if (type === 'task') setShowAddTaskModal(true);
+    else if (type === 'appointment') setShowAddAppointmentModal(true);
+    else if (type === 'delivery') setShowAddDeliveryModal(true);
   };
 
-  const getAppointmentStatusColor = (status: string) => {
+  const getAppointmentStatusColor = (status: string | null) => {
     switch (status) {
-      case "confirmed":
-        return "bg-green-500/20 text-green-700 border-green-500/30";
-      case "pending":
-        return "bg-orange-500/20 text-orange-700 border-orange-500/30";
-      case "cancelled":
-        return "bg-red-500/20 text-red-700 border-red-500/30";
-      default:
-        return "bg-gray-500/20 text-gray-700 border-gray-500/30";
+      case 'confirmed': return 'border-green-300 bg-green-50';
+      case 'pending': return 'border-yellow-300 bg-yellow-50';
+      case 'cancelled': return 'border-red-300 bg-red-50';
+      default: return 'border-blue-300 bg-blue-50';
     }
   };
 
-  const getAppointmentStatusLabel = (status: string) => {
+  const getAppointmentStatusLabel = (status: string | null) => {
     switch (status) {
-      case "confirmed":
-        return "Confirmé";
-      case "pending":
-        return "En attente";
-      case "cancelled":
-        return "Annulé";
-      default:
-        return status;
+      case 'confirmed': return 'Confirmé';
+      case 'pending': return 'En attente';
+      case 'cancelled': return 'Annulé';
+      default: return 'RDV';
     }
   };
 
@@ -209,256 +205,263 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                 getItemsForDateAndHour(currentDate, hour);
 
               return (
-                <ContextMenu key={hour}>
-                  <ContextMenuTrigger
-                    onContextMenu={() => handleContextMenuOpen(hour)}
+                <div
+                  key={hour}
+                  className="relative group"
+                  onMouseEnter={() => setHoveredHour(hour)}
+                  onMouseLeave={() => setHoveredHour(null)}
+                >
+                  <div
+                    className={`p-3 rounded-lg border-2 hover:border-blue-300 transition-all min-h-[60px] ${
+                      todosForHour.length > 0 || expenses.length > 0 || charges.length > 0 || appointmentsForHour.length > 0 || deliveries.length > 0
+                        ? "bg-white border-gray-200"
+                        : "bg-gray-50/50 border-gray-100"
+                    }`}
                   >
-                    <div
-                      className={`p-3 rounded-lg border-2 hover:border-blue-300 transition-all min-h-[60px] ${
-                        todosForHour.length > 0 || expenses.length > 0 || charges.length > 0 || appointmentsForHour.length > 0 || deliveries.length > 0
-                          ? "bg-white border-gray-200"
-                          : "bg-gray-50/50 border-gray-100"
-                      }`}
-                    >
-                      {/* Heure */}
-                      <div className="flex items-start gap-3">
+                    {/* Heure + Bouton Add */}
+                    <div className="flex items-start gap-3">
+                      <div className="flex items-center gap-2">
                         <div className="text-sm font-semibold text-gray-500 min-w-[50px]">
                           {`${hour}h00`}
                         </div>
-                        
-                        <div className="flex-1 space-y-2">
-                          {/* Tâches */}
-                          {todosForHour.map((todo) => (
-                            <div
-                              key={todo.id}
-                              className={`group p-2 rounded-lg backdrop-blur-sm bg-white border shadow-sm hover:shadow-md transition-all cursor-pointer ${
-                                todo.completed
-                                  ? "opacity-60 border-green-200"
-                                  : "border-purple-200"
-                              }`}
-                              onClick={() => toggleTodoComplete(todo.id, todo.completed)}
-                            >
-                              <div className="flex items-start gap-2">
-                                <CheckCircle2
-                                  className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                        {hoveredHour === hour && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem onClick={() => handleOpenModal(hour, 'task')}>
+                                <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                                Ajouter une tâche
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenModal(hour, 'appointment')}>
+                                <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
+                                Ajouter un rendez-vous
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenModal(hour, 'delivery')}>
+                                <Truck className="mr-2 h-4 w-4 text-emerald-600" />
+                                Ajouter une livraison
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                      
+                      <div className="flex-1 space-y-2">
+                        {/* Tâches */}
+                        {todosForHour.map((todo) => (
+                          <div
+                            key={todo.id}
+                            className={`group p-2 rounded-lg backdrop-blur-sm bg-white border shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                              todo.completed
+                                ? "opacity-60 border-green-200"
+                                : "border-purple-200"
+                            }`}
+                            onClick={() => toggleTodoComplete(todo.id, todo.completed)}
+                          >
+                            <div className="flex items-start gap-2">
+                              <CheckCircle2
+                                className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                                  todo.completed
+                                    ? "text-green-600 fill-green-600"
+                                    : "text-purple-400"
+                                }`}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p
+                                  className={`text-xs font-medium leading-tight ${
                                     todo.completed
-                                      ? "text-green-600 fill-green-600"
-                                      : "text-purple-400"
+                                      ? "line-through text-gray-500"
+                                      : "text-gray-900"
                                   }`}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <p
-                                    className={`text-xs font-medium leading-tight ${
-                                      todo.completed
-                                        ? "line-through text-gray-500"
-                                        : "text-gray-900"
-                                    }`}
-                                  >
-                                    {todo.title}
+                                >
+                                  {todo.title}
+                                </p>
+                                <Badge
+                                  variant="outline"
+                                  className="mt-1 text-[10px] px-1 py-0 h-4 bg-purple-50 text-purple-700 border-purple-200"
+                                >
+                                  Tâche
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Dépenses fournisseurs */}
+                        {expenses.map((expense) => (
+                          <div
+                            key={expense.id}
+                            className="p-2 rounded-lg backdrop-blur-sm bg-white border border-orange-200 shadow-sm hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-start gap-2">
+                              <Package className="h-4 w-4 mt-0.5 text-orange-600 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-900 leading-tight">
+                                  {expense.product_name}
+                                </p>
+                                {expense.suppliers && (
+                                  <p className="text-[10px] text-gray-500 mt-0.5">
+                                    {expense.suppliers.name}
                                   </p>
+                                )}
+                                <div className="flex items-center gap-1 mt-1">
+                                  <span className="text-xs font-bold text-orange-700">
+                                    {expense.total_amount.toFixed(2)} €
+                                  </span>
                                   <Badge
                                     variant="outline"
-                                    className="mt-1 text-[10px] px-1 py-0 h-4 bg-purple-50 text-purple-700 border-purple-200"
+                                    className="text-[10px] px-1 py-0 h-4 bg-orange-50 text-orange-700 border-orange-200"
                                   >
-                                    Tâche
+                                    Fournisseur
                                   </Badge>
                                 </div>
                               </div>
                             </div>
-                          ))}
+                          </div>
+                        ))}
 
-                          {/* Dépenses fournisseurs */}
-                          {expenses.map((expense) => (
-                            <div
-                              key={expense.id}
-                              className="p-2 rounded-lg backdrop-blur-sm bg-white border border-orange-200 shadow-sm hover:shadow-md transition-all"
-                            >
-                              <div className="flex items-start gap-2">
-                                <Package className="h-4 w-4 mt-0.5 text-orange-600 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium text-gray-900 leading-tight">
-                                    {expense.product_name}
-                                  </p>
-                                  {expense.suppliers && (
-                                    <p className="text-[10px] text-gray-500 mt-0.5">
-                                      {expense.suppliers.name}
-                                    </p>
-                                  )}
-                                  <div className="flex items-center gap-1 mt-1">
-                                    <span className="text-xs font-bold text-orange-700">
-                                      {expense.total_amount.toFixed(2)} €
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[10px] px-1 py-0 h-4 bg-orange-50 text-orange-700 border-orange-200"
-                                    >
-                                      Fournisseur
-                                    </Badge>
-                                  </div>
+                        {/* Charges mensuelles */}
+                        {charges.map((charge) => (
+                          <div
+                            key={charge.id}
+                            className="p-2 rounded-lg backdrop-blur-sm bg-white border border-red-200 shadow-sm hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-start gap-2">
+                              <Euro className="h-4 w-4 mt-0.5 text-red-600 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-900 leading-tight">
+                                  {charge.nom_charge}
+                                </p>
+                                <div className="flex items-center gap-1 mt-1">
+                                  <span className="text-xs font-bold text-red-700">
+                                    {charge.montant.toFixed(2)} €
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] px-1 py-0 h-4 bg-red-50 text-red-700 border-red-200"
+                                  >
+                                    Charge
+                                  </Badge>
                                 </div>
                               </div>
                             </div>
-                          ))}
+                          </div>
+                        ))}
 
-                          {/* Charges mensuelles */}
-                          {charges.map((charge) => (
-                            <div
-                              key={charge.id}
-                              className="p-2 rounded-lg backdrop-blur-sm bg-white border border-red-200 shadow-sm hover:shadow-md transition-all"
-                            >
-                              <div className="flex items-start gap-2">
-                                <Euro className="h-4 w-4 mt-0.5 text-red-600 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium text-gray-900 leading-tight">
-                                    {charge.nom_charge}
+                        {/* Rendez-vous */}
+                        {appointmentsForHour.map((appointment) => (
+                          <div
+                            key={appointment.id}
+                            className={`p-2 rounded-lg backdrop-blur-sm bg-white border shadow-sm hover:shadow-md transition-all ${getAppointmentStatusColor(appointment.status)}`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <UserCircle className="h-4 w-4 mt-0.5 text-blue-600 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-900 leading-tight">
+                                  {appointment.client_name}
+                                </p>
+                                {appointment.description && (
+                                  <p className="text-[10px] text-gray-500 mt-0.5">
+                                    {appointment.description}
                                   </p>
-                                  <div className="flex items-center gap-1 mt-1">
-                                    <span className="text-xs font-bold text-red-700">
-                                      {charge.montant.toFixed(2)} €
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[10px] px-1 py-0 h-4 bg-red-50 text-red-700 border-red-200"
-                                    >
-                                      Charge mensuelle
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-
-                          {/* Rendez-vous */}
-                          {appointmentsForHour.map((appointment) => (
-                            <div
-                              key={appointment.id}
-                              className="p-2 rounded-lg backdrop-blur-sm bg-white border border-blue-200 shadow-sm hover:shadow-md transition-all"
-                            >
-                              <div className="flex items-start gap-2">
-                                <UserCircle className="h-4 w-4 mt-0.5 text-blue-600 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium text-gray-900 leading-tight">
-                                    {appointment.client_name}
-                                  </p>
-                                  {appointment.description && (
-                                    <p className="text-[10px] text-gray-500 mt-0.5">
-                                      {appointment.description}
-                                    </p>
-                                  )}
-                                  <div className="flex items-center gap-1 mt-1">
-                                    <span className="text-[10px] text-gray-600">
+                                )}
+                                <div className="flex items-center gap-1 mt-1">
+                                  {appointment.duration_minutes && (
+                                    <span className="text-xs text-blue-700">
                                       {appointment.duration_minutes} min
                                     </span>
-                                    <Badge
-                                      className={`text-[10px] px-1 py-0 h-4 ${getAppointmentStatusColor(
-                                        appointment.status
-                                      )}`}
-                                    >
-                                      {getAppointmentStatusLabel(appointment.status)}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-
-                          {/* Livraisons d'accessoires */}
-                          {deliveries.map((delivery) => (
-                            <div
-                              key={delivery.id}
-                              className="p-2 rounded-lg backdrop-blur-sm bg-white border border-emerald-200 shadow-sm hover:shadow-md transition-all"
-                            >
-                              <div className="flex items-start gap-2">
-                                <Truck className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium text-gray-900 leading-tight">
-                                    {delivery.nom}
-                                  </p>
-                                  {delivery.fournisseur && (
-                                    <p className="text-[10px] text-gray-500 mt-0.5">
-                                      {delivery.fournisseur}
-                                    </p>
                                   )}
-                                  <div className="flex items-center gap-1 mt-1">
-                                    {delivery.tracking_number && (
-                                      <span className="text-[10px] text-gray-600">
-                                        Suivi: {delivery.tracking_number}
-                                      </span>
-                                    )}
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[10px] px-1 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    >
-                                      Livraison
-                                    </Badge>
-                                  </div>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] px-1 py-0 h-4 bg-blue-50 text-blue-700 border-blue-200"
+                                  >
+                                    {getAppointmentStatusLabel(appointment.status)}
+                                  </Badge>
                                 </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        ))}
+
+                        {/* Livraisons */}
+                        {deliveries.map((delivery) => (
+                          <div
+                            key={delivery.id}
+                            className="p-2 rounded-lg backdrop-blur-sm bg-white border border-emerald-200 shadow-sm hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-start gap-2">
+                              <Truck className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-gray-900 leading-tight">
+                                  {delivery.nom}
+                                </p>
+                                {delivery.tracking_number && (
+                                  <p className="text-[10px] text-gray-500 mt-0.5">
+                                    Suivi: {delivery.tracking_number}
+                                  </p>
+                                )}
+                                <Badge
+                                  variant="outline"
+                                  className="mt-1 text-[10px] px-1 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200"
+                                >
+                                  Livraison
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </ContextMenuTrigger>
-                  
-                  <ContextMenuContent className="w-56">
-                    <ContextMenuItem onClick={() => setShowAddTaskModal(true)}>
-                      <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
-                      <span>Ajouter une tâche</span>
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setShowAddNoteModal(true)}>
-                      <StickyNote className="mr-2 h-4 w-4 text-yellow-600" />
-                      <span>Ajouter une note</span>
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setShowAddExpenseModal(true)}>
-                      <Package className="mr-2 h-4 w-4 text-orange-600" />
-                      <span>Ajouter une dépense fournisseur</span>
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setShowAddAppointmentModal(true)}>
-                      <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
-                      <span>Ajouter un rendez-vous</span>
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => setShowAddDeliveryModal(true)}>
-                      <Truck className="mr-2 h-4 w-4 text-emerald-600" />
-                      <span>Ajouter une livraison</span>
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
+                  </div>
+                </div>
               );
             })}
           </div>
 
           {/* Légende */}
-          <div className="flex flex-wrap items-center justify-center gap-4 mt-4 pt-4 border-t">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-purple-400" />
-              <span className="text-xs text-gray-600">Tâches</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-orange-600" />
-              <span className="text-xs text-gray-600">Dép. Fournisseur</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Euro className="h-4 w-4 text-red-600" />
-              <span className="text-xs text-gray-600">Charges</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <UserCircle className="h-4 w-4 text-blue-600" />
-              <span className="text-xs text-gray-600">Rendez-vous</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Truck className="h-4 w-4 text-emerald-600" />
-              <span className="text-xs text-gray-600">Livraisons</span>
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <p className="text-xs text-gray-500 font-medium mb-2">Légende:</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3 text-purple-600" />
+                <span className="text-gray-600">Tâche</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Package className="h-3 w-3 text-orange-600" />
+                <span className="text-gray-600">Dépense</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Euro className="h-3 w-3 text-red-600" />
+                <span className="text-gray-600">Charge</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <UserCircle className="h-3 w-3 text-blue-600" />
+                <span className="text-gray-600">RDV client</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Truck className="h-3 w-3 text-emerald-600" />
+                <span className="text-gray-600">Livraison</span>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Modales - Les callbacks ne rechargent plus, la subscription le fait ! */}
+      {/* Modales */}
       <AddTaskModal
         isOpen={showAddTaskModal}
         onClose={() => setShowAddTaskModal(false)}
-        onSuccess={() => {}} // Plus besoin de recharger manuellement
+        onSuccess={() => {
+          setShowAddTaskModal(false);
+          toast.success("Tâche ajoutée avec succès !");
+        }}
         projectId={projectId}
         selectedDate={currentDate}
         selectedHour={selectedHour}
@@ -467,13 +470,20 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
       <AddNoteModal
         isOpen={showAddNoteModal}
         onClose={() => setShowAddNoteModal(false)}
+        onSuccess={() => {
+          setShowAddNoteModal(false);
+          toast.success("Note ajoutée avec succès !");
+        }}
         projectId={projectId}
       />
 
       <AddSupplierExpenseModal
         isOpen={showAddExpenseModal}
         onClose={() => setShowAddExpenseModal(false)}
-        onSuccess={() => {}} // Plus besoin de recharger manuellement
+        onSuccess={() => {
+          setShowAddExpenseModal(false);
+          toast.success("Dépense ajoutée avec succès !");
+        }}
         selectedDate={currentDate}
         projectId={projectId}
       />
@@ -481,7 +491,10 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
       <AddAppointmentModal
         isOpen={showAddAppointmentModal}
         onClose={() => setShowAddAppointmentModal(false)}
-        onSuccess={() => {}} // Plus besoin de recharger manuellement
+        onSuccess={() => {
+          setShowAddAppointmentModal(false);
+          toast.success("Rendez-vous ajouté avec succès !");
+        }}
         projectId={projectId}
         selectedDate={currentDate}
         selectedHour={selectedHour}
@@ -490,9 +503,12 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
       <AddDeliveryModal
         isOpen={showAddDeliveryModal}
         onClose={() => setShowAddDeliveryModal(false)}
-        onSuccess={() => {}} // Plus besoin de recharger manuellement
-        projectId={projectId}
+        onSuccess={() => {
+          setShowAddDeliveryModal(false);
+          toast.success("Livraison planifiée avec succès !");
+        }}
         selectedDate={currentDate}
+        projectId={projectId}
       />
     </>
   );
