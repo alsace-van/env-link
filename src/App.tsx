@@ -16,6 +16,7 @@ import Admin from "./pages/Admin";
 import AccessoriesCatalog from "./pages/AccessoriesCatalog";
 import ShopPublic from "./pages/ShopPublic";
 import ShopAdmin from "./pages/ShopAdmin";
+import BilanComptable from "./pages/BilanComptable";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
                 <Route path="/account" element={<Account />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/catalog" element={<AccessoriesCatalog />} />
+                <Route path="/bilan-comptable" element={<BilanComptable />} />
                 
                 {/* Routes boutique */}
                 <Route path="/shop" element={<ShopPublic />} />
