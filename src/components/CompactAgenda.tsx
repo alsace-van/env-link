@@ -3,12 +3,13 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,6 +23,7 @@ import {
   Calendar,
   Truck,
   HelpCircle,
+  Plus,
 } from "lucide-react";
 import {
   format,
@@ -64,6 +66,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [isAddAppointmentOpen, setIsAddAppointmentOpen] = useState(false);
   const [isAddDeliveryOpen, setIsAddDeliveryOpen] = useState(false);
   const [selectedHour, setSelectedHour] = useState<number>(9);
+  const [hoveredDay, setHoveredDay] = useState<string | null>(null);
 
   // Utiliser le contexte pour les données synchronisées
   const {
@@ -190,6 +193,12 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         setIsAddDeliveryOpen(true);
         break;
     }
+  };
+
+  const handleAddFromDropdown = (day: Date, action: string) => {
+    setCurrentDate(day);
+    setSelectedHour(9); // Heure par défaut
+    handleContextMenu(9, action, day);
   };
 
   const handleModalSuccess = () => refreshData?.();
@@ -815,7 +824,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
               <ContextMenu key={day.toISOString()}>
                 <ContextMenuTrigger asChild>
                   <div
-                    className={`border rounded-lg transition-all cursor-pointer ${cellClass} ${
+                    className={`border rounded-lg transition-all cursor-pointer relative group ${cellClass} ${
                       isCurrentDay
                         ? "border-blue-600 dark:border-blue-500 bg-blue-500/10 dark:bg-blue-500/20 shadow-md"
                         : isSelectedDay
@@ -826,11 +835,69 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                       setCurrentDate(day);
                       setShowDailyViewInModal(true); // Afficher le planning journalier
                     }}
+                    onMouseEnter={() => setHoveredDay(day.toISOString())}
+                    onMouseLeave={() => setHoveredDay(null)}
                   >
-                    <div
-                      className={`text-sm font-semibold mb-2 ${isCurrentDay ? "text-blue-600 dark:text-blue-400" : "text-foreground"}`}
-                    >
-                      {format(day, "d")}
+                    {/* En-tête avec numéro du jour et bouton + */}
+                    <div className="flex items-start justify-between mb-2">
+                      <div
+                        className={`text-sm font-semibold ${isCurrentDay ? "text-blue-600 dark:text-blue-400" : "text-foreground"}`}
+                      >
+                        {format(day, "d")}
+                      </div>
+
+                      {/* Bouton + au survol */}
+                      {hoveredDay === day.toISOString() && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddFromDropdown(day, "task");
+                              }}
+                            >
+                              <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
+                              Ajouter une tâche
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddFromDropdown(day, "appointment");
+                              }}
+                            >
+                              <UserCircle className="mr-2 h-4 w-4 text-green-600" />
+                              Ajouter un rendez-vous
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddFromDropdown(day, "expense");
+                              }}
+                            >
+                              <Package className="mr-2 h-4 w-4 text-red-600" />
+                              Ajouter une dépense
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddFromDropdown(day, "delivery");
+                              }}
+                            >
+                              <Truck className="mr-2 h-4 w-4 text-orange-600" />
+                              Ajouter une livraison
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
 
                     {totalEvents > 0 && (
