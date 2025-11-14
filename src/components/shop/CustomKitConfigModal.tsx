@@ -15,7 +15,13 @@ interface CustomKitConfigModalProps {
   onClose: () => void;
 }
 
-interface Accessory {
+interface AccessoryOption {
+  id: string;
+  nom: string;
+  prix_vente_ttc: number;
+}
+
+interface AccessoryWithCategory {
   id: string;
   nom: string;
   marque: string;
@@ -23,6 +29,12 @@ interface Accessory {
   description: string;
   image_url: string;
   category_id: string;
+  promo_active: boolean | null;
+  promo_price: number | null;
+  promo_start_date: string | null;
+  promo_end_date: string | null;
+  couleur: string | null;
+  options?: AccessoryOption[];
 }
 
 interface CategorySection {
@@ -30,14 +42,15 @@ interface CategorySection {
   categoryId: string;
   categoryName: string;
   selectedAccessoryId: string | null;
-  accessories: Accessory[];
+  selectedOptions: { [accessoryId: string]: string[] };
+  accessories: AccessoryWithCategory[];
 }
 
 export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModalProps) => {
   const { addToCart } = useCartContext();
   const [product, setProduct] = useState<any>(null);
   const [categories, setCategories] = useState<any[]>([]);
-  const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [accessories, setAccessories] = useState<AccessoryWithCategory[]>([]);
   const [sections, setSections] = useState<CategorySection[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -71,14 +84,39 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
       if (kitAccessories && kitAccessories.length > 0) {
         const accessoryIds = kitAccessories.map((ka: any) => ka.accessory_id);
 
-        // Charger les accessoires avec leurs catégories
+        // Charger les accessoires avec toutes leurs données
         const { data: accessoriesData } = await supabase
           .from("accessories_catalog" as any)
-          .select("id, nom, marque, prix_vente_ttc, description, image_url, category_id")
+          .select(`
+            id, 
+            nom, 
+            marque, 
+            prix_vente_ttc, 
+            description, 
+            image_url, 
+            category_id,
+            promo_active,
+            promo_price,
+            promo_start_date,
+            promo_end_date,
+            couleur
+          `)
           .in("id", accessoryIds);
 
         if (accessoriesData) {
-          setAccessories(accessoriesData);
+          // Charger les options pour chaque accessoire
+          const { data: optionsData } = await supabase
+            .from("accessory_options" as any)
+            .select("id, nom, prix_vente_ttc, accessory_id")
+            .in("accessory_id", accessoryIds);
+
+          // Associer les options aux accessoires
+          const accessoriesWithOptions: AccessoryWithCategory[] = accessoriesData.map((acc: any) => ({
+            ...acc,
+            options: optionsData?.filter((opt: any) => opt.accessory_id === acc.id) || [],
+          }));
+
+          setAccessories(accessoriesWithOptions);
 
           // Charger les catégories uniques
           const categoryIds = [...new Set(accessoriesData.map((a: any) => a.category_id).filter(Boolean))];
@@ -93,12 +131,13 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
               setCategories(categoriesData);
 
               // Créer une section initiale pour chaque catégorie
-              const initialSections = categoriesData.map((cat: any, index: number) => ({
+              const initialSections: CategorySection[] = categoriesData.map((cat: any, index: number) => ({
                 id: `section-${index}-${Date.now()}`,
                 categoryId: cat.id,
                 categoryName: cat.nom,
                 selectedAccessoryId: null,
-                accessories: accessoriesData.filter((acc: any) => acc.category_id === cat.id),
+                selectedOptions: {},
+                accessories: accessoriesWithOptions.filter((acc) => acc.category_id === cat.id),
               }));
 
               setSections(initialSections);
@@ -119,6 +158,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
       ...sectionToDuplicate,
       id: `section-${sections.length}-${Date.now()}`,
       selectedAccessoryId: null,
+      selectedOptions: {},
     };
 
     setSections([...sections, newSection]);
@@ -137,12 +177,44 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     setSections(sections.map((s) => (s.id === sectionId ? { ...s, selectedAccessoryId: accessoryId } : s)));
   };
 
+  const updateSectionOptions = (sectionId: string, accessoryId: string, optionIds: string[]) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId ? { ...s, selectedOptions: { ...s.selectedOptions, [accessoryId]: optionIds } } : s
+      )
+    );
+  };
+
+  const getAccessoryPrice = (accessory: AccessoryWithCategory) => {
+    if (accessory.promo_active && accessory.promo_price) {
+      const now = new Date();
+      const startDate = accessory.promo_start_date ? new Date(accessory.promo_start_date) : null;
+      const endDate = accessory.promo_end_date ? new Date(accessory.promo_end_date) : null;
+
+      if ((!startDate || now >= startDate) && (!endDate || now <= endDate)) {
+        return accessory.promo_price;
+      }
+    }
+    return accessory.prix_vente_ttc;
+  };
+
   const calculateTotal = () => {
     const basePrice = product?.prix_base || 0;
     const accessoriesTotal = sections.reduce((total, section) => {
       if (section.selectedAccessoryId) {
         const accessory = section.accessories.find((a) => a.id === section.selectedAccessoryId);
-        return total + (accessory?.prix_vente_ttc || 0);
+        if (!accessory) return total;
+
+        let accessoryPrice = getAccessoryPrice(accessory);
+
+        // Ajouter le prix des options sélectionnées
+        const selectedOptions = section.selectedOptions[section.selectedAccessoryId] || [];
+        const optionsPrice = selectedOptions.reduce((optTotal, optId) => {
+          const option = accessory.options?.find((o) => o.id === optId);
+          return optTotal + (option?.prix_vente_ttc || 0);
+        }, 0);
+
+        return total + accessoryPrice + optionsPrice;
       }
       return total;
     }, 0);
@@ -170,6 +242,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
           categoryId: s.categoryId,
           categoryName: s.categoryName,
           accessoryId: s.selectedAccessoryId,
+          selectedOptions: s.selectedOptions[s.selectedAccessoryId!] || [],
         }))
         .filter((s) => s.accessoryId),
     };
@@ -242,13 +315,22 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                 <SelectTrigger>
                                   <SelectValue placeholder="-" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                  {section.accessories.map((accessory) => (
-                                    <SelectItem key={accessory.id} value={accessory.id}>
-                                      {accessory.nom} {accessory.marque ? `- ${accessory.marque}` : ""} (
-                                      {(accessory.prix_vente_ttc || 0).toFixed(2)} €)
-                                    </SelectItem>
-                                  ))}
+                                 <SelectContent>
+                                  {section.accessories.map((accessory) => {
+                                    const price = getAccessoryPrice(accessory);
+                                    const isPromo = accessory.promo_active && price < accessory.prix_vente_ttc;
+                                    return (
+                                      <SelectItem key={accessory.id} value={accessory.id}>
+                                        {accessory.nom} {accessory.marque ? `- ${accessory.marque}` : ""} (
+                                        {isPromo && (
+                                          <span className="line-through text-muted-foreground mr-1">
+                                            {accessory.prix_vente_ttc.toFixed(2)} €
+                                          </span>
+                                        )}
+                                        {price.toFixed(2)} €)
+                                      </SelectItem>
+                                    );
+                                  })}
                                 </SelectContent>
                               </Select>
                             </div>
@@ -256,29 +338,75 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
                           {/* Afficher les détails de l'accessoire sélectionné */}
                           {selectedAccessory && (
-                            <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
-                              {selectedAccessory.image_url && (
-                                <img
-                                  src={selectedAccessory.image_url}
-                                  alt={selectedAccessory.nom}
-                                  className="w-16 h-16 object-cover rounded"
-                                />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm">{selectedAccessory.nom}</p>
-                                {selectedAccessory.marque && (
-                                  <p className="text-xs text-muted-foreground">{selectedAccessory.marque}</p>
+                            <>
+                              <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                                {selectedAccessory.image_url && (
+                                  <img
+                                    src={selectedAccessory.image_url}
+                                    alt={selectedAccessory.nom}
+                                    className="w-16 h-16 object-cover rounded"
+                                  />
                                 )}
-                                {selectedAccessory.description && (
-                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                    {selectedAccessory.description}
-                                  </p>
-                                )}
-                                <p className="text-sm font-semibold text-primary mt-1">
-                                  {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €
-                                </p>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm">{selectedAccessory.nom}</p>
+                                  {selectedAccessory.marque && (
+                                    <p className="text-xs text-muted-foreground">{selectedAccessory.marque}</p>
+                                  )}
+                                  {selectedAccessory.description && (
+                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                      {selectedAccessory.description}
+                                    </p>
+                                  )}
+                                  {selectedAccessory.couleur && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Couleur: {selectedAccessory.couleur}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {selectedAccessory.promo_active && 
+                                     getAccessoryPrice(selectedAccessory) < selectedAccessory.prix_vente_ttc && (
+                                      <span className="text-xs line-through text-muted-foreground">
+                                        {selectedAccessory.prix_vente_ttc.toFixed(2)} €
+                                      </span>
+                                    )}
+                                    <p className="text-sm font-semibold text-primary">
+                                      {getAccessoryPrice(selectedAccessory).toFixed(2)} €
+                                    </p>
+                                  </div>
+                                </div>
                               </div>
-                            </div>
+
+                              {/* Options */}
+                              {selectedAccessory.options && selectedAccessory.options.length > 0 && (
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium">Options disponibles</label>
+                                  <div className="space-y-2">
+                                    {selectedAccessory.options.map((option) => (
+                                      <label key={option.id} className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          className="rounded"
+                                          checked={
+                                            section.selectedOptions[selectedAccessory.id]?.includes(option.id) || false
+                                          }
+                                          onChange={(e) => {
+                                            const currentOptions =
+                                              section.selectedOptions[selectedAccessory.id] || [];
+                                            const newOptions = e.target.checked
+                                              ? [...currentOptions, option.id]
+                                              : currentOptions.filter((id) => id !== option.id);
+                                            updateSectionOptions(section.id, selectedAccessory.id, newOptions);
+                                          }}
+                                        />
+                                        <span className="text-sm">
+                                          {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
+                                        </span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
@@ -307,14 +435,35 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                         const accessory = getSelectedAccessoryDetails(section);
                         if (!accessory) return null;
 
+                        const accessoryPrice = getAccessoryPrice(accessory);
+                        const selectedOptions = section.selectedOptions[section.selectedAccessoryId!] || [];
+                        const optionsPrice = selectedOptions.reduce((total, optId) => {
+                          const option = accessory.options?.find((o) => o.id === optId);
+                          return total + (option?.prix_vente_ttc || 0);
+                        }, 0);
+
                         return (
-                          <div key={section.id} className="text-sm">
+                          <div key={section.id} className="text-sm space-y-1">
                             <div className="flex justify-between items-start gap-2">
                               <span className="text-muted-foreground flex-1 line-clamp-1">{accessory.nom}</span>
                               <span className="font-medium whitespace-nowrap">
-                                {(accessory.prix_vente_ttc || 0).toFixed(2)} €
+                                {accessoryPrice.toFixed(2)} €
                               </span>
                             </div>
+                            {selectedOptions.length > 0 && (
+                              <div className="pl-2 space-y-1">
+                                {selectedOptions.map((optId) => {
+                                  const option = accessory.options?.find((o) => o.id === optId);
+                                  if (!option) return null;
+                                  return (
+                                    <div key={optId} className="flex justify-between text-xs text-muted-foreground">
+                                      <span>+ {option.nom}</span>
+                                      <span>{option.prix_vente_ttc.toFixed(2)} €</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
