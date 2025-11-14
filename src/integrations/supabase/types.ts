@@ -1582,6 +1582,42 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_categories: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          nom: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          nom: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          nom?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       shop_custom_kit_accessories: {
         Row: {
           accessory_id: string
@@ -1827,27 +1863,33 @@ export type Database = {
           },
         ]
       }
-      shop_product_accessories: {
+      shop_product_items: {
         Row: {
           accessory_id: string
           created_at: string | null
+          default_quantity: number | null
           id: string
-          product_id: string
+          is_required: boolean | null
           quantity: number
+          shop_product_id: string
         }
         Insert: {
           accessory_id: string
           created_at?: string | null
+          default_quantity?: number | null
           id?: string
-          product_id: string
+          is_required?: boolean | null
           quantity?: number
+          shop_product_id: string
         }
         Update: {
           accessory_id?: string
           created_at?: string | null
+          default_quantity?: number | null
           id?: string
-          product_id?: string
+          is_required?: boolean | null
           quantity?: number
+          shop_product_id?: string
         }
         Relationships: [
           {
@@ -1859,7 +1901,7 @@ export type Database = {
           },
           {
             foreignKeyName: "shop_product_accessories_product_id_fkey"
-            columns: ["product_id"]
+            columns: ["shop_product_id"]
             isOneToOne: false
             referencedRelation: "shop_products"
             referencedColumns: ["id"]
@@ -1868,39 +1910,53 @@ export type Database = {
       }
       shop_products: {
         Row: {
+          category_id: string | null
           created_at: string | null
           description: string | null
           id: string
           is_active: boolean | null
-          name: string
-          price: number
-          type: string
+          nom: string
+          prix_base: number
+          product_type: string
+          stock_quantity: number | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          category_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
           is_active?: boolean | null
-          name: string
-          price?: number
-          type: string
+          nom: string
+          prix_base?: number
+          product_type: string
+          stock_quantity?: number | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          category_id?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
           is_active?: boolean | null
-          name?: string
-          price?: number
-          type?: string
+          nom?: string
+          prix_base?: number
+          product_type?: string
+          stock_quantity?: number | null
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "shop_products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "shop_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       shop_welcome_config: {
         Row: {
