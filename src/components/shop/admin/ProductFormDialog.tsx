@@ -68,19 +68,19 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
 
   const handleCreateCategory = async () => {
     if (!newCategoryName.trim()) return;
-    
+
     const { data: userData } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from("shop_categories" as any)
       .insert({ nom: newCategoryName, user_id: userData.user?.id })
       .select()
       .single();
-    
+
     if (error) {
       toast.error("Erreur lors de la création");
       return;
     }
-    
+
     if (data) {
       const newCategory = data as any;
       setCategories([...categories, newCategory]);
@@ -119,35 +119,41 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
     setLoading(true);
 
     try {
+      let targetProductId = productId;
+
       if (productId) {
+        // Mise à jour du produit existant
         await supabase
           .from("shop_products" as any)
           .update(formData)
           .eq("id", productId);
 
+        // Supprimer les anciens accessoires
         await supabase
           .from("shop_product_items" as any)
           .delete()
           .eq("shop_product_id", productId);
       } else {
+        // Création d'un nouveau produit
         const { data: newProduct } = await supabase
           .from("shop_products" as any)
           .insert(formData)
           .select()
           .single();
 
-        if (newProduct && selectedAccessories.length > 0) {
-          const items = selectedAccessories.map(acc => ({
-            shop_product_id: (newProduct as any).id,
-            accessory_id: acc.accessory_id || acc.id,
-            default_quantity: acc.default_quantity || 1,
-            is_required: acc.is_required !== false,
-          }));
+        targetProductId = (newProduct as any)?.id;
+      }
 
-          await supabase
-            .from("shop_product_items" as any)
-            .insert(items);
-        }
+      // Insérer les accessoires (pour création ET modification)
+      if (targetProductId && selectedAccessories.length > 0) {
+        const items = selectedAccessories.map((acc) => ({
+          shop_product_id: targetProductId,
+          accessory_id: acc.accessory_id || acc.id,
+          default_quantity: acc.default_quantity || 1,
+          is_required: acc.is_required !== false,
+        }));
+
+        await supabase.from("shop_product_items" as any).insert(items);
       }
 
       toast.success(productId ? "Produit modifié" : "Produit créé");
@@ -165,9 +171,7 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>
-            {productId ? "Modifier le produit" : "Nouveau produit"}
-          </DialogTitle>
+          <DialogTitle>{productId ? "Modifier le produit" : "Nouveau produit"}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto flex-1 px-3 py-3">
@@ -233,16 +237,11 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setShowNewCategoryDialog(true)}
-                    >
+                    <Button type="button" variant="outline" size="icon" onClick={() => setShowNewCategoryDialog(true)}>
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
-                  
+
                   {showNewCategoryDialog && (
                     <div className="mt-2 p-3 border rounded-lg space-y-2">
                       <Input
@@ -252,11 +251,19 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
                         onKeyDown={(e) => e.key === "Enter" && handleCreateCategory()}
                       />
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={handleCreateCategory}>Créer</Button>
-                        <Button size="sm" variant="outline" onClick={() => {
-                          setShowNewCategoryDialog(false);
-                          setNewCategoryName("");
-                        }}>Annuler</Button>
+                        <Button size="sm" onClick={handleCreateCategory}>
+                          Créer
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setShowNewCategoryDialog(false);
+                            setNewCategoryName("");
+                          }}
+                        >
+                          Annuler
+                        </Button>
                       </div>
                     </div>
                   )}
