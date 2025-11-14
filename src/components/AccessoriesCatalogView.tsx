@@ -26,6 +26,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import StockStatusManager from "@/components/StockStatusManager";
 import { useProjectData } from "@/contexts/ProjectDataContext";
+import { CategoryFilterBadges } from "@/components/CategoryFilterBadges";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -390,6 +391,14 @@ const AccessoriesCatalogView = () => {
               Ajouter un accessoire
             </Button>
           </div>
+
+          {/* Filtres par catégorie */}
+          <CategoryFilterBadges
+            categories={categories}
+            accessories={accessories}
+            selectedCategories={selectedCategories}
+            onCategoryChange={setSelectedCategories}
+          />
 
           {loading ? (
             <div className="text-center py-12">Chargement...</div>
