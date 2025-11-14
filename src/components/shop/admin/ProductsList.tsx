@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Trash2, Eye, EyeOff, Package } from "lucide-react";
+import { Edit, Trash2, Eye, EyeOff, Package, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
 
@@ -83,7 +83,21 @@ export const ProductsList = () => {
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="mb-6">
+        <Button onClick={() => setEditingProduct({} as Product)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Créer un produit
+        </Button>
+      </div>
+
+      {products.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <Package className="h-16 w-16 mx-auto mb-4 opacity-50" />
+          <p className="text-lg mb-2">Aucun produit</p>
+          <p className="text-sm">Créez votre premier produit pour commencer</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {products.map((product) => (
           <Card key={product.id} className="overflow-hidden">
             <div className="aspect-video bg-muted relative">
@@ -165,6 +179,7 @@ export const ProductsList = () => {
           </Card>
         ))}
       </div>
+      )}
 
       {editingProduct && (
         <ShopProductFormDialog

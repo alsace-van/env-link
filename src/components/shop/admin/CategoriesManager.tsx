@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Edit, Save, X } from "lucide-react";
+import { Plus, Trash2, Edit, Save, X, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
 interface Category {
@@ -13,6 +13,7 @@ interface Category {
   nom: string;
   description?: string;
   icon: string;
+  image_url?: string;
   display_order: number;
   is_active: boolean;
 }
@@ -24,10 +25,12 @@ export const CategoriesManager = () => {
     nom: "",
     description: "",
     icon: "📦",
+    image_url: "",
     display_order: 0,
     is_active: true,
   });
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     loadCategories();
@@ -51,6 +54,36 @@ export const CategoriesManager = () => {
     setLoading(false);
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `categories/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('shop-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('shop-images')
+        .getPublicUrl(filePath);
+
+      setNewCategory({ ...newCategory, image_url: publicUrl });
+      toast.success("Image téléchargée");
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      toast.error("Erreur lors du téléchargement");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -70,6 +103,7 @@ export const CategoriesManager = () => {
         nom: "",
         description: "",
         icon: "📦",
+        image_url: "",
         display_order: 0,
         is_active: true,
       });
@@ -130,6 +164,46 @@ export const CategoriesManager = () => {
                 }
                 placeholder="📦"
               />
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Image de la catégorie</Label>
+            <div className="flex gap-4 items-center">
+              {newCategory.image_url && (
+                <div className="w-24 h-24 rounded border overflow-hidden">
+                  <img 
+                    src={newCategory.image_url} 
+                    alt="Preview" 
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              <div>
+                <Input
+                  id="category-image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => document.getElementById('category-image')?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    "Téléchargement..."
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Choisir une image
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
 

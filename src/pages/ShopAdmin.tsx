@@ -5,6 +5,7 @@ import { ArrowLeft, Package, FolderTree, ShoppingCart } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ProductsList } from "@/components/shop/admin/ProductsList";
 import { CategoriesManager } from "@/components/shop/admin/CategoriesManager";
+import { OrdersManager } from "@/components/shop/admin/OrdersManager";
 
 export default function ShopAdmin() {
   const navigate = useNavigate();
@@ -55,11 +56,7 @@ export default function ShopAdmin() {
           </TabsContent>
 
           <TabsContent value="orders">
-            <div className="text-center py-12 text-muted-foreground">
-              <ShoppingCart className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg">Gestion des commandes</p>
-              <p className="text-sm">À implémenter prochainement</p>
-            </div>
+            <OrdersManager />
           </TabsContent>
         </Tabs>
       </main>

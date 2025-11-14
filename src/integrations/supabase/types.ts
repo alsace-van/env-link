@@ -373,6 +373,75 @@ export type Database = {
           },
         ]
       }
+      cart_items: {
+        Row: {
+          cart_id: string
+          configuration: Json | null
+          created_at: string
+          id: string
+          price_at_addition: number
+          product_id: string
+          quantity: number
+          updated_at: string
+        }
+        Insert: {
+          cart_id: string
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          price_at_addition: number
+          product_id: string
+          quantity?: number
+          updated_at?: string
+        }
+        Update: {
+          cart_id?: string
+          configuration?: Json | null
+          created_at?: string
+          id?: string
+          price_at_addition?: number
+          product_id?: string
+          quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cart_items_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "shop_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carts: {
+        Row: {
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -725,9 +794,12 @@ export type Database = {
           expense_date: string | null
           facture_url: string | null
           fournisseur: string | null
+          hauteur_mm: number | null
           id: string
           intensite_amperes: number | null
           invoice_number: string | null
+          largeur_mm: number | null
+          longueur_mm: number | null
           marque: string | null
           nom_accessoire: string | null
           notes: string | null
@@ -768,9 +840,12 @@ export type Database = {
           expense_date?: string | null
           facture_url?: string | null
           fournisseur?: string | null
+          hauteur_mm?: number | null
           id?: string
           intensite_amperes?: number | null
           invoice_number?: string | null
+          largeur_mm?: number | null
+          longueur_mm?: number | null
           marque?: string | null
           nom_accessoire?: string | null
           notes?: string | null
@@ -811,9 +886,12 @@ export type Database = {
           expense_date?: string | null
           facture_url?: string | null
           fournisseur?: string | null
+          hauteur_mm?: number | null
           id?: string
           intensite_amperes?: number | null
           invoice_number?: string | null
+          largeur_mm?: number | null
+          longueur_mm?: number | null
           marque?: string | null
           nom_accessoire?: string | null
           notes?: string | null
@@ -1090,42 +1168,55 @@ export type Database = {
       }
       project_todos: {
         Row: {
+          accessory_id: string | null
           completed: boolean | null
           created_at: string | null
           description: string | null
           due_date: string | null
           id: string
           priority: string | null
-          project_id: string
+          project_id: string | null
+          task_type: string | null
           title: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          accessory_id?: string | null
           completed?: boolean | null
           created_at?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
           priority?: string | null
-          project_id: string
+          project_id?: string | null
+          task_type?: string | null
           title: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          accessory_id?: string | null
           completed?: boolean | null
           created_at?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
           priority?: string | null
-          project_id?: string
+          project_id?: string | null
+          task_type?: string | null
           title?: string
           updated_at?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "project_todos_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "project_todos_project_id_fkey"
             columns: ["project_id"]
@@ -1491,6 +1582,45 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_custom_kit_accessories: {
+        Row: {
+          accessory_id: string
+          created_at: string | null
+          custom_kit_id: string
+          default_quantity: number
+          id: string
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string | null
+          custom_kit_id: string
+          default_quantity?: number
+          id?: string
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string | null
+          custom_kit_id?: string
+          default_quantity?: number
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_custom_kit_accessories_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_custom_kit_accessories_custom_kit_id_fkey"
+            columns: ["custom_kit_id"]
+            isOneToOne: false
+            referencedRelation: "shop_custom_kits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_custom_kits: {
         Row: {
           allowed_category_ids: string[] | null
@@ -1522,6 +1652,251 @@ export type Database = {
           is_active?: boolean | null
           nom?: string
           prix_base?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      shop_customers: {
+        Row: {
+          billing_address: string
+          billing_city: string
+          billing_country: string
+          billing_postal_code: string
+          company_name: string | null
+          created_at: string | null
+          email: string
+          first_name: string
+          has_project_subscription: boolean | null
+          id: string
+          last_name: string
+          phone: string
+          shipping_address: string | null
+          shipping_city: string | null
+          shipping_country: string | null
+          shipping_postal_code: string | null
+          shipping_recipient_name: string | null
+          shipping_same_as_billing: boolean | null
+          updated_at: string | null
+          user_id: string | null
+          vat_number: string | null
+        }
+        Insert: {
+          billing_address: string
+          billing_city: string
+          billing_country?: string
+          billing_postal_code: string
+          company_name?: string | null
+          created_at?: string | null
+          email: string
+          first_name: string
+          has_project_subscription?: boolean | null
+          id?: string
+          last_name: string
+          phone: string
+          shipping_address?: string | null
+          shipping_city?: string | null
+          shipping_country?: string | null
+          shipping_postal_code?: string | null
+          shipping_recipient_name?: string | null
+          shipping_same_as_billing?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+          vat_number?: string | null
+        }
+        Update: {
+          billing_address?: string
+          billing_city?: string
+          billing_country?: string
+          billing_postal_code?: string
+          company_name?: string | null
+          created_at?: string | null
+          email?: string
+          first_name?: string
+          has_project_subscription?: boolean | null
+          id?: string
+          last_name?: string
+          phone?: string
+          shipping_address?: string | null
+          shipping_city?: string | null
+          shipping_country?: string | null
+          shipping_postal_code?: string | null
+          shipping_recipient_name?: string | null
+          shipping_same_as_billing?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+          vat_number?: string | null
+        }
+        Relationships: []
+      }
+      shop_order_items: {
+        Row: {
+          configuration: Json | null
+          created_at: string | null
+          id: string
+          order_id: string
+          product_id: string
+          product_name: string
+          quantity: number
+          unit_price: number
+        }
+        Insert: {
+          configuration?: Json | null
+          created_at?: string | null
+          id?: string
+          order_id: string
+          product_id: string
+          product_name: string
+          quantity?: number
+          unit_price: number
+        }
+        Update: {
+          configuration?: Json | null
+          created_at?: string | null
+          id?: string
+          order_id?: string
+          product_id?: string
+          product_name?: string
+          quantity?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "shop_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "shop_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_orders: {
+        Row: {
+          added_to_expenses: boolean | null
+          created_at: string | null
+          customer_id: string | null
+          id: string
+          notes: string | null
+          order_number: string
+          payment_method: string | null
+          status: string | null
+          total_amount: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          added_to_expenses?: boolean | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          notes?: string | null
+          order_number: string
+          payment_method?: string | null
+          status?: string | null
+          total_amount?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          added_to_expenses?: boolean | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          notes?: string | null
+          order_number?: string
+          payment_method?: string | null
+          status?: string | null
+          total_amount?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "shop_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_product_accessories: {
+        Row: {
+          accessory_id: string
+          created_at: string | null
+          id: string
+          product_id: string
+          quantity: number
+        }
+        Insert: {
+          accessory_id: string
+          created_at?: string | null
+          id?: string
+          product_id: string
+          quantity?: number
+        }
+        Update: {
+          accessory_id?: string
+          created_at?: string | null
+          id?: string
+          product_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_product_accessories_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_product_accessories_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "shop_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_products: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price: number
+          type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price?: number
+          type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number
+          type?: string
           updated_at?: string | null
           user_id?: string
         }
@@ -1562,6 +1937,56 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      supplier_expenses: {
+        Row: {
+          created_at: string | null
+          id: string
+          notes: string | null
+          order_date: string | null
+          product_name: string
+          quantity: number
+          supplier_id: string | null
+          total_amount: number
+          unit_price: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          product_name: string
+          quantity?: number
+          supplier_id?: string | null
+          total_amount: number
+          unit_price: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          product_name?: string
+          quantity?: number
+          supplier_id?: string | null
+          total_amount?: number
+          unit_price?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_expenses_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       suppliers: {
         Row: {
@@ -1869,6 +2294,7 @@ export type Database = {
           status: string
         }[]
       }
+      generate_order_number: { Args: never; Returns: string }
       get_latest_rti: {
         Args: { p_project_id: string }
         Returns: {
