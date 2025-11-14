@@ -667,9 +667,10 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
       }
 
       toast.success("Schéma sauvegardé");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erreur lors de la sauvegarde:", error);
-      toast.error("Erreur lors de la sauvegarde");
+      const errorMessage = error?.message || error?.error_description || "Erreur inconnue";
+      toast.error(`Erreur lors de la sauvegarde: ${errorMessage}`);
     }
   };
 
