@@ -657,6 +657,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
             project_id: projectId,
             user_id: user.id,
             schema_number: schemaNumber,
+            schema_name: `Schéma ${schemaNumber}`,
             schema_data: json,
           })
           .select()
