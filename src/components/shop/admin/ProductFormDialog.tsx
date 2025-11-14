@@ -119,11 +119,19 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
     setLoading(true);
 
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error("Utilisateur non connecté");
+        setLoading(false);
+        return;
+      }
+
       let targetProductId = productId;
       
       // Pour les kits sur mesure, le prix sera calculé dynamiquement
       const dataToSave = {
         ...formData,
+        user_id: userData.user.id,
         prix_base: formData.product_type === 'custom_kit' ? 0 : formData.prix_base
       };
 
