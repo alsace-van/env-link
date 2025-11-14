@@ -20,7 +20,11 @@ export const AccessorySelector = ({ selectedAccessories, onChange, productType }
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   useEffect(() => {
-    loadData();
+    const timer = setTimeout(() => {
+      loadData();
+    }, 300);
+    
+    return () => clearTimeout(timer);
   }, [selectedCategory, searchQuery]);
 
   const loadData = async () => {
