@@ -29,10 +29,12 @@ interface AccessoryWithCategory {
   couleur: string;
   promo_active: boolean;
   promo_price: number;
+  promo_start_date: string | null;
+  promo_end_date: string | null;
   category: {
     id: string;
     nom: string;
-  };
+  } | null;
   options: Array<{
     id: string;
     nom: string;
@@ -85,11 +87,11 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     if (productData) {
       setProduct(productData);
 
-      // Charger les accessoires du kit avec leurs catégories
+      // Charger les accessoires du kit depuis shop_product_items
       const { data: kitAccessories } = await supabase
-        .from("shop_custom_kit_accessories")
+        .from("shop_product_items")
         .select("accessory_id, default_quantity")
-        .eq("custom_kit_id", productId);
+        .eq("shop_product_id", productId);
 
       if (kitAccessories && kitAccessories.length > 0) {
         const accessoryIds = kitAccessories.map(ka => ka.accessory_id);
@@ -107,15 +109,28 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
             couleur,
             promo_active,
             promo_price,
-            category:categories(id, nom)
+            promo_start_date,
+            promo_end_date,
+            category_id
           `)
-          .in("id", accessoryIds)
-          .eq("available_in_shop", true);
+          .in("id", accessoryIds);
 
         if (accessories) {
-          // Charger les options pour chaque accessoire
-          const accessoriesWithOptions = await Promise.all(
+          // Charger les catégories et options pour chaque accessoire
+          const accessoriesWithDetails = await Promise.all(
             accessories.map(async (acc: any) => {
+              // Charger la catégorie
+              let category = null;
+              if (acc.category_id) {
+                const { data: catData } = await supabase
+                  .from("categories")
+                  .select("id, nom")
+                  .eq("id", acc.category_id)
+                  .single();
+                category = catData;
+              }
+
+              // Charger les options
               const { data: options } = await supabase
                 .from("accessory_options")
                 .select("id, nom, prix_vente_ttc")
@@ -123,13 +138,14 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
               return {
                 ...acc,
+                category,
                 options: options || []
               };
             })
           );
 
           // Grouper par catégorie
-          const grouped = accessoriesWithOptions.reduce((acc: any, item: any) => {
+          const grouped = accessoriesWithDetails.reduce((acc: any, item: any) => {
             const categoryId = item.category?.id || "uncategorized";
             const categoryName = item.category?.nom || "Sans catégorie";
             
@@ -171,9 +187,17 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     Object.values(selectedAccessories).forEach(selected => {
       const accessory = findAccessoryById(selected.accessoryId);
       if (accessory && selected.quantity > 0) {
-        const basePrice = accessory.promo_active && accessory.promo_price 
-          ? accessory.promo_price 
-          : accessory.prix_vente_ttc;
+        // Vérifier si la promo est active
+        let basePrice = accessory.prix_vente_ttc;
+        if (accessory.promo_active && accessory.promo_price) {
+          const now = new Date();
+          const startValid = !accessory.promo_start_date || new Date(accessory.promo_start_date) <= now;
+          const endValid = !accessory.promo_end_date || new Date(accessory.promo_end_date) >= now;
+          
+          if (startValid && endValid) {
+            basePrice = accessory.promo_price;
+          }
+        }
         
         total += basePrice * selected.quantity;
 
@@ -288,9 +312,20 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                         {category.items.map((accessory: AccessoryWithCategory) => {
                           const selected = selectedAccessories[accessory.id];
                           const quantity = selected?.quantity || 0;
-                          const basePrice = accessory.promo_active && accessory.promo_price 
-                            ? accessory.promo_price 
-                            : accessory.prix_vente_ttc;
+                          
+                          // Calculer le prix avec promo si applicable
+                          let basePrice = accessory.prix_vente_ttc || 0;
+                          let hasPromo = false;
+                          if (accessory.promo_active && accessory.promo_price) {
+                            const now = new Date();
+                            const startValid = !accessory.promo_start_date || new Date(accessory.promo_start_date) <= now;
+                            const endValid = !accessory.promo_end_date || new Date(accessory.promo_end_date) >= now;
+                            
+                            if (startValid && endValid) {
+                              hasPromo = true;
+                              basePrice = accessory.promo_price;
+                            }
+                          }
 
                           return (
                             <div key={accessory.id} className="border rounded-lg p-4 space-y-3">
@@ -311,13 +346,17 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                     {accessory.description}
                                   </p>
                                   <div className="flex items-center gap-2 mt-2">
-                                    <span className="font-semibold text-primary">
-                                      {basePrice.toFixed(2)} €
-                                    </span>
-                                    {accessory.promo_active && accessory.promo_price && (
-                                      <span className="text-sm text-muted-foreground line-through">
-                                        {accessory.prix_vente_ttc.toFixed(2)} €
-                                      </span>
+                                    {basePrice > 0 && (
+                                      <>
+                                        <span className="font-semibold text-primary">
+                                          {basePrice.toFixed(2)} €
+                                        </span>
+                                        {hasPromo && (
+                                          <span className="text-sm text-muted-foreground line-through">
+                                            {accessory.prix_vente_ttc.toFixed(2)} €
+                                          </span>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                 </div>
@@ -371,7 +410,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                               )}
 
                               {/* Couleurs */}
-                              {accessory.couleur && quantity > 0 && (
+                              {accessory.couleur && accessory.couleur.trim() && quantity > 0 && (
                                 <div className="space-y-2 pl-4 border-l-2">
                                   <Label className="text-sm font-semibold">Couleur:</Label>
                                   <RadioGroup
