@@ -20,7 +20,8 @@ interface Product {
 export const ProductsList = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -84,7 +85,10 @@ export const ProductsList = () => {
   return (
     <>
       <div className="mb-6">
-        <Button onClick={() => setEditingProduct({} as Product)}>
+        <Button onClick={() => {
+          setEditingProductId(null);
+          setIsDialogOpen(true);
+        }}>
           <Plus className="h-4 w-4 mr-2" />
           Créer un produit
         </Button>
@@ -161,7 +165,10 @@ export const ProductsList = () => {
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={() => setEditingProduct(product)}
+                  onClick={() => {
+                    setEditingProductId(product.id);
+                    setIsDialogOpen(true);
+                  }}
                   title="Modifier"
                 >
                   <Edit className="h-4 w-4" />
@@ -182,11 +189,15 @@ export const ProductsList = () => {
       )}
 
       <ProductFormDialog
-        productId={editingProduct?.id || null}
-        isOpen={!!editingProduct}
-        onClose={() => setEditingProduct(null)}
+        productId={editingProductId}
+        isOpen={isDialogOpen}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingProductId(null);
+        }}
         onSuccess={() => {
-          setEditingProduct(null);
+          setIsDialogOpen(false);
+          setEditingProductId(null);
           loadProducts();
         }}
       />
