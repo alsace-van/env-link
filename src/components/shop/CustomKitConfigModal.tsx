@@ -1,66 +1,45 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ShoppingCart, X, Plus, Minus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ShoppingCart, X, Copy, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCartContext } from "@/contexts/CartContext";
 import { toast } from "sonner";
-import { useAccessoryTieredPricing } from "@/hooks/useAccessoryTieredPricing";
 
 interface CustomKitConfigModalProps {
   productId: string | null;
   onClose: () => void;
 }
 
-interface AccessoryWithCategory {
+interface Accessory {
   id: string;
   nom: string;
   marque: string;
   prix_vente_ttc: number;
   description: string;
   image_url: string;
-  couleur: string;
-  promo_active: boolean;
-  promo_price: number;
-  promo_start_date: string | null;
-  promo_end_date: string | null;
-  category: {
-    id: string;
-    nom: string;
-  } | null;
-  options: Array<{
-    id: string;
-    nom: string;
-    prix_vente_ttc: number;
-  }>;
+  category_id: string;
 }
 
-interface CategoryGroup {
-  name: string;
-  items: AccessoryWithCategory[];
-}
-
-interface SelectedAccessory {
-  accessoryId: string;
-  quantity: number;
-  selectedOptions: string[];
-  selectedColor?: string;
+interface CategorySection {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  selectedAccessoryId: string | null;
+  accessories: Accessory[];
 }
 
 export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModalProps) => {
   const { addToCart } = useCartContext();
   const [product, setProduct] = useState<any>(null);
-  const [accessoriesByCategory, setAccessoriesByCategory] = useState<{ [key: string]: CategoryGroup }>({});
-  const [selectedAccessories, setSelectedAccessories] = useState<{ [key: string]: SelectedAccessory }>({});
+  const [categories, setCategories] = useState<any[]>([]);
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [sections, setSections] = useState<CategorySection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [totalPrice, setTotalPrice] = useState(0);
 
   useEffect(() => {
     if (productId) {
@@ -68,18 +47,14 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     }
   }, [productId]);
 
-  useEffect(() => {
-    calculateTotalPrice();
-  }, [selectedAccessories, accessoriesByCategory]);
-
   const loadProductAndAccessories = async () => {
     if (!productId) return;
-    
+
     setLoading(true);
 
     // Charger le produit
     const { data: productData } = await supabase
-      .from("shop_products")
+      .from("shop_products" as any)
       .select("*")
       .eq("id", productId)
       .single();
@@ -87,93 +62,48 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     if (productData) {
       setProduct(productData);
 
-      // Charger les accessoires du kit depuis shop_product_items
+      // Charger les accessoires du kit
       const { data: kitAccessories } = await supabase
-        .from("shop_product_items")
-        .select("accessory_id, default_quantity")
+        .from("shop_product_items" as any)
+        .select("accessory_id")
         .eq("shop_product_id", productId);
 
       if (kitAccessories && kitAccessories.length > 0) {
-        const accessoryIds = kitAccessories.map(ka => ka.accessory_id);
+        const accessoryIds = kitAccessories.map((ka: any) => ka.accessory_id);
 
-        // Charger tous les accessoires avec leurs catégories et options
-        const { data: accessories } = await supabase
-          .from("accessories_catalog")
-          .select(`
-            id,
-            nom,
-            marque,
-            prix_vente_ttc,
-            description,
-            image_url,
-            couleur,
-            promo_active,
-            promo_price,
-            promo_start_date,
-            promo_end_date,
-            category_id
-          `)
+        // Charger les accessoires avec leurs catégories
+        const { data: accessoriesData } = await supabase
+          .from("accessories_catalog" as any)
+          .select("id, nom, marque, prix_vente_ttc, description, image_url, category_id")
           .in("id", accessoryIds);
 
-        if (accessories) {
-          // Charger les catégories et options pour chaque accessoire
-          const accessoriesWithDetails = await Promise.all(
-            accessories.map(async (acc: any) => {
-              // Charger la catégorie
-              let category = null;
-              if (acc.category_id) {
-                const { data: catData } = await supabase
-                  .from("categories")
-                  .select("id, nom")
-                  .eq("id", acc.category_id)
-                  .single();
-                category = catData;
-              }
+        if (accessoriesData) {
+          setAccessories(accessoriesData);
 
-              // Charger les options
-              const { data: options } = await supabase
-                .from("accessory_options")
-                .select("id, nom, prix_vente_ttc")
-                .eq("accessory_id", acc.id);
+          // Charger les catégories uniques
+          const categoryIds = [...new Set(accessoriesData.map((a: any) => a.category_id).filter(Boolean))];
 
-              return {
-                ...acc,
-                category,
-                options: options || []
-              };
-            })
-          );
+          if (categoryIds.length > 0) {
+            const { data: categoriesData } = await supabase
+              .from("categories" as any)
+              .select("id, nom")
+              .in("id", categoryIds);
 
-          // Grouper par catégorie
-          const grouped = accessoriesWithDetails.reduce((acc: any, item: any) => {
-            const categoryId = item.category?.id || "uncategorized";
-            const categoryName = item.category?.nom || "Sans catégorie";
-            
-            if (!acc[categoryId]) {
-              acc[categoryId] = {
-                name: categoryName,
-                items: []
-              };
+            if (categoriesData) {
+              setCategories(categoriesData);
+
+              // Créer une section initiale pour chaque catégorie
+              const initialSections = categoriesData.map((cat: any, index: number) => ({
+                id: `section-${index}-${Date.now()}`,
+                categoryId: cat.id,
+                categoryName: cat.nom,
+                selectedAccessoryId: null,
+                accessories: accessoriesData.filter((acc: any) => acc.category_id === cat.id),
+              }));
+
+              setSections(initialSections);
             }
-            
-            acc[categoryId].items.push(item);
-            return acc;
-          }, {});
-
-          setAccessoriesByCategory(grouped);
-
-          // Initialiser les quantités par défaut
-          const defaultSelections: { [key: string]: SelectedAccessory } = {};
-          kitAccessories.forEach(ka => {
-            if (ka.default_quantity > 0) {
-              defaultSelections[ka.accessory_id] = {
-                accessoryId: ka.accessory_id,
-                quantity: ka.default_quantity,
-                selectedOptions: []
-              };
-            }
-          });
-          setSelectedAccessories(defaultSelections);
+          }
         }
       }
     }
@@ -181,103 +111,70 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     setLoading(false);
   };
 
-  const calculateTotalPrice = () => {
-    let total = 0;
+  const duplicateSection = (sectionId: string) => {
+    const sectionToDuplicate = sections.find((s) => s.id === sectionId);
+    if (!sectionToDuplicate) return;
 
-    Object.values(selectedAccessories).forEach(selected => {
-      const accessory = findAccessoryById(selected.accessoryId);
-      if (accessory && selected.quantity > 0) {
-        // Vérifier si la promo est active
-        let basePrice = accessory.prix_vente_ttc;
-        if (accessory.promo_active && accessory.promo_price) {
-          const now = new Date();
-          const startValid = !accessory.promo_start_date || new Date(accessory.promo_start_date) <= now;
-          const endValid = !accessory.promo_end_date || new Date(accessory.promo_end_date) >= now;
-          
-          if (startValid && endValid) {
-            basePrice = accessory.promo_price;
-          }
-        }
-        
-        total += basePrice * selected.quantity;
+    const newSection: CategorySection = {
+      ...sectionToDuplicate,
+      id: `section-${sections.length}-${Date.now()}`,
+      selectedAccessoryId: null,
+    };
 
-        // Ajouter le prix des options sélectionnées
-        selected.selectedOptions.forEach(optionId => {
-          const option = accessory.options.find(o => o.id === optionId);
-          if (option) {
-            total += option.prix_vente_ttc * selected.quantity;
-          }
-        });
-      }
-    });
-
-    setTotalPrice(total);
+    setSections([...sections, newSection]);
   };
 
-  const findAccessoryById = (id: string): AccessoryWithCategory | undefined => {
-    for (const category of Object.values(accessoriesByCategory)) {
-      const found = category.items.find((item) => item.id === id);
-      if (found) return found;
+  const removeSection = (sectionId: string) => {
+    // Ne pas permettre de supprimer s'il ne reste qu'une section
+    if (sections.length <= 1) {
+      toast.error("Au moins une catégorie doit être présente");
+      return;
     }
-    return undefined;
+    setSections(sections.filter((s) => s.id !== sectionId));
   };
 
-  const updateQuantity = (accessoryId: string, delta: number) => {
-    setSelectedAccessories(prev => {
-      const current = prev[accessoryId] || { accessoryId, quantity: 0, selectedOptions: [] };
-      const newQuantity = Math.max(0, current.quantity + delta);
+  const updateSectionAccessory = (sectionId: string, accessoryId: string) => {
+    setSections(sections.map((s) => (s.id === sectionId ? { ...s, selectedAccessoryId: accessoryId } : s)));
+  };
 
-      if (newQuantity === 0) {
-        const { [accessoryId]: _, ...rest } = prev;
-        return rest;
+  const calculateTotal = () => {
+    const basePrice = product?.prix_base || 0;
+    const accessoriesTotal = sections.reduce((total, section) => {
+      if (section.selectedAccessoryId) {
+        const accessory = section.accessories.find((a) => a.id === section.selectedAccessoryId);
+        return total + (accessory?.prix_vente_ttc || 0);
       }
+      return total;
+    }, 0);
 
-      return {
-        ...prev,
-        [accessoryId]: { ...current, quantity: newQuantity }
-      };
-    });
+    return basePrice + accessoriesTotal;
   };
 
-  const toggleOption = (accessoryId: string, optionId: string) => {
-    setSelectedAccessories(prev => {
-      const current = prev[accessoryId] || { accessoryId, quantity: 0, selectedOptions: [] };
-      const hasOption = current.selectedOptions.includes(optionId);
-
-      return {
-        ...prev,
-        [accessoryId]: {
-          ...current,
-          selectedOptions: hasOption
-            ? current.selectedOptions.filter(id => id !== optionId)
-            : [...current.selectedOptions, optionId]
-        }
-      };
-    });
-  };
-
-  const selectColor = (accessoryId: string, color: string) => {
-    setSelectedAccessories(prev => {
-      const current = prev[accessoryId] || { accessoryId, quantity: 0, selectedOptions: [] };
-      return {
-        ...prev,
-        [accessoryId]: { ...current, selectedColor: color }
-      };
-    });
+  const getSelectedAccessoryDetails = (section: CategorySection) => {
+    if (!section.selectedAccessoryId) return null;
+    return section.accessories.find((a) => a.id === section.selectedAccessoryId);
   };
 
   const handleAddToCart = () => {
-    if (!product || Object.keys(selectedAccessories).length === 0) {
-      toast.error("Veuillez sélectionner au moins un article");
+    const selectedCount = sections.filter((s) => s.selectedAccessoryId).length;
+
+    if (selectedCount === 0) {
+      toast.error("Veuillez sélectionner au moins un accessoire");
       return;
     }
 
     const configuration = {
       customKit: true,
-      accessories: selectedAccessories
+      sections: sections
+        .map((s) => ({
+          categoryId: s.categoryId,
+          categoryName: s.categoryName,
+          accessoryId: s.selectedAccessoryId,
+        }))
+        .filter((s) => s.accessoryId),
     };
 
-    addToCart(product.id, totalPrice, 1, configuration);
+    addToCart(product.id, calculateTotal(), 1, configuration);
     toast.success("Kit ajouté au panier");
     onClose();
   };
@@ -286,171 +183,173 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
   return (
     <Dialog open={!!productId} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh]">
+      <DialogContent className="max-w-6xl max-h-[90vh] p-0">
         {loading ? (
           <div className="text-center py-12">Chargement...</div>
         ) : product ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center justify-between">
-                <span>Configurez votre {product.nom}</span>
-                <Button variant="ghost" size="icon" onClick={onClose}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </DialogTitle>
-            </DialogHeader>
+          <div className="flex h-full">
+            {/* Panneau gauche - Configuration */}
+            <div className="flex-1 flex flex-col">
+              <DialogHeader className="px-6 py-4 border-b">
+                <DialogTitle className="text-xl">{product.nom}</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Configurez votre kit en choisissant des accessoires. Vous pouvez dupliquer une catégorie pour ajouter
+                  plusieurs articles différents.
+                </p>
+              </DialogHeader>
 
-            <ScrollArea className="max-h-[60vh] pr-4">
-              <Accordion type="multiple" className="w-full">
-                {Object.entries(accessoriesByCategory).map(([categoryId, category]: [string, any]) => (
-                  <AccordionItem key={categoryId} value={categoryId}>
-                    <AccordionTrigger className="text-lg font-semibold">
-                      {category.name}
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="space-y-4">
-                        {category.items.map((accessory: AccessoryWithCategory) => {
-                          const selected = selectedAccessories[accessory.id];
-                          const quantity = selected?.quantity || 0;
-                          
-                          // Calculer le prix avec promo si applicable
-                          let basePrice = accessory.prix_vente_ttc || 0;
-                          let hasPromo = false;
-                          if (accessory.promo_active && accessory.promo_price) {
-                            const now = new Date();
-                            const startValid = !accessory.promo_start_date || new Date(accessory.promo_start_date) <= now;
-                            const endValid = !accessory.promo_end_date || new Date(accessory.promo_end_date) >= now;
-                            
-                            if (startValid && endValid) {
-                              hasPromo = true;
-                              basePrice = accessory.promo_price;
-                            }
-                          }
+              <ScrollArea className="flex-1 px-6">
+                <div className="py-4 space-y-4">
+                  {sections.map((section, index) => {
+                    const selectedAccessory = getSelectedAccessoryDetails(section);
 
-                          return (
-                            <div key={accessory.id} className="border rounded-lg p-4 space-y-3">
-                              <div className="flex items-start gap-4">
-                                {accessory.image_url && (
-                                  <img
-                                    src={accessory.image_url}
-                                    alt={accessory.nom}
-                                    className="w-20 h-20 object-cover rounded"
-                                  />
-                                )}
-                                <div className="flex-1">
-                                  <h4 className="font-semibold">{accessory.nom}</h4>
-                                  {accessory.marque && (
-                                    <p className="text-sm text-muted-foreground">{accessory.marque}</p>
-                                  )}
-                                  <p className="text-sm text-muted-foreground mt-1">
-                                    {accessory.description}
-                                  </p>
-                                  <div className="flex items-center gap-2 mt-2">
-                                    {basePrice > 0 && (
-                                      <>
-                                        <span className="font-semibold text-primary">
-                                          {basePrice.toFixed(2)} €
-                                        </span>
-                                        {hasPromo && (
-                                          <span className="text-sm text-muted-foreground line-through">
-                                            {accessory.prix_vente_ttc.toFixed(2)} €
-                                          </span>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => updateQuantity(accessory.id, -1)}
-                                    disabled={quantity === 0}
-                                  >
-                                    <Minus className="h-4 w-4" />
-                                  </Button>
-                                  <Input
-                                    type="number"
-                                    value={quantity}
-                                    onChange={(e) => {
-                                      const newQty = parseInt(e.target.value) || 0;
-                                      const delta = newQty - quantity;
-                                      updateQuantity(accessory.id, delta);
-                                    }}
-                                    className="w-16 text-center"
-                                    min="0"
-                                  />
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => updateQuantity(accessory.id, 1)}
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
+                    return (
+                      <div key={section.id} className="border rounded-lg p-4 bg-card">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">{section.categoryName}</h3>
+                            <Badge variant="secondary" className="text-xs">
+                              {section.accessories.length} accessoires
+                            </Badge>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => duplicateSection(section.id)}
+                              className="gap-2"
+                            >
+                              <Copy className="h-3 w-3" />
+                              Dupliquer
+                            </Button>
+                            {sections.length > 1 && (
+                              <Button variant="ghost" size="sm" onClick={() => removeSection(section.id)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
 
-                              {/* Options */}
-                              {accessory.options && accessory.options.length > 0 && quantity > 0 && (
-                                <div className="space-y-2 pl-4 border-l-2">
-                                  <Label className="text-sm font-semibold">Options disponibles:</Label>
-                                  {accessory.options.map((option: any) => (
-                                    <div key={option.id} className="flex items-center gap-2">
-                                      <Checkbox
-                                        id={`option-${option.id}`}
-                                        checked={selected?.selectedOptions.includes(option.id) || false}
-                                        onCheckedChange={() => toggleOption(accessory.id, option.id)}
-                                      />
-                                      <Label htmlFor={`option-${option.id}`} className="text-sm cursor-pointer">
-                                        {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
-                                      </Label>
-                                    </div>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Choix {index + 1}</label>
+                            <div className="space-y-2">
+                              <label className="text-xs text-muted-foreground block">Accessoire</label>
+                              <Select
+                                value={section.selectedAccessoryId || ""}
+                                onValueChange={(value) => updateSectionAccessory(section.id, value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="-" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {section.accessories.map((accessory) => (
+                                    <SelectItem key={accessory.id} value={accessory.id}>
+                                      {accessory.nom} {accessory.marque ? `- ${accessory.marque}` : ""} (
+                                      {(accessory.prix_vente_ttc || 0).toFixed(2)} €)
+                                    </SelectItem>
                                   ))}
-                                </div>
-                              )}
-
-                              {/* Couleurs */}
-                              {accessory.couleur && accessory.couleur.trim() && quantity > 0 && (
-                                <div className="space-y-2 pl-4 border-l-2">
-                                  <Label className="text-sm font-semibold">Couleur:</Label>
-                                  <RadioGroup
-                                    value={selected?.selectedColor}
-                                    onValueChange={(value) => selectColor(accessory.id, value)}
-                                  >
-                                    {accessory.couleur.split(',').map((color: string) => (
-                                      <div key={color.trim()} className="flex items-center space-x-2">
-                                        <RadioGroupItem value={color.trim()} id={`color-${accessory.id}-${color.trim()}`} />
-                                        <Label htmlFor={`color-${accessory.id}-${color.trim()}`} className="text-sm cursor-pointer capitalize">
-                                          {color.trim()}
-                                        </Label>
-                                      </div>
-                                    ))}
-                                  </RadioGroup>
-                                </div>
-                              )}
+                                </SelectContent>
+                              </Select>
                             </div>
-                          );
-                        })}
+                          </div>
+
+                          {/* Afficher les détails de l'accessoire sélectionné */}
+                          {selectedAccessory && (
+                            <div className="flex gap-3 p-3 bg-muted/50 rounded-lg">
+                              {selectedAccessory.image_url && (
+                                <img
+                                  src={selectedAccessory.image_url}
+                                  alt={selectedAccessory.nom}
+                                  className="w-16 h-16 object-cover rounded"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm">{selectedAccessory.nom}</p>
+                                {selectedAccessory.marque && (
+                                  <p className="text-xs text-muted-foreground">{selectedAccessory.marque}</p>
+                                )}
+                                {selectedAccessory.description && (
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    {selectedAccessory.description}
+                                  </p>
+                                )}
+                                <p className="text-sm font-semibold text-primary mt-1">
+                                  {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </ScrollArea>
-
-            <Separator />
-
-            <div className="flex items-center justify-between pt-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Prix total</p>
-                <p className="text-2xl font-bold text-primary">{totalPrice.toFixed(2)} €</p>
-              </div>
-              <Button onClick={handleAddToCart} size="lg" className="gap-2">
-                <ShoppingCart className="h-5 w-5" />
-                Ajouter au panier
-              </Button>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
             </div>
-          </>
+
+            {/* Panneau droit - Récapitulatif */}
+            <div className="w-80 border-l bg-muted/20 flex flex-col">
+              <div className="p-6">
+                <h3 className="font-semibold mb-4">Récapitulatif</h3>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Prix de base du kit</span>
+                    <span className="font-medium">{(product.prix_base || 0).toFixed(2)} €</span>
+                  </div>
+
+                  <Separator />
+
+                  {sections.filter((s) => s.selectedAccessoryId).length > 0 && (
+                    <div className="space-y-2">
+                      {sections.map((section) => {
+                        const accessory = getSelectedAccessoryDetails(section);
+                        if (!accessory) return null;
+
+                        return (
+                          <div key={section.id} className="text-sm">
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-muted-foreground flex-1 line-clamp-1">{accessory.nom}</span>
+                              <span className="font-medium whitespace-nowrap">
+                                {(accessory.prix_vente_ttc || 0).toFixed(2)} €
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {sections.filter((s) => s.selectedAccessoryId).length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">Aucun accessoire configuré</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-auto border-t p-6 space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold">Total</span>
+                  <span className="text-2xl font-bold text-primary">{calculateTotal().toFixed(2)} €</span>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    onClick={handleAddToCart}
+                    size="lg"
+                    className="w-full gap-2"
+                    disabled={sections.filter((s) => s.selectedAccessoryId).length === 0}
+                  >
+                    <ShoppingCart className="h-5 w-5" />
+                    Ajouter au panier
+                  </Button>
+                  <Button onClick={onClose} variant="outline" size="lg" className="w-full">
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="text-center py-12">Produit non trouvé</div>
         )}
