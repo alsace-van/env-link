@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, Grid3x3, List, SlidersHorizontal } from "lucide-react";
+import { ShoppingCart, Grid3x3, List, SlidersHorizontal, ArrowLeft, Settings } from "lucide-react";
 import { useCartContext } from "@/contexts/CartContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { CartSidebar } from "@/components/shop/CartSidebar";
 import { ProductDetailModal } from "@/components/shop/ProductDetailModal";
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/select";
 
 export default function ShopPublic() {
+  const navigate = useNavigate();
   const { getTotalItems, setCartOpen, addToCart } = useCartContext();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -24,10 +26,26 @@ export default function ShopPublic() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [detailProductId, setDetailProductId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     loadData();
+    checkAdminRole();
   }, [selectedCategory, searchQuery]);
+
+  const checkAdminRole = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .maybeSingle() as any;
+
+    setIsAdmin(!!roleData);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -74,20 +92,41 @@ export default function ShopPublic() {
       <header className="border-b sticky top-0 bg-background/95 backdrop-blur z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <h1 className="text-2xl font-bold">Boutique</h1>
-            <Button 
-              variant="outline" 
-              size="icon"
-              className="relative"
-              onClick={() => setCartOpen(true)}
-            >
-              <ShoppingCart className="h-5 w-5" />
-              {getTotalItems() > 0 && (
-                <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground rounded-full w-5 h-5 text-xs flex items-center justify-center">
-                  {getTotalItems()}
-                </span>
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => navigate("/dashboard")}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <h1 className="text-2xl font-bold">Boutique</h1>
+            </div>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => navigate("/admin/shop")}
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Admin
+                </Button>
               )}
-            </Button>
+              <Button 
+                variant="outline" 
+                size="icon"
+                className="relative"
+                onClick={() => setCartOpen(true)}
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {getTotalItems() > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground rounded-full w-5 h-5 text-xs flex items-center justify-center">
+                    {getTotalItems()}
+                  </span>
+                )}
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-4">
