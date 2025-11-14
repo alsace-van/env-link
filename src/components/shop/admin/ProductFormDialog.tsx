@@ -41,6 +41,19 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
       loadCategories();
       if (productId) {
         loadProduct();
+      } else {
+        // Reset form for new product
+        setFormData({
+          nom: "",
+          description: "",
+          product_type: "simple",
+          category_id: "",
+          prix_base: 0,
+          image_url: "",
+          is_active: true,
+          stock_quantity: 0,
+        });
+        setSelectedAccessories([]);
       }
     }
   }, [isOpen, productId]);
