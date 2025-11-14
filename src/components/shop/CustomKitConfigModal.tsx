@@ -76,62 +76,86 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
       setProduct(productData);
 
       // Charger les accessoires du kit
-      const { data: kitAccessories } = await supabase
-        .from("shop_product_items" as any)
+      const { data: kitAccessories, error: kitError } = await supabase
+        .from("shop_product_items")
         .select("accessory_id")
         .eq("shop_product_id", productId);
 
+      if (kitError) {
+        console.error("Error loading kit accessories:", kitError);
+        setLoading(false);
+        return;
+      }
+
       if (kitAccessories && kitAccessories.length > 0) {
-        const accessoryIds = kitAccessories.map((ka: any) => ka.accessory_id);
+        const accessoryIds = kitAccessories.map((ka) => ka.accessory_id);
 
         // Charger les accessoires avec toutes leurs données
-        const { data: accessoriesData } = await supabase
-          .from("accessories_catalog" as any)
-          .select(`
-            id, 
-            nom, 
-            marque, 
-            prix_vente_ttc, 
-            description, 
-            image_url, 
-            category_id,
-            promo_active,
-            promo_price,
-            promo_start_date,
-            promo_end_date,
-            couleur
-          `)
+        const { data: accessoriesData, error: accessoriesError } = await supabase
+          .from("accessories_catalog")
+          .select("id, nom, marque, prix_vente_ttc, description, image_url, category_id, promo_active, promo_price, promo_start_date, promo_end_date, couleur")
           .in("id", accessoryIds);
+
+        if (accessoriesError) {
+          console.error("Error loading accessories:", accessoriesError);
+          setLoading(false);
+          return;
+        }
 
         if (accessoriesData) {
           // Charger les options pour chaque accessoire
-          const { data: optionsData } = await supabase
-            .from("accessory_options" as any)
+          const { data: optionsData, error: optionsError } = await supabase
+            .from("accessory_options")
             .select("id, nom, prix_vente_ttc, accessory_id")
             .in("accessory_id", accessoryIds);
 
+          if (optionsError) {
+            console.error("Error loading options:", optionsError);
+          }
+
           // Associer les options aux accessoires
-          const accessoriesWithOptions: AccessoryWithCategory[] = accessoriesData.map((acc: any) => ({
-            ...acc,
-            options: optionsData?.filter((opt: any) => opt.accessory_id === acc.id) || [],
+          const accessoriesWithOptions: AccessoryWithCategory[] = accessoriesData.map((acc) => ({
+            id: acc.id,
+            nom: acc.nom,
+            marque: acc.marque || "",
+            prix_vente_ttc: acc.prix_vente_ttc || 0,
+            description: acc.description || "",
+            image_url: acc.image_url || "",
+            category_id: acc.category_id || "",
+            promo_active: acc.promo_active,
+            promo_price: acc.promo_price,
+            promo_start_date: acc.promo_start_date,
+            promo_end_date: acc.promo_end_date,
+            couleur: acc.couleur,
+            options: optionsData?.filter((opt) => opt.accessory_id === acc.id).map(opt => ({
+              id: opt.id,
+              nom: opt.nom,
+              prix_vente_ttc: opt.prix_vente_ttc || 0
+            })) || [],
           }));
 
           setAccessories(accessoriesWithOptions);
 
           // Charger les catégories uniques
-          const categoryIds = [...new Set(accessoriesData.map((a: any) => a.category_id).filter(Boolean))];
+          const categoryIds = [...new Set(accessoriesData.map((a) => a.category_id).filter(Boolean))] as string[];
 
           if (categoryIds.length > 0) {
-            const { data: categoriesData } = await supabase
-              .from("categories" as any)
+            const { data: categoriesData, error: categoriesError } = await supabase
+              .from("categories")
               .select("id, nom")
               .in("id", categoryIds);
+
+            if (categoriesError) {
+              console.error("Error loading categories:", categoriesError);
+              setLoading(false);
+              return;
+            }
 
             if (categoriesData) {
               setCategories(categoriesData);
 
               // Créer une section initiale pour chaque catégorie
-              const initialSections: CategorySection[] = categoriesData.map((cat: any, index: number) => ({
+              const initialSections: CategorySection[] = categoriesData.map((cat, index) => ({
                 id: `section-${index}-${Date.now()}`,
                 categoryId: cat.id,
                 categoryName: cat.nom,
