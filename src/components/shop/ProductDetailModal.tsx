@@ -67,13 +67,15 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
   const handleAddToCart = () => {
     if (!product) return;
 
+    // Pour les kits sur mesure, rediriger vers la configuration
     if (product.product_type === "custom_kit" && onConfigure) {
       onConfigure(product.id);
       onClose();
-    } else {
-      addToCart(product.id, product.prix_base);
-      onClose();
+      return;
     }
+
+    addToCart(product.id, product.prix_base);
+    onClose();
   };
 
   if (!productId) return null;
