@@ -135,9 +135,16 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
           .eq("shop_product_id", productId);
       } else {
         // Création d'un nouveau produit
+        const { data: userData } = await supabase.auth.getUser();
+        
+        const dataToSave = {
+          ...formData,
+          user_id: userData.user?.id,
+        };
+
         const { data: newProduct } = await supabase
           .from("shop_products" as any)
-          .insert(formData)
+          .insert(dataToSave)
           .select()
           .single();
 
