@@ -14,7 +14,7 @@ import { toast } from "sonner";
 interface Accessory {
   id: string;
   nom: string;
-  categorie: string;
+  category_id?: string;
   prix_vente_ttc: number;
   promo_active?: boolean;
   promo_price?: number;
@@ -103,9 +103,9 @@ export const KitAccessoryPricingDialog = ({
       for (const acc of accessoriesData) {
         const { data: tieredData } = await supabase
           .from("accessory_tiered_pricing")
-          .select("id, article_position, discount_percent")
+          .select("id, min_quantity, prix_unitaire")
           .eq("accessory_id", acc.id)
-          .order("article_position");
+          .order("min_quantity");
 
         pricingData[acc.id] = {
           promoActive: acc.promo_active || false,
@@ -118,8 +118,8 @@ export const KitAccessoryPricingDialog = ({
             : "",
           tieredPrices: (tieredData || []).map(t => ({
             id: t.id,
-            article_position: t.article_position,
-            discount_percent: t.discount_percent
+            article_position: t.min_quantity,
+            discount_percent: t.prix_unitaire
           })),
         };
       }
@@ -257,7 +257,7 @@ export const KitAccessoryPricingDialog = ({
                       <div className="text-left">
                         <p className="font-semibold">{accessory.nom}</p>
                         <p className="text-sm text-muted-foreground">
-                          {accessory.categorie} • {accessory.prix_vente_ttc?.toFixed(2)} €
+                          {accessory.prix_vente_ttc?.toFixed(2)} €
                         </p>
                       </div>
                       {(pricing.promoActive || pricing.tieredPrices.length > 0) && (
