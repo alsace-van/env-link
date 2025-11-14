@@ -8,6 +8,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Grid3x3, List, ShoppingBag, ArrowLeft } from "lucide-react";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { CartSidebar } from "@/components/shop/CartSidebar";
+import { CustomKitConfigModal } from "@/components/shop/CustomKitConfigModal";
+import { ProductDetailModal } from "@/components/shop/ProductDetailModal";
+import { SearchWithSuggestions } from "@/components/shop/SearchWithSuggestions";
 import { useCart } from "@/hooks/useCart";
 import logo from "@/assets/logo.png";
 
@@ -29,13 +32,15 @@ interface Category {
 
 const ShopPublic = () => {
   const navigate = useNavigate();
-  const { setIsOpen, itemCount } = useCart();
+  const { setIsOpen, itemCount, addToCart } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [loading, setLoading] = useState(true);
+  const [configKitProduct, setConfigKitProduct] = useState<Product | null>(null);
+  const [detailProductId, setDetailProductId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -78,8 +83,7 @@ const ShopPublic = () => {
   });
 
   const handleViewDetails = (productId: string) => {
-    // TODO: Open product details modal
-    console.log("View details:", productId);
+    setDetailProductId(productId);
   };
 
   const handleAddToCart = (productId: string) => {
@@ -87,11 +91,10 @@ const ShopPublic = () => {
     if (!product) return;
 
     if (product.product_type === "custom_kit") {
-      // TODO: Open configuration dialog
-      console.log("Configure kit:", productId);
+      setConfigKitProduct(product);
     } else {
-      // TODO: Add simple product to cart
-      console.log("Add to cart:", productId);
+      // Simple product - add directly to cart
+      addToCart(productId, 1, null, product.prix_base);
     }
   };
 
@@ -137,15 +140,11 @@ const ShopPublic = () => {
       {/* Search and Filters */}
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
         <div className="flex gap-4 items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher un produit..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+          <SearchWithSuggestions
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSelectProduct={handleViewDetails}
+          />
 
           <div className="flex gap-2">
             <Button
@@ -218,6 +217,27 @@ const ShopPublic = () => {
       </div>
 
       <CartSidebar />
+
+      <ProductDetailModal
+        productId={detailProductId}
+        onClose={() => setDetailProductId(null)}
+        onConfigure={(productId) => {
+          const product = products.find((p) => p.id === productId);
+          if (product) {
+            setConfigKitProduct(product);
+          }
+        }}
+      />
+
+      {configKitProduct && (
+        <CustomKitConfigModal
+          open={true}
+          onClose={() => setConfigKitProduct(null)}
+          productId={configKitProduct.id}
+          productName={configKitProduct.nom}
+          basePrice={configKitProduct.prix_base}
+        />
+      )}
     </div>
   );
 };
