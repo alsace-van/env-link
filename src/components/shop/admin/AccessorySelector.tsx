@@ -26,13 +26,13 @@ export const AccessorySelector = ({ selectedAccessories, onChange, productType }
         loadData();
       }
     }, 300);
-    
+
     return () => clearTimeout(timer);
   }, [selectedCategory, searchQuery]);
 
   const loadData = async () => {
     if (isLoading) return;
-    
+
     setIsLoading(true);
     try {
       const { data: categoriesData } = await supabase
@@ -68,37 +68,42 @@ export const AccessorySelector = ({ selectedAccessories, onChange, productType }
   };
 
   const toggleAccessory = (accessory: any) => {
-    const exists = selectedAccessories.find(a => a.accessory_id === accessory.id || a.id === accessory.id);
-    
+    const exists = selectedAccessories.find((a) => a.accessory_id === accessory.id || a.id === accessory.id);
+
     if (exists) {
-      onChange(selectedAccessories.filter(a => (a.accessory_id || a.id) !== accessory.id));
+      onChange(selectedAccessories.filter((a) => (a.accessory_id || a.id) !== accessory.id));
     } else {
-      onChange([...selectedAccessories, {
-        accessory_id: accessory.id,
-        accessory,
-        default_quantity: 1,
-        is_required: true,
-      }]);
+      onChange([
+        ...selectedAccessories,
+        {
+          accessory_id: accessory.id,
+          accessory,
+          default_quantity: 1,
+          is_required: true,
+        },
+      ]);
     }
   };
 
   const toggleCategory = (categoryId: string) => {
-    const categoryAccessories = accessories.filter(a => a.category_id === categoryId);
-    const allSelected = categoryAccessories.every(acc => 
-      selectedAccessories.find(a => (a.accessory_id || a.id) === acc.id)
+    const categoryAccessories = accessories.filter((a) => a.category_id === categoryId);
+    const allSelected = categoryAccessories.every((acc) =>
+      selectedAccessories.find((a) => (a.accessory_id || a.id) === acc.id),
     );
 
     if (allSelected) {
-      onChange(selectedAccessories.filter(a => !categoryAccessories.find(ca => ca.id === (a.accessory_id || a.id))));
+      onChange(
+        selectedAccessories.filter((a) => !categoryAccessories.find((ca) => ca.id === (a.accessory_id || a.id))),
+      );
     } else {
-      const newAccessories = categoryAccessories.filter(acc => 
-        !selectedAccessories.find(a => (a.accessory_id || a.id) === acc.id)
-      ).map(acc => ({
-        accessory_id: acc.id,
-        accessory: acc,
-        default_quantity: 1,
-        is_required: true,
-      }));
+      const newAccessories = categoryAccessories
+        .filter((acc) => !selectedAccessories.find((a) => (a.accessory_id || a.id) === acc.id))
+        .map((acc) => ({
+          accessory_id: acc.id,
+          accessory: acc,
+          default_quantity: 1,
+          is_required: true,
+        }));
       onChange([...selectedAccessories, ...newAccessories]);
     }
   };
@@ -131,52 +136,33 @@ export const AccessorySelector = ({ selectedAccessories, onChange, productType }
         </Select>
       </div>
 
-      <div className="text-sm text-muted-foreground">
-        {selectedAccessories.length} accessoire(s) sélectionné(s)
-      </div>
+      <div className="text-sm text-muted-foreground">{selectedAccessories.length} accessoire(s) sélectionné(s)</div>
 
       <ScrollArea className="h-[400px] border rounded-lg p-4">
         <div className="space-y-6">
           {categories.map((category) => {
-            const categoryAccessories = accessories.filter(a => a.category_id === category.id);
+            const categoryAccessories = accessories.filter((a) => a.category_id === category.id);
             if (categoryAccessories.length === 0) return null;
 
-            const allSelected = categoryAccessories.every(acc =>
-              selectedAccessories.find(a => (a.accessory_id || a.id) === acc.id)
+            const allSelected = categoryAccessories.every((acc) =>
+              selectedAccessories.find((a) => (a.accessory_id || a.id) === acc.id),
             );
 
             return (
               <div key={category.id}>
                 <div className="flex items-center gap-2 mb-3 font-medium">
-                  <Checkbox
-                    checked={allSelected}
-                    onCheckedChange={() => toggleCategory(category.id)}
-                  />
+                  <Checkbox checked={allSelected} onCheckedChange={() => toggleCategory(category.id)} />
                   <span>{category.nom}</span>
-                  <span className="text-sm text-muted-foreground">
-                    ({categoryAccessories.length})
-                  </span>
+                  <span className="text-sm text-muted-foreground">({categoryAccessories.length})</span>
                 </div>
 
                 <div className="ml-6 space-y-2">
                   {categoryAccessories.map((accessory) => {
-                    const isSelected = selectedAccessories.find(
-                      a => (a.accessory_id || a.id) === accessory.id
-                    );
+                    const isSelected = selectedAccessories.find((a) => (a.accessory_id || a.id) === accessory.id);
 
                     return (
-                      <div
-                        key={accessory.id}
-                        className="flex items-center gap-3 p-2 rounded hover:bg-accent cursor-pointer"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          toggleAccessory(accessory);
-                        }}
-                      >
-                        <Checkbox 
-                          checked={!!isSelected}
-                          onCheckedChange={() => toggleAccessory(accessory)}
-                        />
+                      <div key={accessory.id} className="flex items-center gap-3 p-2 rounded hover:bg-accent">
+                        <Checkbox checked={!!isSelected} onCheckedChange={() => toggleAccessory(accessory)} />
                         <div className="w-10 h-10 bg-muted rounded flex-shrink-0">
                           {accessory.image_url ? (
                             <img
