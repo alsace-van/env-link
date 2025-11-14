@@ -67,7 +67,7 @@ export const KitAccessoryPricingDialog = ({
     const { data: kitData } = await supabase
       .from("shop_custom_kits")
       .select("allowed_category_ids")
-      .eq("product_id", productId)
+      .eq("id", productId)
       .single();
 
     if (!kitData || !kitData.allowed_category_ids) {
@@ -76,34 +76,51 @@ export const KitAccessoryPricingDialog = ({
     }
 
     // Récupérer les accessoires des catégories autorisées
-    const { data: accessoriesData } = await supabase
+    const { data: accessoriesData, error: accessoriesError } = await supabase
       .from("accessories_catalog")
-      .select("*")
+      .select("id, nom, prix_vente_ttc, promo_active, promo_price, promo_start_date, promo_end_date, category_id")
       .in("category_id", kitData.allowed_category_ids)
-      .eq("available_in_shop", true) as any;
+      .eq("available_in_shop", true);
+    
+    if (accessoriesError) {
+      console.error("Error loading accessories:", accessoriesError);
+      setLoading(false);
+      return;
+    }
 
     if (accessoriesData) {
-      setAccessories(accessoriesData as any);
+      setAccessories(accessoriesData);
 
       // Charger les tarifs pour chaque accessoire
-      const pricingData: any = {};
+      const pricingData: Record<string, {
+        promoActive: boolean;
+        promoPrice: string;
+        promoStartDate: string;
+        promoEndDate: string;
+        tieredPrices: TieredPrice[];
+      }> = {};
+      
       for (const acc of accessoriesData) {
         const { data: tieredData } = await supabase
           .from("accessory_tiered_pricing")
           .select("id, article_position, discount_percent")
-          .eq("accessory_id", (acc as any).id)
+          .eq("accessory_id", acc.id)
           .order("article_position");
 
-        pricingData[(acc as any).id] = {
-          promoActive: (acc as any).promo_active || false,
-          promoPrice: (acc as any).promo_price?.toString() || "",
-          promoStartDate: (acc as any).promo_start_date
-            ? new Date((acc as any).promo_start_date).toISOString().slice(0, 16)
+        pricingData[acc.id] = {
+          promoActive: acc.promo_active || false,
+          promoPrice: acc.promo_price?.toString() || "",
+          promoStartDate: acc.promo_start_date
+            ? new Date(acc.promo_start_date).toISOString().slice(0, 16)
             : "",
-          promoEndDate: (acc as any).promo_end_date
-            ? new Date((acc as any).promo_end_date).toISOString().slice(0, 16)
+          promoEndDate: acc.promo_end_date
+            ? new Date(acc.promo_end_date).toISOString().slice(0, 16)
             : "",
-          tieredPrices: tieredData || [],
+          tieredPrices: (tieredData || []).map(t => ({
+            id: t.id,
+            article_position: t.article_position,
+            discount_percent: t.discount_percent
+          })),
         };
       }
       setAccessoryPricing(pricingData);
