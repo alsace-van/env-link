@@ -154,9 +154,15 @@ export const AccessorySelector = ({ selectedAccessories, onChange, productType }
                       <div
                         key={accessory.id}
                         className="flex items-center gap-3 p-2 rounded hover:bg-accent cursor-pointer"
-                        onClick={() => toggleAccessory(accessory)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          toggleAccessory(accessory);
+                        }}
                       >
-                        <Checkbox checked={!!isSelected} />
+                        <Checkbox 
+                          checked={!!isSelected}
+                          onCheckedChange={() => toggleAccessory(accessory)}
+                        />
                         <div className="w-10 h-10 bg-muted rounded flex-shrink-0">
                           {accessory.image_url ? (
                             <img
