@@ -37,6 +37,7 @@ import { AddTaskModal } from "@/components/planning/AddTaskModal";
 import { AddNoteModal } from "@/components/planning/AddNoteModal";
 import { AddSupplierExpenseModal } from "@/components/planning/AddSupplierExpenseModal";
 import { AddAppointmentModal } from "@/components/planning/AddAppointmentModal";
+import { AddDeliveryModal } from "@/components/planning/AddDeliveryModal";
 
 interface CompactAgendaProps {
   projectId: string | null;
@@ -56,6 +57,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [isAddNoteOpen, setIsAddNoteOpen] = useState(false);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isAddAppointmentOpen, setIsAddAppointmentOpen] = useState(false);
+  const [isAddDeliveryOpen, setIsAddDeliveryOpen] = useState(false);
   const [selectedHour, setSelectedHour] = useState<number>(9);
 
   // Utiliser le contexte pour les données synchronisées
@@ -178,6 +180,9 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         break;
       case "appointment":
         setIsAddAppointmentOpen(true);
+        break;
+      case "delivery":
+        setIsAddDeliveryOpen(true);
         break;
     }
   };
@@ -340,6 +345,10 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           <ContextMenuItem onClick={() => handleContextMenu(hour, "appointment")}>
             <UserCircle className="mr-2 h-4 w-4 text-green-600" />
             <span>Ajouter un rendez-vous</span>
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => handleContextMenu(hour, "delivery")}>
+            <Truck className="mr-2 h-4 w-4 text-emerald-600" />
+            <span>Ajouter une livraison</span>
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -1211,6 +1220,13 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         projectId={projectId}
         selectedDate={currentDate}
         selectedHour={selectedHour}
+      />
+      <AddDeliveryModal
+        isOpen={isAddDeliveryOpen}
+        onClose={() => setIsAddDeliveryOpen(false)}
+        onSuccess={handleModalSuccess}
+        projectId={projectId}
+        selectedDate={currentDate}
       />
     </>
   );
