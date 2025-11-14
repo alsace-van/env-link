@@ -28,7 +28,7 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
 
   const loadProduct = async () => {
     if (!productId) return;
-    
+
     setLoading(true);
 
     const { data: productData } = await supabase
@@ -43,7 +43,8 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
       if ((productData as any).product_type !== "simple") {
         const { data: items } = await supabase
           .from("shop_product_items" as any)
-          .select(`
+          .select(
+            `
             *,
             accessory:accessories_catalog(
               nom,
@@ -52,7 +53,8 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
               description,
               image_url
             )
-          `)
+          `,
+          )
           .eq("shop_product_id", productId);
 
         if (items) {
@@ -103,11 +105,7 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
               <div className="space-y-4">
                 <div className="aspect-square bg-muted rounded-lg overflow-hidden">
                   {product.image_url ? (
-                    <img
-                      src={product.image_url}
-                      alt={product.nom}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={product.image_url} alt={product.nom} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Package className="h-24 w-24 text-muted-foreground" />
@@ -120,8 +118,8 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
                     {product.product_type === "custom_kit"
                       ? "Kit sur-mesure"
                       : product.product_type === "bundle"
-                      ? "Bundle"
-                      : "Produit simple"}
+                        ? "Bundle"
+                        : "Produit simple"}
                   </Badge>
                   <Badge variant={product.is_active ? "default" : "secondary"}>
                     {product.is_active ? "Disponible" : "Indisponible"}
@@ -134,9 +132,7 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
                   {product.description && (
                     <div>
                       <h3 className="font-semibold mb-2">Description</h3>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                        {product.description}
-                      </p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">{product.description}</p>
                     </div>
                   )}
 
@@ -146,7 +142,7 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
                     <h3 className="font-semibold mb-2">Prix</h3>
                     <div className="text-3xl font-bold text-primary">
                       {product.product_type === "custom_kit" ? "À partir de " : ""}
-                      {product.prix_base.toFixed(2)} €
+                      {(product.prix_base || 0).toFixed(2)} €
                     </div>
                   </div>
 
@@ -155,16 +151,11 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
                       <Separator />
                       <div>
                         <h3 className="font-semibold mb-4">
-                          {product.product_type === "custom_kit"
-                            ? "Accessoires disponibles"
-                            : "Accessoires inclus"}
+                          {product.product_type === "custom_kit" ? "Accessoires disponibles" : "Accessoires inclus"}
                         </h3>
                         <div className="space-y-3">
                           {accessories.map((item: any) => (
-                            <div
-                              key={item.id}
-                              className="flex items-start gap-3 p-3 rounded-lg border"
-                            >
+                            <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border">
                               <div className="w-16 h-16 bg-muted rounded flex-shrink-0 flex items-center justify-center">
                                 {item.accessory?.image_url ? (
                                   <img
@@ -179,9 +170,7 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium">{item.accessory?.nom}</p>
                                 {item.accessory?.marque && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {item.accessory.marque}
-                                  </p>
+                                  <p className="text-xs text-muted-foreground">{item.accessory.marque}</p>
                                 )}
                                 {product.product_type !== "custom_kit" && (
                                   <p className="text-sm text-muted-foreground mt-1">
@@ -197,16 +186,9 @@ export const ProductDetailModal = ({ productId, onClose, onConfigure }: ProductD
                   )}
 
                   <div className="sticky bottom-0 bg-background pt-4 pb-2">
-                    <Button
-                      className="w-full gap-2"
-                      size="lg"
-                      onClick={handleAddToCart}
-                      disabled={!product.is_active}
-                    >
+                    <Button className="w-full gap-2" size="lg" onClick={handleAddToCart} disabled={!product.is_active}>
                       <ShoppingCart className="h-5 w-5" />
-                      {product.product_type === "custom_kit"
-                        ? "Configurer le kit"
-                        : "Ajouter au panier"}
+                      {product.product_type === "custom_kit" ? "Configurer le kit" : "Ajouter au panier"}
                     </Button>
                   </div>
                 </div>
