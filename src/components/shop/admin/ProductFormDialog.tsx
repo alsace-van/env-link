@@ -120,12 +120,18 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
 
     try {
       let targetProductId = productId;
+      
+      // Pour les kits sur mesure, le prix sera calculé dynamiquement
+      const dataToSave = {
+        ...formData,
+        prix_base: formData.product_type === 'custom_kit' ? 0 : formData.prix_base
+      };
 
       if (productId) {
         // Mise à jour du produit existant
         await supabase
           .from("shop_products" as any)
-          .update(formData)
+          .update(dataToSave)
           .eq("id", productId);
 
         // Supprimer les anciens accessoires
@@ -137,7 +143,7 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
         // Création d'un nouveau produit
         const { data: newProduct } = await supabase
           .from("shop_products" as any)
-          .insert(formData)
+          .insert(dataToSave)
           .select()
           .single();
 
@@ -270,17 +276,19 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Prix de base (€)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.prix_base}
-                    onChange={(e) => setFormData({ ...formData, prix_base: parseFloat(e.target.value) })}
-                    required
-                  />
-                </div>
+              <div className={formData.product_type === 'custom_kit' ? '' : 'grid grid-cols-2 gap-4'}>
+                {formData.product_type !== 'custom_kit' && (
+                  <div>
+                    <Label>Prix de base (€)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.prix_base}
+                      onChange={(e) => setFormData({ ...formData, prix_base: parseFloat(e.target.value) })}
+                      required
+                    />
+                  </div>
+                )}
 
                 <div>
                   <Label>Stock</Label>
