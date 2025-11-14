@@ -129,7 +129,7 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto flex-1 px-1 py-1">
+        <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto flex-1 px-3 py-3">
           <Tabs defaultValue="general">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="general">Général</TabsTrigger>

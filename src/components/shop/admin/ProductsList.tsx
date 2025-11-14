@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Edit, Trash2, Eye, EyeOff, Package, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { ShopProductFormDialog } from "@/components/ShopProductFormDialog";
+import { ProductFormDialog } from "./ProductFormDialog";
 
 interface Product {
   id: string;
@@ -181,17 +181,15 @@ export const ProductsList = () => {
       </div>
       )}
 
-      {editingProduct && (
-        <ShopProductFormDialog
-          editProduct={editingProduct}
-          forceOpen={true}
-          onClose={() => setEditingProduct(null)}
-          onSuccess={() => {
-            setEditingProduct(null);
-            loadProducts();
-          }}
-        />
-      )}
+      <ProductFormDialog
+        productId={editingProduct?.id || null}
+        isOpen={!!editingProduct}
+        onClose={() => setEditingProduct(null)}
+        onSuccess={() => {
+          setEditingProduct(null);
+          loadProducts();
+        }}
+      />
     </>
   );
 };
