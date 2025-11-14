@@ -15,15 +15,17 @@ interface CartItem {
   };
 }
 
-export const useCart = () => {
+export const useCart = (userId?: string) => {
   const [cartId, setCartId] = useState<string | null>(null);
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
-    loadCart();
-  }, []);
+    if (userId) {
+      loadCart();
+    }
+  }, [userId]);
 
   const loadCart = async () => {
     try {
@@ -131,7 +133,7 @@ export const useCart = () => {
     }
   };
 
-  const removeItem = async (itemId: string) => {
+  const removeFromCart = async (itemId: string) => {
     try {
       const { error } = await supabase
         .from("cart_items" as any)
