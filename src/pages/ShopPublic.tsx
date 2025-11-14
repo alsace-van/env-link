@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { CartSidebar } from "@/components/shop/CartSidebar";
 import { ProductDetailModal } from "@/components/shop/ProductDetailModal";
+import { CustomKitConfigModal } from "@/components/shop/CustomKitConfigModal";
 import { SearchWithSuggestions } from "@/components/shop/SearchWithSuggestions";
 import {
   Select,
@@ -26,6 +27,7 @@ export default function ShopPublic() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [detailProductId, setDetailProductId] = useState<string | null>(null);
+  const [configKitId, setConfigKitId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -207,6 +209,14 @@ export default function ShopPublic() {
       <ProductDetailModal
         productId={detailProductId}
         onClose={() => setDetailProductId(null)}
+        onConfigure={(id) => {
+          setDetailProductId(null);
+          setConfigKitId(id);
+        }}
+      />
+      <CustomKitConfigModal
+        productId={configKitId}
+        onClose={() => setConfigKitId(null)}
       />
     </div>
   );
