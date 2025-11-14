@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccessorySelector } from "./AccessorySelector";
+import { Plus } from "lucide-react";
 
 interface ProductFormDialogProps {
   productId: string | null;
@@ -21,6 +22,8 @@ interface ProductFormDialogProps {
 export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: ProductFormDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
+  const [showNewCategoryDialog, setShowNewCategoryDialog] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
   const [formData, setFormData] = useState({
     nom: "",
     description: "",
@@ -48,6 +51,31 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
       .select("*")
       .order("nom");
     if (data) setCategories(data);
+  };
+
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    
+    const { data: userData } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from("shop_categories" as any)
+      .insert({ nom: newCategoryName, user_id: userData.user?.id })
+      .select()
+      .single();
+    
+    if (error) {
+      toast.error("Erreur lors de la création");
+      return;
+    }
+    
+    if (data) {
+      const newCategory = data as any;
+      setCategories([...categories, newCategory]);
+      setFormData({ ...formData, category_id: newCategory.id });
+      setNewCategoryName("");
+      setShowNewCategoryDialog(false);
+      toast.success("Catégorie créée");
+    }
   };
 
   const loadProduct = async () => {
@@ -176,21 +204,49 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
 
                 <div>
                   <Label>Catégorie</Label>
-                  <Select
-                    value={formData.category_id}
-                    onValueChange={(value) => setFormData({ ...formData, category_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.nom}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2">
+                    <Select
+                      value={formData.category_id}
+                      onValueChange={(value) => setFormData({ ...formData, category_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.nom}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowNewCategoryDialog(true)}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  {showNewCategoryDialog && (
+                    <div className="mt-2 p-3 border rounded-lg space-y-2">
+                      <Input
+                        placeholder="Nom de la catégorie"
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleCreateCategory()}
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleCreateCategory}>Créer</Button>
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setShowNewCategoryDialog(false);
+                          setNewCategoryName("");
+                        }}>Annuler</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
