@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, X, Copy, Trash2 } from "lucide-react";
+import { ShoppingCart, Copy, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCartContext } from "@/contexts/CartContext";
 import { toast } from "sonner";
@@ -65,7 +65,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
     setLoading(true);
 
-    // Charger le produit
     const { data: productData } = await supabase
       .from("shop_products" as any)
       .select("*")
@@ -75,7 +74,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     if (productData) {
       setProduct(productData);
 
-      // Charger les accessoires du kit
       const { data: kitAccessories, error: kitError } = await supabase
         .from("shop_product_items")
         .select("accessory_id")
@@ -90,7 +88,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
       if (kitAccessories && kitAccessories.length > 0) {
         const accessoryIds = kitAccessories.map((ka) => ka.accessory_id);
 
-        // Charger les accessoires avec toutes leurs données
         const { data: accessoriesData, error: accessoriesError } = await supabase
           .from("accessories_catalog")
           .select("id, nom, marque, prix_vente_ttc, description, image_url, category_id, promo_active, promo_price, promo_start_date, promo_end_date, couleur")
@@ -103,7 +100,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
         }
 
         if (accessoriesData) {
-          // Charger les options pour chaque accessoire
           const { data: optionsData, error: optionsError } = await supabase
             .from("accessory_options")
             .select("id, nom, prix_vente_ttc, accessory_id")
@@ -113,7 +109,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
             console.error("Error loading options:", optionsError);
           }
 
-          // Associer les options aux accessoires
           const accessoriesWithOptions: AccessoryWithCategory[] = accessoriesData.map((acc) => ({
             id: acc.id,
             nom: acc.nom,
@@ -136,7 +131,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
           setAccessories(accessoriesWithOptions);
 
-          // Charger les catégories uniques
           const categoryIds = [...new Set(accessoriesData.map((a) => a.category_id).filter(Boolean))] as string[];
 
           if (categoryIds.length > 0) {
@@ -154,7 +148,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
             if (categoriesData) {
               setCategories(categoriesData);
 
-              // Créer une section initiale pour chaque catégorie
               const initialSections: CategorySection[] = categoriesData.map((cat, index) => ({
                 id: `section-${index}-${Date.now()}`,
                 categoryId: cat.id,
@@ -189,7 +182,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
   };
 
   const removeSection = (sectionId: string) => {
-    // Ne pas permettre de supprimer s'il ne reste qu'une section
     if (sections.length <= 1) {
       toast.error("Au moins une catégorie doit être présente");
       return;
@@ -231,7 +223,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
         let accessoryPrice = getAccessoryPrice(accessory);
 
-        // Ajouter le prix des options sélectionnées
         const selectedOptions = section.selectedOptions[section.selectedAccessoryId] || [];
         const optionsPrice = selectedOptions.reduce((optTotal, optId) => {
           const option = accessory.options?.find((o) => o.id === optId);
@@ -280,23 +271,27 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
   return (
     <Dialog open={!!productId} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] p-0">
+      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden">
         {loading ? (
-          <div className="text-center py-12">Chargement...</div>
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+              <p className="text-muted-foreground">Chargement des accessoires...</p>
+            </div>
+          </div>
         ) : product ? (
-          <div className="flex h-full">
-            {/* Panneau gauche - Configuration */}
-            <div className="flex-1 flex flex-col">
-              <DialogHeader className="px-6 py-4 border-b">
-                <DialogTitle className="text-xl">{product.nom}</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Configurez votre kit en choisissant des accessoires. Vous pouvez dupliquer une catégorie pour ajouter
-                  plusieurs articles différents.
+          <div className="flex h-full max-h-[95vh]">
+            <div className="flex-1 flex flex-col min-w-0">
+              <DialogHeader className="px-6 py-5 border-b bg-muted/20">
+                <DialogTitle className="text-2xl font-bold">{product.nom}</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                  Personnalisez votre kit en sélectionnant les accessoires de votre choix. 
+                  Utilisez le bouton "Dupliquer" pour ajouter plusieurs articles de la même catégorie.
                 </p>
               </DialogHeader>
 
-              <ScrollArea className="flex-1 px-6">
-                <div className="py-4 space-y-4">
+              <ScrollArea className="flex-1">
+                <div className="px-6 py-5 space-y-5">
                   {sections.map((section, index) => {
                     const selectedAccessory = getSelectedAccessoryDetails(section);
 
@@ -349,28 +344,26 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                               <SelectTrigger className="h-12 text-base">
                                 <SelectValue placeholder="Choisir un accessoire..." />
                               </SelectTrigger>
-                                 <SelectContent>
-                                  {section.accessories.map((accessory) => {
-                                    const price = getAccessoryPrice(accessory);
-                                    const isPromo = accessory.promo_active && price < accessory.prix_vente_ttc;
-                                    return (
-                                      <SelectItem key={accessory.id} value={accessory.id}>
-                                        {accessory.nom} {accessory.marque ? `- ${accessory.marque}` : ""} (
-                                        {isPromo && (
-                                          <span className="line-through text-muted-foreground mr-1">
-                                            {accessory.prix_vente_ttc.toFixed(2)} €
-                                          </span>
-                                        )}
-                                        {price.toFixed(2)} €)
-                                      </SelectItem>
-                                    );
-                                  })}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                              <SelectContent>
+                                {section.accessories.map((accessory) => {
+                                  const price = getAccessoryPrice(accessory);
+                                  const isPromo = accessory.promo_active && price < accessory.prix_vente_ttc;
+                                  return (
+                                    <SelectItem key={accessory.id} value={accessory.id}>
+                                      {accessory.nom} {accessory.marque ? `- ${accessory.marque}` : ""} (
+                                      {isPromo && (
+                                        <span className="line-through text-muted-foreground mr-1">
+                                          {accessory.prix_vente_ttc.toFixed(2)} €
+                                        </span>
+                                      )}
+                                      {price.toFixed(2)} €)
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
                           </div>
 
-                          {/* Afficher les détails de l'accessoire sélectionné */}
                           {selectedAccessory && (
                             <>
                               <div className="rounded-lg border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-4">
@@ -422,7 +415,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                 </div>
                               </div>
 
-                              {/* Options */}
                               {selectedAccessory.options && selectedAccessory.options.length > 0 && (
                                 <div className="space-y-3 bg-muted/30 rounded-lg p-4">
                                   <label className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -471,7 +463,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
               </ScrollArea>
             </div>
 
-            {/* Panneau droit - Récapitulatif */}
             <div className="w-96 border-l bg-gradient-to-b from-muted/30 to-muted/10 flex flex-col">
               <div className="px-6 py-5 border-b bg-muted/20">
                 <h3 className="font-bold text-xl text-foreground">Récapitulatif</h3>
@@ -498,10 +489,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
                         const accessoryPrice = getAccessoryPrice(accessory);
                         const selectedOptions = section.selectedOptions[section.selectedAccessoryId!] || [];
-                        const optionsPrice = selectedOptions.reduce((total, optId) => {
-                          const option = accessory.options?.find((o) => o.id === optId);
-                          return total + (option?.prix_vente_ttc || 0);
-                        }, 0);
 
                         return (
                           <div key={section.id} className="bg-background rounded-lg p-3 border space-y-2">
@@ -542,8 +529,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                     </div>
                   )}
                 </div>
-              </div>
-
               </ScrollArea>
 
               <div className="border-t bg-background/80 backdrop-blur-sm p-6 space-y-4">
