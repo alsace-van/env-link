@@ -18,42 +18,52 @@ export const AccessorySelector = ({ selectedAccessories, onChange, productType }
   const [categories, setCategories] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadData();
+      if (!isLoading) {
+        loadData();
+      }
     }, 300);
     
     return () => clearTimeout(timer);
   }, [selectedCategory, searchQuery]);
 
   const loadData = async () => {
-    const { data: categoriesData } = await supabase
-      .from("categories" as any)
-      .select("*")
-      .order("nom");
+    if (isLoading) return;
+    
+    setIsLoading(true);
+    try {
+      const { data: categoriesData } = await supabase
+        .from("categories" as any)
+        .select("*")
+        .order("nom");
 
-    if (categoriesData) {
-      setCategories(categoriesData);
-    }
+      if (categoriesData) {
+        setCategories(categoriesData);
+      }
 
-    let query = supabase
-      .from("accessories_catalog" as any)
-      .select("*")
-      .eq("available_in_shop", true);
+      let query = supabase
+        .from("accessories_catalog" as any)
+        .select("*")
+        .eq("available_in_shop", true);
 
-    if (selectedCategory && selectedCategory !== "all") {
-      query = query.eq("category_id", selectedCategory);
-    }
+      if (selectedCategory && selectedCategory !== "all") {
+        query = query.eq("category_id", selectedCategory);
+      }
 
-    if (searchQuery) {
-      query = query.ilike("nom", `%${searchQuery}%`);
-    }
+      if (searchQuery) {
+        query = query.ilike("nom", `%${searchQuery}%`);
+      }
 
-    const { data: accessoriesData } = await query.order("nom");
+      const { data: accessoriesData } = await query.order("nom");
 
-    if (accessoriesData) {
-      setAccessories(accessoriesData);
+      if (accessoriesData) {
+        setAccessories(accessoriesData);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
