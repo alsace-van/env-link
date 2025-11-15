@@ -6,10 +6,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Search, Plus, Clock, TrendingUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CreateTemplateDialog } from "./CreateTemplateDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface TaskTemplatesLibraryProps {
   open: boolean;
@@ -24,8 +26,11 @@ export const TaskTemplatesLibrary = ({
   projectId,
   onUseTemplate,
 }: TaskTemplatesLibraryProps) => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showCreateTemplate, setShowCreateTemplate] = useState(false);
 
   const { data: categories, isLoading: loadingCategories } = useQuery({
     queryKey: ["work-categories", "templates"],
@@ -68,6 +73,41 @@ export const TaskTemplatesLibrary = ({
 
   const userTemplates = filteredTemplates?.filter((t: any) => !t.is_global);
   const globalTemplates = filteredTemplates?.filter((t: any) => t.is_global);
+
+  // Create template mutation
+  const createTemplateMutation = useMutation({
+    mutationFn: async (data: {
+      title: string;
+      description?: string;
+      categoryId: string;
+      estimatedHours?: number;
+      isGlobal: boolean;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { error } = await supabase.from("task_templates").insert({
+        title: data.title,
+        description: data.description,
+        category_id: data.categoryId,
+        estimated_hours: data.estimatedHours,
+        user_id: user?.id,
+        is_global: data.isGlobal,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-templates"] });
+      toast({ title: "✓ Template créé avec succès" });
+    },
+    onError: () => {
+      toast({ 
+        title: "Erreur", 
+        description: "Impossible de créer le template",
+        variant: "destructive" 
+      });
+    },
+  });
 
   const renderTemplateCard = (template: any) => (
     <Card key={template.id} className="hover:border-primary transition-colors">
@@ -166,7 +206,7 @@ export const TaskTemplatesLibrary = ({
               <TabsTrigger value="user">📖 Mes tâches</TabsTrigger>
             </TabsList>
 
-            <ScrollArea className="h-[400px] mt-4">
+            <ScrollArea className="h-[400px] mt-4 pr-4">
               <TabsContent value="global" className="mt-0 space-y-3">
                 {loadingTemplates ? (
                   Array.from({ length: 6 }).map((_, i) => (
@@ -182,6 +222,13 @@ export const TaskTemplatesLibrary = ({
               </TabsContent>
 
               <TabsContent value="user" className="mt-0 space-y-3">
+                <div className="flex justify-end mb-4">
+                  <Button onClick={() => setShowCreateTemplate(true)} size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nouveau template
+                  </Button>
+                </div>
+                
                 {loadingTemplates ? (
                   Array.from({ length: 3 }).map((_, i) => (
                     <Skeleton key={i} className="h-32" />
@@ -189,15 +236,28 @@ export const TaskTemplatesLibrary = ({
                 ) : userTemplates && userTemplates.length > 0 ? (
                   userTemplates.map(renderTemplateCard)
                 ) : (
-                  <p className="text-center text-muted-foreground py-8">
-                    Vous n'avez pas encore créé de templates
-                  </p>
+                  <div className="text-center py-8 space-y-3">
+                    <p className="text-muted-foreground">
+                      Vous n'avez pas encore créé de templates
+                    </p>
+                    <Button onClick={() => setShowCreateTemplate(true)} size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Créer mon premier template
+                    </Button>
+                  </div>
                 )}
               </TabsContent>
             </ScrollArea>
           </Tabs>
         </div>
       </DialogContent>
+
+      <CreateTemplateDialog
+        open={showCreateTemplate}
+        onOpenChange={setShowCreateTemplate}
+        categories={categories || []}
+        onSubmit={(data) => createTemplateMutation.mutate(data)}
+      />
     </Dialog>
   );
 };
