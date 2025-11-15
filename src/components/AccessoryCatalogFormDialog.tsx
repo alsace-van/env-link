@@ -28,6 +28,7 @@ interface AccessoryCatalogFormDialogProps {
     prix_reference?: number;
     prix_vente_ttc?: number;
     marge_pourcent?: number;
+    marge_nette?: number;
     fournisseur?: string;
     description?: string;
     url_produit?: string;
@@ -51,6 +52,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     prix_reference: "",
     prix_vente_ttc: "",
     marge_pourcent: "",
+    marge_nette: "",
     fournisseur: "",
     description: "",
     url_produit: "",
@@ -109,6 +111,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           prix_reference: accessory.prix_reference?.toString() ?? "",
           prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
           marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
+          marge_nette: accessory.marge_nette?.toString() ?? "",
           fournisseur: accessory.fournisseur ?? "",
           description: accessory.description ?? "",
           url_produit: accessory.url_produit ?? "",
@@ -156,6 +159,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           prix_reference: "",
           prix_vente_ttc: "",
           marge_pourcent: "",
+          marge_nette: "",
           fournisseur: "",
           description: "",
           url_produit: "",
@@ -237,34 +241,62 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     const option = { ...newOptions[index], [field]: value };
     const TVA = 1.20; // 20% TVA
 
-    // Déterminer quels champs sont remplis (non vides et non zéro)
-    const hasPrixReference = option.prix_reference && parseFloat(option.prix_reference) > 0;
-    const hasPrixVente = option.prix_vente_ttc && parseFloat(option.prix_vente_ttc) > 0;
-    const hasMarge = option.marge_pourcent && parseFloat(option.marge_pourcent) !== 0;
-
-    // Si on a 2 champs remplis, calculer le 3ème
-    if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
-      // Prix référence + Prix TTC remplis → calculer la marge
+    // Calcul bidirectionnel basé sur le champ modifié
+    if (field === "prix_reference") {
+      // Si on modifie le prix d'achat
       const prixReference = parseFloat(option.prix_reference);
-      const prixVenteTTC = parseFloat(option.prix_vente_ttc);
-      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
-      option.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
-      option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-    } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
-      // Prix TTC + Marge remplis → calculer le prix référence
-      const prixVenteTTC = parseFloat(option.prix_vente_ttc);
-      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
+      if (!isNaN(prixReference) && prixReference > 0) {
+        if (option.marge_pourcent && parseFloat(option.marge_pourcent) !== 0) {
+          // Calculer le prix TTC à partir du prix d'achat + marge
+          const margePourcent = parseFloat(option.marge_pourcent);
+          const prixVenteHT = prixReference * (1 + margePourcent / 100);
+          option.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
+          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        } else if (option.prix_vente_ttc && parseFloat(option.prix_vente_ttc) > 0) {
+          // Calculer la marge à partir du prix d'achat + prix TTC
+          const prixVenteTTC = parseFloat(option.prix_vente_ttc);
+          const prixVenteHT = prixVenteTTC / TVA;
+          option.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
+          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        }
+      }
+    } else if (field === "marge_pourcent") {
+      // Si on modifie la marge
       const margePourcent = parseFloat(option.marge_pourcent);
-      option.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
-      const prixReference = parseFloat(option.prix_reference);
-      option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-    } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
-      // Prix référence + Marge remplis → calculer le prix TTC
-      const prixReference = parseFloat(option.prix_reference);
-      const margePourcent = parseFloat(option.marge_pourcent);
-      const prixVenteHT = prixReference * (1 + margePourcent / 100);
-      option.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2); // Ajouter la TVA
-      option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+      if (!isNaN(margePourcent)) {
+        if (option.prix_reference && parseFloat(option.prix_reference) > 0) {
+          // Calculer le prix TTC à partir de la marge + prix d'achat
+          const prixReference = parseFloat(option.prix_reference);
+          const prixVenteHT = prixReference * (1 + margePourcent / 100);
+          option.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
+          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        } else if (option.prix_vente_ttc && parseFloat(option.prix_vente_ttc) > 0) {
+          // Calculer le prix d'achat à partir de la marge + prix TTC
+          const prixVenteTTC = parseFloat(option.prix_vente_ttc);
+          const prixVenteHT = prixVenteTTC / TVA;
+          option.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
+          const prixReference = parseFloat(option.prix_reference);
+          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        }
+      }
+    } else if (field === "prix_vente_ttc") {
+      // Si on modifie le prix TTC
+      const prixVenteTTC = parseFloat(option.prix_vente_ttc);
+      if (!isNaN(prixVenteTTC) && prixVenteTTC > 0) {
+        const prixVenteHT = prixVenteTTC / TVA;
+        if (option.prix_reference && parseFloat(option.prix_reference) > 0) {
+          // Calculer la marge à partir du prix TTC + prix d'achat
+          const prixReference = parseFloat(option.prix_reference);
+          option.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
+          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        } else if (option.marge_pourcent && parseFloat(option.marge_pourcent) !== 0) {
+          // Calculer le prix d'achat à partir du prix TTC + marge
+          const margePourcent = parseFloat(option.marge_pourcent);
+          option.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
+          const prixReference = parseFloat(option.prix_reference);
+          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        }
+      }
     }
 
     newOptions[index] = option;
@@ -347,30 +379,62 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     const newFormData = { ...formData, [field]: value };
     const TVA = 1.20; // 20% TVA
 
-    // Déterminer quels champs sont remplis (non vides et non zéro)
-    const hasPrixReference = newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0;
-    const hasPrixVente = newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0;
-    const hasMarge = newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0;
-
-    // Si on a 2 champs remplis, calculer le 3ème
-    if (hasPrixReference && hasPrixVente && field !== "marge_pourcent") {
-      // Prix référence + Prix TTC remplis → calculer la marge
+    // Calcul bidirectionnel basé sur le champ modifié
+    if (field === "prix_reference") {
+      // Si on modifie le prix d'achat
       const prixReference = parseFloat(newFormData.prix_reference);
-      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
-      newFormData.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
-    } else if (hasPrixVente && hasMarge && field !== "prix_reference") {
-      // Prix TTC + Marge remplis → calculer le prix référence
-      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      const prixVenteHT = prixVenteTTC / TVA; // Enlever la TVA
+      if (!isNaN(prixReference) && prixReference > 0) {
+        if (newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0) {
+          // Calculer le prix TTC à partir du prix d'achat + marge
+          const margePourcent = parseFloat(newFormData.marge_pourcent);
+          const prixVenteHT = prixReference * (1 + margePourcent / 100);
+          newFormData.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
+          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        } else if (newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0) {
+          // Calculer la marge à partir du prix d'achat + prix TTC
+          const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+          const prixVenteHT = prixVenteTTC / TVA;
+          newFormData.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
+          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        }
+      }
+    } else if (field === "marge_pourcent") {
+      // Si on modifie la marge
       const margePourcent = parseFloat(newFormData.marge_pourcent);
-      newFormData.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
-    } else if (hasPrixReference && hasMarge && field !== "prix_vente_ttc") {
-      // Prix référence + Marge remplis → calculer le prix TTC
-      const prixReference = parseFloat(newFormData.prix_reference);
-      const margePourcent = parseFloat(newFormData.marge_pourcent);
-      const prixVenteHT = prixReference * (1 + margePourcent / 100);
-      newFormData.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2); // Ajouter la TVA
+      if (!isNaN(margePourcent)) {
+        if (newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0) {
+          // Calculer le prix TTC à partir de la marge + prix d'achat
+          const prixReference = parseFloat(newFormData.prix_reference);
+          const prixVenteHT = prixReference * (1 + margePourcent / 100);
+          newFormData.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
+          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        } else if (newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0) {
+          // Calculer le prix d'achat à partir de la marge + prix TTC
+          const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+          const prixVenteHT = prixVenteTTC / TVA;
+          newFormData.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
+          const prixReference = parseFloat(newFormData.prix_reference);
+          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        }
+      }
+    } else if (field === "prix_vente_ttc") {
+      // Si on modifie le prix TTC
+      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
+      if (!isNaN(prixVenteTTC) && prixVenteTTC > 0) {
+        const prixVenteHT = prixVenteTTC / TVA;
+        if (newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0) {
+          // Calculer la marge à partir du prix TTC + prix d'achat
+          const prixReference = parseFloat(newFormData.prix_reference);
+          newFormData.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
+          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        } else if (newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0) {
+          // Calculer le prix d'achat à partir du prix TTC + marge
+          const margePourcent = parseFloat(newFormData.marge_pourcent);
+          newFormData.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
+          const prixReference = parseFloat(newFormData.prix_reference);
+          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
+        }
+      }
     }
 
     setFormData(newFormData);
