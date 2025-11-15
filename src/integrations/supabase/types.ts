@@ -1245,42 +1245,75 @@ export type Database = {
       project_todos: {
         Row: {
           accessory_id: string | null
+          actual_hours: number | null
+          blocked_reason: string | null
+          category_id: string | null
           completed: boolean | null
+          completed_at: string | null
+          completed_by: string | null
           created_at: string | null
           description: string | null
+          display_order: number | null
           due_date: string | null
+          estimated_hours: number | null
           id: string
+          notes: string | null
           priority: string | null
           project_id: string | null
+          requires_delivery_id: string | null
+          scheduled_date: string | null
           task_type: string | null
+          template_id: string | null
           title: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
           accessory_id?: string | null
+          actual_hours?: number | null
+          blocked_reason?: string | null
+          category_id?: string | null
           completed?: boolean | null
+          completed_at?: string | null
+          completed_by?: string | null
           created_at?: string | null
           description?: string | null
+          display_order?: number | null
           due_date?: string | null
+          estimated_hours?: number | null
           id?: string
+          notes?: string | null
           priority?: string | null
           project_id?: string | null
+          requires_delivery_id?: string | null
+          scheduled_date?: string | null
           task_type?: string | null
+          template_id?: string | null
           title: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
           accessory_id?: string | null
+          actual_hours?: number | null
+          blocked_reason?: string | null
+          category_id?: string | null
           completed?: boolean | null
+          completed_at?: string | null
+          completed_by?: string | null
           created_at?: string | null
           description?: string | null
+          display_order?: number | null
           due_date?: string | null
+          estimated_hours?: number | null
           id?: string
+          notes?: string | null
           priority?: string | null
           project_id?: string | null
+          requires_delivery_id?: string | null
+          scheduled_date?: string | null
           task_type?: string | null
+          template_id?: string | null
           title?: string
           updated_at?: string | null
           user_id?: string
@@ -1294,10 +1327,31 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "project_todos_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "work_categories"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "project_todos_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_todos_requires_delivery_id_fkey"
+            columns: ["requires_delivery_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_todos_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "task_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -2159,6 +2213,50 @@ export type Database = {
         }
         Relationships: []
       }
+      task_templates: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          description: string | null
+          estimated_hours: number | null
+          id: string
+          is_global: boolean | null
+          title: string
+          usage_count: number | null
+          user_id: string | null
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          estimated_hours?: number | null
+          id?: string
+          is_global?: boolean | null
+          title: string
+          usage_count?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          estimated_hours?: number | null
+          id?: string
+          is_global?: boolean | null
+          title?: string
+          usage_count?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_templates_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "work_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       technical_schemas: {
         Row: {
           created_at: string | null
@@ -2520,6 +2618,50 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      work_categories: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          display_order: number | null
+          icon: string | null
+          id: string
+          is_template: boolean | null
+          name: string
+          project_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_template?: boolean | null
+          name: string
+          project_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          display_order?: number | null
+          icon?: string | null
+          id?: string
+          is_template?: boolean | null
+          name?: string
+          project_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_categories_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

@@ -37,6 +37,7 @@ import {
   Truck,
   X,
   BarChart3,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -59,6 +60,7 @@ import { DocumentsUpload } from "@/components/DocumentsUpload";
 import { OfficialDocumentsLibrary } from "@/components/OfficialDocumentsLibrary";
 import ProjectForm from "@/components/ProjectForm";
 import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleInspectionTab";
+import { WorkTabMain } from "@/components/work/WorkTabMain";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -1215,7 +1217,7 @@ const ProjectDetail = () => {
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
             <Tabs defaultValue="photos" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 lg:grid-cols-7">
+              <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
                 <TabsTrigger value="photos" className="gap-2">
                   <Image className="h-4 w-4 text-purple-600" />
                   <span className="hidden sm:inline">Photos</span>
@@ -1223,6 +1225,10 @@ const ProjectDetail = () => {
                 <TabsTrigger value="vehicle" className="gap-2">
                   <Truck className="h-4 w-4 text-cyan-600" />
                   <span className="hidden sm:inline">État véhicule</span>
+                </TabsTrigger>
+                <TabsTrigger value="work" className="gap-2">
+                  <ClipboardList className="h-4 w-4 text-blue-600" />
+                  <span className="hidden sm:inline">Travaux</span>
                 </TabsTrigger>
                 <TabsTrigger value="expenses" className="gap-2">
                   <Euro className="h-4 w-4 text-green-600" />
@@ -1252,6 +1258,10 @@ const ProjectDetail = () => {
 
               <TabsContent value="vehicle" className="mt-6">
                 <VehicleInspectionTab projectId={project.id} />
+              </TabsContent>
+
+              <TabsContent value="work" className="mt-6">
+                <WorkTabMain projectId={project.id} />
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
