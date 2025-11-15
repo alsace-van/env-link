@@ -198,6 +198,7 @@ export default function ShopPublic() {
                 product={product}
                 onAddToCart={handleAddToCart}
                 onViewDetails={setDetailProductId}
+                onConfigureKit={setConfigKitId}
                 viewMode={viewMode}
               />
             ))}

@@ -512,7 +512,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                     size="lg"
                   >
                     <ShoppingCart className="mr-2 h-5 w-5" />
-                    Configurer le kit
+                    Ajouter au panier
                   </Button>
                   <Button
                     variant="outline"

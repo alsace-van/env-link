@@ -7,10 +7,11 @@ interface ProductCardProps {
   product: any;
   onAddToCart: (productId: string, price: number) => void;
   onViewDetails: (productId: string) => void;
+  onConfigureKit?: (productId: string) => void;
   viewMode: "grid" | "list";
 }
 
-export const ProductCard = ({ product, onAddToCart, onViewDetails, viewMode }: ProductCardProps) => {
+export const ProductCard = ({ product, onAddToCart, onViewDetails, onConfigureKit, viewMode }: ProductCardProps) => {
   if (viewMode === "list") {
     return (
       <Card className="p-4 hover:shadow-lg transition-shadow">
@@ -66,11 +67,17 @@ export const ProductCard = ({ product, onAddToCart, onViewDetails, viewMode }: P
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => onAddToCart(product.id, product.prix_base)}
+                    onClick={() => {
+                      if (product.product_type === "custom_kit" && onConfigureKit) {
+                        onConfigureKit(product.id);
+                      } else {
+                        onAddToCart(product.id, product.prix_base);
+                      }
+                    }}
                     disabled={!product.is_active}
                   >
                     <ShoppingCart className="h-4 w-4 mr-1" />
-                    Ajouter
+                    {product.product_type === "custom_kit" ? "Configurer le kit" : "Ajouter"}
                   </Button>
                 </div>
               </div>
@@ -123,11 +130,17 @@ export const ProductCard = ({ product, onAddToCart, onViewDetails, viewMode }: P
           </div>
           <Button
             size="sm"
-            onClick={() => onAddToCart(product.id, product.prix_base)}
+            onClick={() => {
+              if (product.product_type === "custom_kit" && onConfigureKit) {
+                onConfigureKit(product.id);
+              } else {
+                onAddToCart(product.id, product.prix_base);
+              }
+            }}
             disabled={!product.is_active}
           >
             <ShoppingCart className="h-4 w-4 mr-1" />
-            Ajouter
+            {product.product_type === "custom_kit" ? "Configurer le kit" : "Ajouter"}
           </Button>
         </div>
       </div>
