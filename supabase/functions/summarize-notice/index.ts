@@ -177,7 +177,7 @@ Sois concis mais précis. Maximum 500 mots.`;
         temperature: 0.4,
         topK: 32,
         topP: 1,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 8192,
       },
     };
 
@@ -223,6 +223,21 @@ Sois concis mais précis. Maximum 500 mots.`;
 
     const aiData = await aiResponse.json();
     console.log("Réponse Gemini:", JSON.stringify(aiData, null, 2));
+
+    // Vérifier si la réponse a été tronquée
+    const finishReason = aiData.candidates?.[0]?.finishReason;
+    if (finishReason === "MAX_TOKENS") {
+      console.error("⚠️ Réponse tronquée par Gemini (MAX_TOKENS atteint)");
+      return new Response(
+        JSON.stringify({
+          error: "Le document est trop volumineux pour être résumé. Essayez avec un document plus court ou contactez le support.",
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        }
+      );
+    }
 
     if (!aiData.candidates?.[0]?.content?.parts?.[0]?.text) {
       return new Response(JSON.stringify({ error: "Réponse invalide de l'IA", data: aiData }), {
