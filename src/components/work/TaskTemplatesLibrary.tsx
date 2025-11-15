@@ -222,19 +222,20 @@ export const TaskTemplatesLibrary = ({
               </TabsContent>
 
               <TabsContent value="user" className="mt-0 space-y-3">
-                <div className="flex justify-end mb-4">
-                  <Button onClick={() => setShowCreateTemplate(true)} size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nouveau template
-                  </Button>
-                </div>
-                
                 {loadingTemplates ? (
                   Array.from({ length: 3 }).map((_, i) => (
                     <Skeleton key={i} className="h-32" />
                   ))
                 ) : userTemplates && userTemplates.length > 0 ? (
-                  userTemplates.map(renderTemplateCard)
+                  <>
+                    <div className="flex justify-end mb-4">
+                      <Button onClick={() => setShowCreateTemplate(true)} size="sm">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nouveau template
+                      </Button>
+                    </div>
+                    {userTemplates.map(renderTemplateCard)}
+                  </>
                 ) : (
                   <div className="text-center py-8 space-y-3">
                     <p className="text-muted-foreground">
