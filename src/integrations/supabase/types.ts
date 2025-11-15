@@ -631,6 +631,73 @@ export type Database = {
           },
         ]
       }
+      inspection_photos: {
+        Row: {
+          annotated_photo_url: string | null
+          created_at: string | null
+          id: string
+          photo_url: string
+          zone_id: string
+        }
+        Insert: {
+          annotated_photo_url?: string | null
+          created_at?: string | null
+          id?: string
+          photo_url: string
+          zone_id: string
+        }
+        Update: {
+          annotated_photo_url?: string | null
+          created_at?: string | null
+          id?: string
+          photo_url?: string
+          zone_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_photos_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_zones: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          id: string
+          inspection_id: string
+          zone_name: string
+          zone_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          display_order: number
+          id?: string
+          inspection_id: string
+          zone_name: string
+          zone_type: string
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          inspection_id?: string
+          zone_name?: string
+          zone_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_zones_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_inspections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notices_database: {
         Row: {
           ai_summary: string | null
@@ -2227,6 +2294,110 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      vehicle_damages: {
+        Row: {
+          created_at: string | null
+          description: string
+          id: string
+          inspection_id: string
+          photo_url: string | null
+          severity: string
+          zone_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description: string
+          id?: string
+          inspection_id: string
+          photo_url?: string | null
+          severity: string
+          zone_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string
+          id?: string
+          inspection_id?: string
+          photo_url?: string | null
+          severity?: string
+          zone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_damages_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "vehicle_inspections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_damages_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_inspections: {
+        Row: {
+          client_signature_url: string | null
+          created_at: string | null
+          fuel_level: string | null
+          id: string
+          inspection_date: string
+          keys_provided: boolean | null
+          mileage: number | null
+          notes: string | null
+          pdf_url: string | null
+          project_id: string
+          signed_at: string | null
+          signed_by: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          client_signature_url?: string | null
+          created_at?: string | null
+          fuel_level?: string | null
+          id?: string
+          inspection_date?: string
+          keys_provided?: boolean | null
+          mileage?: number | null
+          notes?: string | null
+          pdf_url?: string | null
+          project_id: string
+          signed_at?: string | null
+          signed_by?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          client_signature_url?: string | null
+          created_at?: string | null
+          fuel_level?: string | null
+          id?: string
+          inspection_date?: string
+          keys_provided?: boolean | null
+          mileage?: number | null
+          notes?: string | null
+          pdf_url?: string | null
+          project_id?: string
+          signed_at?: string | null
+          signed_by?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_inspections_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       vehicle_registration: {
         Row: {

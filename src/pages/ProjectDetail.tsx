@@ -58,6 +58,7 @@ import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
 import { OfficialDocumentsLibrary } from "@/components/OfficialDocumentsLibrary";
 import ProjectForm from "@/components/ProjectForm";
+import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleInspectionTab";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -1214,10 +1215,14 @@ const ProjectDetail = () => {
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
             <Tabs defaultValue="photos" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+              <TabsList className="grid w-full grid-cols-3 lg:grid-cols-7">
                 <TabsTrigger value="photos" className="gap-2">
                   <Image className="h-4 w-4 text-purple-600" />
                   <span className="hidden sm:inline">Photos</span>
+                </TabsTrigger>
+                <TabsTrigger value="vehicle" className="gap-2">
+                  <Truck className="h-4 w-4 text-cyan-600" />
+                  <span className="hidden sm:inline">État véhicule</span>
                 </TabsTrigger>
                 <TabsTrigger value="expenses" className="gap-2">
                   <Euro className="h-4 w-4 text-green-600" />
@@ -1243,6 +1248,10 @@ const ProjectDetail = () => {
 
               <TabsContent value="photos" className="mt-6">
                 <PhotosTab projectId={project.id} />
+              </TabsContent>
+
+              <TabsContent value="vehicle" className="mt-6">
+                <VehicleInspectionTab projectId={project.id} />
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
