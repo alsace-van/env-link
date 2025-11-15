@@ -454,11 +454,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
               <ScrollArea className="flex-1 px-6 py-4">
                 <div className="space-y-4">
-                  <div className="flex justify-between items-start pb-3 border-b">
-                    <span className="text-sm font-medium">Prix de base</span>
-                    <span className="font-bold">{(product.prix_base || 0).toFixed(2)} €</span>
-                  </div>
-
                   {sections.map((section) => {
                     const selectedAccessory = getSelectedAccessoryDetails(section);
                     if (!selectedAccessory) return null;
