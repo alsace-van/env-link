@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, AlertCircle } from "lucide-react";
+import { Sparkles, Loader2, AlertCircle, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
 
 interface NoticeSummaryProps {
   noticeId: string;
@@ -30,6 +31,8 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
   const [usage, setUsage] = useState<AIUsage | null>(null);
   const [loadingUsage, setLoadingUsage] = useState(false);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState(0);
 
   const loadUsage = async () => {
     setLoadingUsage(true);
@@ -138,6 +141,29 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
     }
   }, [existingSummary]);
 
+  // Fonction pour surligner les mots recherchés
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim()) return text;
+
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    let count = 0;
+    
+    const highlighted = parts.map((part, i) => {
+      if (part.toLowerCase() === query.toLowerCase()) {
+        count++;
+        return `<mark class="bg-yellow-300 dark:bg-yellow-600">${part}</mark>`;
+      }
+      return part;
+    }).join('');
+    
+    setSearchResults(count);
+    return highlighted;
+  };
+
+  const displayedSummary = searchQuery && summary 
+    ? highlightText(summary, searchQuery) 
+    : summary;
+
   return (
     <Card>
       <CardHeader>
@@ -231,7 +257,43 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap">{summary}</div>
+            {/* Barre de recherche */}
+            <div className="flex items-center gap-2 pb-2 border-b">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Rechercher dans le résumé..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 pr-9"
+                />
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setSearchResults(0);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              {searchQuery && (
+                <Badge variant="secondary" className="shrink-0">
+                  {searchResults} résultat{searchResults !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
+
+            {/* Résumé avec surlignage */}
+            <div 
+              className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap"
+              dangerouslySetInnerHTML={{ __html: displayedSummary || '' }}
+            />
 
             <div className="flex justify-between items-center pt-4 border-t">
               <div className="text-xs text-muted-foreground">
