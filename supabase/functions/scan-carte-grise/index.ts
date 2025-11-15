@@ -105,7 +105,7 @@ EXEMPLE DE RÉPONSE ATTENDUE :
 
     // Appel à l'API Gemini Vision avec le bon modèle
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: {
@@ -161,7 +161,7 @@ EXEMPLE DE RÉPONSE ATTENDUE :
     const vehicleData = JSON.parse(cleanedText);
 
     // ✅ CONVERTIR LES DATES DD/MM/YYYY → YYYY-MM-DD
-    if (vehicleData.B1 && typeof vehicleData.B1 === 'string') {
+    if (vehicleData.B1 && typeof vehicleData.B1 === "string") {
       // Si format DD/MM/YYYY
       const match = vehicleData.B1.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
       if (match) {
@@ -201,7 +201,7 @@ EXEMPLE DE RÉPONSE ATTENDUE :
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
       }),
       {
         status: 500,
