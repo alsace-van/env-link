@@ -85,11 +85,13 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title, noticeId, exist
               </div>
             </TabsContent>
             
-            <TabsContent value="summary" className="flex-1 px-6 pb-6 mt-4 overflow-y-auto">
-              <NoticeSummary 
-                noticeId={noticeId} 
-                existingSummary={existingSummary}
-              />
+            <TabsContent value="summary" className="flex-1 px-6 pb-6 mt-4 overflow-y-auto h-0">
+              <div className="h-full overflow-y-auto">
+                <NoticeSummary 
+                  noticeId={noticeId} 
+                  existingSummary={existingSummary}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         ) : (
