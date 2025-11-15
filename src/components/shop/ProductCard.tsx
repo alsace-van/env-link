@@ -22,10 +22,25 @@ export const ProductCard = ({ product, onAddToCart, onViewDetails, onConfigureKi
                 src={product.image_url}
                 alt={product.nom}
                 className="w-full h-full object-cover cursor-pointer"
-                onClick={() => onViewDetails(product.id)}
+                onClick={() => {
+                  if (product.product_type === "custom_kit" && onConfigureKit) {
+                    onConfigureKit(product.id);
+                  } else {
+                    onViewDetails(product.id);
+                  }
+                }}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center cursor-pointer" onClick={() => onViewDetails(product.id)}>
+              <div 
+                className="w-full h-full flex items-center justify-center cursor-pointer" 
+                onClick={() => {
+                  if (product.product_type === "custom_kit" && onConfigureKit) {
+                    onConfigureKit(product.id);
+                  } else {
+                    onViewDetails(product.id);
+                  }
+                }}
+              >
                 <Package className="h-12 w-12 text-muted-foreground" />
               </div>
             )}
@@ -57,14 +72,16 @@ export const ProductCard = ({ product, onAddToCart, onViewDetails, onConfigureKi
                   {product.prix_base.toFixed(2)} €
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onViewDetails(product.id)}
-                  >
-                    <Eye className="h-4 w-4 mr-1" />
-                    Détails
-                  </Button>
+                  {product.product_type !== "custom_kit" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onViewDetails(product.id)}
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Détails
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     onClick={() => {
@@ -92,7 +109,13 @@ export const ProductCard = ({ product, onAddToCart, onViewDetails, onConfigureKi
     <Card className="overflow-hidden hover:shadow-lg transition-shadow">
       <div
         className="aspect-square bg-muted cursor-pointer overflow-hidden"
-        onClick={() => onViewDetails(product.id)}
+        onClick={() => {
+          if (product.product_type === "custom_kit" && onConfigureKit) {
+            onConfigureKit(product.id);
+          } else {
+            onViewDetails(product.id);
+          }
+        }}
       >
         {product.image_url ? (
           <img
