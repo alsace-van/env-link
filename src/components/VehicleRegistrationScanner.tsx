@@ -70,15 +70,10 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
 
       console.log("📤 Envoi de l'image à l'Edge Function scan-carte-grise...");
 
-      // Extraire seulement la partie base64 (sans le préfixe data:image/...)
-      const base64Pure = base64.split(",")[1];
-      const mimeType = file.type || "image/jpeg";
-
-      // Appeler l'Edge Function Gemini
+      // Appeler l'Edge Function Gemini avec les données en base64 complet
       const { data, error } = await supabase.functions.invoke("scan-carte-grise", {
         body: {
-          imageBase64: base64Pure,
-          mimeType: mimeType,
+          imageData: base64, // Envoyer le base64 complet avec le préfixe data:image/...
         },
       });
 
