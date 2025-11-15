@@ -1,0 +1,381 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, Library, BarChart3 } from "lucide-react";
+import { WorkCategoryCard } from "./WorkCategoryCard";
+import { AddCategoryDialog } from "./AddCategoryDialog";
+import { AddTaskDialog } from "./AddTaskDialog";
+import { TaskTemplatesLibrary } from "./TaskTemplatesLibrary";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+
+interface WorkTabMainProps {
+  projectId: string;
+}
+
+export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [selectedCategoryForTask, setSelectedCategoryForTask] = useState<string>("");
+
+  // Fetch categories for this project
+  const { data: categories, isLoading: loadingCategories } = useQuery({
+    queryKey: ["work-categories", projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("work_categories")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("display_order");
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Fetch tasks for this project
+  const { data: tasks, isLoading: loadingTasks } = useQuery({
+    queryKey: ["project-todos", projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("project_todos")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("display_order");
+
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Create category mutation
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: { name: string; color: string; icon: string; isTemplate: boolean }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { error } = await supabase.from("work_categories").insert({
+        name: data.name,
+        color: data.color,
+        icon: data.icon,
+        project_id: data.isTemplate ? null : projectId,
+        is_template: data.isTemplate,
+        user_id: user?.id,
+        display_order: (categories?.length || 0) + 1,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
+      toast({ title: "✓ Catégorie créée" });
+    },
+  });
+
+  // Create task mutation
+  const createTaskMutation = useMutation({
+    mutationFn: async (data: {
+      title: string;
+      description?: string;
+      categoryId: string;
+      scheduledDate?: string;
+      estimatedHours?: number;
+      saveAsTemplate: boolean;
+      templateId?: string;
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // If saving as template, create template first
+      if (data.saveAsTemplate) {
+        const { data: template, error: templateError } = await supabase
+          .from("task_templates")
+          .insert({
+            title: data.title,
+            description: data.description,
+            category_id: data.categoryId,
+            estimated_hours: data.estimatedHours,
+            user_id: user?.id,
+            is_global: false,
+          })
+          .select()
+          .single();
+
+        if (templateError) throw templateError;
+        data.templateId = template.id;
+      }
+
+      const { error } = await supabase.from("project_todos").insert({
+        title: data.title,
+        description: data.description,
+        category_id: data.categoryId,
+        project_id: projectId,
+        user_id: user?.id,
+        scheduled_date: data.scheduledDate,
+        estimated_hours: data.estimatedHours,
+        template_id: data.templateId,
+        display_order: (tasks?.length || 0) + 1,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
+      toast({ title: "✓ Tâche créée" });
+    },
+  });
+
+  // Use template mutation
+  const useTemplateMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { data: template, error: fetchError } = await supabase
+        .from("task_templates")
+        .select("*, work_categories!inner(id, name, color, icon)")
+        .eq("id", templateId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Find or create category in project
+      let categoryId = template.category_id;
+      const templateCategory = template.work_categories as any;
+      
+      const { data: existingCategory } = await supabase
+        .from("work_categories")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("name", templateCategory.name)
+        .single();
+
+      if (!existingCategory) {
+        const { data: newCategory, error: catError } = await supabase
+          .from("work_categories")
+          .insert({
+            name: templateCategory.name,
+            color: templateCategory.color,
+            icon: templateCategory.icon,
+            project_id: projectId,
+            user_id: user?.id,
+            display_order: (categories?.length || 0) + 1,
+          })
+          .select()
+          .single();
+
+        if (catError) throw catError;
+        categoryId = newCategory.id;
+      } else {
+        categoryId = existingCategory.id;
+      }
+
+      const { error } = await supabase.from("project_todos").insert({
+        title: template.title,
+        description: template.description,
+        category_id: categoryId,
+        project_id: projectId,
+        user_id: user?.id,
+        estimated_hours: template.estimated_hours,
+        template_id: templateId,
+        display_order: (tasks?.length || 0) + 1,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
+      toast({ title: "✓ Tâche ajoutée depuis le template" });
+    },
+  });
+
+  // Toggle complete mutation
+  const toggleCompleteMutation = useMutation({
+    mutationFn: async ({ taskId, actualHours }: { taskId: string; actualHours: number | null }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const task = tasks?.find((t) => t.id === taskId);
+      const isCompleting = !task?.completed;
+
+      const { error } = await supabase
+        .from("project_todos")
+        .update({
+          completed: isCompleting,
+          completed_at: isCompleting ? new Date().toISOString() : null,
+          completed_by: isCompleting ? user?.id : null,
+          actual_hours: isCompleting ? actualHours : null,
+        })
+        .eq("id", taskId);
+
+      if (error) throw error;
+
+      return { task, isCompleting, actualHours };
+    },
+    onSuccess: ({ task, isCompleting, actualHours }) => {
+      queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
+
+      if (isCompleting && actualHours && task?.estimated_hours) {
+        const diff = task.estimated_hours - actualHours;
+        if (diff > 0) {
+          toast({
+            title: `✓ Tâche terminée en ${actualHours}h`,
+            description: `Estimé: ${task.estimated_hours}h - Vous avez gagné ${diff.toFixed(1)}h !`,
+            variant: "default",
+          });
+        } else if (diff < 0) {
+          toast({
+            title: `✓ Tâche terminée en ${actualHours}h`,
+            description: `Estimé: ${task.estimated_hours}h - Dépassement de ${Math.abs(diff).toFixed(1)}h`,
+          });
+        } else {
+          toast({
+            title: `✓ Tâche terminée en ${actualHours}h pile comme prévu !`,
+          });
+        }
+      } else if (isCompleting) {
+        toast({ title: "✓ Tâche terminée" });
+      } else {
+        toast({ title: "Tâche remise en cours" });
+      }
+    },
+  });
+
+  const handleAddTaskForCategory = (categoryId: string) => {
+    setSelectedCategoryForTask(categoryId);
+    setShowAddTask(true);
+  };
+
+  // Calculate global progress
+  const completedTasks = tasks?.filter((t) => t.completed).length || 0;
+  const totalTasks = tasks?.length || 0;
+  const globalProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+  const totalEstimatedHours = tasks?.reduce((sum, t) => sum + (t.estimated_hours || 0), 0) || 0;
+  const totalActualHours = tasks
+    ?.filter((t) => t.completed && t.actual_hours)
+    .reduce((sum, t) => sum + (t.actual_hours || 0), 0) || 0;
+
+  if (loadingCategories || loadingTasks) {
+    return (
+      <div className="space-y-6 p-6">
+        <Skeleton className="h-32" />
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Header with actions */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">📋 Fiche de travaux</h2>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowLibrary(true)} variant="outline">
+            <Library className="h-4 w-4 mr-2" />
+            📚 Bibliothèque
+          </Button>
+          <Button onClick={() => setShowAddCategory(true)} variant="outline">
+            <Plus className="h-4 w-4 mr-2" />
+            Nouvelle catégorie
+          </Button>
+        </div>
+      </div>
+
+      {/* Global progress */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Vue d'ensemble</CardTitle>
+          <CardDescription>
+            Progression globale du projet
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span>{completedTasks} tâches terminées / {totalTasks} total</span>
+              <span className="font-semibold">{Math.round(globalProgress)}%</span>
+            </div>
+            <Progress value={globalProgress} className="h-3" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Temps estimé total</p>
+              <p className="text-2xl font-bold">{totalEstimatedHours.toFixed(1)}h</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Temps réel total</p>
+              <p className="text-2xl font-bold">{totalActualHours.toFixed(1)}h</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Categories with tasks */}
+      <div className="space-y-4">
+        {categories && categories.length > 0 ? (
+          categories.map((category) => {
+            const categoryTasks = tasks?.filter((t) => t.category_id === category.id) || [];
+            return (
+              <WorkCategoryCard
+                key={category.id}
+                category={category}
+                tasks={categoryTasks}
+                onToggleComplete={(taskId, actualHours) =>
+                  toggleCompleteMutation.mutate({ taskId, actualHours })
+                }
+                onEditTime={(taskId) => {
+                  // TODO: Implement edit time dialog
+                  console.log("Edit time for task", taskId);
+                }}
+                onAddTask={() => handleAddTaskForCategory(category.id)}
+              />
+            );
+          })
+        ) : (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground mb-4">
+                Aucune catégorie créée pour ce projet
+              </p>
+              <Button onClick={() => setShowLibrary(true)}>
+                📚 Parcourir la bibliothèque de tâches
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Dialogs */}
+      <AddCategoryDialog
+        open={showAddCategory}
+        onOpenChange={setShowAddCategory}
+        onSubmit={(data) => createCategoryMutation.mutate(data)}
+      />
+
+      <AddTaskDialog
+        open={showAddTask}
+        onOpenChange={setShowAddTask}
+        categories={categories || []}
+        onSubmit={(data) => {
+          createTaskMutation.mutate({
+            ...data,
+            categoryId: selectedCategoryForTask || data.categoryId,
+          });
+        }}
+      />
+
+      <TaskTemplatesLibrary
+        open={showLibrary}
+        onOpenChange={setShowLibrary}
+        projectId={projectId}
+        onUseTemplate={(templateId) => useTemplateMutation.mutate(templateId)}
+      />
+    </div>
+  );
+};
