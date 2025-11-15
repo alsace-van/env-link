@@ -74,11 +74,12 @@ serve(async (req) => {
       });
     }
 
-    // Si un résumé existe déjà, le retourner
-    if (notice.summary) {
+    // Si un résumé existe déjà, le retourner (partagé entre tous les utilisateurs)
+    if (notice.ai_summary) {
+      console.log("✅ Résumé trouvé en cache (partagé), aucun token utilisé");
       return new Response(
         JSON.stringify({
-          summary: notice.summary,
+          summary: notice.ai_summary,
           fromCache: true,
           tokens: 0,
         }),
@@ -251,18 +252,20 @@ Sois concis mais précis. Maximum 500 mots.`;
 
     console.log("Résumé généré, tokens utilisés:", tokensUsed);
 
-    // Sauvegarder le résumé dans la notice
+    // Sauvegarder le résumé dans la notice (disponible pour tous)
     const { error: updateError } = await supabaseAdmin
       .from("notices_database")
       .update({
-        summary: summary,
-        summary_generated_at: new Date().toISOString(),
-        tokens_used: tokensUsed,
+        ai_summary: summary,
+        ai_summary_generated_at: new Date().toISOString(),
+        ai_summary_tokens_used: tokensUsed,
       })
       .eq("id", noticeId);
 
     if (updateError) {
       console.error("Erreur sauvegarde résumé:", updateError);
+    } else {
+      console.log("✅ Résumé sauvegardé et disponible pour tous");
     }
 
     // Logger l'usage

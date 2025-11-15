@@ -633,6 +633,9 @@ export type Database = {
       }
       notices_database: {
         Row: {
+          ai_summary: string | null
+          ai_summary_generated_at: string | null
+          ai_summary_tokens_used: number | null
           annee: string | null
           categorie: string | null
           created_at: string | null
@@ -647,6 +650,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_summary?: string | null
+          ai_summary_generated_at?: string | null
+          ai_summary_tokens_used?: number | null
           annee?: string | null
           categorie?: string | null
           created_at?: string | null
@@ -661,6 +667,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_summary?: string | null
+          ai_summary_generated_at?: string | null
+          ai_summary_tokens_used?: number | null
           annee?: string | null
           categorie?: string | null
           created_at?: string | null
