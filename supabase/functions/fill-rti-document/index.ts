@@ -88,9 +88,9 @@ Génère un objet JSON complet pour remplir le formulaire RTI avec :
 
 IMPORTANT : Retourne UNIQUEMENT le JSON, sans markdown ni backticks.`;
 
-    // Appel à Gemini
+    // Appel à Gemini 2.5 Flash
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: {
