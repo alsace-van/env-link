@@ -5,7 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, Copy, Trash2 } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ShoppingCart, Package } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCartContext } from "@/contexts/CartContext";
 import { toast } from "sonner";
@@ -167,28 +169,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     setLoading(false);
   };
 
-  const duplicateSection = (sectionId: string) => {
-    const sectionToDuplicate = sections.find((s) => s.id === sectionId);
-    if (!sectionToDuplicate) return;
-
-    const newSection: CategorySection = {
-      ...sectionToDuplicate,
-      id: `section-${sections.length}-${Date.now()}`,
-      selectedAccessoryId: null,
-      selectedOptions: {},
-    };
-
-    setSections([...sections, newSection]);
-  };
-
-  const removeSection = (sectionId: string) => {
-    if (sections.length <= 1) {
-      toast.error("Au moins une catégorie doit être présente");
-      return;
-    }
-    setSections(sections.filter((s) => s.id !== sectionId));
-  };
-
   const updateSectionAccessory = (sectionId: string, accessoryId: string) => {
     setSections(sections.map((s) => (s.id === sectionId ? { ...s, selectedAccessoryId: accessoryId } : s)));
   };
@@ -199,6 +179,18 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
         s.id === sectionId ? { ...s, selectedOptions: { ...s.selectedOptions, [accessoryId]: optionIds } } : s
       )
     );
+  };
+
+  const toggleOption = (sectionId: string, accessoryId: string, optionId: string) => {
+    const section = sections.find((s) => s.id === sectionId);
+    if (!section) return;
+
+    const currentOptions = section.selectedOptions[accessoryId] || [];
+    const newOptions = currentOptions.includes(optionId)
+      ? currentOptions.filter((id) => id !== optionId)
+      : [...currentOptions, optionId];
+
+    updateSectionOptions(sectionId, accessoryId, newOptions);
   };
 
   const getAccessoryPrice = (accessory: AccessoryWithCategory) => {
@@ -243,9 +235,10 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
   };
 
   const handleAddToCart = () => {
-    const selectedCount = sections.filter((s) => s.selectedAccessoryId).length;
+    if (!product) return;
 
-    if (selectedCount === 0) {
+    const hasSelections = sections.some((s) => s.selectedAccessoryId);
+    if (!hasSelections) {
       toast.error("Veuillez sélectionner au moins un accessoire");
       return;
     }
@@ -285,280 +278,246 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
               <DialogHeader className="px-6 py-5 border-b bg-muted/20">
                 <DialogTitle className="text-2xl font-bold">{product.nom}</DialogTitle>
                 <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                  Personnalisez votre kit en sélectionnant les accessoires de votre choix. 
-                  Utilisez le bouton "Dupliquer" pour ajouter plusieurs articles de la même catégorie.
+                  Personnalisez votre kit en sélectionnant les accessoires de votre choix dans chaque catégorie.
                 </p>
               </DialogHeader>
 
               <ScrollArea className="flex-1">
-                <div className="px-6 py-5 space-y-5">
-                  {sections.map((section, index) => {
-                    const selectedAccessory = getSelectedAccessoryDetails(section);
+                <div className="px-6 py-5">
+                  <h3 className="text-lg font-semibold mb-4">Accessoires disponibles</h3>
+                  <Accordion type="multiple" className="space-y-3">
+                    {sections.map((section) => {
+                      const selectedAccessory = getSelectedAccessoryDetails(section);
+                      const selectedCount = section.selectedAccessoryId ? 1 : 0;
 
-                    return (
-                      <div key={section.id} className="rounded-xl border-2 border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden transition-all hover:border-primary/30">
-                        <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-5 py-4 flex items-center justify-between border-b">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                              <span className="text-xl font-bold text-primary">{index + 1}</span>
+                      return (
+                        <AccordionItem 
+                          key={section.id} 
+                          value={section.id}
+                          className="rounded-xl border-2 border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden"
+                        >
+                          <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-muted/30">
+                            <div className="flex items-center justify-between w-full pr-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                  <Package className="h-5 w-5 text-primary" />
+                                </div>
+                                <div className="text-left">
+                                  <h3 className="font-bold text-base">{section.categoryName}</h3>
+                                  <p className="text-xs text-muted-foreground">
+                                    {section.accessories.length} accessoire{section.accessories.length > 1 ? 's' : ''} disponible{section.accessories.length > 1 ? 's' : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              {selectedCount > 0 && (
+                                <Badge variant="secondary" className="ml-2">
+                                  {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+                                </Badge>
+                              )}
                             </div>
-                            <div>
-                              <h3 className="font-bold text-lg">{section.categoryName}</h3>
-                              <p className="text-xs text-muted-foreground">
-                                {section.accessories.length} accessoire{section.accessories.length > 1 ? 's' : ''} disponible{section.accessories.length > 1 ? 's' : ''}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => duplicateSection(section.id)}
-                              className="gap-2 hover:bg-primary/10"
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                              Dupliquer
-                            </Button>
-                            {sections.length > 1 && (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => removeSection(section.id)}
-                                className="hover:bg-destructive/10 hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
+                          </AccordionTrigger>
+                          
+                          <AccordionContent className="px-5 pb-5 pt-2">
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-sm font-semibold mb-3 block text-foreground">
+                                  Sélectionnez un accessoire
+                                </label>
+                                <Select
+                                  value={section.selectedAccessoryId || ""}
+                                  onValueChange={(value) => updateSectionAccessory(section.id, value)}
+                                >
+                                  <SelectTrigger className="h-12 text-base">
+                                    <SelectValue placeholder="Choisir un accessoire..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {section.accessories.map((accessory) => {
+                                      const price = getAccessoryPrice(accessory);
+                                      const isPromo = accessory.promo_active && price < accessory.prix_vente_ttc;
+                                      return (
+                                        <SelectItem key={accessory.id} value={accessory.id}>
+                                          {accessory.nom} {accessory.marque ? `- ${accessory.marque}` : ""} (
+                                          {isPromo && (
+                                            <span className="line-through text-muted-foreground mr-1">
+                                              {accessory.prix_vente_ttc.toFixed(2)} €
+                                            </span>
+                                          )}
+                                          {price.toFixed(2)} €)
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              </div>
 
-                        <div className="p-5 space-y-4">
-                          <div>
-                            <label className="text-sm font-semibold mb-3 block text-foreground">
-                              Sélectionnez un accessoire
-                            </label>
-                            <Select
-                              value={section.selectedAccessoryId || ""}
-                              onValueChange={(value) => updateSectionAccessory(section.id, value)}
-                            >
-                              <SelectTrigger className="h-12 text-base">
-                                <SelectValue placeholder="Choisir un accessoire..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {section.accessories.map((accessory) => {
-                                  const price = getAccessoryPrice(accessory);
-                                  const isPromo = accessory.promo_active && price < accessory.prix_vente_ttc;
-                                  return (
-                                    <SelectItem key={accessory.id} value={accessory.id}>
-                                      {accessory.nom} {accessory.marque ? `- ${accessory.marque}` : ""} (
-                                      {isPromo && (
-                                        <span className="line-through text-muted-foreground mr-1">
-                                          {accessory.prix_vente_ttc.toFixed(2)} €
-                                        </span>
-                                      )}
-                                      {price.toFixed(2)} €)
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {selectedAccessory && (
-                            <>
-                              <div className="rounded-lg border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-4">
-                                <div className="flex gap-4">
-                                  {selectedAccessory.image_url && (
-                                    <div className="flex-shrink-0">
-                                      <img
-                                        src={selectedAccessory.image_url}
-                                        alt={selectedAccessory.nom}
-                                        className="w-24 h-24 object-cover rounded-lg border-2 border-border shadow-sm"
-                                      />
-                                    </div>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <h4 className="font-bold text-base mb-1">{selectedAccessory.nom}</h4>
-                                    {selectedAccessory.marque && (
-                                      <p className="text-sm text-muted-foreground mb-2">
-                                        <span className="font-medium">Marque:</span> {selectedAccessory.marque}
-                                      </p>
-                                    )}
-                                    {selectedAccessory.description && (
-                                      <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
-                                        {selectedAccessory.description}
-                                      </p>
-                                    )}
-                                    <div className="flex items-center gap-3 mt-2">
-                                      {selectedAccessory.couleur && (
-                                        <div className="flex items-center gap-1.5 text-xs bg-background/50 px-2 py-1 rounded">
-                                          <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: selectedAccessory.couleur }} />
-                                          <span>{selectedAccessory.couleur}</span>
+                              {selectedAccessory && (
+                                <>
+                                  <div className="rounded-lg border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-4">
+                                    <div className="flex gap-4">
+                                      {selectedAccessory.image_url && (
+                                        <div className="flex-shrink-0">
+                                          <img
+                                            src={selectedAccessory.image_url}
+                                            alt={selectedAccessory.nom}
+                                            className="w-24 h-24 object-cover rounded-lg border-2 border-border shadow-sm"
+                                          />
                                         </div>
                                       )}
-                                      <div className="flex items-center gap-2">
-                                        {selectedAccessory.promo_active && 
-                                         getAccessoryPrice(selectedAccessory) < selectedAccessory.prix_vente_ttc && (
-                                          <>
-                                            <span className="text-sm line-through text-muted-foreground">
-                                              {selectedAccessory.prix_vente_ttc.toFixed(2)} €
-                                            </span>
-                                            <Badge variant="destructive" className="text-xs">PROMO</Badge>
-                                          </>
+                                      <div className="flex-1 min-w-0">
+                                        <h4 className="font-bold text-base mb-1">{selectedAccessory.nom}</h4>
+                                        {selectedAccessory.marque && (
+                                          <p className="text-sm text-muted-foreground mb-2">
+                                            <span className="font-medium">Marque:</span> {selectedAccessory.marque}
+                                          </p>
                                         )}
-                                        <p className="text-xl font-bold text-primary">
-                                          {getAccessoryPrice(selectedAccessory).toFixed(2)} €
-                                        </p>
+                                        {selectedAccessory.description && (
+                                          <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                                            {selectedAccessory.description}
+                                          </p>
+                                        )}
+                                        <div className="flex items-center gap-3 mt-2">
+                                          {selectedAccessory.couleur && (
+                                            <div className="flex items-center gap-1.5 text-xs bg-background/50 px-2 py-1 rounded">
+                                              <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: selectedAccessory.couleur }} />
+                                              <span>{selectedAccessory.couleur}</span>
+                                            </div>
+                                          )}
+                                          <div className="text-lg font-bold text-primary">
+                                            {(() => {
+                                              const price = getAccessoryPrice(selectedAccessory);
+                                              const isPromo = selectedAccessory.promo_active && price < selectedAccessory.prix_vente_ttc;
+                                              return (
+                                                <>
+                                                  {isPromo && (
+                                                    <Badge variant="destructive" className="mr-2 text-xs">PROMO</Badge>
+                                                  )}
+                                                  {isPromo && (
+                                                    <span className="line-through text-muted-foreground text-sm mr-2">
+                                                      {selectedAccessory.prix_vente_ttc.toFixed(2)} €
+                                                    </span>
+                                                  )}
+                                                  {price.toFixed(2)} €
+                                                </>
+                                              );
+                                            })()}
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              </div>
 
-                              {selectedAccessory.options && selectedAccessory.options.length > 0 && (
-                                <div className="space-y-3 bg-muted/30 rounded-lg p-4">
-                                  <label className="text-sm font-bold text-foreground flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                    Options disponibles
-                                  </label>
-                                  <div className="space-y-2.5">
-                                    {selectedAccessory.options.map((option) => (
-                                      <label 
-                                        key={option.id} 
-                                        className="flex items-center gap-3 p-3 bg-background rounded-lg border border-border cursor-pointer transition-all hover:border-primary/50 hover:bg-primary/5"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          className="w-4 h-4 rounded border-2 border-primary text-primary focus:ring-2 focus:ring-primary/20"
-                                          checked={
-                                            section.selectedOptions[selectedAccessory.id]?.includes(option.id) || false
-                                          }
-                                          onChange={(e) => {
-                                            const currentOptions =
-                                              section.selectedOptions[selectedAccessory.id] || [];
-                                            const newOptions = e.target.checked
-                                              ? [...currentOptions, option.id]
-                                              : currentOptions.filter((id) => id !== option.id);
-                                            updateSectionOptions(section.id, selectedAccessory.id, newOptions);
-                                          }}
-                                        />
-                                        <div className="flex-1 flex items-center justify-between">
-                                          <span className="text-sm font-medium">{option.nom}</span>
-                                          <span className="text-sm font-bold text-primary">
-                                            +{option.prix_vente_ttc.toFixed(2)} €
-                                          </span>
-                                        </div>
-                                      </label>
-                                    ))}
-                                  </div>
-                                </div>
+                                  {selectedAccessory.options && selectedAccessory.options.length > 0 && (
+                                    <div className="space-y-3 bg-muted/30 rounded-lg p-4">
+                                      <h4 className="font-semibold text-sm">Options disponibles</h4>
+                                      {selectedAccessory.options.map((option) => {
+                                        const isSelected = (section.selectedOptions[section.selectedAccessoryId!] || []).includes(option.id);
+                                        return (
+                                          <div key={option.id} className="flex items-center justify-between p-3 rounded-lg border bg-background hover:border-primary/50 transition-colors">
+                                            <div className="flex items-center gap-3">
+                                              <Checkbox
+                                                id={`option-${section.id}-${option.id}`}
+                                                checked={isSelected}
+                                                onCheckedChange={() => toggleOption(section.id, section.selectedAccessoryId!, option.id)}
+                                              />
+                                              <label
+                                                htmlFor={`option-${section.id}-${option.id}`}
+                                                className="text-sm font-medium cursor-pointer"
+                                              >
+                                                {option.nom}
+                                              </label>
+                                            </div>
+                                            <span className="text-sm font-semibold text-primary">
+                                              +{option.prix_vente_ttc.toFixed(2)} €
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </>
                               )}
-                            </>
-                          )}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                  </Accordion>
+                </div>
+              </ScrollArea>
+            </div>
+
+            <div className="w-96 border-l bg-gradient-to-b from-muted/30 to-background flex flex-col">
+              <div className="px-6 py-5 border-b">
+                <h3 className="font-bold text-lg mb-1">Récapitulatif</h3>
+                <p className="text-xs text-muted-foreground">Votre configuration personnalisée</p>
+              </div>
+
+              <ScrollArea className="flex-1 px-6 py-4">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-start pb-3 border-b">
+                    <span className="text-sm font-medium">Prix de base</span>
+                    <span className="font-bold">{(product.prix_base || 0).toFixed(2)} €</span>
+                  </div>
+
+                  {sections.map((section) => {
+                    const selectedAccessory = getSelectedAccessoryDetails(section);
+                    if (!selectedAccessory) return null;
+
+                    const accessoryPrice = getAccessoryPrice(selectedAccessory);
+                    const selectedOptions = section.selectedOptions[section.selectedAccessoryId!] || [];
+                    const optionsTotal = selectedOptions.reduce((total, optId) => {
+                      const option = selectedAccessory.options?.find((o) => o.id === optId);
+                      return total + (option?.prix_vente_ttc || 0);
+                    }, 0);
+
+                    return (
+                      <div key={section.id} className="space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground">{section.categoryName}</p>
+                            <p className="text-sm font-semibold truncate">{selectedAccessory.nom}</p>
+                          </div>
+                          <span className="font-semibold text-sm ml-2">{accessoryPrice.toFixed(2)} €</span>
                         </div>
+                        {selectedOptions.length > 0 && (
+                          <div className="pl-3 space-y-1">
+                            {selectedOptions.map((optId) => {
+                              const option = selectedAccessory.options?.find((o) => o.id === optId);
+                              if (!option) return null;
+                              return (
+                                <div key={optId} className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground">• {option.nom}</span>
+                                  <span className="font-medium">+{option.prix_vente_ttc.toFixed(2)} €</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               </ScrollArea>
-            </div>
 
-            <div className="w-96 border-l bg-gradient-to-b from-muted/30 to-muted/10 flex flex-col">
-              <div className="px-6 py-5 border-b bg-muted/20">
-                <h3 className="font-bold text-xl text-foreground">Récapitulatif</h3>
-                <p className="text-xs text-muted-foreground mt-1">Votre configuration</p>
-              </div>
-
-              <ScrollArea className="flex-1">
-                <div className="p-6 space-y-4">
-                  <div className="flex justify-between items-center p-3 bg-background rounded-lg border">
-                    <span className="text-sm font-medium text-muted-foreground">Prix de base du kit</span>
-                    <span className="font-bold text-base">{(product.prix_base || 0).toFixed(2)} €</span>
-                  </div>
-
-                  <Separator className="my-4" />
-
-                  {sections.filter((s) => s.selectedAccessoryId).length > 0 ? (
-                    <div className="space-y-3">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Accessoires sélectionnés
-                      </p>
-                      {sections.map((section) => {
-                        const accessory = getSelectedAccessoryDetails(section);
-                        if (!accessory) return null;
-
-                        const accessoryPrice = getAccessoryPrice(accessory);
-                        const selectedOptions = section.selectedOptions[section.selectedAccessoryId!] || [];
-
-                        return (
-                          <div key={section.id} className="bg-background rounded-lg p-3 border space-y-2">
-                            <div className="flex justify-between items-start gap-3">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm line-clamp-2">{accessory.nom}</p>
-                                <p className="text-xs text-muted-foreground">{section.categoryName}</p>
-                              </div>
-                              <span className="font-bold text-base whitespace-nowrap text-primary">
-                                {accessoryPrice.toFixed(2)} €
-                              </span>
-                            </div>
-                            {selectedOptions.length > 0 && (
-                              <div className="pl-3 pt-2 border-t space-y-1.5">
-                                {selectedOptions.map((optId) => {
-                                  const option = accessory.options?.find((o) => o.id === optId);
-                                  if (!option) return null;
-                                  return (
-                                    <div key={optId} className="flex justify-between text-xs">
-                                      <span className="text-muted-foreground">+ {option.nom}</span>
-                                      <span className="font-semibold text-primary">{option.prix_vente_ttc.toFixed(2)} €</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-3">
-                        <ShoppingCart className="w-8 h-8 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm font-medium text-muted-foreground">Aucun accessoire sélectionné</p>
-                      <p className="text-xs text-muted-foreground mt-1">Choisissez vos accessoires ci-dessus</p>
-                    </div>
-                  )}
+              <div className="px-6 py-5 border-t bg-muted/30 space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-bold">Total</span>
+                  <span className="text-3xl font-bold text-primary">{calculateTotal().toFixed(2)} €</span>
                 </div>
-              </ScrollArea>
-
-              <div className="border-t bg-background/80 backdrop-blur-sm p-6 space-y-4">
-                <div className="flex justify-between items-center p-4 bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg">
-                  <span className="text-base font-bold">Total TTC</span>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-primary">{calculateTotal().toFixed(2)} €</div>
-                    {sections.filter((s) => s.selectedAccessoryId).length > 0 && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {sections.filter((s) => s.selectedAccessoryId).length} accessoire(s) configuré(s)
-                      </div>
-                    )}
-                  </div>
-                </div>
-
+                <Separator />
                 <div className="space-y-2">
                   <Button
                     onClick={handleAddToCart}
+                    className="w-full h-12 text-base font-semibold shadow-lg"
                     size="lg"
-                    className="w-full gap-2 h-12 text-base font-semibold shadow-lg hover:shadow-xl transition-shadow"
-                    disabled={sections.filter((s) => s.selectedAccessoryId).length === 0}
                   >
-                    <ShoppingCart className="h-5 w-5" />
-                    Ajouter au panier
+                    <ShoppingCart className="mr-2 h-5 w-5" />
+                    Configurer le kit
                   </Button>
-                  <Button 
-                    onClick={onClose} 
-                    variant="outline" 
-                    size="lg" 
-                    className="w-full h-11"
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
+                    className="w-full"
                   >
                     Annuler
                   </Button>
@@ -567,7 +526,9 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
             </div>
           </div>
         ) : (
-          <div className="text-center py-12">Produit non trouvé</div>
+          <div className="flex items-center justify-center py-20">
+            <p className="text-muted-foreground">Produit introuvable</p>
+          </div>
         )}
       </DialogContent>
     </Dialog>
