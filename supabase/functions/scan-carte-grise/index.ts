@@ -131,7 +131,7 @@ EXEMPLE DE RÉPONSE ATTENDUE :
             temperature: 0,
             topK: 1,
             topP: 1,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 8192,
           },
         }),
       },
@@ -145,6 +145,13 @@ EXEMPLE DE RÉPONSE ATTENDUE :
 
     const geminiData = await geminiResponse.json();
     console.log("Gemini response:", JSON.stringify(geminiData, null, 2));
+
+    // Vérifier si la réponse a été tronquée
+    const finishReason = geminiData.candidates?.[0]?.finishReason;
+    if (finishReason === "MAX_TOKENS") {
+      console.error("⚠️ Réponse tronquée par Gemini (MAX_TOKENS atteint)");
+      throw new Error("La réponse AI a été tronquée. L'image est peut-être trop complexe ou de mauvaise qualité. Veuillez réessayer avec une image plus claire.");
+    }
 
     // Extraire le texte de la réponse
     const generatedText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
