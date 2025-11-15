@@ -63,13 +63,13 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title, noticeId, exist
         </DialogHeader>
 
         {noticeId ? (
-          <Tabs defaultValue="pdf" className="flex-1 flex flex-col">
-            <TabsList className="mx-6 mt-4 grid w-full max-w-md grid-cols-2">
+          <Tabs defaultValue="pdf" className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="mx-6 mt-4 grid w-full max-w-md grid-cols-2 flex-shrink-0">
               <TabsTrigger value="pdf">PDF</TabsTrigger>
               <TabsTrigger value="summary">Résumé IA</TabsTrigger>
             </TabsList>
             
-            <TabsContent value="pdf" className="flex-1 px-6 pb-6 mt-4">
+            <TabsContent value="pdf" className="flex-1 px-6 pb-6 mt-4 overflow-hidden">
               <div className="pdf-viewer-container h-full">
                 {pdfUrl ? (
                   <iframe
@@ -85,13 +85,11 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title, noticeId, exist
               </div>
             </TabsContent>
             
-            <TabsContent value="summary" className="flex-1 px-6 pb-6 mt-4 overflow-y-auto h-0">
-              <div className="h-full overflow-y-auto">
-                <NoticeSummary 
-                  noticeId={noticeId} 
-                  existingSummary={existingSummary}
-                />
-              </div>
+            <TabsContent value="summary" className="flex-1 px-6 pb-6 mt-4 overflow-y-auto min-h-0">
+              <NoticeSummary 
+                noticeId={noticeId} 
+                existingSummary={existingSummary}
+              />
             </TabsContent>
           </Tabs>
         ) : (
