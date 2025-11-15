@@ -7,10 +7,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShoppingCart, Package } from "lucide-react";
+import { ShoppingCart, Package, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCartContext } from "@/contexts/CartContext";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface CustomKitConfigModalProps {
   productId: string | null;
@@ -45,6 +46,7 @@ interface CategorySection {
   categoryName: string;
   selectedAccessoryId: string | null;
   selectedOptions: { [accessoryId: string]: string[] };
+  selectedColors: { [accessoryId: string]: string };
   accessories: AccessoryWithCategory[];
 }
 
@@ -156,6 +158,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                 categoryName: cat.nom,
                 selectedAccessoryId: null,
                 selectedOptions: {},
+                selectedColors: {},
                 accessories: accessoriesWithOptions.filter((acc) => acc.category_id === cat.id),
               }));
 
@@ -181,6 +184,14 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     );
   };
 
+  const updateSectionColor = (sectionId: string, accessoryId: string, color: string) => {
+    setSections(
+      sections.map((s) =>
+        s.id === sectionId ? { ...s, selectedColors: { ...s.selectedColors, [accessoryId]: color } } : s
+      )
+    );
+  };
+
   const toggleOption = (sectionId: string, accessoryId: string, optionId: string) => {
     const section = sections.find((s) => s.id === sectionId);
     if (!section) return;
@@ -191,6 +202,70 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
       : [...currentOptions, optionId];
 
     updateSectionOptions(sectionId, accessoryId, newOptions);
+  };
+
+  const duplicateSection = (sectionId: string) => {
+    const sectionToDuplicate = sections.find((s) => s.id === sectionId);
+    if (!sectionToDuplicate) return;
+
+    const newSection: CategorySection = {
+      ...sectionToDuplicate,
+      id: `section-${Date.now()}-${Math.random()}`,
+      selectedAccessoryId: null,
+      selectedOptions: {},
+      selectedColors: {},
+    };
+
+    setSections([...sections, newSection]);
+    toast.success(`Catégorie "${sectionToDuplicate.categoryName}" dupliquée`);
+  };
+
+  const removeSection = (sectionId: string) => {
+    if (sections.length === 1) {
+      toast.error("Vous devez garder au moins une catégorie");
+      return;
+    }
+    setSections(sections.filter((s) => s.id !== sectionId));
+  };
+
+  const parseColors = (colorString: string | null): string[] => {
+    if (!colorString) return [];
+    try {
+      const parsed = JSON.parse(colorString);
+      return Array.isArray(parsed) ? parsed : [colorString];
+    } catch {
+      return [colorString];
+    }
+  };
+
+  const getColorHex = (colorName: string): string => {
+    const colorMap: { [key: string]: string } = {
+      noir: "#000000",
+      black: "#000000",
+      blanc: "#FFFFFF",
+      white: "#FFFFFF",
+      rouge: "#EF4444",
+      red: "#EF4444",
+      bleu: "#3B82F6",
+      blue: "#3B82F6",
+      vert: "#10B981",
+      green: "#10B981",
+      jaune: "#FBBF24",
+      yellow: "#FBBF24",
+      orange: "#F97316",
+      gris: "#6B7280",
+      gray: "#6B7280",
+      grey: "#6B7280",
+      rose: "#EC4899",
+      pink: "#EC4899",
+      violet: "#A855F7",
+      purple: "#A855F7",
+      marron: "#92400E",
+      brown: "#92400E",
+    };
+
+    const normalized = colorName.toLowerCase().trim();
+    return colorMap[normalized] || "#6B7280";
   };
 
   const getAccessoryPrice = (accessory: AccessoryWithCategory) => {
@@ -251,6 +326,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
           categoryName: s.categoryName,
           accessoryId: s.selectedAccessoryId,
           selectedOptions: s.selectedOptions[s.selectedAccessoryId!] || [],
+          selectedColor: s.selectedColors[s.selectedAccessoryId!] || null,
         }))
         .filter((s) => s.accessoryId),
     };
@@ -309,11 +385,25 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                   </p>
                                 </div>
                               </div>
-                              {selectedCount > 0 && (
-                                <Badge variant="secondary" className="ml-2">
-                                  {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
-                                </Badge>
-                              )}
+                              <div className="flex items-center gap-2">
+                                {selectedCount > 0 && (
+                                  <Badge variant="default">
+                                    {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+                                  </Badge>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    duplicateSection(section.id);
+                                  }}
+                                  className="h-8 w-8"
+                                  title="Dupliquer cette catégorie"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
                           </AccordionTrigger>
                           
@@ -375,36 +465,61 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                             {selectedAccessory.description}
                                           </p>
                                         )}
-                                        <div className="flex items-center gap-3 mt-2">
-                                          {selectedAccessory.couleur && (
-                                            <div className="flex items-center gap-1.5 text-xs bg-background/50 px-2 py-1 rounded">
-                                              <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: selectedAccessory.couleur }} />
-                                              <span>{selectedAccessory.couleur}</span>
-                                            </div>
-                                          )}
-                                          <div className="text-lg font-bold text-primary">
-                                            {(() => {
-                                              const price = getAccessoryPrice(selectedAccessory);
-                                              const isPromo = selectedAccessory.promo_active && price < selectedAccessory.prix_vente_ttc;
-                                              return (
-                                                <>
-                                                  {isPromo && (
-                                                    <Badge variant="destructive" className="mr-2 text-xs">PROMO</Badge>
-                                                  )}
-                                                  {isPromo && (
-                                                    <span className="line-through text-muted-foreground text-sm mr-2">
-                                                      {selectedAccessory.prix_vente_ttc.toFixed(2)} €
-                                                    </span>
-                                                  )}
-                                                  {price.toFixed(2)} €
-                                                </>
-                                              );
-                                            })()}
-                                          </div>
+                                        <div className="text-lg font-bold text-primary mt-2">
+                                          {(() => {
+                                            const price = getAccessoryPrice(selectedAccessory);
+                                            const isPromo = selectedAccessory.promo_active && price < selectedAccessory.prix_vente_ttc;
+                                            return (
+                                              <>
+                                                {isPromo && (
+                                                  <Badge variant="destructive" className="mr-2 text-xs">PROMO</Badge>
+                                                )}
+                                                {isPromo && (
+                                                  <span className="line-through text-muted-foreground text-sm mr-2">
+                                                    {selectedAccessory.prix_vente_ttc.toFixed(2)} €
+                                                  </span>
+                                                )}
+                                                {price.toFixed(2)} €
+                                              </>
+                                            );
+                                          })()}
                                         </div>
                                       </div>
                                     </div>
                                   </div>
+
+                                  {selectedAccessory.couleur && parseColors(selectedAccessory.couleur).length > 0 && (
+                                    <div className="space-y-3 bg-muted/30 rounded-lg p-4">
+                                      <h4 className="font-semibold text-sm">Sélectionnez une couleur</h4>
+                                      <div className="flex flex-wrap gap-3">
+                                        {parseColors(selectedAccessory.couleur).map((color) => {
+                                          const isSelected = section.selectedColors[section.selectedAccessoryId!] === color;
+                                          return (
+                                            <button
+                                              key={color}
+                                              onClick={() => updateSectionColor(section.id, section.selectedAccessoryId!, color)}
+                                              className={cn(
+                                                "flex flex-col items-center gap-2 p-2 rounded-lg border-2 transition-all hover:scale-105",
+                                                isSelected ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                                              )}
+                                              title={color}
+                                            >
+                                              <div
+                                                className="w-10 h-10 rounded-full border-2 border-border shadow-sm"
+                                                style={{ backgroundColor: getColorHex(color) }}
+                                              />
+                                              <span className={cn(
+                                                "text-xs font-medium",
+                                                isSelected ? "text-primary" : "text-muted-foreground"
+                                              )}>
+                                                {color}
+                                              </span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
 
                                   {selectedAccessory.options && selectedAccessory.options.length > 0 && (
                                     <div className="space-y-3 bg-muted/30 rounded-lg p-4">
@@ -465,12 +580,23 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                       return total + (option?.prix_vente_ttc || 0);
                     }, 0);
 
+                    const selectedColor = section.selectedColors[section.selectedAccessoryId!];
+
                     return (
                       <div key={section.id} className="space-y-2">
                         <div className="flex justify-between items-start">
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium text-muted-foreground">{section.categoryName}</p>
                             <p className="text-sm font-semibold truncate">{selectedAccessory.nom}</p>
+                            {selectedColor && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <div
+                                  className="w-4 h-4 rounded-full border border-border"
+                                  style={{ backgroundColor: getColorHex(selectedColor) }}
+                                />
+                                <span className="text-xs text-muted-foreground">{selectedColor}</span>
+                              </div>
+                            )}
                           </div>
                           <span className="font-semibold text-sm ml-2">{accessoryPrice.toFixed(2)} €</span>
                         </div>
