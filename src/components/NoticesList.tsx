@@ -22,7 +22,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-// ✅ MODIFIÉ - Ajout des champs summary
+// ✅ MODIFIÉ - Utilisation des champs ai_summary (partagés entre tous)
 interface Notice {
   id: string;
   titre: string;
@@ -34,9 +34,9 @@ interface Notice {
   created_at: string;
   is_admin_notice?: boolean;
   user_id?: string;
-  summary?: string | null;
-  summary_generated_at?: string | null;
-  tokens_used?: number;
+  ai_summary?: string | null;
+  ai_summary_generated_at?: string | null;
+  ai_summary_tokens_used?: number;
 }
 
 interface NoticesListProps {
@@ -47,7 +47,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
-  // ✅ MODIFIÉ - selectedNotice inclut maintenant id et summary
+  // ✅ MODIFIÉ - selectedNotice inclut maintenant id et ai_summary (partagé)
   const [selectedNotice, setSelectedNotice] = useState<{ 
     url: string; 
     title: string; 
@@ -228,7 +228,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         url, 
         title: notice.titre,
         id: notice.id,
-        summary: notice.summary
+        summary: notice.ai_summary
       });
       setViewerOpen(true);
     } catch (error) {
@@ -283,8 +283,8 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
     // Filtre par résumé IA
     if (showWithSummary !== null) {
-      if (showWithSummary && !notice.summary) return false;
-      if (!showWithSummary && notice.summary) return false;
+      if (showWithSummary && !notice.ai_summary) return false;
+      if (!showWithSummary && notice.ai_summary) return false;
     }
 
     return true;
@@ -480,7 +480,7 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
               </TableCell>
               {/* ✅ AJOUTÉ - Badge Résumé IA */}
               <TableCell>
-                {notice.summary ? (
+                {notice.ai_summary ? (
                   <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100">
                     <Sparkles className="h-3 w-3 mr-1" />
                     IA
