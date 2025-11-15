@@ -103,9 +103,9 @@ EXEMPLE DE RÉPONSE ATTENDUE :
   "confidence": 92
 }`;
 
-    // Appel à l'API Gemini Vision avec le bon modèle
+    // Appel à l'API Gemini Vision avec le modèle gratuit
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: {
