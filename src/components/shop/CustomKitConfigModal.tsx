@@ -309,7 +309,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     return section.accessories.find((a) => a.id === section.selectedAccessoryId);
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!product) return;
 
     const hasSelections = sections.some((s) => s.selectedAccessoryId);
@@ -331,9 +331,13 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
         .filter((s) => s.accessoryId),
     };
 
-    addToCart(product.id, calculateTotal(), 1, configuration);
-    toast.success("Kit ajouté au panier");
-    onClose();
+    const success = await addToCart(product.id, calculateTotal(), 1, configuration);
+    if (success) {
+      toast.success("Kit ajouté au panier");
+      onClose();
+    } else {
+      toast.error("Erreur lors de l'ajout au panier");
+    }
   };
 
   if (!productId) return null;
