@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, User, Calendar, BookOpen, AlertCircle } from "lucide-react";
+import { Clock, User, Calendar, BookOpen, AlertCircle, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { CompleteTaskDialog } from "./CompleteTaskDialog";
@@ -23,9 +23,10 @@ interface WorkTaskItemProps {
   };
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
   onEditTime: (taskId: string) => void;
+  onDelete: (taskId: string) => void;
 }
 
-export const WorkTaskItem = ({ task, onToggleComplete, onEditTime }: WorkTaskItemProps) => {
+export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: WorkTaskItemProps) => {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
 
   const handleCheckChange = (checked: boolean) => {
@@ -135,16 +136,26 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime }: WorkTaskIte
           </div>
         </div>
 
-        {task.completed && task.actual_hours === null && (
+        <div className="flex gap-2">
+          {task.completed && task.actual_hours === null && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onEditTime(task.id)}
+              className="text-xs"
+            >
+              Ajouter le temps
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => onEditTime(task.id)}
-            className="text-xs"
+            onClick={() => onDelete(task.id)}
+            className="text-xs text-destructive hover:text-destructive"
           >
-            Ajouter le temps
+            <Trash2 className="h-4 w-4" />
           </Button>
-        )}
+        </div>
       </div>
 
       <CompleteTaskDialog
