@@ -15,6 +15,7 @@ interface WorkCategoryCardProps {
   tasks: Array<any>;
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
   onEditTime: (taskId: string) => void;
+  onDelete: (taskId: string) => void;
   onAddTask: () => void;
 }
 
@@ -23,6 +24,7 @@ export const WorkCategoryCard = ({
   tasks,
   onToggleComplete,
   onEditTime,
+  onDelete,
   onAddTask,
 }: WorkCategoryCardProps) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -87,12 +89,13 @@ export const WorkCategoryCard = ({
             </p>
           ) : (
             tasks.map((task) => (
-              <WorkTaskItem
-                key={task.id}
-                task={task}
-                onToggleComplete={onToggleComplete}
-                onEditTime={onEditTime}
-              />
+            <WorkTaskItem
+              key={task.id}
+              task={task}
+              onToggleComplete={onToggleComplete}
+              onEditTime={onEditTime}
+              onDelete={onDelete}
+            />
             ))
           )}
         </CardContent>
