@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { Pencil, Eraser, Type, Undo, Trash2, Save, X, SidebarOpen, SidebarClose } from "lucide-react";
+import { Pencil, Eraser, Type, Undo, Trash2, Save, X, SidebarOpen, SidebarClose, Square, Circle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -44,7 +44,18 @@ interface TextAnnotation {
   fontSize: number;
 }
 
-type DrawMode = "draw" | "erase" | "text";
+interface Shape {
+  id: string;
+  type: "rectangle" | "circle";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  lineWidth: number;
+}
+
+type DrawMode = "draw" | "erase" | "text" | "rectangle" | "circle";
 
 const COLORS = [
   "#EF4444", // red
@@ -68,6 +79,8 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
   const [lineWidth, setLineWidth] = useState(3);
   const [fontSize, setFontSize] = useState(24);
   const [textAnnotations, setTextAnnotations] = useState<TextAnnotation[]>([]);
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [currentShape, setCurrentShape] = useState<{ startX: number; startY: number } | null>(null);
   const [sideNotes, setSideNotes] = useState("");
   const [comment, setComment] = useState("");
   const [showSidebar, setShowSidebar] = useState(true);
@@ -91,6 +104,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
       if (photo.annotations) {
         setPaths(photo.annotations.paths || []);
         setTextAnnotations(photo.annotations.textAnnotations || []);
+        setShapes(photo.annotations.shapes || []);
         setSideNotes(photo.annotations.sideNotes || "");
         setComment(photo.annotations.comment || "");
       }
@@ -107,7 +121,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
     canvas.height = image.height;
     
     redrawCanvas();
-  }, [image, paths, textAnnotations]);
+  }, [image, paths, textAnnotations, shapes]);
 
   const redrawCanvas = () => {
     if (!canvasRef.current || !image) return;
@@ -159,6 +173,26 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
       // Fill text
       ctx.fillText(textAnnot.text, textAnnot.x, textAnnot.y);
     });
+
+    // Draw all shapes
+    shapes.forEach((shape) => {
+      ctx.strokeStyle = shape.color;
+      ctx.lineWidth = shape.lineWidth;
+      ctx.fillStyle = shape.color + "40"; // Semi-transparent fill
+
+      if (shape.type === "rectangle") {
+        ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+        ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+      } else if (shape.type === "circle") {
+        ctx.beginPath();
+        const radius = Math.sqrt(shape.width ** 2 + shape.height ** 2) / 2;
+        const centerX = shape.x + shape.width / 2;
+        const centerY = shape.y + shape.height / 2;
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.fill();
+      }
+    });
   };
 
   const getCanvasCoordinates = (clientX: number, clientY: number): Point => {
@@ -185,6 +219,12 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
       return;
     }
 
+    if (drawMode === "rectangle" || drawMode === "circle") {
+      setCurrentShape({ startX: coords.x, startY: coords.y });
+      setIsDrawing(true);
+      return;
+    }
+
     setIsDrawing(true);
     setCurrentPath([coords]);
   };
@@ -193,6 +233,38 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
     if (!isDrawing || drawMode === "text") return;
 
     const coords = getCanvasCoordinates(e.clientX, e.clientY);
+
+    if (drawMode === "rectangle" || drawMode === "circle") {
+      if (!currentShape) return;
+      
+      // Redraw everything plus the preview shape
+      redrawCanvas();
+      
+      const ctx = canvasRef.current?.getContext("2d");
+      if (!ctx) return;
+
+      const width = coords.x - currentShape.startX;
+      const height = coords.y - currentShape.startY;
+
+      ctx.strokeStyle = drawColor;
+      ctx.lineWidth = lineWidth;
+      ctx.fillStyle = drawColor + "40";
+
+      if (drawMode === "rectangle") {
+        ctx.strokeRect(currentShape.startX, currentShape.startY, width, height);
+        ctx.fillRect(currentShape.startX, currentShape.startY, width, height);
+      } else if (drawMode === "circle") {
+        ctx.beginPath();
+        const radius = Math.sqrt(width ** 2 + height ** 2) / 2;
+        const centerX = currentShape.startX + width / 2;
+        const centerY = currentShape.startY + height / 2;
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.fill();
+      }
+      return;
+    }
+
     setCurrentPath((prev) => [...prev, coords]);
 
     // Draw current path in real-time
@@ -218,8 +290,36 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
     ctx.stroke();
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
+
+    if (drawMode === "rectangle" || drawMode === "circle") {
+      if (!currentShape) return;
+      
+      const coords = getCanvasCoordinates(e.clientX, e.clientY);
+      const width = coords.x - currentShape.startX;
+      const height = coords.y - currentShape.startY;
+
+      if (Math.abs(width) > 5 || Math.abs(height) > 5) {
+        setShapes((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            type: drawMode,
+            x: currentShape.startX,
+            y: currentShape.startY,
+            width,
+            height,
+            color: drawColor,
+            lineWidth: lineWidth,
+          },
+        ]);
+      }
+
+      setCurrentShape(null);
+      setIsDrawing(false);
+      return;
+    }
 
     if (currentPath.length > 0) {
       setPaths((prev) => [
@@ -286,7 +386,54 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    handleMouseUp();
+    if (!isDrawing) return;
+
+    if (drawMode === "rectangle" || drawMode === "circle") {
+      if (!currentShape || e.changedTouches.length === 0) {
+        setIsDrawing(false);
+        return;
+      }
+      
+      const touch = e.changedTouches[0];
+      const coords = getCanvasCoordinates(touch.clientX, touch.clientY);
+      const width = coords.x - currentShape.startX;
+      const height = coords.y - currentShape.startY;
+
+      if (Math.abs(width) > 5 || Math.abs(height) > 5) {
+        setShapes((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            type: drawMode,
+            x: currentShape.startX,
+            y: currentShape.startY,
+            width,
+            height,
+            color: drawColor,
+            lineWidth: lineWidth,
+          },
+        ]);
+      }
+
+      setCurrentShape(null);
+      setIsDrawing(false);
+      return;
+    }
+
+    if (currentPath.length > 0) {
+      setPaths((prev) => [
+        ...prev,
+        {
+          points: currentPath,
+          color: drawColor,
+          lineWidth: lineWidth,
+          isEraser: drawMode === "erase",
+        },
+      ]);
+    }
+
+    setIsDrawing(false);
+    setCurrentPath([]);
   };
 
   const handleAddText = () => {
@@ -310,7 +457,9 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
   };
 
   const handleUndo = () => {
-    if (textAnnotations.length > 0) {
+    if (shapes.length > 0) {
+      setShapes((prev) => prev.slice(0, -1));
+    } else if (textAnnotations.length > 0) {
       setTextAnnotations((prev) => prev.slice(0, -1));
     } else if (paths.length > 0) {
       setPaths((prev) => prev.slice(0, -1));
@@ -320,6 +469,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
   const handleClear = () => {
     setPaths([]);
     setTextAnnotations([]);
+    setShapes([]);
   };
 
   const handleSave = async () => {
@@ -352,6 +502,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
           annotations: {
             paths,
             textAnnotations,
+            shapes,
             sideNotes,
             comment,
             annotated_url: publicUrl,
@@ -376,6 +527,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
 
   const totalPaths = paths.length;
   const totalTexts = textAnnotations.length;
+  const totalShapes = shapes.length;
   const notesLines = sideNotes.split("\n").length;
 
   return (
@@ -416,6 +568,22 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
                   >
                     <Type className="h-4 w-4 mr-2" />
                     Texte
+                  </Button>
+                  <Button
+                    variant={drawMode === "rectangle" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDrawMode("rectangle")}
+                  >
+                    <Square className="h-4 w-4 mr-2" />
+                    Rectangle
+                  </Button>
+                  <Button
+                    variant={drawMode === "circle" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setDrawMode("circle")}
+                  >
+                    <Circle className="h-4 w-4 mr-2" />
+                    Cercle
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleUndo}>
                     <Undo className="h-4 w-4 mr-2" />
@@ -467,6 +635,19 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
                       className="w-48"
                     />
                     <span className="text-sm font-medium">{fontSize}px</span>
+                  </div>
+                ) : drawMode === "rectangle" || drawMode === "circle" ? (
+                  <div className="flex items-center gap-4">
+                    <Label className="text-sm whitespace-nowrap">Épaisseur contour:</Label>
+                    <Slider
+                      value={[lineWidth]}
+                      onValueChange={(v) => setLineWidth(v[0])}
+                      min={1}
+                      max={20}
+                      step={1}
+                      className="w-48"
+                    />
+                    <span className="text-sm font-medium">{lineWidth}px</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-4">
@@ -532,6 +713,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
                     <Label>Statistiques</Label>
                     <div className="text-sm text-muted-foreground space-y-1 p-3 bg-muted rounded-md">
                       <div>Traits dessinés: {totalPaths}</div>
+                      <div>Formes ajoutées: {totalShapes}</div>
                       <div>Textes ajoutés: {totalTexts}</div>
                       <div>Lignes de notes: {notesLines}</div>
                     </div>
