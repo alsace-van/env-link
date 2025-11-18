@@ -179,6 +179,13 @@ export const TaskTemplatesLibrary = ({
                 className="pl-9"
               />
             </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowManageCategories(true)}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Gérer les catégories
+            </Button>
           </div>
 
           {/* Category filters */}
