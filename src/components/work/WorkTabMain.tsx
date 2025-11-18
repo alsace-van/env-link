@@ -268,6 +268,31 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
     },
   });
 
+  // Delete category mutation
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (categoryId: string) => {
+      const { error } = await supabase
+        .from("work_categories")
+        .delete()
+        .eq("id", categoryId)
+        .eq("project_id", projectId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
+      toast({ title: "Catégorie supprimée" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer une catégorie contenant des tâches",
+        variant: "destructive",
+      });
+      console.error(error);
+    },
+  });
+
   const handleAddTaskForCategory = (categoryId: string) => {
     setSelectedCategoryForTask(categoryId);
     setShowAddTask(true);
@@ -360,6 +385,11 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
                 onDelete={(taskId) => {
                   if (confirm("Êtes-vous sûr de vouloir supprimer cette tâche ?")) {
                     deleteTaskMutation.mutate(taskId);
+                  }
+                }}
+                onDeleteCategory={(categoryId) => {
+                  if (confirm("Êtes-vous sûr de vouloir supprimer cette catégorie et toutes ses tâches ?")) {
+                    deleteCategoryMutation.mutate(categoryId);
                   }
                 }}
                 onAddTask={() => handleAddTaskForCategory(category.id)}

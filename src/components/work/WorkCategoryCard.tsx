@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { ChevronDown, ChevronUp, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { WorkTaskItem } from "./WorkTaskItem";
 
 interface WorkCategoryCardProps {
@@ -16,6 +16,7 @@ interface WorkCategoryCardProps {
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
   onEditTime: (taskId: string) => void;
   onDelete: (taskId: string) => void;
+  onDeleteCategory: (categoryId: string) => void;
   onAddTask: () => void;
 }
 
@@ -25,6 +26,7 @@ export const WorkCategoryCard = ({
   onToggleComplete,
   onEditTime,
   onDelete,
+  onDeleteCategory,
   onAddTask,
 }: WorkCategoryCardProps) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -74,10 +76,20 @@ export const WorkCategoryCard = ({
             )}
           </div>
 
-          <Button size="sm" onClick={onAddTask} variant="outline">
-            <Plus className="h-4 w-4 mr-1" />
-            Ajouter
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={onAddTask} variant="outline">
+              <Plus className="h-4 w-4 mr-1" />
+              Ajouter
+            </Button>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={() => onDeleteCategory(category.id)}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
