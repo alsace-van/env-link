@@ -261,7 +261,35 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
 
     setCurrentPath((prev) => [...prev, coords]);
 
-    // Draw current path in real-time
+    // For eraser, redraw everything to avoid erasing the photo
+    if (drawMode === "erase") {
+      redrawCanvas();
+      
+      const ctx = canvasRef.current?.getContext("2d");
+      if (!ctx) return;
+
+      // Draw the current eraser path preview
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = drawColor;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      if (currentPath.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(currentPath[0].x, currentPath[0].y);
+        for (let i = 1; i < currentPath.length; i++) {
+          ctx.lineTo(currentPath[i].x, currentPath[i].y);
+        }
+        ctx.lineTo(coords.x, coords.y);
+        ctx.stroke();
+      }
+      
+      ctx.globalCompositeOperation = "source-over";
+      return;
+    }
+
+    // Draw current path in real-time for draw mode
     if (!canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx || currentPath.length === 0) return;
@@ -270,12 +298,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
     ctx.lineWidth = lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-
-    if (drawMode === "erase") {
-      ctx.globalCompositeOperation = "destination-out";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-    }
+    ctx.globalCompositeOperation = "source-over";
 
     const lastPoint = currentPath[currentPath.length - 1];
     ctx.beginPath();
@@ -353,9 +376,64 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
 
     const touch = e.touches[0];
     const coords = getCanvasCoordinates(touch.clientX, touch.clientY);
+
+    if (drawMode === "rectangle" || drawMode === "circle") {
+      if (!currentShape) return;
+      
+      redrawCanvas();
+      
+      const ctx = canvasRef.current?.getContext("2d");
+      if (!ctx) return;
+
+      const width = coords.x - currentShape.startX;
+      const height = coords.y - currentShape.startY;
+
+      ctx.strokeStyle = drawColor;
+      ctx.lineWidth = lineWidth;
+
+      if (drawMode === "rectangle") {
+        ctx.strokeRect(currentShape.startX, currentShape.startY, width, height);
+      } else if (drawMode === "circle") {
+        ctx.beginPath();
+        const radius = Math.sqrt(width ** 2 + height ** 2) / 2;
+        const centerX = currentShape.startX + width / 2;
+        const centerY = currentShape.startY + height / 2;
+        ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+      return;
+    }
+
     setCurrentPath((prev) => [...prev, coords]);
 
-    // Draw current path in real-time
+    // For eraser, redraw everything
+    if (drawMode === "erase") {
+      redrawCanvas();
+      
+      const ctx = canvasRef.current?.getContext("2d");
+      if (!ctx) return;
+
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = drawColor;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      if (currentPath.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(currentPath[0].x, currentPath[0].y);
+        for (let i = 1; i < currentPath.length; i++) {
+          ctx.lineTo(currentPath[i].x, currentPath[i].y);
+        }
+        ctx.lineTo(coords.x, coords.y);
+        ctx.stroke();
+      }
+      
+      ctx.globalCompositeOperation = "source-over";
+      return;
+    }
+
+    // Draw current path in real-time for draw mode
     if (!canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx || currentPath.length === 0) return;
@@ -364,12 +442,7 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
     ctx.lineWidth = lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-
-    if (drawMode === "erase") {
-      ctx.globalCompositeOperation = "destination-out";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-    }
+    ctx.globalCompositeOperation = "source-over";
 
     const lastPoint = currentPath[currentPath.length - 1];
     ctx.beginPath();
