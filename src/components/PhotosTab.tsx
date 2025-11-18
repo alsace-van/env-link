@@ -1,7 +1,7 @@
 import { useState } from "react";
 import PhotoUpload from "./PhotoUpload";
 import PhotoGallery from "./PhotoGallery";
-import PhotoAnnotationModal from "./PhotoAnnotationModal";
+import { PhotoDrawingModalAdvanced } from "./PhotoDrawingModalAdvanced";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Photo {
@@ -76,7 +76,7 @@ const PhotosTab = ({ projectId }: PhotosTabProps) => {
         </TabsContent>
       </Tabs>
 
-      <PhotoAnnotationModal
+      <PhotoDrawingModalAdvanced
         photo={selectedPhoto}
         isOpen={isModalOpen}
         onClose={handleModalClose}
