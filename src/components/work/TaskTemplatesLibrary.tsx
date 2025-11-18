@@ -37,10 +37,13 @@ export const TaskTemplatesLibrary = ({
   const { data: categories, isLoading: loadingCategories } = useQuery({
     queryKey: ["work-categories", "templates"],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { data, error } = await supabase
         .from("work_categories")
         .select("*")
         .eq("is_template", true)
+        .or(`user_id.is.null,user_id.eq.${user?.id}`)
         .order("display_order");
 
       if (error) throw error;
