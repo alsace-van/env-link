@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Plus, Clock, TrendingUp } from "lucide-react";
+import { Search, Plus, Clock, TrendingUp, Settings } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateTemplateDialog } from "./CreateTemplateDialog";
+import { CategoryManagementDialog } from "./CategoryManagementDialog";
 import { useToast } from "@/hooks/use-toast";
 
 interface TaskTemplatesLibraryProps {
@@ -31,6 +32,7 @@ export const TaskTemplatesLibrary = ({
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
+  const [showManageCategories, setShowManageCategories] = useState(false);
 
   const { data: categories, isLoading: loadingCategories } = useQuery({
     queryKey: ["work-categories", "templates"],
@@ -258,6 +260,11 @@ export const TaskTemplatesLibrary = ({
         onOpenChange={setShowCreateTemplate}
         categories={categories || []}
         onSubmit={(data) => createTemplateMutation.mutate(data)}
+      />
+
+      <CategoryManagementDialog
+        open={showManageCategories}
+        onOpenChange={setShowManageCategories}
       />
     </Dialog>
   );
