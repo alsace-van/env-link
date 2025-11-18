@@ -178,11 +178,9 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
     shapes.forEach((shape) => {
       ctx.strokeStyle = shape.color;
       ctx.lineWidth = shape.lineWidth;
-      ctx.fillStyle = shape.color + "40"; // Semi-transparent fill
 
       if (shape.type === "rectangle") {
         ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
-        ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
       } else if (shape.type === "circle") {
         ctx.beginPath();
         const radius = Math.sqrt(shape.width ** 2 + shape.height ** 2) / 2;
@@ -190,7 +188,6 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
         const centerY = shape.y + shape.height / 2;
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.stroke();
-        ctx.fill();
       }
     });
   };
@@ -248,11 +245,9 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
 
       ctx.strokeStyle = drawColor;
       ctx.lineWidth = lineWidth;
-      ctx.fillStyle = drawColor + "40";
 
       if (drawMode === "rectangle") {
         ctx.strokeRect(currentShape.startX, currentShape.startY, width, height);
-        ctx.fillRect(currentShape.startX, currentShape.startY, width, height);
       } else if (drawMode === "circle") {
         ctx.beginPath();
         const radius = Math.sqrt(width ** 2 + height ** 2) / 2;
@@ -260,7 +255,6 @@ export const PhotoDrawingModalAdvanced = ({ photo, isOpen, onClose, onSave }: Ph
         const centerY = currentShape.startY + height / 2;
         ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
         ctx.stroke();
-        ctx.fill();
       }
       return;
     }
