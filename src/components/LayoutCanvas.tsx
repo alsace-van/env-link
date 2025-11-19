@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler, Package, RefreshCw } from "lucide-react";
+import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler, Package, RefreshCw, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
@@ -18,6 +18,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface LayoutCanvasProps {
   projectId: string;
@@ -35,6 +42,9 @@ interface FurnitureData {
   hauteur_mm: number;
   poids_kg: number;
   hauteur_sol_mm: number;
+  wood_type?: "okoume" | "bouleau" | "peuplier";
+  thickness?: number; // en mm: 5, 8, 10, 12, 15
+  surface?: number; // en m²
 }
 
 const CANVAS_WIDTH = 800;
@@ -68,7 +78,24 @@ export const LayoutCanvas = ({
     hauteur_mm: 0,
     poids_kg: 0,
     hauteur_sol_mm: 0,
+    wood_type: "okoume" as "okoume" | "bouleau" | "peuplier",
+    thickness: 15,
+    surface: 0,
   });
+
+  // Masses volumiques des contreplaqués (kg/m³)
+  const WOOD_DENSITIES = {
+    okoume: 420,
+    bouleau: 680,
+    peuplier: 475,
+  };
+
+  // Calcul automatique du poids basé sur le bois, épaisseur et surface
+  const calculateWeight = (woodType: string, thickness: number, surface: number): number => {
+    const density = WOOD_DENSITIES[woodType as keyof typeof WOOD_DENSITIES] || 420;
+    // Poids (kg) = surface (m²) × épaisseur (m) × masse volumique (kg/m³)
+    return surface * (thickness / 1000) * density;
+  };
 
   // Calcul de l'échelle pour adapter la zone de chargement au canvas (avec marge)
   const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
@@ -755,6 +782,9 @@ export const LayoutCanvas = ({
         hauteur_mm: 0,
         poids_kg: 0,
         hauteur_sol_mm: 0,
+        wood_type: "okoume",
+        thickness: 15,
+        surface: 0,
       });
       toast.success("Meuble modifié");
 
@@ -830,6 +860,9 @@ export const LayoutCanvas = ({
         hauteur_mm: 0,
         poids_kg: 0,
         hauteur_sol_mm: 0,
+        wood_type: "okoume",
+        thickness: 15,
+        surface: 0,
       });
       toast.success("Meuble ajouté");
     }
@@ -848,22 +881,29 @@ export const LayoutCanvas = ({
       hauteur_mm: 0,
       poids_kg: 0,
       hauteur_sol_mm: 0,
+      wood_type: "okoume",
+      thickness: 15,
+      surface: 0,
     });
   };
 
-  const handleContextMenuEdit = () => {
-    if (!contextMenu) return;
+  const handleContextMenuEdit = (furnitureId?: string) => {
+    const id = furnitureId || contextMenu?.furnitureId;
+    if (!id) return;
 
-    const furnitureData = furnitureItemsRef.current.get(contextMenu.furnitureId);
+    const furnitureData = furnitureItemsRef.current.get(id);
 
     if (furnitureData) {
-      setEditingFurnitureId(contextMenu.furnitureId);
+      setEditingFurnitureId(id);
       setFurnitureForm({
         longueur_mm: furnitureData.longueur_mm,
         largeur_mm: furnitureData.largeur_mm,
         hauteur_mm: furnitureData.hauteur_mm,
         poids_kg: furnitureData.poids_kg,
         hauteur_sol_mm: furnitureData.hauteur_sol_mm || 0,
+        wood_type: furnitureData.wood_type || "okoume",
+        thickness: furnitureData.thickness || 15,
+        surface: furnitureData.surface || 0,
       });
       setShowFurnitureDialog(true);
       setContextMenu(null);
@@ -1237,6 +1277,97 @@ export const LayoutCanvas = ({
               <p className="text-xs text-muted-foreground">
                 Distance entre le sol et le dessous du meuble (0 = posé au sol)
               </p>
+            </div>
+
+            {/* Champs pour le bois */}
+            <Separator />
+            <div className="space-y-4">
+              <h4 className="font-medium text-sm">Caractéristiques du bois</h4>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="wood_type">Type de bois</Label>
+                  <Select
+                    value={furnitureForm.wood_type}
+                    onValueChange={(value: "okoume" | "bouleau" | "peuplier") =>
+                      setFurnitureForm((prev) => {
+                        const newForm = { ...prev, wood_type: value };
+                        // Recalculer le poids si surface et épaisseur sont définis
+                        if (newForm.surface && newForm.surface > 0) {
+                          newForm.poids_kg = calculateWeight(value, newForm.thickness, newForm.surface);
+                        }
+                        return newForm;
+                      })
+                    }
+                  >
+                    <SelectTrigger id="wood_type">
+                      <SelectValue placeholder="Choisir..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="okoume">Okoumé (420 kg/m³)</SelectItem>
+                      <SelectItem value="bouleau">Bouleau (680 kg/m³)</SelectItem>
+                      <SelectItem value="peuplier">Peuplier (475 kg/m³)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="thickness">Épaisseur (mm)</Label>
+                  <Select
+                    value={furnitureForm.thickness.toString()}
+                    onValueChange={(value) =>
+                      setFurnitureForm((prev) => {
+                        const newForm = { ...prev, thickness: Number(value) };
+                        // Recalculer le poids si surface est définie
+                        if (newForm.surface && newForm.surface > 0) {
+                          newForm.poids_kg = calculateWeight(newForm.wood_type, Number(value), newForm.surface);
+                        }
+                        return newForm;
+                      })
+                    }
+                  >
+                    <SelectTrigger id="thickness">
+                      <SelectValue placeholder="Choisir..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5 mm</SelectItem>
+                      <SelectItem value="8">8 mm</SelectItem>
+                      <SelectItem value="10">10 mm</SelectItem>
+                      <SelectItem value="12">12 mm</SelectItem>
+                      <SelectItem value="15">15 mm</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="surface">Surface de bois utilisé (m²)</Label>
+                <Input
+                  id="surface"
+                  type="number"
+                  step="0.01"
+                  value={furnitureForm.surface}
+                  onChange={(e) => {
+                    const surface = Number(e.target.value);
+                    setFurnitureForm((prev) => ({
+                      ...prev,
+                      surface,
+                      // Recalculer le poids automatiquement
+                      poids_kg: surface > 0 ? calculateWeight(prev.wood_type, prev.thickness, surface) : prev.poids_kg,
+                    }));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleFurnitureSubmit();
+                    }
+                    e.stopPropagation();
+                  }}
+                  placeholder="0.00"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Le poids sera calculé automatiquement selon le type de bois et l'épaisseur
+                </p>
+              </div>
             </div>
           </div>
 
