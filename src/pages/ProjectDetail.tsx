@@ -1145,8 +1145,11 @@ const ProjectDetail = () => {
       {/* Sidebar Informations Projet - glisse depuis la GAUCHE vers la DROITE */}
       {isProjectInfoSidebarOpen && (
         <>
-          {/* Overlay TRANSPARENT */}
-          <div className="fixed inset-0 z-40 transition-opacity" onClick={handleCloseProjectInfoSidebar} />
+          {/* Overlay avec fond semi-transparent */}
+          <div 
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity" 
+            onClick={handleCloseProjectInfoSidebar} 
+          />
 
           {/* Sidebar à GAUCHE avec hauteur limitée - Animation horizontale pure */}
           <div
@@ -1617,9 +1620,9 @@ const ProjectDetail = () => {
       {/* Sidebar des statistiques - Glisse depuis la DROITE avec overlay transparent */}
       {isExpensesSidebarOpen && (
         <>
-          {/* Overlay TRANSPARENT */}
+          {/* Overlay avec fond semi-transparent */}
           <div
-            className="fixed inset-0 z-40 bg-black/10 backdrop-blur-[2px] transition-opacity"
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity"
             onClick={handleCloseExpensesSidebar}
           />
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -21,11 +21,13 @@ export const AllProjectsTasksSidebar = () => {
   });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const hasDragged = useRef(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left click
+    hasDragged.current = false; // Réinitialiser
     setIsDragging(true);
     setDragStart({
       x: e.clientX - position.x,
@@ -35,6 +37,7 @@ export const AllProjectsTasksSidebar = () => {
 
   const handleMouseMove = (e: MouseEvent) => {
     if (!isDragging) return;
+    hasDragged.current = true; // Un mouvement a eu lieu
     
     const newX = Math.max(0, Math.min(e.clientX - dragStart.x, window.innerWidth - 200));
     const newY = Math.max(0, Math.min(e.clientY - dragStart.y, window.innerHeight - 50));
@@ -46,6 +49,14 @@ export const AllProjectsTasksSidebar = () => {
 
   const handleMouseUp = () => {
     setIsDragging(false);
+  };
+  
+  const handleClick = () => {
+    if (hasDragged.current) {
+      hasDragged.current = false;
+      return; // Ne pas ouvrir la sidebar si on vient de drag
+    }
+    setOpen(true);
   };
 
   useEffect(() => {
@@ -152,8 +163,16 @@ export const AllProjectsTasksSidebar = () => {
   const completedWorkTasks = allWorkTasks?.filter((t) => t.completed).length || 0;
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
+    <>
+      {/* Overlay semi-transparent */}
+      {open && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity" 
+          onClick={() => setOpen(false)}
+        />
+      )}
+      
+      <Sheet open={open} onOpenChange={setOpen}>
         <Button
           variant="outline"
           size="sm"
@@ -162,6 +181,7 @@ export const AllProjectsTasksSidebar = () => {
             left: `${position.x}px`, 
             top: `${position.y}px`,
           }}
+          onClick={handleClick}
           onMouseDown={handleMouseDown}
           title="Tous les travaux - Glisser pour déplacer"
         >
@@ -172,12 +192,11 @@ export const AllProjectsTasksSidebar = () => {
             </Badge>
           )}
         </Button>
-      </SheetTrigger>
-      
-      <SheetContent 
-        side="left" 
-        className="w-[400px] sm:w-[500px] bg-background/95 backdrop-blur-sm"
-      >
+        
+        <SheetContent 
+          side="left" 
+          className="w-[400px] sm:w-[500px] bg-background/95 backdrop-blur-sm z-50"
+        >
         <SheetHeader>
           <SheetTitle className="flex items-center justify-between">
             <span>🔨 Tous les travaux</span>
@@ -289,5 +308,6 @@ export const AllProjectsTasksSidebar = () => {
         </ScrollArea>
       </SheetContent>
     </Sheet>
+    </>
   );
 };
