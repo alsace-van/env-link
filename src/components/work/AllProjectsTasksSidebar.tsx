@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, Circle, ListTodo, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2, Circle, ListTodo, Eye, EyeOff, Hammer } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -157,15 +157,15 @@ export const AllProjectsTasksSidebar = () => {
         <Button
           variant="outline"
           size="sm"
-          className="fixed z-50 shadow-lg bg-background/95 backdrop-blur-sm border-2 cursor-grab active:cursor-grabbing"
+          className="fixed z-50 shadow-lg bg-background/95 backdrop-blur-sm border-2 cursor-grab active:cursor-grabbing px-3"
           style={{ 
             left: `${position.x}px`, 
             top: `${position.y}px`,
           }}
           onMouseDown={handleMouseDown}
+          title="Tous les travaux - Glisser pour déplacer"
         >
-          <ListTodo className="h-4 w-4 mr-2" />
-          Tous les travaux
+          <Hammer className="h-4 w-4" />
           {totalWorkTasks > 0 && (
             <Badge variant="secondary" className="ml-2">
               {completedWorkTasks}/{totalWorkTasks}
