@@ -27,15 +27,15 @@ export const AllProjectsTasksSidebar = () => {
     },
   });
 
-  // Fetch all work tasks with categories
-  const { data: allTasks } = useQuery({
-    queryKey: ["all-work-tasks"],
+  // Fetch all work tasks (only those with work categories)
+  const { data: allWorkTasks } = useQuery({
+    queryKey: ["all-work-tasks-sidebar"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("project_todos")
         .select(`
           *,
-          work_categories (
+          work_categories!inner (
             name,
             icon,
             color
@@ -49,23 +49,23 @@ export const AllProjectsTasksSidebar = () => {
     },
   });
 
-  // Group tasks by project
+  // Group work tasks by project
   const tasksByProject = projects?.map((project) => {
-    const projectTasks = allTasks?.filter((task) => task.project_id === project.id) || [];
+    const projectWorkTasks = allWorkTasks?.filter((task) => task.project_id === project.id) || [];
     const filteredTasks = showCompleted 
-      ? projectTasks 
-      : projectTasks.filter((task) => !task.completed);
+      ? projectWorkTasks 
+      : projectWorkTasks.filter((task) => !task.completed);
     
     return {
       project,
       tasks: filteredTasks,
-      completedCount: projectTasks.filter((t) => t.completed).length,
-      totalCount: projectTasks.length,
+      completedCount: projectWorkTasks.filter((t) => t.completed).length,
+      totalCount: projectWorkTasks.length,
     };
   }).filter((group) => group.tasks.length > 0);
 
-  const totalTasks = allTasks?.length || 0;
-  const completedTasks = allTasks?.filter((t) => t.completed).length || 0;
+  const totalWorkTasks = allWorkTasks?.length || 0;
+  const completedWorkTasks = allWorkTasks?.filter((t) => t.completed).length || 0;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -76,10 +76,10 @@ export const AllProjectsTasksSidebar = () => {
           className="fixed left-4 top-20 z-50 shadow-lg bg-background/80 backdrop-blur-sm"
         >
           <ListTodo className="h-4 w-4 mr-2" />
-          Toutes les tâches
-          {totalTasks > 0 && (
+          Tous les travaux
+          {totalWorkTasks > 0 && (
             <Badge variant="secondary" className="ml-2">
-              {completedTasks}/{totalTasks}
+              {completedWorkTasks}/{totalWorkTasks}
             </Badge>
           )}
         </Button>
@@ -91,7 +91,7 @@ export const AllProjectsTasksSidebar = () => {
       >
         <SheetHeader>
           <SheetTitle className="flex items-center justify-between">
-            <span>📋 Toutes les tâches de travail</span>
+            <span>🔨 Tous les travaux</span>
             <Button
               variant="ghost"
               size="sm"
@@ -99,7 +99,7 @@ export const AllProjectsTasksSidebar = () => {
               className="text-xs"
             >
               {showCompleted ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
-              {showCompleted ? "Masquer" : "Afficher"} terminées
+              {showCompleted ? "Masquer" : "Afficher"} terminés
             </Button>
           </SheetTitle>
         </SheetHeader>
@@ -108,11 +108,11 @@ export const AllProjectsTasksSidebar = () => {
           <div className="flex gap-4 text-sm">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-green-500" />
-              <span>{completedTasks} terminées</span>
+              <span>{completedWorkTasks} terminés</span>
             </div>
             <div className="flex items-center gap-2">
               <Circle className="h-4 w-4 text-muted-foreground" />
-              <span>{totalTasks - completedTasks} en cours</span>
+              <span>{totalWorkTasks - completedWorkTasks} en cours</span>
             </div>
           </div>
         </div>
@@ -127,7 +127,7 @@ export const AllProjectsTasksSidebar = () => {
                       {group.project.nom_projet || group.project.nom_proprietaire}
                     </h3>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {group.completedCount}/{group.totalCount} tâches terminées
+                      {group.completedCount}/{group.totalCount} travaux terminés
                     </p>
                   </div>
 
@@ -186,8 +186,8 @@ export const AllProjectsTasksSidebar = () => {
               <Card className="p-8 text-center">
                 <p className="text-muted-foreground">
                   {showCompleted
-                    ? "Aucune tâche de travail trouvée"
-                    : "Aucune tâche en cours"}
+                    ? "Aucun travail trouvé"
+                    : "Aucun travail en cours"}
                 </p>
               </Card>
             )}
