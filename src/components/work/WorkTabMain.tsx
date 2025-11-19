@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Library, BarChart3 } from "lucide-react";
+import { Plus, Library, BarChart3, Eye, EyeOff } from "lucide-react";
 import { WorkCategoryCard } from "./WorkCategoryCard";
 import { AddCategoryDialog } from "./AddCategoryDialog";
 import { AddTaskDialog } from "./AddTaskDialog";
@@ -22,6 +22,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [showCompletedTasks, setShowCompletedTasks] = useState(true);
   const [selectedCategoryForTask, setSelectedCategoryForTask] = useState<string>("");
 
   // Fetch categories for this project
@@ -325,6 +326,23 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">📋 Fiche de travaux</h2>
         <div className="flex gap-2">
+          <Button 
+            onClick={() => setShowCompletedTasks(!showCompletedTasks)} 
+            variant="outline"
+            size="sm"
+          >
+            {showCompletedTasks ? (
+              <>
+                <Eye className="h-4 w-4 mr-2" />
+                Masquer terminées
+              </>
+            ) : (
+              <>
+                <EyeOff className="h-4 w-4 mr-2" />
+                Afficher terminées
+              </>
+            )}
+          </Button>
           <Button onClick={() => setShowLibrary(true)} variant="outline">
             <Library className="h-4 w-4 mr-2" />
             📚 Bibliothèque
@@ -376,6 +394,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
                 key={category.id}
                 category={category}
                 tasks={categoryTasks}
+                showCompleted={showCompletedTasks}
                 onToggleComplete={(taskId, actualHours) =>
                   toggleCompleteMutation.mutate({ taskId, actualHours })
                 }

@@ -61,6 +61,7 @@ import { OfficialDocumentsLibrary } from "@/components/OfficialDocumentsLibrary"
 import ProjectForm from "@/components/ProjectForm";
 import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleInspectionTab";
 import { WorkTabMain } from "@/components/work/WorkTabMain";
+import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -1213,6 +1214,9 @@ const ProjectDetail = () => {
       )}
 
       <main className="container mx-auto px-4 py-4">
+        {/* Sidebar pour toutes les tâches */}
+        <AllProjectsTasksSidebar />
+        
         <div className="flex gap-6">
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
