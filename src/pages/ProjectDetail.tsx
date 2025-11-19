@@ -817,7 +817,7 @@ const ProjectDetail = () => {
   // Gestionnaires pour le bouton Informations Projet draggable
   const handleProjectInfoBtnMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    e.stopPropagation(); // Empêcher l'ouverture de la sidebar
+    e.stopPropagation();
     setIsProjectInfoBtnDragging(true);
     setProjectInfoBtnDragStart({
       x: e.clientX - projectInfoBtnPosition.x,
@@ -837,7 +837,25 @@ const ProjectDetail = () => {
   };
 
   const handleProjectInfoBtnMouseUp = () => {
-    setIsProjectInfoBtnDragging(false);
+    // Petit délai pour éviter que le clic se déclenche après un drag
+    setTimeout(() => {
+      setIsProjectInfoBtnDragging(false);
+    }, 100);
+  };
+
+  const handleProjectInfoBtnClick = (e: React.MouseEvent) => {
+    // Ne pas ouvrir la sidebar si on vient de faire un drag
+    if (isProjectInfoBtnDragging) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    
+    if (isProjectInfoSidebarOpen) {
+      handleCloseProjectInfoSidebar();
+    } else {
+      setIsProjectInfoSidebarOpen(true);
+    }
   };
 
   useEffect(() => {
