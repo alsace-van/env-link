@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -14,8 +14,56 @@ import { Checkbox } from "@/components/ui/checkbox";
 export const AllProjectsTasksSidebar = () => {
   const [open, setOpen] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
+  // Load position from localStorage or use default
+  const [position, setPosition] = useState(() => {
+    const saved = localStorage.getItem('tasksSidebarPosition');
+    return saved ? JSON.parse(saved) : { x: 16, y: 80 };
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Only left click
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y,
+    });
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging) return;
+    
+    const newX = Math.max(0, Math.min(e.clientX - dragStart.x, window.innerWidth - 200));
+    const newY = Math.max(0, Math.min(e.clientY - dragStart.y, window.innerHeight - 50));
+    
+    const newPosition = { x: newX, y: newY };
+    setPosition(newPosition);
+    localStorage.setItem('tasksSidebarPosition', JSON.stringify(newPosition));
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isDragging]);
+
 
   // Toggle task completion mutation
   const toggleTaskMutation = useMutation({
@@ -109,7 +157,12 @@ export const AllProjectsTasksSidebar = () => {
         <Button
           variant="outline"
           size="sm"
-          className="fixed left-4 top-20 z-50 shadow-lg bg-background/80 backdrop-blur-sm"
+          className="fixed z-50 shadow-lg bg-background/95 backdrop-blur-sm border-2 cursor-grab active:cursor-grabbing"
+          style={{ 
+            left: `${position.x}px`, 
+            top: `${position.y}px`,
+          }}
+          onMouseDown={handleMouseDown}
         >
           <ListTodo className="h-4 w-4 mr-2" />
           Tous les travaux
