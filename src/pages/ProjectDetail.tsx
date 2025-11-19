@@ -671,6 +671,15 @@ const ProjectDetail = () => {
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false); // État pour la vue mensuelle directe
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
+  
+  // Position draggable du bouton sidebar
+  const [sidebarBtnPosition, setSidebarBtnPosition] = useState(() => {
+    const saved = localStorage.getItem('projectSidebarBtnPosition');
+    return saved ? JSON.parse(saved) : null; // null = dans le header, sinon position fixe
+  });
+  const [isSidebarBtnDragging, setIsSidebarBtnDragging] = useState(false);
+  const [sidebarBtnDragStart, setSidebarBtnDragStart] = useState({ x: 0, y: 0 });
+  
   const [editFormData, setEditFormData] = useState({
     nom_projet: "",
     numero_chassis: "",
@@ -746,6 +755,48 @@ const ProjectDetail = () => {
   const handleExpenseAdded = () => {
     setExpenseRefresh((prev) => prev + 1);
   };
+
+  // Gestionnaires pour le bouton sidebar draggable
+  const handleSidebarBtnMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    setIsSidebarBtnDragging(true);
+    const currentPos = sidebarBtnPosition || { x: e.clientX, y: e.clientY };
+    setSidebarBtnDragStart({
+      x: e.clientX - currentPos.x,
+      y: e.clientY - currentPos.y,
+    });
+  };
+
+  const handleSidebarBtnMouseMove = (e: MouseEvent) => {
+    if (!isSidebarBtnDragging) return;
+    
+    const newX = Math.max(0, Math.min(e.clientX - sidebarBtnDragStart.x, window.innerWidth - 60));
+    const newY = Math.max(0, Math.min(e.clientY - sidebarBtnDragStart.y, window.innerHeight - 60));
+    
+    const newPosition = { x: newX, y: newY };
+    setSidebarBtnPosition(newPosition);
+    localStorage.setItem('projectSidebarBtnPosition', JSON.stringify(newPosition));
+  };
+
+  const handleSidebarBtnMouseUp = () => {
+    setIsSidebarBtnDragging(false);
+  };
+
+  useEffect(() => {
+    if (isSidebarBtnDragging) {
+      window.addEventListener('mousemove', handleSidebarBtnMouseMove);
+      window.addEventListener('mouseup', handleSidebarBtnMouseUp);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
+      return () => {
+        window.removeEventListener('mousemove', handleSidebarBtnMouseMove);
+        window.removeEventListener('mouseup', handleSidebarBtnMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isSidebarBtnDragging, sidebarBtnDragStart]);
 
   // Fonction pour fermer la sidebar avec animation
   const handleCloseProjectInfoSidebar = () => {
@@ -919,15 +970,18 @@ const ProjectDetail = () => {
                 <>
                   <AdminMessagesNotification />
                   <UserMenu user={user} />
-                  <Button
-                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    className="h-10 w-10 rounded-full"
-                    size="icon"
-                    variant="outline"
-                    title="Notes et Tâches"
-                  >
-                    <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
-                  </Button>
+                  {!sidebarBtnPosition && (
+                    <Button
+                      onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                      onMouseDown={handleSidebarBtnMouseDown}
+                      className="h-10 w-10 rounded-full cursor-grab active:cursor-grabbing"
+                      size="icon"
+                      variant="outline"
+                      title="Notes et Tâches - Glisser pour détacher"
+                    >
+                      <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
+                    </Button>
+                  )}
                 </>
               )}
             </div>
@@ -1216,6 +1270,24 @@ const ProjectDetail = () => {
       <main className="container mx-auto px-4 py-4">
         {/* Sidebar pour toutes les tâches */}
         <AllProjectsTasksSidebar />
+        
+        {/* Bouton sidebar draggable flottant */}
+        {sidebarBtnPosition && (
+          <Button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            onMouseDown={handleSidebarBtnMouseDown}
+            className="fixed h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing z-50 bg-background/95 backdrop-blur-sm border-2"
+            size="icon"
+            variant="outline"
+            title="Notes et Tâches - Glisser pour déplacer"
+            style={{
+              left: `${sidebarBtnPosition.x}px`,
+              top: `${sidebarBtnPosition.y}px`,
+            }}
+          >
+            <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
+          </Button>
+        )}
         
         <div className="flex gap-6">
           {/* Contenu principal */}
