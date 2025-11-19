@@ -164,10 +164,10 @@ export const AllProjectsTasksSidebar = () => {
 
   return (
     <>
-      {/* Overlay semi-transparent */}
+      {/* Overlay transparent */}
       {open && (
         <div 
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity" 
+          className="fixed inset-0 z-40 transition-opacity" 
           onClick={() => setOpen(false)}
         />
       )}
