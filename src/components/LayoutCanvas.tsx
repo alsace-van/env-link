@@ -1115,16 +1115,34 @@ export const LayoutCanvas = ({
                               📏 {furniture.longueur_mm} × {furniture.largeur_mm} × {furniture.hauteur_mm} mm
                             </p>
                             <p>⚖️ {furniture.poids_kg} kg</p>
+                            {furniture.wood_type && (
+                              <p>🌳 {furniture.wood_type === "okoume" ? "Okoumé" : furniture.wood_type === "bouleau" ? "Bouleau" : "Peuplier"} - {furniture.thickness}mm</p>
+                            )}
+                            {furniture.surface && furniture.surface > 0 && (
+                              <p>📐 Surface: {furniture.surface.toFixed(2)} m²</p>
+                            )}
                           </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleDeleteFromList(furniture.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                            onClick={() => handleContextMenuEdit(furniture.id)}
+                            title="Modifier"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDeleteFromList(furniture.id)}
+                            title="Supprimer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </Card>
