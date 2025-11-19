@@ -16,10 +16,10 @@ interface ProjectSidebarProps {
 export const ProjectSidebar = ({ projectId, isOpen, onClose }: ProjectSidebarProps) => {
   return (
     <>
-      {/* Overlay semi-transparent */}
+      {/* Overlay transparent */}
       {isOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity" 
+          className="fixed inset-0 z-40 transition-opacity" 
           onClick={onClose}
         />
       )}
