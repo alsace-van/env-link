@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,46 @@ import { CheckCircle2, Circle, ListTodo, Eye, EyeOff } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const AllProjectsTasksSidebar = () => {
   const [open, setOpen] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Toggle task completion mutation
+  const toggleTaskMutation = useMutation({
+    mutationFn: async ({ taskId, completed }: { taskId: string; completed: boolean }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { error } = await supabase
+        .from("project_todos")
+        .update({
+          completed: !completed,
+          completed_at: !completed ? new Date().toISOString() : null,
+          completed_by: !completed ? user?.id : null,
+        })
+        .eq("id", taskId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-work-tasks-sidebar"] });
+      toast({ 
+        title: "✓ Statut mis à jour",
+        duration: 2000,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erreur",
+        description: "Impossible de modifier le statut",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Fetch all projects
   const { data: projects } = useQuery({
@@ -139,11 +175,16 @@ export const AllProjectsTasksSidebar = () => {
                         key={task.id}
                         className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors"
                       >
-                        {task.completed ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        ) : (
-                          <Circle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                        )}
+                        <Checkbox
+                          checked={task.completed}
+                          onCheckedChange={() => 
+                            toggleTaskMutation.mutate({ 
+                              taskId: task.id, 
+                              completed: task.completed 
+                            })
+                          }
+                          className="mt-0.5"
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             {task.work_categories && (
