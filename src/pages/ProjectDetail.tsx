@@ -795,7 +795,15 @@ const ProjectDetail = () => {
   };
 
   const handleSidebarBtnMouseUp = () => {
-    setIsSidebarBtnDragging(false);
+    setTimeout(() => {
+      setIsSidebarBtnDragging(false);
+    }, 100);
+  };
+  
+  const handleSidebarBtnClick = () => {
+    if (!isSidebarBtnDragging) {
+      setIsSidebarOpen(!isSidebarOpen);
+    }
   };
 
   useEffect(() => {
@@ -897,7 +905,15 @@ const ProjectDetail = () => {
   };
 
   const handleStatsBtnMouseUp = () => {
-    setIsStatsBtnDragging(false);
+    setTimeout(() => {
+      setIsStatsBtnDragging(false);
+    }, 100);
+  };
+  
+  const handleStatsBtnClick = () => {
+    if (!isStatsBtnDragging) {
+      setIsExpensesSidebarOpen(true);
+    }
   };
 
   useEffect(() => {
@@ -1117,15 +1133,7 @@ const ProjectDetail = () => {
             left: `${projectInfoBtnPosition.x}px`,
             top: `${projectInfoBtnPosition.y}px`,
           }}
-          onClick={(e) => {
-            if (!isProjectInfoBtnDragging) {
-              if (isProjectInfoSidebarOpen) {
-                handleCloseProjectInfoSidebar();
-              } else {
-                setIsProjectInfoSidebarOpen(true);
-              }
-            }
-          }}
+          onClick={handleProjectInfoBtnClick}
           onMouseDown={handleProjectInfoBtnMouseDown}
           title="Informations du Projet - Glisser pour déplacer"
         >
@@ -1399,7 +1407,7 @@ const ProjectDetail = () => {
         {/* Bouton sidebar Notes draggable flottant */}
         {sidebarBtnPosition && (
           <Button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            onClick={handleSidebarBtnClick}
             onMouseDown={handleSidebarBtnMouseDown}
             className="fixed h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing z-50 bg-background/95 backdrop-blur-sm border-2"
             size="icon"
@@ -1417,7 +1425,7 @@ const ProjectDetail = () => {
         {/* Bouton Statistiques draggable flottant */}
         {statsBtnPosition && (
           <Button
-            onClick={() => setIsExpensesSidebarOpen(true)}
+            onClick={handleStatsBtnClick}
             onMouseDown={handleStatsBtnMouseDown}
             className="fixed shadow-lg cursor-grab active:cursor-grabbing z-40 bg-background/95 backdrop-blur-sm border-2"
             variant="default"
