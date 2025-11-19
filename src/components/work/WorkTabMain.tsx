@@ -298,14 +298,15 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
     setShowAddTask(true);
   };
 
-  // Calculate global progress
-  const completedTasks = tasks?.filter((t) => t.completed).length || 0;
-  const totalTasks = tasks?.length || 0;
+  // Calculate global progress (only for work tasks with categories)
+  const workTasks = tasks?.filter((t) => t.category_id !== null) || [];
+  const completedTasks = workTasks.filter((t) => t.completed).length || 0;
+  const totalTasks = workTasks.length || 0;
   const globalProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-  const totalEstimatedHours = tasks?.reduce((sum, t) => sum + (t.estimated_hours || 0), 0) || 0;
-  const totalActualHours = tasks
-    ?.filter((t) => t.completed && t.actual_hours)
+  const totalEstimatedHours = workTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0) || 0;
+  const totalActualHours = workTasks
+    .filter((t) => t.completed && t.actual_hours)
     .reduce((sum, t) => sum + (t.actual_hours || 0), 0) || 0;
 
   if (loadingCategories || loadingTasks) {
