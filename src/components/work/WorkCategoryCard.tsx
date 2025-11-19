@@ -13,6 +13,7 @@ interface WorkCategoryCardProps {
     color: string;
   };
   tasks: Array<any>;
+  showCompleted: boolean;
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
   onEditTime: (taskId: string) => void;
   onDelete: (taskId: string) => void;
@@ -23,6 +24,7 @@ interface WorkCategoryCardProps {
 export const WorkCategoryCard = ({
   category,
   tasks,
+  showCompleted,
   onToggleComplete,
   onEditTime,
   onDelete,
@@ -41,6 +43,9 @@ export const WorkCategoryCard = ({
     .reduce((sum, t) => sum + (t.actual_hours || 0), 0);
 
   const hasTimeData = tasks.some((t) => t.completed && t.actual_hours);
+  
+  // Filter tasks based on showCompleted
+  const visibleTasks = showCompleted ? tasks : tasks.filter((t) => !t.completed);
 
   return (
     <Card className="border-l-4" style={{ borderLeftColor: category.color }}>
@@ -95,12 +100,14 @@ export const WorkCategoryCard = ({
 
       {!collapsed && (
         <CardContent className="space-y-2">
-          {tasks.length === 0 ? (
+          {visibleTasks.length === 0 ? (
             <p className="text-center text-muted-foreground py-4 text-sm">
-              Aucune tâche dans cette catégorie
+              {showCompleted 
+                ? "Aucune tâche dans cette catégorie" 
+                : "Aucune tâche en cours dans cette catégorie"}
             </p>
           ) : (
-            tasks.map((task) => (
+            visibleTasks.map((task) => (
             <WorkTaskItem
               key={task.id}
               task={task}
