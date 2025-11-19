@@ -1417,7 +1417,7 @@ const ProjectDetail = () => {
         <div className="flex gap-6">
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
-            <Tabs defaultValue="photos" className="w-full">
+            <Tabs defaultValue="photos" className="w-full mt-8">
               <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
                 <TabsTrigger value="photos" className="gap-2">
                   <Image className="h-4 w-4 text-purple-600" />
