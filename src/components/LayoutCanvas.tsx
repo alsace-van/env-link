@@ -1173,11 +1173,11 @@ export const LayoutCanvas = ({
                 <Input
                   id="longueur"
                   type="number"
-                  value={furnitureForm.longueur_mm}
+                  value={furnitureForm.longueur_mm || ""}
                   onChange={(e) =>
                     setFurnitureForm((prev) => ({
                       ...prev,
-                      longueur_mm: Number(e.target.value),
+                      longueur_mm: Number(e.target.value) || 0,
                     }))
                   }
                   onKeyDown={(e) => {
@@ -1186,6 +1186,7 @@ export const LayoutCanvas = ({
                     }
                     e.stopPropagation();
                   }}
+                  placeholder="0"
                 />
               </div>
               <div className="space-y-2">
@@ -1193,11 +1194,11 @@ export const LayoutCanvas = ({
                 <Input
                   id="largeur"
                   type="number"
-                  value={furnitureForm.largeur_mm}
+                  value={furnitureForm.largeur_mm || ""}
                   onChange={(e) =>
                     setFurnitureForm((prev) => ({
                       ...prev,
-                      largeur_mm: Number(e.target.value),
+                      largeur_mm: Number(e.target.value) || 0,
                     }))
                   }
                   onKeyDown={(e) => {
@@ -1206,6 +1207,7 @@ export const LayoutCanvas = ({
                     }
                     e.stopPropagation();
                   }}
+                  placeholder="0"
                 />
               </div>
             </div>
@@ -1216,11 +1218,11 @@ export const LayoutCanvas = ({
                 <Input
                   id="hauteur"
                   type="number"
-                  value={furnitureForm.hauteur_mm}
+                  value={furnitureForm.hauteur_mm || ""}
                   onChange={(e) =>
                     setFurnitureForm((prev) => ({
                       ...prev,
-                      hauteur_mm: Number(e.target.value),
+                      hauteur_mm: Number(e.target.value) || 0,
                     }))
                   }
                   onKeyDown={(e) => {
@@ -1229,6 +1231,7 @@ export const LayoutCanvas = ({
                     }
                     e.stopPropagation();
                   }}
+                  placeholder="0"
                 />
               </div>
               <div className="space-y-2">
@@ -1237,11 +1240,11 @@ export const LayoutCanvas = ({
                   id="poids"
                   type="number"
                   step="0.1"
-                  value={furnitureForm.poids_kg}
+                  value={furnitureForm.poids_kg || ""}
                   onChange={(e) =>
                     setFurnitureForm((prev) => ({
                       ...prev,
-                      poids_kg: Number(e.target.value),
+                      poids_kg: Number(e.target.value) || 0,
                     }))
                   }
                   onKeyDown={(e) => {
@@ -1250,6 +1253,7 @@ export const LayoutCanvas = ({
                     }
                     e.stopPropagation();
                   }}
+                  placeholder="0.0"
                 />
               </div>
             </div>
@@ -1259,11 +1263,11 @@ export const LayoutCanvas = ({
               <Input
                 id="hauteur_sol"
                 type="number"
-                value={furnitureForm.hauteur_sol_mm}
+                value={furnitureForm.hauteur_sol_mm || ""}
                 onChange={(e) =>
                   setFurnitureForm((prev) => ({
                     ...prev,
-                    hauteur_sol_mm: Number(e.target.value),
+                    hauteur_sol_mm: Number(e.target.value) || 0,
                   }))
                 }
                 onKeyDown={(e) => {
@@ -1346,9 +1350,9 @@ export const LayoutCanvas = ({
                   id="surface"
                   type="number"
                   step="0.01"
-                  value={furnitureForm.surface}
+                  value={furnitureForm.surface || ""}
                   onChange={(e) => {
-                    const surface = Number(e.target.value);
+                    const surface = Number(e.target.value) || 0;
                     setFurnitureForm((prev) => ({
                       ...prev,
                       surface,
