@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -696,6 +696,11 @@ const ProjectDetail = () => {
   const [isStatsBtnDragging, setIsStatsBtnDragging] = useState(false);
   const [statsBtnDragStart, setStatsBtnDragStart] = useState({ x: 0, y: 0 });
   
+  // Refs pour détecter si un drag a vraiment eu lieu
+  const hasDraggedSidebarBtn = useRef(false);
+  const hasDraggedProjectInfoBtn = useRef(false);
+  const hasDraggedStatsBtn = useRef(false);
+  
   const [editFormData, setEditFormData] = useState({
     nom_projet: "",
     numero_chassis: "",
@@ -775,6 +780,7 @@ const ProjectDetail = () => {
   // Gestionnaires pour le bouton sidebar Notes draggable
   const handleSidebarBtnMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    hasDraggedSidebarBtn.current = false; // Réinitialiser
     setIsSidebarBtnDragging(true);
     const currentPos = sidebarBtnPosition || { x: e.clientX, y: e.clientY };
     setSidebarBtnDragStart({
@@ -785,6 +791,7 @@ const ProjectDetail = () => {
 
   const handleSidebarBtnMouseMove = (e: MouseEvent) => {
     if (!isSidebarBtnDragging) return;
+    hasDraggedSidebarBtn.current = true; // Un mouvement a eu lieu
     
     const newX = Math.max(0, Math.min(e.clientX - sidebarBtnDragStart.x, window.innerWidth - 60));
     const newY = Math.max(0, Math.min(e.clientY - sidebarBtnDragStart.y, window.innerHeight - 60));
@@ -796,6 +803,14 @@ const ProjectDetail = () => {
 
   const handleSidebarBtnMouseUp = () => {
     setIsSidebarBtnDragging(false);
+  };
+  
+  const handleSidebarBtnClick = () => {
+    if (hasDraggedSidebarBtn.current) {
+      hasDraggedSidebarBtn.current = false;
+      return; // Ne pas ouvrir la sidebar si on vient de drag
+    }
+    setIsSidebarOpen(true);
   };
 
   useEffect(() => {
@@ -817,7 +832,8 @@ const ProjectDetail = () => {
   // Gestionnaires pour le bouton Informations Projet draggable
   const handleProjectInfoBtnMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    e.stopPropagation(); // Empêcher l'ouverture de la sidebar
+    e.stopPropagation();
+    hasDraggedProjectInfoBtn.current = false; // Réinitialiser
     setIsProjectInfoBtnDragging(true);
     setProjectInfoBtnDragStart({
       x: e.clientX - projectInfoBtnPosition.x,
@@ -827,6 +843,7 @@ const ProjectDetail = () => {
 
   const handleProjectInfoBtnMouseMove = (e: MouseEvent) => {
     if (!isProjectInfoBtnDragging) return;
+    hasDraggedProjectInfoBtn.current = true; // Un mouvement a eu lieu
     
     const newX = Math.max(0, Math.min(e.clientX - projectInfoBtnDragStart.x, window.innerWidth - 60));
     const newY = Math.max(0, Math.min(e.clientY - projectInfoBtnDragStart.y, window.innerHeight - 60));
@@ -838,6 +855,14 @@ const ProjectDetail = () => {
 
   const handleProjectInfoBtnMouseUp = () => {
     setIsProjectInfoBtnDragging(false);
+  };
+  
+  const handleProjectInfoBtnClick = () => {
+    if (hasDraggedProjectInfoBtn.current) {
+      hasDraggedProjectInfoBtn.current = false;
+      return; // Ne pas ouvrir la sidebar si on vient de drag
+    }
+    setIsProjectInfoSidebarOpen(true);
   };
 
   useEffect(() => {
@@ -859,6 +884,7 @@ const ProjectDetail = () => {
   // Gestionnaires pour le bouton Statistiques draggable
   const handleStatsBtnMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    hasDraggedStatsBtn.current = false; // Réinitialiser
     setIsStatsBtnDragging(true);
     const currentPos = statsBtnPosition || { x: e.clientX, y: e.clientY };
     setStatsBtnDragStart({
@@ -869,6 +895,7 @@ const ProjectDetail = () => {
 
   const handleStatsBtnMouseMove = (e: MouseEvent) => {
     if (!isStatsBtnDragging) return;
+    hasDraggedStatsBtn.current = true; // Un mouvement a eu lieu
     
     const newX = Math.max(0, Math.min(e.clientX - statsBtnDragStart.x, window.innerWidth - 200));
     const newY = Math.max(0, Math.min(e.clientY - statsBtnDragStart.y, window.innerHeight - 60));
@@ -880,6 +907,14 @@ const ProjectDetail = () => {
 
   const handleStatsBtnMouseUp = () => {
     setIsStatsBtnDragging(false);
+  };
+  
+  const handleStatsBtnClick = () => {
+    if (hasDraggedStatsBtn.current) {
+      hasDraggedStatsBtn.current = false;
+      return; // Ne pas ouvrir la sidebar si on vient de drag
+    }
+    setIsExpensesSidebarOpen(true);
   };
 
   useEffect(() => {
@@ -1099,15 +1134,7 @@ const ProjectDetail = () => {
             left: `${projectInfoBtnPosition.x}px`,
             top: `${projectInfoBtnPosition.y}px`,
           }}
-          onClick={(e) => {
-            if (!isProjectInfoBtnDragging) {
-              if (isProjectInfoSidebarOpen) {
-                handleCloseProjectInfoSidebar();
-              } else {
-                setIsProjectInfoSidebarOpen(true);
-              }
-            }
-          }}
+          onClick={handleProjectInfoBtnClick}
           onMouseDown={handleProjectInfoBtnMouseDown}
           title="Informations du Projet - Glisser pour déplacer"
         >
@@ -1381,7 +1408,7 @@ const ProjectDetail = () => {
         {/* Bouton sidebar Notes draggable flottant */}
         {sidebarBtnPosition && (
           <Button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            onClick={handleSidebarBtnClick}
             onMouseDown={handleSidebarBtnMouseDown}
             className="fixed h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing z-50 bg-background/95 backdrop-blur-sm border-2"
             size="icon"
@@ -1399,7 +1426,7 @@ const ProjectDetail = () => {
         {/* Bouton Statistiques draggable flottant */}
         {statsBtnPosition && (
           <Button
-            onClick={() => setIsExpensesSidebarOpen(true)}
+            onClick={handleStatsBtnClick}
             onMouseDown={handleStatsBtnMouseDown}
             className="fixed shadow-lg cursor-grab active:cursor-grabbing z-40 bg-background/95 backdrop-blur-sm border-2"
             variant="default"
@@ -1472,7 +1499,7 @@ const ProjectDetail = () => {
                     <h2 className="text-2xl font-bold">Dépenses</h2>
                     {!statsBtnPosition && (
                       <Button 
-                        onClick={() => setIsExpensesSidebarOpen(true)} 
+                        onClick={handleStatsBtnClick} 
                         onMouseDown={handleStatsBtnMouseDown}
                         className="gap-2 cursor-grab active:cursor-grabbing" 
                         variant="default"
