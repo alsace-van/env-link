@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, Plus, Search } from "lucide-react";
+import { Camera, Plus, Search, ArrowLeft } from "lucide-react";
 import { PhotoTemplateCard } from "@/components/photo-templates/PhotoTemplateCard";
 import { PhotoTemplateCreationWizard } from "@/components/photo-templates/PhotoTemplateCreationWizard";
 import type { PhotoTemplate } from "@/types/photo-templates";
 
 export default function PhotoTemplates() {
   const { id: projectId } = useParams();
+  const navigate = useNavigate();
   const [showCreationWizard, setShowCreationWizard] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -35,6 +36,16 @@ export default function PhotoTemplates() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
+      {/* Bouton retour */}
+      <Button 
+        variant="ghost" 
+        size="sm" 
+        onClick={() => navigate(`/project/${projectId}`)}
+      >
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Retour au projet
+      </Button>
+
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>

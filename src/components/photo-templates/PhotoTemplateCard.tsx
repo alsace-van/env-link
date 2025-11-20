@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,19 @@ import { Eye, Download, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useNavigate, useParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PhotoTemplateCardProps {
   template: any;
@@ -13,6 +27,30 @@ interface PhotoTemplateCardProps {
 export function PhotoTemplateCard({ template }: PhotoTemplateCardProps) {
   const navigate = useNavigate();
   const { id: projectId } = useParams();
+  const queryClient = useQueryClient();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const { error } = await (supabase as any)
+        .from("photo_templates")
+        .delete()
+        .eq("id", template.id);
+
+      if (error) throw error;
+
+      toast.success("Gabarit supprimé avec succès");
+      queryClient.invalidateQueries({ queryKey: ["photo-templates"] });
+      setShowDeleteDialog(false);
+    } catch (error: any) {
+      console.error("Erreur suppression:", error);
+      toast.error(error.message || "Erreur lors de la suppression");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -71,11 +109,36 @@ export function PhotoTemplateCard({ template }: PhotoTemplateCardProps) {
           <Button size="sm" variant="outline">
             <Download className="h-4 w-4" />
           </Button>
-          <Button size="sm" variant="outline">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => setShowDeleteDialog(true)}
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardFooter>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer le gabarit ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer "{template.name}" ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Suppression..." : "Supprimer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
