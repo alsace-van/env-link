@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Plus, Clock, TrendingUp, Settings, Trash2, AlertTriangle } from "lucide-react";
+import { Search, Plus, Clock, TrendingUp, Settings, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateTemplateDialog } from "./CreateTemplateDialog";
 import { CategoryManagementDialog } from "./CategoryManagementDialog";
@@ -36,6 +36,8 @@ export const TaskTemplatesLibrary = ({
   const [showManageCategories, setShowManageCategories] = useState(false);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [duplicatesToDelete, setDuplicatesToDelete] = useState<string[]>([]);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const { data: categories, isLoading: loadingCategories } = useQuery({
     queryKey: ["work-categories", "templates"],
@@ -109,31 +111,6 @@ export const TaskTemplatesLibrary = ({
 
   const duplicates = findDuplicates();
 
-  // Mutation pour supprimer les doublons
-  const deleteDuplicatesMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      const { error } = await supabase
-        .from("task_templates")
-        .delete()
-        .in("id", ids);
-      
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["task-templates"] });
-      toast({ title: "✓ Doublons supprimés avec succès" });
-      setShowDuplicates(false);
-      setDuplicatesToDelete([]);
-    },
-    onError: () => {
-      toast({
-        title: "Erreur",
-        description: "Impossible de supprimer les doublons",
-        variant: "destructive",
-      });
-    },
-  });
-
   // Create template mutation
   const createTemplateMutation = useMutation({
     mutationFn: async (data: {
@@ -169,50 +146,160 @@ export const TaskTemplatesLibrary = ({
     },
   });
 
-  const renderTemplateCard = (template: any) => (
-    <Card key={template.id} className="hover:border-primary transition-colors">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-base">
-              {template.work_categories?.icon} {template.title}
-            </CardTitle>
-            {template.description && (
-              <CardDescription className="text-xs">
-                {template.description}
-              </CardDescription>
+  // Mutation pour supprimer les doublons
+  const deleteDuplicatesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase
+        .from("task_templates")
+        .delete()
+        .in("id", ids);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-templates"] });
+      toast({ title: "✓ Doublons supprimés avec succès" });
+      setShowDuplicates(false);
+      setDuplicatesToDelete([]);
+    },
+    onError: () => {
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer les doublons",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation pour modifier un template
+  const updateTemplateMutation = useMutation({
+    mutationFn: async (data: {
+      id: string;
+      title: string;
+      description?: string;
+      categoryId: string;
+      estimatedHours?: number;
+    }) => {
+      const { error } = await supabase
+        .from("task_templates")
+        .update({
+          title: data.title,
+          description: data.description,
+          category_id: data.categoryId,
+          estimated_hours: data.estimatedHours,
+        })
+        .eq("id", data.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-templates"] });
+      toast({ title: "✓ Template modifié avec succès" });
+      setEditingTemplate(null);
+    },
+    onError: () => {
+      toast({
+        title: "Erreur",
+        description: "Impossible de modifier le template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation pour supprimer un template
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("task_templates")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-templates"] });
+      toast({ title: "✓ Template supprimé avec succès" });
+      setDeleteConfirm(null);
+    },
+    onError: () => {
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer le template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const renderTemplateCard = (template: any) => {
+    const canEdit = !template.is_global; // Seuls les templates utilisateur peuvent être modifiés
+
+    return (
+      <Card key={template.id} className="hover:border-primary transition-colors">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="space-y-1 flex-1">
+              <CardTitle className="text-base">
+                {template.work_categories?.icon} {template.title}
+              </CardTitle>
+              {template.description && (
+                <CardDescription className="text-xs">
+                  {template.description}
+                </CardDescription>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              {canEdit && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditingTemplate(template)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDeleteConfirm(template.id)}
+                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+              <Button
+                size="sm"
+                onClick={() => {
+                  onUseTemplate(template.id);
+                  onOpenChange(false);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Utiliser
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {template.estimated_hours && (
+              <Badge variant="secondary" className="gap-1">
+                <Clock className="h-3 w-3" />
+                {template.estimated_hours}h
+              </Badge>
+            )}
+            {template.usage_count > 0 && (
+              <Badge variant="outline" className="gap-1">
+                <TrendingUp className="h-3 w-3" />
+                {template.usage_count}x
+              </Badge>
             )}
           </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              onUseTemplate(template.id);
-              onOpenChange(false);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            Utiliser
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {template.estimated_hours && (
-            <Badge variant="secondary" className="gap-1">
-              <Clock className="h-3 w-3" />
-              {template.estimated_hours}h
-            </Badge>
-          )}
-          {template.usage_count > 0 && (
-            <Badge variant="outline" className="gap-1">
-              <TrendingUp className="h-3 w-3" />
-              {template.usage_count}x
-            </Badge>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -331,16 +418,55 @@ export const TaskTemplatesLibrary = ({
       </DialogContent>
 
       <CreateTemplateDialog
-        open={showCreateTemplate}
-        onOpenChange={setShowCreateTemplate}
+        open={showCreateTemplate || editingTemplate !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowCreateTemplate(false);
+            setEditingTemplate(null);
+          }
+        }}
         categories={categories || []}
-        onSubmit={(data) => createTemplateMutation.mutate(data)}
+        onSubmit={(data) => {
+          if (editingTemplate) {
+            updateTemplateMutation.mutate({ ...data, id: editingTemplate.id });
+          } else {
+            createTemplateMutation.mutate(data);
+          }
+        }}
+        initialData={editingTemplate ? {
+          title: editingTemplate.title,
+          description: editingTemplate.description,
+          categoryId: editingTemplate.category_id,
+          estimatedHours: editingTemplate.estimated_hours,
+          isGlobal: editingTemplate.is_global,
+        } : undefined}
       />
 
       <CategoryManagementDialog
         open={showManageCategories}
         onOpenChange={setShowManageCategories}
       />
+
+      {/* Confirmation de suppression */}
+      <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer ce template ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirm && deleteTemplateMutation.mutate(deleteConfirm)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog pour gérer les doublons */}
       <AlertDialog open={showDuplicates} onOpenChange={setShowDuplicates}>

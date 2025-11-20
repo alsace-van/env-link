@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,13 @@ interface CreateTemplateDialogProps {
     isGlobal: boolean;
   }) => void;
   isAdmin?: boolean;
+  initialData?: {
+    title: string;
+    description?: string;
+    categoryId: string;
+    estimatedHours?: number;
+    isGlobal: boolean;
+  };
 }
 
 export const CreateTemplateDialog = ({ 
@@ -26,13 +33,30 @@ export const CreateTemplateDialog = ({
   onOpenChange, 
   categories, 
   onSubmit,
-  isAdmin = false 
+  isAdmin = false,
+  initialData
 }: CreateTemplateDialogProps) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
   const [isGlobal, setIsGlobal] = useState(false);
+
+  useEffect(() => {
+    if (initialData) {
+      setTitle(initialData.title);
+      setDescription(initialData.description || "");
+      setCategoryId(initialData.categoryId);
+      setEstimatedHours(initialData.estimatedHours?.toString() || "");
+      setIsGlobal(initialData.isGlobal);
+    } else {
+      setTitle("");
+      setDescription("");
+      setCategoryId("");
+      setEstimatedHours("");
+      setIsGlobal(false);
+    }
+  }, [initialData, open]);
 
   const handleSubmit = () => {
     if (title.trim() && categoryId) {
@@ -56,7 +80,7 @@ export const CreateTemplateDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>💾 Nouveau template de tâche</DialogTitle>
+          <DialogTitle>{initialData ? "✏️ Modifier le template" : "💾 Nouveau template de tâche"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -132,7 +156,7 @@ export const CreateTemplateDialog = ({
             Annuler
           </Button>
           <Button onClick={handleSubmit} disabled={!title.trim() || !categoryId}>
-            ✓ Créer le template
+            {initialData ? "✓ Modifier" : "✓ Créer le template"}
           </Button>
         </DialogFooter>
       </DialogContent>
