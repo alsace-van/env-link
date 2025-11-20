@@ -23,6 +23,7 @@ export function PhotoTemplateCreationWizard({
   const [markersData, setMarkersData] = useState<any>(null);
   const [correctedImage, setCorrectedImage] = useState<string | null>(null);
   const [calibrationData, setCalibrationData] = useState<any>(null);
+  const [rectifiedImage, setRectifiedImage] = useState<string | null>(null);
 
   const steps = [
     { value: "upload", label: "1. Upload" },
@@ -38,6 +39,7 @@ export function PhotoTemplateCreationWizard({
     setMarkersData(null);
     setCorrectedImage(null);
     setCalibrationData(null);
+    setRectifiedImage(null);
   };
 
   return (
@@ -98,6 +100,7 @@ export function PhotoTemplateCreationWizard({
               markersData={markersData}
               onCalibrationComplete={(data) => {
                 setCalibrationData(data);
+                setRectifiedImage(data.rectifiedImageUrl);
                 setCurrentStep("info");
               }}
               onBack={() => setCurrentStep("correction")}
@@ -108,7 +111,7 @@ export function PhotoTemplateCreationWizard({
             <TemplateInfoStep
               projectId={projectId}
               originalImageUrl={uploadedImage!}
-              correctedImageUrl={correctedImage!}
+              correctedImageUrl={rectifiedImage || correctedImage!}
               markersData={markersData}
               calibrationData={calibrationData}
               onSaved={() => {
