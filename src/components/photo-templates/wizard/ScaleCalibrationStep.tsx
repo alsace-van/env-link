@@ -177,9 +177,9 @@ export function ScaleCalibrationStep({
     return avgScale;
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     const avgScale = calculateAverageScale();
-    if (!avgScale) return;
+    if (!avgScale || !imgRef.current || !canvasRef.current) return;
 
     // Calculer la précision estimée basée sur l'écart type
     const variance = calibrationPairs.reduce((sum, pair) => {
@@ -189,6 +189,55 @@ export function ScaleCalibrationStep({
     const stdDev = Math.sqrt(variance);
     const accuracyMm = stdDev / avgScale;
 
+    // Créer l'image rectifiée
+    const rectifiedCanvas = document.createElement('canvas');
+    const img = imgRef.current;
+    
+    // Calculer les nouvelles dimensions en millimètres réels
+    const widthMm = img.width / avgScale;
+    const heightMm = img.height / avgScale;
+    
+    // Pour l'affichage, on garde une résolution raisonnable (par ex: 10px/mm)
+    const displayScale = 10; // 10 pixels par mm
+    rectifiedCanvas.width = Math.round(widthMm * displayScale);
+    rectifiedCanvas.height = Math.round(heightMm * displayScale);
+    
+    const ctx = rectifiedCanvas.getContext('2d');
+    if (ctx) {
+      // Dessiner l'image originale à l'échelle correcte
+      ctx.drawImage(img, 0, 0, rectifiedCanvas.width, rectifiedCanvas.height);
+      
+      // Ajouter une grille de référence tous les 10mm
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+      ctx.lineWidth = 1;
+      
+      // Grilles verticales tous les 10mm
+      for (let x = 0; x <= widthMm; x += 10) {
+        const px = x * displayScale;
+        ctx.beginPath();
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, rectifiedCanvas.height);
+        ctx.stroke();
+      }
+      
+      // Grilles horizontales tous les 10mm
+      for (let y = 0; y <= heightMm; y += 10) {
+        const py = y * displayScale;
+        ctx.beginPath();
+        ctx.moveTo(0, py);
+        ctx.lineTo(rectifiedCanvas.width, py);
+        ctx.stroke();
+      }
+      
+      // Ajouter des annotations pour les dimensions
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillText(`${widthMm.toFixed(1)} mm`, 10, 30);
+      ctx.fillText(`${heightMm.toFixed(1)} mm`, 10, rectifiedCanvas.height - 10);
+    }
+    
+    const rectifiedImageUrl = rectifiedCanvas.toDataURL();
+
     onCalibrationComplete({
       scaleFactor: avgScale,
       knownDistanceMm: parseFloat(knownDistance),
@@ -197,6 +246,11 @@ export function ScaleCalibrationStep({
       calibrationPoints: currentPoints,
       calibrationPairs: calibrationPairs,
       numberOfMeasurements: calibrationPairs.length,
+      rectifiedImageUrl: rectifiedImageUrl,
+      realDimensions: {
+        widthMm: widthMm,
+        heightMm: heightMm,
+      },
     });
   };
 
@@ -309,7 +363,7 @@ export function ScaleCalibrationStep({
         </Button>
       )}
 
-      {avgScale && (
+      {avgScale && imgRef.current && (
         <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-500 rounded-lg space-y-2">
           <p className="font-medium text-green-700 dark:text-green-400">
             ✓ Calibration réussie ({calibrationPairs.length} mesure{calibrationPairs.length > 1 ? 's' : ''})
@@ -324,6 +378,12 @@ export function ScaleCalibrationStep({
               <Badge variant="outline">
                 ±{calibrationPairs.length > 1 ? '0.3' : '0.5'} mm
               </Badge>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Dimensions réelles</p>
+              <p className="font-mono">
+                {(imgRef.current.width / avgScale).toFixed(1)} × {(imgRef.current.height / avgScale).toFixed(1)} mm
+              </p>
             </div>
           </div>
         </div>
