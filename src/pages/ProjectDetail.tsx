@@ -1099,15 +1099,6 @@ const ProjectDetail = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate(`/project/${project.id}/templates`)}
-                title="Gabarits & Traçage CNC"
-              >
-                <Ruler className="h-4 w-4 mr-2" />
-                <span className="hidden lg:inline">Gabarits</span>
-              </Button>
               <Button variant="default" size="sm" onClick={() => navigate("/shop")}>
                 <ShoppingBag className="h-4 w-4 mr-2" />
                 Boutique
@@ -1569,11 +1560,15 @@ const ProjectDetail = () => {
 
               <TabsContent value="technical" className="mt-6">
                 <Tabs defaultValue="electrical" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-3 lg:grid-cols-5">
                     <TabsTrigger value="electrical">Schéma électrique</TabsTrigger>
                     <TabsTrigger value="cable">Section de câble</TabsTrigger>
                     <TabsTrigger value="energy">Bilan énergétique</TabsTrigger>
                     <TabsTrigger value="layout">Aménagement</TabsTrigger>
+                    <TabsTrigger value="templates">
+                      <Ruler className="h-4 w-4 mr-2" />
+                      Gabarits CNC
+                    </TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="electrical" className="mt-6">
@@ -1619,8 +1614,32 @@ const ProjectDetail = () => {
                     </Tabs>
                   </TabsContent>
                 </Tabs>
-              </TabsContent>
-            </Tabs>
+                  </TabsContent>
+
+                  <TabsContent value="templates" className="mt-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Camera className="h-5 w-5" />
+                          Gabarits & Traçage CNC
+                        </CardTitle>
+                        <CardDescription>
+                          Créez des gabarits précis à partir de photos avec correction automatique de perspective et distorsion
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button
+                          size="lg"
+                          onClick={() => navigate(`/project/${project.id}/templates`)}
+                          className="w-full"
+                        >
+                          <Ruler className="h-5 w-5 mr-2" />
+                          Accéder aux gabarits
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
           </div>
         </div>
       </main>
