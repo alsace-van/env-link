@@ -175,9 +175,10 @@ export function TemplateDrawingCanvas({
               fabricCanvas.add(splinePath);
             }
             
-            // Nettoyer les marqueurs temporaires
+            // Nettoyer les marqueurs temporaires (sans toucher à l'image de fond)
+            const backgroundImg = fabricCanvas.backgroundImage;
             fabricCanvas.getObjects().forEach((obj) => {
-              if (obj instanceof Circle && obj.radius === 4) {
+              if (obj instanceof Circle && obj.radius === 4 && obj !== backgroundImg) {
                 fabricCanvas.remove(obj);
               }
             });
@@ -219,8 +220,10 @@ export function TemplateDrawingCanvas({
             });
             fabricCanvas.add(filletPath);
             
+            // Nettoyer les marqueurs temporaires (sans toucher à l'image de fond)
+            const backgroundImg = fabricCanvas.backgroundImage;
             fabricCanvas.getObjects().forEach((obj) => {
-              if (obj instanceof Circle && obj.radius === 4) {
+              if (obj instanceof Circle && obj.radius === 4 && obj !== backgroundImg) {
                 fabricCanvas.remove(obj);
               }
             });
@@ -381,18 +384,24 @@ export function TemplateDrawingCanvas({
 
   const saveDrawings = () => {
     if (!fabricCanvas) return;
+    // Sauvegarder seulement les objets dessinés, pas l'image de fond
     const json = fabricCanvas.toJSON();
     onDrawingsChanged?.(json);
+    // S'assurer que l'image de fond est toujours présente
+    fabricCanvas.renderAll();
   };
 
   const handleClear = () => {
     if (!fabricCanvas) return;
+    const backgroundImg = fabricCanvas.backgroundImage;
     const objects = fabricCanvas.getObjects();
     objects.forEach((obj) => {
-      if (obj !== fabricCanvas.backgroundImage) {
-        fabricCanvas.remove(obj);
-      }
+      fabricCanvas.remove(obj);
     });
+    // Restaurer l'image de fond
+    if (backgroundImg) {
+      fabricCanvas.backgroundImage = backgroundImg;
+    }
     fabricCanvas.renderAll();
     saveDrawings();
     toast.success("Dessins effacés");
