@@ -1,11 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, User, Calendar, BookOpen, AlertCircle, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Clock, User, Calendar, BookOpen, AlertCircle, Trash2, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { CompleteTaskDialog } from "./CompleteTaskDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface Subtask {
+  id: string;
+  title: string;
+  completed: boolean;
+  display_order: number;
+}
 
 interface WorkTaskItemProps {
   task: {
