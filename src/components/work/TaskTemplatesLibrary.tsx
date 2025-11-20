@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Plus, Clock, TrendingUp, Settings } from "lucide-react";
+import { Search, Plus, Clock, TrendingUp, Settings, Trash2, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateTemplateDialog } from "./CreateTemplateDialog";
 import { CategoryManagementDialog } from "./CategoryManagementDialog";
 import { useToast } from "@/hooks/use-toast";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface TaskTemplatesLibraryProps {
   open: boolean;
@@ -33,6 +34,8 @@ export const TaskTemplatesLibrary = ({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCreateTemplate, setShowCreateTemplate] = useState(false);
   const [showManageCategories, setShowManageCategories] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [duplicatesToDelete, setDuplicatesToDelete] = useState<string[]>([]);
 
   const { data: categories, isLoading: loadingCategories } = useQuery({
     queryKey: ["work-categories", "templates"],
@@ -78,6 +81,58 @@ export const TaskTemplatesLibrary = ({
 
   const userTemplates = filteredTemplates?.filter((t: any) => !t.is_global);
   const globalTemplates = filteredTemplates?.filter((t: any) => t.is_global);
+
+  // Fonction pour détecter les doublons
+  const findDuplicates = () => {
+    if (!templates) return [];
+    
+    const duplicateGroups: any[] = [];
+    const seen = new Map();
+    
+    templates.forEach((template: any) => {
+      const key = `${template.title.toLowerCase().trim()}-${template.category_id}`;
+      if (seen.has(key)) {
+        seen.get(key).push(template);
+      } else {
+        seen.set(key, [template]);
+      }
+    });
+    
+    seen.forEach((group) => {
+      if (group.length > 1) {
+        duplicateGroups.push(group);
+      }
+    });
+    
+    return duplicateGroups;
+  };
+
+  const duplicates = findDuplicates();
+
+  // Mutation pour supprimer les doublons
+  const deleteDuplicatesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase
+        .from("task_templates")
+        .delete()
+        .in("id", ids);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task-templates"] });
+      toast({ title: "✓ Doublons supprimés avec succès" });
+      setShowDuplicates(false);
+      setDuplicatesToDelete([]);
+    },
+    onError: () => {
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer les doublons",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Create template mutation
   const createTemplateMutation = useMutation({
@@ -179,6 +234,16 @@ export const TaskTemplatesLibrary = ({
                 className="pl-9"
               />
             </div>
+            {duplicates.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setShowDuplicates(true)}
+                className="border-orange-500 text-orange-500 hover:bg-orange-50"
+              >
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                {duplicates.length} doublon{duplicates.length > 1 ? 's' : ''}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => setShowManageCategories(true)}
@@ -276,6 +341,85 @@ export const TaskTemplatesLibrary = ({
         open={showManageCategories}
         onOpenChange={setShowManageCategories}
       />
+
+      {/* Dialog pour gérer les doublons */}
+      <AlertDialog open={showDuplicates} onOpenChange={setShowDuplicates}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              Doublons détectés
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Les tâches suivantes ont le même nom et la même catégorie. Sélectionnez celles que vous souhaitez supprimer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <ScrollArea className="max-h-[400px] pr-4">
+            <div className="space-y-4">
+              {duplicates.map((group, groupIndex) => (
+                <div key={groupIndex} className="border rounded-lg p-4 space-y-2">
+                  <div className="font-medium text-sm flex items-center gap-2">
+                    {group[0].work_categories?.icon} {group[0].title}
+                  </div>
+                  <div className="space-y-2">
+                    {group.map((template: any) => (
+                      <div
+                        key={template.id}
+                        className="flex items-center justify-between p-2 bg-muted/50 rounded"
+                      >
+                        <div className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={duplicatesToDelete.includes(template.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setDuplicatesToDelete([...duplicatesToDelete, template.id]);
+                              } else {
+                                setDuplicatesToDelete(
+                                  duplicatesToDelete.filter((id) => id !== template.id)
+                                );
+                              }
+                            }}
+                            className="h-4 w-4"
+                          />
+                          <span className="text-muted-foreground">
+                            {template.is_global ? "Globale" : "Utilisateur"}
+                          </span>
+                          {template.description && (
+                            <span className="text-xs text-muted-foreground">
+                              - {template.description}
+                            </span>
+                          )}
+                          {template.usage_count > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              {template.usage_count}x utilisé
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicatesToDelete([])}>
+              Annuler
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteDuplicatesMutation.mutate(duplicatesToDelete)}
+              disabled={duplicatesToDelete.length === 0}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Supprimer ({duplicatesToDelete.length})
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };
