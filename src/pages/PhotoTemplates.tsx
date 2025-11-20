@@ -7,23 +7,24 @@ import { Input } from "@/components/ui/input";
 import { Camera, Plus, Search } from "lucide-react";
 import { PhotoTemplateCard } from "@/components/photo-templates/PhotoTemplateCard";
 import { PhotoTemplateCreationWizard } from "@/components/photo-templates/PhotoTemplateCreationWizard";
+import type { PhotoTemplate } from "@/types/photo-templates";
 
 export default function PhotoTemplates() {
   const { id: projectId } = useParams();
   const [showCreationWizard, setShowCreationWizard] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: templates, isLoading } = useQuery({
+  const { data: templates, isLoading } = useQuery<PhotoTemplate[]>({
     queryKey: ["photo-templates", projectId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("photo_templates")
         .select("*")
         .eq("project_id", projectId)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data;
+      return data as PhotoTemplate[];
     },
     enabled: !!projectId,
   });

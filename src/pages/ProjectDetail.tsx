@@ -38,6 +38,8 @@ import {
   X,
   BarChart3,
   ClipboardList,
+  Camera,
+  Ruler,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -1097,6 +1099,15 @@ const ProjectDetail = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/project/${project.id}/templates`)}
+                title="Gabarits & Traçage CNC"
+              >
+                <Ruler className="h-4 w-4 mr-2" />
+                <span className="hidden lg:inline">Gabarits</span>
+              </Button>
               <Button variant="default" size="sm" onClick={() => navigate("/shop")}>
                 <ShoppingBag className="h-4 w-4 mr-2" />
                 Boutique
