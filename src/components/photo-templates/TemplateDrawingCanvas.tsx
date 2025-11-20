@@ -126,7 +126,7 @@ export function TemplateDrawingCanvas({
           evented: false,
         });
         canvas.add(line);
-        line.sendToBack();
+        canvas.sendObjectToBack(line);
         gridLinesRef.current.push(line);
       }
 
@@ -140,7 +140,7 @@ export function TemplateDrawingCanvas({
           evented: false,
         });
         canvas.add(line);
-        line.sendToBack();
+        canvas.sendObjectToBack(line);
         gridLinesRef.current.push(line);
       }
 
@@ -329,7 +329,7 @@ export function TemplateDrawingCanvas({
         originY: "center",
       });
       fabricCanvas.add(marker);
-      marker.bringToFront();
+      fabricCanvas.bringObjectToFront(marker);
       return marker;
     };
 
@@ -877,7 +877,7 @@ export function TemplateDrawingCanvas({
               }}
               title={tool.label}
             >
-              <tool.icon className="h-4 w-4" style={tool.style} />
+              <tool.icon className="h-4 w-4" style={"style" in tool ? tool.style : undefined} />
             </Button>
           ))}
         </div>
