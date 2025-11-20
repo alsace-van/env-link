@@ -28,6 +28,76 @@ interface WorkTaskItemProps {
 
 export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: WorkTaskItemProps) => {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [showSubtaskInput, setShowSubtaskInput] = useState(false);
+
+  useEffect(() => {
+    loadSubtasks();
+  }, [task.id]);
+
+  const loadSubtasks = async () => {
+    const { data, error } = await supabase
+      .from("project_todo_subtasks")
+      .select("*")
+      .eq("todo_id", task.id)
+      .order("display_order", { ascending: true });
+
+    if (error) {
+      console.error("Error loading subtasks:", error);
+    } else {
+      setSubtasks(data || []);
+    }
+  };
+
+  const addSubtask = async () => {
+    if (!newSubtaskTitle.trim()) return;
+
+    const { error } = await supabase
+      .from("project_todo_subtasks")
+      .insert({
+        todo_id: task.id,
+        title: newSubtaskTitle,
+        display_order: subtasks.length,
+      });
+
+    if (error) {
+      toast.error("Erreur lors de l'ajout de la sous-tâche");
+    } else {
+      setNewSubtaskTitle("");
+      setShowSubtaskInput(false);
+      loadSubtasks();
+    }
+  };
+
+  const toggleSubtask = async (subtaskId: string, completed: boolean) => {
+    const { error } = await supabase
+      .from("project_todo_subtasks")
+      .update({ completed: !completed })
+      .eq("id", subtaskId);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+    } else {
+      loadSubtasks();
+    }
+  };
+
+  const deleteSubtask = async (subtaskId: string) => {
+    const { error } = await supabase
+      .from("project_todo_subtasks")
+      .delete()
+      .eq("id", subtaskId);
+
+    if (error) {
+      toast.error("Erreur lors de la suppression");
+    } else {
+      loadSubtasks();
+    }
+  };
+
+  const completedSubtasks = subtasks.filter(s => s.completed).length;
+  const totalSubtasks = subtasks.length;
 
   const handleCheckChange = (checked: boolean) => {
     if (checked && !task.completed) {
