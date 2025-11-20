@@ -4,11 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Download, Edit, Trash2, Ruler, Camera } from "lucide-react";
+import { ArrowLeft, Download, Edit, Trash2, Ruler, Camera, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import type { PhotoTemplate } from "@/types/photo-templates";
+import { TemplateDrawingCanvas } from "@/components/photo-templates/TemplateDrawingCanvas";
+import { exportToDXF, exportToSVG, exportToPDF, downloadBlob } from "@/lib/exportTemplateUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,6 +29,8 @@ export default function PhotoTemplateDetail() {
   const [loading, setLoading] = useState(true);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDrawingTools, setShowDrawingTools] = useState(false);
+  const [drawingsData, setDrawingsData] = useState<any>(null);
 
   useEffect(() => {
     loadTemplate();
@@ -42,6 +46,7 @@ export default function PhotoTemplateDetail() {
 
       if (error) throw error;
       setTemplate(data);
+      setDrawingsData(data.drawings_data);
     } catch (error: any) {
       console.error("Erreur chargement:", error);
       toast.error("Impossible de charger le gabarit");
@@ -68,6 +73,74 @@ export default function PhotoTemplateDetail() {
       toast.error(error.message || "Erreur lors de la suppression");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleSaveDrawings = async (newDrawingsData: any) => {
+    setDrawingsData(newDrawingsData);
+    
+    try {
+      const { error } = await (supabase as any)
+        .from("photo_templates")
+        .update({ drawings_data: newDrawingsData })
+        .eq("id", templateId);
+      
+      if (error) throw error;
+      toast.success("Dessins sauvegardés");
+    } catch (error: any) {
+      console.error("Erreur sauvegarde:", error);
+      toast.error("Erreur lors de la sauvegarde des dessins");
+    }
+  };
+
+  const handleExport = async (format: "dxf" | "svg" | "pdf") => {
+    if (!template) return;
+
+    try {
+      const options = {
+        templateName: template.name,
+        scaleFactor: template.scale_factor || 1,
+        imageUrl: template.corrected_image_url || template.original_image_url,
+        drawingsData: drawingsData,
+        realDimensions: template.calibration_data?.realDimensions,
+      };
+
+      let blob: Blob;
+      let filename: string;
+
+      switch (format) {
+        case "dxf":
+          blob = await exportToDXF(options);
+          filename = `${template.name}.dxf`;
+          break;
+        case "svg":
+          blob = await exportToSVG(options);
+          filename = `${template.name}.svg`;
+          break;
+        case "pdf":
+          blob = await exportToPDF(options);
+          filename = `${template.name}.pdf`;
+          break;
+      }
+
+      downloadBlob(blob, filename);
+
+      // Incrémenter le compteur d'exports
+      const { error } = await (supabase as any)
+        .from("photo_templates")
+        .update({
+          export_count: (template.export_count || 0) + 1,
+          last_exported_at: new Date().toISOString(),
+        })
+        .eq("id", templateId);
+
+      if (error) throw error;
+
+      toast.success(`Gabarit exporté en ${format.toUpperCase()}`);
+      loadTemplate();
+    } catch (error: any) {
+      console.error("Erreur export:", error);
+      toast.error(`Erreur lors de l'export ${format.toUpperCase()}`);
     }
   };
 
@@ -107,14 +180,42 @@ export default function PhotoTemplateDetail() {
         </div>
 
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setShowDrawingTools(!showDrawingTools)}
+          >
             <Edit className="h-4 w-4 mr-2" />
-            Modifier
+            {showDrawingTools ? "Masquer outils" : "Outils de traçage"}
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Exporter
-          </Button>
+          
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("dxf")}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              DXF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("svg")}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              SVG
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleExport("pdf")}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              PDF
+            </Button>
+          </div>
+          
           <Button
             variant="outline"
             size="sm"
@@ -127,171 +228,206 @@ export default function PhotoTemplateDetail() {
       </div>
 
       {/* Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Image */}
-        <div className="lg:col-span-2 space-y-4">
+      <div className="grid grid-cols-1 gap-6">
+        {/* Drawing Tools */}
+        {showDrawingTools && template.corrected_image_url && template.scale_factor && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Camera className="h-5 w-5" />
-                Image corrigée
+                <Edit className="h-5 w-5" />
+                Outils de traçage
               </CardTitle>
+              <CardDescription>
+                Tracez les contours et annotations sur le gabarit calibré
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-lg overflow-hidden bg-muted">
-                {template.corrected_image_url ? (
-                  <img
-                    src={template.corrected_image_url}
-                    alt={template.name}
-                    className="w-full h-auto"
-                  />
-                ) : (
-                  <div className="aspect-video flex items-center justify-center text-muted-foreground">
-                    Aucune image
-                  </div>
-                )}
-              </div>
+              <TemplateDrawingCanvas
+                imageUrl={template.corrected_image_url}
+                scaleFactor={template.scale_factor}
+                onDrawingsChanged={handleSaveDrawings}
+                initialDrawings={drawingsData}
+              />
             </CardContent>
           </Card>
+        )}
 
-          {/* Original Images */}
-          <div className="grid grid-cols-2 gap-4">
-            {template.original_image_url && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Image originale</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <img
-                    src={template.original_image_url}
-                    alt="Original"
-                    className="w-full h-auto rounded-lg border"
-                  />
-                </CardContent>
-              </Card>
-            )}
-            {template.markers_image_url && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm">Détection marqueurs</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <img
-                    src={template.markers_image_url}
-                    alt="Marqueurs"
-                    className="w-full h-auto rounded-lg border"
-                  />
-                </CardContent>
-              </Card>
-            )}
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Image */}
+          <div className="lg:col-span-2 space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" />
+                  Image corrigée et calibrée
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="border rounded-lg overflow-hidden bg-muted">
+                  {template.corrected_image_url ? (
+                    <img
+                      src={template.corrected_image_url}
+                      alt={template.name}
+                      className="w-full h-auto"
+                    />
+                  ) : (
+                    <div className="aspect-video flex items-center justify-center text-muted-foreground">
+                      Aucune image
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Original Images */}
+            <div className="grid grid-cols-2 gap-4">
+              {template.original_image_url && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Image originale</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <img
+                      src={template.original_image_url}
+                      alt="Original"
+                      className="w-full h-auto rounded-lg border"
+                    />
+                  </CardContent>
+                </Card>
+              )}
+              {template.markers_image_url && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm">Détection marqueurs</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <img
+                      src={template.markers_image_url}
+                      alt="Marqueurs"
+                      className="w-full h-auto rounded-lg border"
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Sidebar Info */}
-        <div className="space-y-4">
-          {/* Calibration Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Ruler className="h-5 w-5" />
-                Calibration
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Échelle</p>
-                <p className="font-mono text-lg">
-                  {template.scale_factor
-                    ? `1px = ${(1 / template.scale_factor).toFixed(3)}mm`
-                    : "Non calibré"}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Précision estimée</p>
-                <Badge variant="outline">
-                  ±{template.accuracy_mm?.toFixed(1) || "0.5"}mm
-                </Badge>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Marqueurs détectés</p>
-                <Badge variant="secondary">
-                  {template.markers_detected}/9 marqueurs
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Template Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Informations</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {template.type && (
+          {/* Sidebar Info */}
+          <div className="space-y-4">
+            {/* Calibration Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Ruler className="h-5 w-5" />
+                  Calibration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
                 <div>
-                  <p className="text-sm text-muted-foreground">Type</p>
-                  <p className="font-medium capitalize">
-                    {template.type.replace("_", " ")}
+                  <p className="text-sm text-muted-foreground">Échelle</p>
+                  <p className="font-mono text-lg">
+                    {template.scale_factor
+                      ? `1px = ${(1 / template.scale_factor).toFixed(3)}mm`
+                      : "Non calibré"}
                   </p>
                 </div>
-              )}
-              {template.material && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Matériau</p>
-                  <p className="font-medium">{template.material}</p>
-                </div>
-              )}
-              {template.thickness_mm && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Épaisseur</p>
-                  <p className="font-medium">{template.thickness_mm}mm</p>
-                </div>
-              )}
-              {template.tags && template.tags.length > 0 && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">Tags</p>
-                  <div className="flex flex-wrap gap-2">
-                    {template.tags.map((tag, idx) => (
-                      <Badge key={idx} variant="outline">
-                        {tag}
-                      </Badge>
-                    ))}
+                {template.calibration_data?.realDimensions && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Dimensions réelles</p>
+                    <p className="font-mono">
+                      {template.calibration_data.realDimensions.widthMm.toFixed(1)} ×{" "}
+                      {template.calibration_data.realDimensions.heightMm.toFixed(1)} mm
+                    </p>
                   </div>
+                )}
+                <div>
+                  <p className="text-sm text-muted-foreground">Précision estimée</p>
+                  <Badge variant="outline">
+                    ±{template.accuracy_mm?.toFixed(1) || "0.5"}mm
+                  </Badge>
                 </div>
-              )}
-              <div>
-                <p className="text-sm text-muted-foreground">Créé le</p>
-                <p className="font-medium">
-                  {format(new Date(template.created_at), "d MMMM yyyy 'à' HH:mm", {
-                    locale: fr,
-                  })}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+                <div>
+                  <p className="text-sm text-muted-foreground">Marqueurs détectés</p>
+                  <Badge variant="secondary">
+                    {template.markers_detected}/9 marqueurs
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
 
-          {/* Statistics */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Statistiques</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Exportations</span>
-                <span className="font-medium">{template.export_count || 0}</span>
-              </div>
-              {template.last_exported_at && (
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Dernier export</span>
-                  <span className="text-sm">
-                    {format(new Date(template.last_exported_at), "d MMM yyyy", {
+            {/* Template Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Informations</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {template.type && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Type</p>
+                    <p className="font-medium capitalize">
+                      {template.type.replace("_", " ")}
+                    </p>
+                  </div>
+                )}
+                {template.material && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Matériau</p>
+                    <p className="font-medium">{template.material}</p>
+                  </div>
+                )}
+                {template.thickness_mm && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Épaisseur</p>
+                    <p className="font-medium">{template.thickness_mm}mm</p>
+                  </div>
+                )}
+                {template.tags && template.tags.length > 0 && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-2">Tags</p>
+                    <div className="flex flex-wrap gap-2">
+                      {template.tags.map((tag, idx) => (
+                        <Badge key={idx} variant="outline">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm text-muted-foreground">Créé le</p>
+                  <p className="font-medium">
+                    {format(new Date(template.created_at), "d MMMM yyyy 'à' HH:mm", {
                       locale: fr,
                     })}
-                  </span>
+                  </p>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+
+            {/* Statistics */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Statistiques</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Exportations</span>
+                  <span className="font-medium">{template.export_count || 0}</span>
+                </div>
+                {template.last_exported_at && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-muted-foreground">Dernier export</span>
+                    <span className="text-sm">
+                      {format(new Date(template.last_exported_at), "d MMM yyyy", {
+                        locale: fr,
+                      })}
+                    </span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 
