@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Canvas as FabricCanvas, Line, Circle, Rect, Textbox, FabricImage } from "fabric";
+import { Canvas as FabricCanvas, Line, Circle, Rect, Textbox, FabricImage, Path } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -17,6 +17,11 @@ import {
   Trash2,
   Undo,
   Download,
+  Waves,
+  Workflow,
+  CircleDot,
+  RectangleHorizontal,
+  Ruler,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,8 +41,9 @@ export function TemplateDrawingCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [activeTool, setActiveTool] = useState<
-    "select" | "line" | "rectangle" | "circle" | "pencil" | "text"
+    "select" | "line" | "rectangle" | "circle" | "pencil" | "text" | "bezier" | "spline" | "arc3points" | "fillet" | "dimension"
   >("select");
+  const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
   const [strokeColor, setStrokeColor] = useState("#ef4444");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [zoom, setZoom] = useState(1);
@@ -113,6 +119,178 @@ export function TemplateDrawingCanvas({
 
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.pointer) return;
+        
+        // Outils multi-points (bezier, spline, arc3points)
+        if (activeTool === "bezier" || activeTool === "spline" || activeTool === "arc3points") {
+          const newPoint = { x: e.pointer.x, y: e.pointer.y };
+          const updatedPoints = [...tempPoints, newPoint];
+          setTempPoints(updatedPoints);
+          
+          // Afficher les points temporaires
+          const marker = new Circle({
+            left: newPoint.x,
+            top: newPoint.y,
+            radius: 4,
+            fill: strokeColor,
+            selectable: false,
+            hoverCursor: "pointer",
+          });
+          fabricCanvas.add(marker);
+          
+          // Créer la courbe si suffisamment de points
+          if ((activeTool === "bezier" && updatedPoints.length === 4) ||
+              (activeTool === "spline" && updatedPoints.length >= 4) ||
+              (activeTool === "arc3points" && updatedPoints.length === 3)) {
+            
+            if (activeTool === "bezier") {
+              // Courbe de Bézier cubique
+              const path = `M ${updatedPoints[0].x} ${updatedPoints[0].y} C ${updatedPoints[1].x} ${updatedPoints[1].y}, ${updatedPoints[2].x} ${updatedPoints[2].y}, ${updatedPoints[3].x} ${updatedPoints[3].y}`;
+              const bezierPath = new Path(path, {
+                stroke: strokeColor,
+                strokeWidth: strokeWidth,
+                fill: "",
+              });
+              fabricCanvas.add(bezierPath);
+            } else if (activeTool === "arc3points") {
+              // Arc par 3 points
+              const [p1, p2, p3] = updatedPoints;
+              const path = `M ${p1.x} ${p1.y} Q ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
+              const arcPath = new Path(path, {
+                stroke: strokeColor,
+                strokeWidth: strokeWidth,
+                fill: "",
+              });
+              fabricCanvas.add(arcPath);
+            } else if (activeTool === "spline") {
+              // Spline (courbe lisse passant par tous les points)
+              let pathData = `M ${updatedPoints[0].x} ${updatedPoints[0].y}`;
+              for (let i = 1; i < updatedPoints.length; i++) {
+                pathData += ` L ${updatedPoints[i].x} ${updatedPoints[i].y}`;
+              }
+              const splinePath = new Path(pathData, {
+                stroke: strokeColor,
+                strokeWidth: strokeWidth,
+                fill: "",
+              });
+              fabricCanvas.add(splinePath);
+            }
+            
+            // Nettoyer les marqueurs temporaires
+            fabricCanvas.getObjects().forEach((obj) => {
+              if (obj instanceof Circle && obj.radius === 4) {
+                fabricCanvas.remove(obj);
+              }
+            });
+            
+            setTempPoints([]);
+            fabricCanvas.renderAll();
+            saveDrawings();
+            toast.success(`${activeTool === "bezier" ? "Courbe de Bézier" : activeTool === "arc3points" ? "Arc" : "Spline"} créé(e)`);
+          }
+          
+          fabricCanvas.renderAll();
+          return;
+        }
+        
+        // Outil congé
+        if (activeTool === "fillet") {
+          const newPoint = { x: e.pointer.x, y: e.pointer.y };
+          const updatedPoints = [...tempPoints, newPoint];
+          setTempPoints(updatedPoints);
+          
+          const marker = new Circle({
+            left: newPoint.x,
+            top: newPoint.y,
+            radius: 4,
+            fill: strokeColor,
+            selectable: false,
+          });
+          fabricCanvas.add(marker);
+          
+          if (updatedPoints.length === 3) {
+            // Créer un congé (arc de cercle entre 3 points)
+            const [p1, p2, p3] = updatedPoints;
+            const radius = 20; // Rayon du congé
+            const path = `M ${p1.x} ${p1.y} Q ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
+            const filletPath = new Path(path, {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              fill: "",
+            });
+            fabricCanvas.add(filletPath);
+            
+            fabricCanvas.getObjects().forEach((obj) => {
+              if (obj instanceof Circle && obj.radius === 4) {
+                fabricCanvas.remove(obj);
+              }
+            });
+            
+            setTempPoints([]);
+            fabricCanvas.renderAll();
+            saveDrawings();
+            toast.success("Congé créé");
+          }
+          
+          fabricCanvas.renderAll();
+          return;
+        }
+        
+        // Outil cote/dimension
+        if (activeTool === "dimension") {
+          const newPoint = { x: e.pointer.x, y: e.pointer.y };
+          const updatedPoints = [...tempPoints, newPoint];
+          setTempPoints(updatedPoints);
+          
+          if (updatedPoints.length === 2) {
+            const [p1, p2] = updatedPoints;
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const realDistance = (distance / scaleFactor).toFixed(2);
+            
+            // Ligne de cote
+            const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+            });
+            fabricCanvas.add(dimensionLine);
+            
+            // Flèches aux extrémités
+            const arrowSize = 8;
+            const angle = Math.atan2(dy, dx);
+            
+            const arrow1 = new Path(
+              `M ${p1.x} ${p1.y} L ${p1.x + arrowSize * Math.cos(angle + 0.5)} ${p1.y + arrowSize * Math.sin(angle + 0.5)} M ${p1.x} ${p1.y} L ${p1.x + arrowSize * Math.cos(angle - 0.5)} ${p1.y + arrowSize * Math.sin(angle - 0.5)}`,
+              { stroke: strokeColor, strokeWidth: strokeWidth, fill: "" }
+            );
+            
+            const arrow2 = new Path(
+              `M ${p2.x} ${p2.y} L ${p2.x - arrowSize * Math.cos(angle + 0.5)} ${p2.y - arrowSize * Math.sin(angle + 0.5)} M ${p2.x} ${p2.y} L ${p2.x - arrowSize * Math.cos(angle - 0.5)} ${p2.y - arrowSize * Math.sin(angle - 0.5)}`,
+              { stroke: strokeColor, strokeWidth: strokeWidth, fill: "" }
+            );
+            
+            fabricCanvas.add(arrow1, arrow2);
+            
+            // Texte de la cote
+            const text = new Textbox(`${realDistance} mm`, {
+              left: (p1.x + p2.x) / 2,
+              top: (p1.y + p2.y) / 2 - 15,
+              fill: strokeColor,
+              fontSize: 14,
+              backgroundColor: "white",
+            });
+            fabricCanvas.add(text);
+            
+            setTempPoints([]);
+            fabricCanvas.renderAll();
+            saveDrawings();
+            toast.success(`Cote ajoutée: ${realDistance} mm`);
+          }
+          
+          return;
+        }
+        
+        // Outils standards
         isDrawing = true;
         startPoint = { x: e.pointer.x, y: e.pointer.y };
 
@@ -255,7 +433,12 @@ export function TemplateDrawingCanvas({
     { id: "line", icon: Minus, label: "Ligne" },
     { id: "rectangle", icon: Square, label: "Rectangle" },
     { id: "circle", icon: CircleIcon, label: "Cercle" },
-    { id: "pencil", icon: Pencil, label: "Crayon" },
+    { id: "pencil", icon: Pencil, label: "Crayon libre" },
+    { id: "bezier", icon: Waves, label: "Courbe de Bézier (4 pts)" },
+    { id: "spline", icon: Workflow, label: "Spline (4+ pts)" },
+    { id: "arc3points", icon: CircleDot, label: "Arc 3 points" },
+    { id: "fillet", icon: RectangleHorizontal, label: "Congé (3 pts)" },
+    { id: "dimension", icon: Ruler, label: "Cote" },
     { id: "text", icon: Type, label: "Texte" },
   ] as const;
 
@@ -263,6 +446,15 @@ export function TemplateDrawingCanvas({
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-4 p-4 bg-muted rounded-lg">
+        {tempPoints.length > 0 && (
+          <Badge variant="secondary" className="animate-pulse">
+            {activeTool === "bezier" ? `Bézier: ${tempPoints.length}/4 points` :
+             activeTool === "spline" ? `Spline: ${tempPoints.length} points (4+ pour terminer)` :
+             activeTool === "arc3points" ? `Arc: ${tempPoints.length}/3 points` :
+             activeTool === "fillet" ? `Congé: ${tempPoints.length}/3 points` :
+             activeTool === "dimension" ? `Cote: ${tempPoints.length}/2 points` : ""}
+          </Badge>
+        )}
         <div className="flex gap-1">
           {tools.map((tool) => (
             <Button
