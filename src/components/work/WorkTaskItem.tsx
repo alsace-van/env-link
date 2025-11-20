@@ -1,11 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, User, Calendar, BookOpen, AlertCircle, Trash2 } from "lucide-react";
+import { Clock, User, Calendar, BookOpen, AlertCircle, Trash2, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { CompleteTaskDialog } from "./CompleteTaskDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+
+interface Subtask {
+  id: string;
+  todo_id: string;
+  title: string;
+  completed: boolean;
+  display_order: number;
+  created_at?: string;
+}
 
 interface WorkTaskItemProps {
   task: {
@@ -204,6 +216,65 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
               </Badge>
             )}
           </div>
+
+          {/* Sous-tâches */}
+          {totalSubtasks > 0 && (
+            <div className="mt-2 space-y-1">
+              <div className="text-xs text-muted-foreground">
+                {completedSubtasks}/{totalSubtasks} sous-tâches complétées
+              </div>
+              {subtasks.map((subtask) => (
+                <div key={subtask.id} className="flex items-center gap-2 pl-4 py-1">
+                  <Checkbox
+                    checked={subtask.completed}
+                    onCheckedChange={() => toggleSubtask(subtask.id, subtask.completed)}
+                    className="h-3 w-3"
+                  />
+                  <span className={`text-sm flex-1 ${subtask.completed ? "line-through text-muted-foreground" : ""}`}>
+                    {subtask.title}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => deleteSubtask(subtask.id)}
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Input pour ajouter une sous-tâche */}
+          {showSubtaskInput ? (
+            <div className="flex gap-2 mt-2">
+              <Input
+                value={newSubtaskTitle}
+                onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && addSubtask()}
+                placeholder="Titre de la sous-tâche..."
+                className="h-8 text-sm"
+                autoFocus
+              />
+              <Button size="sm" onClick={addSubtask} className="h-8">
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setShowSubtaskInput(false)} className="h-8">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowSubtaskInput(true)}
+              className="mt-2 h-7 text-xs text-muted-foreground"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Ajouter une sous-tâche
+            </Button>
+          )}
         </div>
 
         <div className="flex gap-2">
