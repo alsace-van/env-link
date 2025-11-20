@@ -1613,8 +1613,6 @@ const ProjectDetail = () => {
                       </TabsContent>
                     </Tabs>
                   </TabsContent>
-                </Tabs>
-                  </TabsContent>
 
                   <TabsContent value="templates" className="mt-6">
                     <Card>
@@ -1640,6 +1638,8 @@ const ProjectDetail = () => {
                     </Card>
                   </TabsContent>
                 </Tabs>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </main>
