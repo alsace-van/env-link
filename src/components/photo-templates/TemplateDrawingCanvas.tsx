@@ -126,59 +126,67 @@ export function TemplateDrawingCanvas({
           const updatedPoints = [...tempPoints, newPoint];
           setTempPoints(updatedPoints);
           
-          // Afficher les points temporaires
+          // Afficher les points temporaires avec des lignes de connexion
           const marker = new Circle({
-            left: newPoint.x,
-            top: newPoint.y,
+            left: newPoint.x - 4,
+            top: newPoint.y - 4,
             radius: 4,
             fill: strokeColor,
             selectable: false,
-            hoverCursor: "pointer",
+            originX: 'center',
+            originY: 'center',
           });
           fabricCanvas.add(marker);
           
+          // Dessiner une ligne de prévisualisation entre les points
+          if (updatedPoints.length > 1) {
+            const prevPoint = updatedPoints[updatedPoints.length - 2];
+            const previewLine = new Line(
+              [prevPoint.x, prevPoint.y, newPoint.x, newPoint.y],
+              {
+                stroke: strokeColor,
+                strokeWidth: 1,
+                strokeDashArray: [5, 5],
+                selectable: false,
+              }
+            );
+            fabricCanvas.add(previewLine);
+          }
+          
           // Créer la courbe si suffisamment de points
           if ((activeTool === "bezier" && updatedPoints.length === 4) ||
-              (activeTool === "spline" && updatedPoints.length >= 4) ||
               (activeTool === "arc3points" && updatedPoints.length === 3)) {
             
             if (activeTool === "bezier") {
               // Courbe de Bézier cubique
-              const path = `M ${updatedPoints[0].x} ${updatedPoints[0].y} C ${updatedPoints[1].x} ${updatedPoints[1].y}, ${updatedPoints[2].x} ${updatedPoints[2].y}, ${updatedPoints[3].x} ${updatedPoints[3].y}`;
-              const bezierPath = new Path(path, {
+              const [p0, p1, p2, p3] = updatedPoints;
+              const pathData = `M ${p0.x},${p0.y} C ${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+              const bezierPath = new Path(pathData, {
                 stroke: strokeColor,
                 strokeWidth: strokeWidth,
-                fill: "",
+                fill: 'transparent',
+                strokeLineCap: 'round',
+                strokeLineJoin: 'round',
               });
               fabricCanvas.add(bezierPath);
             } else if (activeTool === "arc3points") {
-              // Arc par 3 points
+              // Arc par 3 points (quadratique)
               const [p1, p2, p3] = updatedPoints;
-              const path = `M ${p1.x} ${p1.y} Q ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
-              const arcPath = new Path(path, {
+              const pathData = `M ${p1.x},${p1.y} Q ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+              const arcPath = new Path(pathData, {
                 stroke: strokeColor,
                 strokeWidth: strokeWidth,
-                fill: "",
+                fill: 'transparent',
+                strokeLineCap: 'round',
+                strokeLineJoin: 'round',
               });
               fabricCanvas.add(arcPath);
-            } else if (activeTool === "spline") {
-              // Spline (courbe lisse passant par tous les points)
-              let pathData = `M ${updatedPoints[0].x} ${updatedPoints[0].y}`;
-              for (let i = 1; i < updatedPoints.length; i++) {
-                pathData += ` L ${updatedPoints[i].x} ${updatedPoints[i].y}`;
-              }
-              const splinePath = new Path(pathData, {
-                stroke: strokeColor,
-                strokeWidth: strokeWidth,
-                fill: "",
-              });
-              fabricCanvas.add(splinePath);
             }
             
-            // Nettoyer les marqueurs temporaires (sans toucher à l'image de fond)
-            const backgroundImg = fabricCanvas.backgroundImage;
+            // Nettoyer les marqueurs et lignes temporaires
             fabricCanvas.getObjects().forEach((obj) => {
-              if (obj instanceof Circle && obj.radius === 4 && obj !== backgroundImg) {
+              if ((obj instanceof Circle && obj.radius === 4) || 
+                  (obj instanceof Line && obj.strokeDashArray)) {
                 fabricCanvas.remove(obj);
               }
             });
@@ -186,7 +194,63 @@ export function TemplateDrawingCanvas({
             setTempPoints([]);
             fabricCanvas.renderAll();
             saveDrawings();
-            toast.success(`${activeTool === "bezier" ? "Courbe de Bézier" : activeTool === "arc3points" ? "Arc" : "Spline"} créé(e)`);
+            toast.success(`${activeTool === "bezier" ? "Courbe de Bézier" : "Arc"} créé(e)`);
+          } else if (activeTool === "spline" && updatedPoints.length >= 3) {
+            // Pour la spline, double-clic pour terminer (on vérifie si le dernier point est proche du précédent)
+            if (updatedPoints.length >= 4) {
+              const lastTwo = updatedPoints.slice(-2);
+              const distance = Math.sqrt(
+                Math.pow(lastTwo[1].x - lastTwo[0].x, 2) + 
+                Math.pow(lastTwo[1].y - lastTwo[0].y, 2)
+              );
+              
+              if (distance < 10) {
+                // Double-clic détecté - créer la spline
+                updatedPoints.pop(); // Retirer le dernier point dupliqué
+                
+                // Créer une courbe de Catmull-Rom qui passe par tous les points
+                let pathData = `M ${updatedPoints[0].x},${updatedPoints[0].y}`;
+                
+                for (let i = 1; i < updatedPoints.length; i++) {
+                  if (i === 1) {
+                    pathData += ` L ${updatedPoints[i].x},${updatedPoints[i].y}`;
+                  } else {
+                    // Utiliser des courbes quadratiques pour lisser
+                    const prevPoint = updatedPoints[i - 1];
+                    const currentPoint = updatedPoints[i];
+                    const controlX = (prevPoint.x + currentPoint.x) / 2;
+                    const controlY = (prevPoint.y + currentPoint.y) / 2;
+                    pathData += ` Q ${prevPoint.x},${prevPoint.y} ${controlX},${controlY}`;
+                  }
+                }
+                
+                // Ajouter le dernier segment
+                const lastPoint = updatedPoints[updatedPoints.length - 1];
+                pathData += ` L ${lastPoint.x},${lastPoint.y}`;
+                
+                const splinePath = new Path(pathData, {
+                  stroke: strokeColor,
+                  strokeWidth: strokeWidth,
+                  fill: 'transparent',
+                  strokeLineCap: 'round',
+                  strokeLineJoin: 'round',
+                });
+                fabricCanvas.add(splinePath);
+                
+                // Nettoyer
+                fabricCanvas.getObjects().forEach((obj) => {
+                  if ((obj instanceof Circle && obj.radius === 4) || 
+                      (obj instanceof Line && obj.strokeDashArray)) {
+                    fabricCanvas.remove(obj);
+                  }
+                });
+                
+                setTempPoints([]);
+                fabricCanvas.renderAll();
+                saveDrawings();
+                toast.success("Spline créée");
+              }
+            }
           }
           
           fabricCanvas.renderAll();
@@ -458,7 +522,7 @@ export function TemplateDrawingCanvas({
         {tempPoints.length > 0 && (
           <Badge variant="secondary" className="animate-pulse">
             {activeTool === "bezier" ? `Bézier: ${tempPoints.length}/4 points` :
-             activeTool === "spline" ? `Spline: ${tempPoints.length} points (4+ pour terminer)` :
+             activeTool === "spline" ? `Spline: ${tempPoints.length} points (double-clic pour terminer)` :
              activeTool === "arc3points" ? `Arc: ${tempPoints.length}/3 points` :
              activeTool === "fillet" ? `Congé: ${tempPoints.length}/3 points` :
              activeTool === "dimension" ? `Cote: ${tempPoints.length}/2 points` : ""}
