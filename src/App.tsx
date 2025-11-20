@@ -17,6 +17,7 @@ import AccessoriesCatalog from "./pages/AccessoriesCatalog";
 import ShopPublic from "./pages/ShopPublic";
 import ShopAdmin from "./pages/ShopAdmin";
 import BilanComptable from "./pages/BilanComptable";
+import PhotoTemplates from "./pages/PhotoTemplates";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
                 <Route path="/auth" element={<AuthPage />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/project/:id" element={<ProjectDetail />} />
+                <Route path="/project/:id/templates" element={<PhotoTemplates />} />
                 <Route path="/account" element={<Account />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/catalog" element={<AccessoriesCatalog />} />

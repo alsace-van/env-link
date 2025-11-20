@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import type { PhotoTemplateInsert } from "@/types/photo-templates";
 
 interface TemplateInfoStepProps {
   projectId: string;
@@ -51,29 +52,31 @@ export function TemplateInfoStep({
 
       // Pour le MVP, sauvegarder les URLs base64 directement
       // TODO: Uploader vers Supabase Storage pour version production
-      const { data, error } = await supabase
+      const insertData: PhotoTemplateInsert = {
+        project_id: projectId,
+        user_id: user.id,
+        name: formData.name,
+        description: formData.description || null,
+        type: formData.type,
+        material: formData.material || null,
+        thickness_mm: formData.thickness_mm ? parseFloat(formData.thickness_mm) : null,
+        original_image_url: originalImageUrl,
+        markers_image_url: markersData.markersImageUrl,
+        corrected_image_url: correctedImageUrl,
+        markers_detected: markersData.markerCount,
+        marker_ids: markersData.detectedIds,
+        scale_factor: calibrationData.scaleFactor,
+        accuracy_mm: calibrationData.accuracyMm,
+        calibration_data: {
+          knownDistanceMm: calibrationData.knownDistanceMm,
+          measuredDistancePx: calibrationData.measuredDistancePx,
+          calibrationPoints: calibrationData.calibrationPoints,
+        },
+      };
+
+      const { data, error } = await (supabase as any)
         .from("photo_templates")
-        .insert({
-          project_id: projectId,
-          user_id: user.id,
-          name: formData.name,
-          description: formData.description || null,
-          type: formData.type,
-          material: formData.material || null,
-          thickness_mm: formData.thickness_mm ? parseFloat(formData.thickness_mm) : null,
-          original_image_url: originalImageUrl,
-          markers_image_url: markersData.markersImageUrl,
-          corrected_image_url: correctedImageUrl,
-          markers_detected: markersData.markerCount,
-          marker_ids: markersData.detectedIds,
-          scale_factor: calibrationData.scaleFactor,
-          accuracy_mm: calibrationData.accuracyMm,
-          calibration_data: {
-            knownDistanceMm: calibrationData.knownDistanceMm,
-            measuredDistancePx: calibrationData.measuredDistancePx,
-            calibrationPoints: calibrationData.calibrationPoints,
-          },
-        })
+        .insert(insertData)
         .select()
         .single();
 
