@@ -1,10 +1,23 @@
-import { useEffect, useRef, useState } from "react";
-import { Canvas as FabricCanvas, Line, Circle, Rect, Textbox, FabricImage, Path } from "fabric";
+import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  Canvas as FabricCanvas,
+  Line,
+  Circle,
+  Rect,
+  Textbox,
+  FabricImage,
+  Path,
+  Polygon,
+  Ellipse,
+  Group,
+} from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
   Pencil,
   Square,
@@ -16,20 +29,31 @@ import {
   ZoomOut,
   Trash2,
   Undo,
+  Redo,
   Download,
   Waves,
   Workflow,
   CircleDot,
   RectangleHorizontal,
   Ruler,
+  Pentagon,
+  Move,
+  Grid3x3,
+  Magnet,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface TemplateDrawingCanvasProps {
   imageUrl: string;
   scaleFactor: number; // pixels per mm
   onDrawingsChanged?: (drawingsData: any) => void;
   initialDrawings?: any;
+}
+
+interface HistoryState {
+  objects: any[];
 }
 
 export function TemplateDrawingCanvas({
@@ -41,37 +65,189 @@ export function TemplateDrawingCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [activeTool, setActiveTool] = useState<
-    "select" | "line" | "rectangle" | "circle" | "pencil" | "text" | "bezier" | "spline" | "arc3points" | "fillet" | "dimension"
+    | "select"
+    | "line"
+    | "rectangle"
+    | "circle"
+    | "ellipse"
+    | "pencil"
+    | "text"
+    | "bezier"
+    | "spline"
+    | "arc3points"
+    | "polygon"
+    | "dimension"
   >("select");
+
   const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
+  const [tempObjects, setTempObjects] = useState<any[]>([]);
   const [strokeColor, setStrokeColor] = useState("#ef4444");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [zoom, setZoom] = useState(1);
+  const [showGrid, setShowGrid] = useState(true);
+  const [gridSize, setGridSize] = useState(50);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [history, setHistory] = useState<HistoryState[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const gridLinesRef = useRef<any[]>([]);
 
+  // Fonction snap to grid
+  const snapPoint = useCallback(
+    (point: { x: number; y: number }) => {
+      if (!snapToGrid) return point;
+      return {
+        x: Math.round(point.x / gridSize) * gridSize,
+        y: Math.round(point.y / gridSize) * gridSize,
+      };
+    },
+    [snapToGrid, gridSize],
+  );
+
+  // Créer la grille
+  const createGrid = useCallback(
+    (canvas: FabricCanvas, width: number, height: number) => {
+      // Supprimer l'ancienne grille
+      gridLinesRef.current.forEach((line) => canvas.remove(line));
+      gridLinesRef.current = [];
+
+      if (!showGrid) return;
+
+      const gridColor = "#e0e0e0";
+      const gridStrokeWidth = 0.5;
+
+      // Lignes verticales
+      for (let i = 0; i <= Math.ceil(width / gridSize); i++) {
+        const x = i * gridSize;
+        const line = new Line([x, 0, x, height], {
+          stroke: gridColor,
+          strokeWidth: gridStrokeWidth,
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(line);
+        line.sendToBack();
+        gridLinesRef.current.push(line);
+      }
+
+      // Lignes horizontales
+      for (let i = 0; i <= Math.ceil(height / gridSize); i++) {
+        const y = i * gridSize;
+        const line = new Line([0, y, width, y], {
+          stroke: gridColor,
+          strokeWidth: gridStrokeWidth,
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(line);
+        line.sendToBack();
+        gridLinesRef.current.push(line);
+      }
+
+      canvas.renderAll();
+    },
+    [showGrid, gridSize],
+  );
+
+  // Sauvegarder l'état pour undo/redo
+  const saveState = useCallback(
+    (canvas: FabricCanvas) => {
+      const objects = canvas.getObjects().filter((obj) => !gridLinesRef.current.includes(obj));
+      const state: HistoryState = {
+        objects: objects.map((obj) => obj.toJSON()),
+      };
+
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(state);
+
+      // Limiter l'historique à 50 états
+      if (newHistory.length > 50) {
+        newHistory.shift();
+      } else {
+        setHistoryIndex(historyIndex + 1);
+      }
+
+      setHistory(newHistory);
+    },
+    [history, historyIndex],
+  );
+
+  // Annuler
+  const handleUndo = useCallback(() => {
+    if (historyIndex <= 0 || !fabricCanvas) return;
+
+    const newIndex = historyIndex - 1;
+    const state = history[newIndex];
+
+    // Supprimer tous les objets sauf la grille
+    const objects = fabricCanvas.getObjects();
+    objects.forEach((obj) => {
+      if (!gridLinesRef.current.includes(obj)) {
+        fabricCanvas.remove(obj);
+      }
+    });
+
+    // Restaurer l'état
+    state.objects.forEach((objData: any) => {
+      fabricCanvas.add(objData);
+    });
+
+    setHistoryIndex(newIndex);
+    fabricCanvas.renderAll();
+    onDrawingsChanged?.(fabricCanvas.toJSON());
+  }, [historyIndex, history, fabricCanvas, onDrawingsChanged]);
+
+  // Refaire
+  const handleRedo = useCallback(() => {
+    if (historyIndex >= history.length - 1 || !fabricCanvas) return;
+
+    const newIndex = historyIndex + 1;
+    const state = history[newIndex];
+
+    // Supprimer tous les objets sauf la grille
+    const objects = fabricCanvas.getObjects();
+    objects.forEach((obj) => {
+      if (!gridLinesRef.current.includes(obj)) {
+        fabricCanvas.remove(obj);
+      }
+    });
+
+    // Restaurer l'état
+    state.objects.forEach((objData: any) => {
+      fabricCanvas.add(objData);
+    });
+
+    setHistoryIndex(newIndex);
+    fabricCanvas.renderAll();
+    onDrawingsChanged?.(fabricCanvas.toJSON());
+  }, [historyIndex, history, fabricCanvas, onDrawingsChanged]);
+
+  // Initialisation du canvas
   useEffect(() => {
     if (!canvasRef.current) return;
 
     const canvas = new FabricCanvas(canvasRef.current, {
       width: 1000,
       height: 700,
-      backgroundColor: "#f5f5f5",
+      backgroundColor: "#ffffff",
     });
 
     // Charger l'image de fond
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
-      
+
       // Ajuster les dimensions du canvas à l'image
       const maxWidth = 1000;
       const maxHeight = 700;
       const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
-      
-      canvas.setWidth(img.width * scale);
-      canvas.setHeight(img.height * scale);
-      canvas.backgroundColor = "#f5f5f5";
-      
+
+      const finalWidth = img.width * scale;
+      const finalHeight = img.height * scale;
+
+      canvas.setWidth(finalWidth);
+      canvas.setHeight(finalHeight);
+
       // Ajouter l'image comme objet de fond non sélectionnable
       FabricImage.fromURL(imageUrl).then((fabricImg) => {
         fabricImg.set({
@@ -82,9 +258,13 @@ export function TemplateDrawingCanvas({
         });
         canvas.backgroundImage = fabricImg;
         canvas.renderAll();
+
+        // Créer la grille après l'image
+        createGrid(canvas, finalWidth, finalHeight);
       });
 
-      canvas.renderAll();
+      // Sauvegarder l'état initial
+      saveState(canvas);
     };
     img.src = imageUrl;
 
@@ -96,6 +276,13 @@ export function TemplateDrawingCanvas({
     };
   }, [imageUrl]);
 
+  // Recréer la grille quand les paramètres changent
+  useEffect(() => {
+    if (!fabricCanvas || !imgRef.current) return;
+    createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
+  }, [showGrid, gridSize, fabricCanvas, createGrid]);
+
+  // Gérer les outils
   useEffect(() => {
     if (!fabricCanvas) return;
 
@@ -107,266 +294,333 @@ export function TemplateDrawingCanvas({
       fabricCanvas.freeDrawingBrush.width = strokeWidth;
     }
 
-    // Gérer les autres outils
-    if (activeTool !== "select" && activeTool !== "pencil") {
-      fabricCanvas.off("mouse:down");
-      fabricCanvas.off("mouse:move");
-      fabricCanvas.off("mouse:up");
+    // Nettoyer les écouteurs d'événements précédents
+    fabricCanvas.off("mouse:down");
+    fabricCanvas.off("mouse:move");
+    fabricCanvas.off("mouse:up");
+    fabricCanvas.off("mouse:dblclick");
 
-      let isDrawing = false;
-      let startPoint: { x: number; y: number } | null = null;
-      let activeObject: any = null;
+    if (activeTool === "select" || activeTool === "pencil") return;
 
+    // Variables pour le dessin
+    let isDrawing = false;
+    let startPoint: { x: number; y: number } | null = null;
+    let activeObject: any = null;
+    let previewObject: any = null;
+
+    // Fonction pour nettoyer les objets temporaires
+    const cleanTempObjects = () => {
+      tempObjects.forEach((obj) => fabricCanvas.remove(obj));
+      setTempObjects([]);
+    };
+
+    // Fonction pour créer un marqueur de point
+    const createMarker = (point: { x: number; y: number }, color: string = strokeColor) => {
+      const marker = new Circle({
+        left: point.x,
+        top: point.y,
+        radius: 5,
+        fill: color,
+        stroke: "#ffffff",
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+        originX: "center",
+        originY: "center",
+      });
+      fabricCanvas.add(marker);
+      marker.bringToFront();
+      return marker;
+    };
+
+    // === OUTILS MULTI-POINTS ===
+
+    if (activeTool === "bezier" || activeTool === "spline" || activeTool === "arc3points" || activeTool === "polygon") {
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.pointer) return;
-        
-        // Outils multi-points (bezier, spline, arc3points)
-        if (activeTool === "bezier" || activeTool === "spline" || activeTool === "arc3points") {
-          const newPoint = { x: e.pointer.x, y: e.pointer.y };
-          const updatedPoints = [...tempPoints, newPoint];
-          setTempPoints(updatedPoints);
-          
-          // Afficher les points temporaires avec des lignes de connexion
-          const marker = new Circle({
-            left: newPoint.x - 4,
-            top: newPoint.y - 4,
-            radius: 4,
-            fill: strokeColor,
-            selectable: false,
-            originX: 'center',
-            originY: 'center',
-          });
-          fabricCanvas.add(marker);
-          
-          // Dessiner une ligne de prévisualisation entre les points
-          if (updatedPoints.length > 1) {
-            const prevPoint = updatedPoints[updatedPoints.length - 2];
-            const previewLine = new Line(
-              [prevPoint.x, prevPoint.y, newPoint.x, newPoint.y],
-              {
-                stroke: strokeColor,
-                strokeWidth: 1,
-                strokeDashArray: [5, 5],
-                selectable: false,
-              }
-            );
-            fabricCanvas.add(previewLine);
-          }
-          
-          // Créer la courbe si suffisamment de points
-          if ((activeTool === "bezier" && updatedPoints.length === 4) ||
-              (activeTool === "arc3points" && updatedPoints.length === 3)) {
-            
-            if (activeTool === "bezier") {
-              // Courbe de Bézier cubique
-              const [p0, p1, p2, p3] = updatedPoints;
-              const pathData = `M ${p0.x},${p0.y} C ${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
-              const bezierPath = new Path(pathData, {
+
+        const snappedPoint = snapPoint(e.pointer);
+        const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
+
+        // Détecter le double-clic pour terminer (spline et polygon)
+        if ((activeTool === "spline" || activeTool === "polygon") && tempPoints.length >= 2) {
+          const lastPoint = tempPoints[tempPoints.length - 1];
+          const distance = Math.sqrt(Math.pow(newPoint.x - lastPoint.x, 2) + Math.pow(newPoint.y - lastPoint.y, 2));
+
+          if (distance < 15) {
+            // Double-clic détecté - finaliser la forme
+            if (activeTool === "polygon") {
+              // Créer le polygone
+              const polygon = new Polygon(tempPoints, {
                 stroke: strokeColor,
                 strokeWidth: strokeWidth,
-                fill: 'transparent',
-                strokeLineCap: 'round',
-                strokeLineJoin: 'round',
+                fill: "transparent",
+                strokeLineJoin: "round",
               });
-              fabricCanvas.add(bezierPath);
-            } else if (activeTool === "arc3points") {
-              // Arc par 3 points (quadratique)
-              const [p1, p2, p3] = updatedPoints;
-              const pathData = `M ${p1.x},${p1.y} Q ${p2.x},${p2.y} ${p3.x},${p3.y}`;
-              const arcPath = new Path(pathData, {
-                stroke: strokeColor,
-                strokeWidth: strokeWidth,
-                fill: 'transparent',
-                strokeLineCap: 'round',
-                strokeLineJoin: 'round',
-              });
-              fabricCanvas.add(arcPath);
-            }
-            
-            // Nettoyer les marqueurs et lignes temporaires
-            fabricCanvas.getObjects().forEach((obj) => {
-              if ((obj instanceof Circle && obj.radius === 4) || 
-                  (obj instanceof Line && obj.strokeDashArray)) {
-                fabricCanvas.remove(obj);
-              }
-            });
-            
-            setTempPoints([]);
-            fabricCanvas.renderAll();
-            saveDrawings();
-            toast.success(`${activeTool === "bezier" ? "Courbe de Bézier" : "Arc"} créé(e)`);
-          } else if (activeTool === "spline" && updatedPoints.length >= 3) {
-            // Pour la spline, double-clic pour terminer (on vérifie si le dernier point est proche du précédent)
-            if (updatedPoints.length >= 4) {
-              const lastTwo = updatedPoints.slice(-2);
-              const distance = Math.sqrt(
-                Math.pow(lastTwo[1].x - lastTwo[0].x, 2) + 
-                Math.pow(lastTwo[1].y - lastTwo[0].y, 2)
-              );
-              
-              if (distance < 10) {
-                // Double-clic détecté - créer la spline
-                updatedPoints.pop(); // Retirer le dernier point dupliqué
-                
-                // Créer une courbe de Catmull-Rom qui passe par tous les points
-                let pathData = `M ${updatedPoints[0].x},${updatedPoints[0].y}`;
-                
-                for (let i = 1; i < updatedPoints.length; i++) {
-                  if (i === 1) {
-                    pathData += ` L ${updatedPoints[i].x},${updatedPoints[i].y}`;
-                  } else {
-                    // Utiliser des courbes quadratiques pour lisser
-                    const prevPoint = updatedPoints[i - 1];
-                    const currentPoint = updatedPoints[i];
-                    const controlX = (prevPoint.x + currentPoint.x) / 2;
-                    const controlY = (prevPoint.y + currentPoint.y) / 2;
-                    pathData += ` Q ${prevPoint.x},${prevPoint.y} ${controlX},${controlY}`;
-                  }
+              fabricCanvas.add(polygon);
+              toast.success("Polygone créé");
+            } else if (activeTool === "spline") {
+              // Créer une spline lissée (Catmull-Rom)
+              let pathData = `M ${tempPoints[0].x},${tempPoints[0].y}`;
+
+              for (let i = 1; i < tempPoints.length; i++) {
+                if (i === 1) {
+                  pathData += ` L ${tempPoints[i].x},${tempPoints[i].y}`;
+                } else {
+                  const prevPoint = tempPoints[i - 1];
+                  const currentPoint = tempPoints[i];
+                  const controlX = (prevPoint.x + currentPoint.x) / 2;
+                  const controlY = (prevPoint.y + currentPoint.y) / 2;
+                  pathData += ` Q ${prevPoint.x},${prevPoint.y} ${controlX},${controlY}`;
                 }
-                
-                // Ajouter le dernier segment
-                const lastPoint = updatedPoints[updatedPoints.length - 1];
-                pathData += ` L ${lastPoint.x},${lastPoint.y}`;
-                
-                const splinePath = new Path(pathData, {
-                  stroke: strokeColor,
-                  strokeWidth: strokeWidth,
-                  fill: 'transparent',
-                  strokeLineCap: 'round',
-                  strokeLineJoin: 'round',
-                });
-                fabricCanvas.add(splinePath);
-                
-                // Nettoyer
-                fabricCanvas.getObjects().forEach((obj) => {
-                  if ((obj instanceof Circle && obj.radius === 4) || 
-                      (obj instanceof Line && obj.strokeDashArray)) {
-                    fabricCanvas.remove(obj);
-                  }
-                });
-                
-                setTempPoints([]);
-                fabricCanvas.renderAll();
-                saveDrawings();
-                toast.success("Spline créée");
               }
+
+              const lastPoint = tempPoints[tempPoints.length - 1];
+              pathData += ` L ${lastPoint.x},${lastPoint.y}`;
+
+              const splinePath = new Path(pathData, {
+                stroke: strokeColor,
+                strokeWidth: strokeWidth,
+                fill: "transparent",
+                strokeLineCap: "round",
+                strokeLineJoin: "round",
+              });
+              fabricCanvas.add(splinePath);
+              toast.success("Spline créée");
             }
+
+            cleanTempObjects();
+            setTempPoints([]);
+            saveState(fabricCanvas);
+            fabricCanvas.renderAll();
+            return;
           }
-          
-          fabricCanvas.renderAll();
-          return;
         }
-        
-        // Outil congé
-        if (activeTool === "fillet") {
-          const newPoint = { x: e.pointer.x, y: e.pointer.y };
-          const updatedPoints = [...tempPoints, newPoint];
-          setTempPoints(updatedPoints);
-          
-          const marker = new Circle({
-            left: newPoint.x,
-            top: newPoint.y,
-            radius: 4,
-            fill: strokeColor,
+
+        // Ajouter le nouveau point
+        const updatedPoints = [...tempPoints, newPoint];
+        setTempPoints(updatedPoints);
+
+        // Créer un marqueur visuel
+        const marker = createMarker(newPoint);
+        setTempObjects((prev) => [...prev, marker]);
+
+        // Dessiner une ligne de connexion
+        if (updatedPoints.length > 1) {
+          const prevPoint = updatedPoints[updatedPoints.length - 2];
+          const connectionLine = new Line([prevPoint.x, prevPoint.y, newPoint.x, newPoint.y], {
+            stroke: strokeColor,
+            strokeWidth: 1,
+            strokeDashArray: [5, 5],
             selectable: false,
+            evented: false,
           });
-          fabricCanvas.add(marker);
-          
-          if (updatedPoints.length === 3) {
-            // Créer un congé (arc de cercle entre 3 points)
+          fabricCanvas.add(connectionLine);
+          setTempObjects((prev) => [...prev, connectionLine]);
+        }
+
+        // Vérifier si la forme est complète
+        const requiredPoints = activeTool === "bezier" ? 4 : activeTool === "arc3points" ? 3 : null;
+
+        if (requiredPoints && updatedPoints.length === requiredPoints) {
+          if (activeTool === "bezier") {
+            // Courbe de Bézier cubique
+            const [p0, p1, p2, p3] = updatedPoints;
+            const pathData = `M ${p0.x},${p0.y} C ${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+            const bezierPath = new Path(pathData, {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              fill: "transparent",
+              strokeLineCap: "round",
+              strokeLineJoin: "round",
+            });
+            fabricCanvas.add(bezierPath);
+            toast.success("Courbe de Bézier créée");
+          } else if (activeTool === "arc3points") {
+            // Arc par 3 points
             const [p1, p2, p3] = updatedPoints;
-            const radius = 20; // Rayon du congé
-            const path = `M ${p1.x} ${p1.y} Q ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`;
-            const filletPath = new Path(path, {
+            const pathData = `M ${p1.x},${p1.y} Q ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+            const arcPath = new Path(pathData, {
               stroke: strokeColor,
               strokeWidth: strokeWidth,
-              fill: "",
+              fill: "transparent",
+              strokeLineCap: "round",
+              strokeLineJoin: "round",
             });
-            fabricCanvas.add(filletPath);
-            
-            // Nettoyer les marqueurs temporaires (sans toucher à l'image de fond)
-            const backgroundImg = fabricCanvas.backgroundImage;
-            fabricCanvas.getObjects().forEach((obj) => {
-              if (obj instanceof Circle && obj.radius === 4 && obj !== backgroundImg) {
-                fabricCanvas.remove(obj);
-              }
-            });
-            
-            setTempPoints([]);
-            fabricCanvas.renderAll();
-            saveDrawings();
-            toast.success("Congé créé");
+            fabricCanvas.add(arcPath);
+            toast.success("Arc créé");
           }
-          
+
+          cleanTempObjects();
+          setTempPoints([]);
+          saveState(fabricCanvas);
+        }
+
+        fabricCanvas.renderAll();
+      });
+
+      // Afficher un aperçu pour polygon et spline
+      fabricCanvas.on("mouse:move", (e) => {
+        if (!e.pointer || tempPoints.length === 0) return;
+
+        const snappedPoint = snapPoint(e.pointer);
+
+        // Supprimer l'ancien aperçu
+        if (previewObject) {
+          fabricCanvas.remove(previewObject);
+          previewObject = null;
+        }
+
+        // Dessiner une ligne de prévisualisation
+        const lastPoint = tempPoints[tempPoints.length - 1];
+        previewObject = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
+          stroke: strokeColor,
+          strokeWidth: 1,
+          strokeDashArray: [3, 3],
+          selectable: false,
+          evented: false,
+          opacity: 0.5,
+        });
+        fabricCanvas.add(previewObject);
+        fabricCanvas.renderAll();
+      });
+
+      // Échap pour annuler
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape" && tempPoints.length > 0) {
+          cleanTempObjects();
+          setTempPoints([]);
+          if (previewObject) {
+            fabricCanvas.remove(previewObject);
+            previewObject = null;
+          }
           fabricCanvas.renderAll();
-          return;
+          toast.info("Tracé annulé");
         }
-        
-        // Outil cote/dimension
-        if (activeTool === "dimension") {
-          const newPoint = { x: e.pointer.x, y: e.pointer.y };
-          const updatedPoints = [...tempPoints, newPoint];
-          setTempPoints(updatedPoints);
-          
-          if (updatedPoints.length === 2) {
-            const [p1, p2] = updatedPoints;
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const realDistance = (distance / scaleFactor).toFixed(2);
-            
-            // Ligne de cote
-            const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
-            });
-            fabricCanvas.add(dimensionLine);
-            
-            // Flèches aux extrémités
-            const arrowSize = 8;
-            const angle = Math.atan2(dy, dx);
-            
-            const arrow1 = new Path(
-              `M ${p1.x} ${p1.y} L ${p1.x + arrowSize * Math.cos(angle + 0.5)} ${p1.y + arrowSize * Math.sin(angle + 0.5)} M ${p1.x} ${p1.y} L ${p1.x + arrowSize * Math.cos(angle - 0.5)} ${p1.y + arrowSize * Math.sin(angle - 0.5)}`,
-              { stroke: strokeColor, strokeWidth: strokeWidth, fill: "" }
-            );
-            
-            const arrow2 = new Path(
-              `M ${p2.x} ${p2.y} L ${p2.x - arrowSize * Math.cos(angle + 0.5)} ${p2.y - arrowSize * Math.sin(angle + 0.5)} M ${p2.x} ${p2.y} L ${p2.x - arrowSize * Math.cos(angle - 0.5)} ${p2.y - arrowSize * Math.sin(angle - 0.5)}`,
-              { stroke: strokeColor, strokeWidth: strokeWidth, fill: "" }
-            );
-            
-            fabricCanvas.add(arrow1, arrow2);
-            
-            // Texte de la cote
-            const text = new Textbox(`${realDistance} mm`, {
-              left: (p1.x + p2.x) / 2,
-              top: (p1.y + p2.y) / 2 - 15,
-              fill: strokeColor,
-              fontSize: 14,
-              backgroundColor: "white",
-            });
-            fabricCanvas.add(text);
-            
-            setTempPoints([]);
-            fabricCanvas.renderAll();
-            saveDrawings();
-            toast.success(`Cote ajoutée: ${realDistance} mm`);
-          }
-          
-          return;
+      };
+      window.addEventListener("keydown", handleKeyDown);
+
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+
+    // === OUTIL DIMENSION ===
+
+    if (activeTool === "dimension") {
+      fabricCanvas.on("mouse:down", (e) => {
+        if (!e.pointer) return;
+
+        const snappedPoint = snapPoint(e.pointer);
+        const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
+        const updatedPoints = [...tempPoints, newPoint];
+        setTempPoints(updatedPoints);
+
+        const marker = createMarker(newPoint, "#3b82f6");
+        setTempObjects((prev) => [...prev, marker]);
+
+        if (updatedPoints.length === 2) {
+          const [p1, p2] = updatedPoints;
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const realDistance = (distance / scaleFactor).toFixed(1);
+
+          // Ligne de cote principale
+          const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
+            stroke: "#3b82f6",
+            strokeWidth: 2,
+          });
+
+          // Flèches aux extrémités
+          const arrowSize = 10;
+          const angle = Math.atan2(dy, dx);
+
+          // Flèche 1
+          const arrow1Path = `M ${p1.x} ${p1.y} 
+                             L ${p1.x + arrowSize * Math.cos(angle + 2.8)} ${p1.y + arrowSize * Math.sin(angle + 2.8)} 
+                             L ${p1.x + arrowSize * Math.cos(angle - 2.8)} ${p1.y + arrowSize * Math.sin(angle - 2.8)} Z`;
+          const arrow1 = new Path(arrow1Path, {
+            fill: "#3b82f6",
+            stroke: "#3b82f6",
+            strokeWidth: 1,
+          });
+
+          // Flèche 2
+          const arrow2Path = `M ${p2.x} ${p2.y} 
+                             L ${p2.x - arrowSize * Math.cos(angle + 2.8)} ${p2.y - arrowSize * Math.sin(angle + 2.8)} 
+                             L ${p2.x - arrowSize * Math.cos(angle - 2.8)} ${p2.y - arrowSize * Math.sin(angle - 2.8)} Z`;
+          const arrow2 = new Path(arrow2Path, {
+            fill: "#3b82f6",
+            stroke: "#3b82f6",
+            strokeWidth: 1,
+          });
+
+          // Texte de la cote avec fond
+          const text = new Textbox(`${realDistance} mm`, {
+            left: (p1.x + p2.x) / 2,
+            top: (p1.y + p2.y) / 2 - 20,
+            fill: "#3b82f6",
+            fontSize: 16,
+            fontWeight: "bold",
+            backgroundColor: "white",
+            padding: 4,
+            textAlign: "center",
+            originX: "center",
+            originY: "center",
+          });
+
+          // Grouper tous les éléments de la cote
+          const dimensionGroup = new Group([dimensionLine, arrow1, arrow2, text]);
+          fabricCanvas.add(dimensionGroup);
+
+          cleanTempObjects();
+          setTempPoints([]);
+          saveState(fabricCanvas);
+          fabricCanvas.renderAll();
+          toast.success(`Cote ajoutée: ${realDistance} mm`);
         }
-        
-        // Outils standards
+      });
+
+      fabricCanvas.on("mouse:move", (e) => {
+        if (!e.pointer || tempPoints.length !== 1) return;
+
+        const snappedPoint = snapPoint(e.pointer);
+
+        if (previewObject) {
+          fabricCanvas.remove(previewObject);
+        }
+
+        const p1 = tempPoints[0];
+        previewObject = new Line([p1.x, p1.y, snappedPoint.x, snappedPoint.y], {
+          stroke: "#3b82f6",
+          strokeWidth: 2,
+          strokeDashArray: [5, 5],
+          selectable: false,
+          evented: false,
+          opacity: 0.5,
+        });
+        fabricCanvas.add(previewObject);
+        fabricCanvas.renderAll();
+      });
+    }
+
+    // === OUTILS STANDARDS (ligne, rectangle, cercle, ellipse) ===
+
+    if (["line", "rectangle", "circle", "ellipse"].includes(activeTool)) {
+      fabricCanvas.on("mouse:down", (e) => {
+        if (!e.pointer) return;
+
+        const snappedPoint = snapPoint(e.pointer);
         isDrawing = true;
-        startPoint = { x: e.pointer.x, y: e.pointer.y };
+        startPoint = { x: snappedPoint.x, y: snappedPoint.y };
 
         if (activeTool === "line") {
           activeObject = new Line([startPoint.x, startPoint.y, startPoint.x, startPoint.y], {
             stroke: strokeColor,
             strokeWidth: strokeWidth,
+            strokeLineCap: "round",
           });
-          fabricCanvas.add(activeObject);
         } else if (activeTool === "rectangle") {
           activeObject = new Rect({
             left: startPoint.x,
@@ -377,7 +631,6 @@ export function TemplateDrawingCanvas({
             strokeWidth: strokeWidth,
             fill: "transparent",
           });
-          fabricCanvas.add(activeObject);
         } else if (activeTool === "circle") {
           activeObject = new Circle({
             left: startPoint.x,
@@ -386,45 +639,56 @@ export function TemplateDrawingCanvas({
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             fill: "transparent",
+            originX: "center",
+            originY: "center",
           });
-          fabricCanvas.add(activeObject);
-        } else if (activeTool === "text") {
-          const text = new Textbox("Texte", {
+        } else if (activeTool === "ellipse") {
+          activeObject = new Ellipse({
             left: startPoint.x,
             top: startPoint.y,
-            fill: strokeColor,
-            fontSize: 20,
+            rx: 0,
+            ry: 0,
+            stroke: strokeColor,
+            strokeWidth: strokeWidth,
+            fill: "transparent",
           });
-          fabricCanvas.add(text);
-          fabricCanvas.setActiveObject(text);
-          text.enterEditing();
-          isDrawing = false;
         }
+
+        fabricCanvas.add(activeObject);
       });
 
       fabricCanvas.on("mouse:move", (e) => {
         if (!isDrawing || !startPoint || !e.pointer || !activeObject) return;
 
+        const snappedPoint = snapPoint(e.pointer);
+
         if (activeTool === "line") {
           activeObject.set({
-            x2: e.pointer.x,
-            y2: e.pointer.y,
+            x2: snappedPoint.x,
+            y2: snappedPoint.y,
           });
         } else if (activeTool === "rectangle") {
-          const width = e.pointer.x - startPoint.x;
-          const height = e.pointer.y - startPoint.y;
+          const width = snappedPoint.x - startPoint.x;
+          const height = snappedPoint.y - startPoint.y;
           activeObject.set({
             width: Math.abs(width),
             height: Math.abs(height),
-            left: width > 0 ? startPoint.x : e.pointer.x,
-            top: height > 0 ? startPoint.y : e.pointer.y,
+            left: width > 0 ? startPoint.x : snappedPoint.x,
+            top: height > 0 ? startPoint.y : snappedPoint.y,
           });
         } else if (activeTool === "circle") {
-          const dx = e.pointer.x - startPoint.x;
-          const dy = e.pointer.y - startPoint.y;
+          const dx = snappedPoint.x - startPoint.x;
+          const dy = snappedPoint.y - startPoint.y;
           const radius = Math.sqrt(dx * dx + dy * dy);
+          activeObject.set({ radius: radius });
+        } else if (activeTool === "ellipse") {
+          const rx = Math.abs(snappedPoint.x - startPoint.x);
+          const ry = Math.abs(snappedPoint.y - startPoint.y);
           activeObject.set({
-            radius: radius,
+            rx: rx,
+            ry: ry,
+            left: snappedPoint.x > startPoint.x ? startPoint.x : snappedPoint.x,
+            top: snappedPoint.y > startPoint.y ? startPoint.y : snappedPoint.y,
           });
         }
 
@@ -432,10 +696,33 @@ export function TemplateDrawingCanvas({
       });
 
       fabricCanvas.on("mouse:up", () => {
-        isDrawing = false;
-        startPoint = null;
-        activeObject = null;
-        saveDrawings();
+        if (isDrawing) {
+          isDrawing = false;
+          startPoint = null;
+          activeObject = null;
+          saveState(fabricCanvas);
+        }
+      });
+    }
+
+    // === OUTIL TEXTE ===
+
+    if (activeTool === "text") {
+      fabricCanvas.on("mouse:down", (e) => {
+        if (!e.pointer) return;
+
+        const snappedPoint = snapPoint(e.pointer);
+        const text = new Textbox("Double-clic pour éditer", {
+          left: snappedPoint.x,
+          top: snappedPoint.y,
+          fill: strokeColor,
+          fontSize: 20,
+          fontFamily: "Arial",
+        });
+        fabricCanvas.add(text);
+        fabricCanvas.setActiveObject(text);
+        text.enterEditing();
+        saveState(fabricCanvas);
       });
     }
 
@@ -443,16 +730,14 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("mouse:down");
       fabricCanvas.off("mouse:move");
       fabricCanvas.off("mouse:up");
+      fabricCanvas.off("mouse:dblclick");
     };
-  }, [activeTool, strokeColor, strokeWidth, fabricCanvas]);
+  }, [activeTool, strokeColor, strokeWidth, fabricCanvas, tempPoints, snapPoint, saveState, scaleFactor, tempObjects]);
 
   const saveDrawings = () => {
     if (!fabricCanvas) return;
-    // Sauvegarder seulement les objets dessinés, pas l'image de fond
     const json = fabricCanvas.toJSON();
     onDrawingsChanged?.(json);
-    // S'assurer que l'image de fond est toujours présente
-    fabricCanvas.renderAll();
   };
 
   const handleClear = () => {
@@ -460,14 +745,15 @@ export function TemplateDrawingCanvas({
     const backgroundImg = fabricCanvas.backgroundImage;
     const objects = fabricCanvas.getObjects();
     objects.forEach((obj) => {
-      fabricCanvas.remove(obj);
+      if (!gridLinesRef.current.includes(obj)) {
+        fabricCanvas.remove(obj);
+      }
     });
-    // Restaurer l'image de fond
     if (backgroundImg) {
       fabricCanvas.backgroundImage = backgroundImg;
     }
     fabricCanvas.renderAll();
-    saveDrawings();
+    saveState(fabricCanvas);
     toast.success("Dessins effacés");
   };
 
@@ -478,7 +764,7 @@ export function TemplateDrawingCanvas({
       activeObjects.forEach((obj) => fabricCanvas.remove(obj));
       fabricCanvas.discardActiveObject();
       fabricCanvas.renderAll();
-      saveDrawings();
+      saveState(fabricCanvas);
       toast.success("Objet(s) supprimé(s)");
     }
   };
@@ -501,49 +787,104 @@ export function TemplateDrawingCanvas({
     }
   };
 
+  const handleExportDXF = () => {
+    if (!fabricCanvas) return;
+
+    // TODO: Implémenter l'export DXF
+    toast.info("Export DXF en cours de développement");
+  };
+
   const tools = [
-    { id: "select", icon: Hand, label: "Sélection" },
-    { id: "line", icon: Minus, label: "Ligne" },
-    { id: "rectangle", icon: Square, label: "Rectangle" },
-    { id: "circle", icon: CircleIcon, label: "Cercle" },
-    { id: "pencil", icon: Pencil, label: "Crayon libre" },
+    { id: "select", icon: Hand, label: "Sélection (V)" },
+    { id: "line", icon: Minus, label: "Ligne (L)" },
+    { id: "rectangle", icon: Square, label: "Rectangle (R)" },
+    { id: "circle", icon: CircleIcon, label: "Cercle (C)" },
+    { id: "ellipse", icon: CircleIcon, label: "Ellipse (E)", style: { transform: "scaleX(1.5)" } },
+    { id: "polygon", icon: Pentagon, label: "Polygone (P)" },
+    { id: "pencil", icon: Pencil, label: "Crayon libre (F)" },
     { id: "bezier", icon: Waves, label: "Courbe de Bézier (4 pts)" },
-    { id: "spline", icon: Workflow, label: "Spline (4+ pts)" },
+    { id: "spline", icon: Workflow, label: "Spline (4+ pts, double-clic)" },
     { id: "arc3points", icon: CircleDot, label: "Arc 3 points" },
-    { id: "fillet", icon: RectangleHorizontal, label: "Congé (3 pts)" },
-    { id: "dimension", icon: Ruler, label: "Cote" },
-    { id: "text", icon: Type, label: "Texte" },
+    { id: "dimension", icon: Ruler, label: "Cote (D)" },
+    { id: "text", icon: Type, label: "Texte (T)" },
   ] as const;
+
+  const getToolInstructions = () => {
+    switch (activeTool) {
+      case "bezier":
+        return "Cliquez 4 points : début → contrôle 1 → contrôle 2 → fin";
+      case "spline":
+        return "Cliquez pour ajouter des points (min 3). Double-cliquez sur le dernier point pour terminer ou appuyez sur Échap";
+      case "arc3points":
+        return "Cliquez 3 points : début → milieu → fin";
+      case "polygon":
+        return "Cliquez pour ajouter des sommets (min 3). Double-cliquez sur le dernier point pour fermer ou appuyez sur Échap";
+      case "dimension":
+        return "Cliquez 2 points pour créer une cote avec la distance réelle";
+      case "text":
+        return "Cliquez pour placer du texte";
+      default:
+        return null;
+    }
+  };
+
+  const instructions = getToolInstructions();
 
   return (
     <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-4 p-4 bg-muted rounded-lg">
-        {tempPoints.length > 0 && (
+      {/* Instructions contextuelles */}
+      {instructions && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>{instructions}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Badge pour les outils multi-points */}
+      {tempPoints.length > 0 && (
+        <div className="flex items-center gap-2">
           <Badge variant="secondary" className="animate-pulse">
-            {activeTool === "bezier" ? `Bézier: ${tempPoints.length}/4 points` :
-             activeTool === "spline" ? `Spline: ${tempPoints.length} points (double-clic pour terminer)` :
-             activeTool === "arc3points" ? `Arc: ${tempPoints.length}/3 points` :
-             activeTool === "fillet" ? `Congé: ${tempPoints.length}/3 points` :
-             activeTool === "dimension" ? `Cote: ${tempPoints.length}/2 points` : ""}
+            {activeTool === "bezier"
+              ? `Bézier: ${tempPoints.length}/4 points`
+              : activeTool === "spline"
+                ? `Spline: ${tempPoints.length} points`
+                : activeTool === "arc3points"
+                  ? `Arc: ${tempPoints.length}/3 points`
+                  : activeTool === "polygon"
+                    ? `Polygone: ${tempPoints.length} sommets`
+                    : activeTool === "dimension"
+                      ? `Cote: ${tempPoints.length}/2 points`
+                      : ""}
           </Badge>
-        )}
-        <div className="flex gap-1">
+          <span className="text-sm text-muted-foreground">
+            Appuyez sur <kbd className="px-2 py-1 bg-muted rounded">Échap</kbd> pour annuler
+          </span>
+        </div>
+      )}
+
+      {/* Toolbar principal */}
+      <div className="flex flex-wrap items-center gap-4 p-4 bg-muted rounded-lg">
+        <div className="flex flex-wrap gap-1">
           {tools.map((tool) => (
             <Button
               key={tool.id}
               variant={activeTool === tool.id ? "default" : "outline"}
               size="sm"
-              onClick={() => setActiveTool(tool.id as any)}
+              onClick={() => {
+                setActiveTool(tool.id as any);
+                setTempPoints([]);
+                setTempObjects([]);
+              }}
               title={tool.label}
             >
-              <tool.icon className="h-4 w-4" />
+              <tool.icon className="h-4 w-4" style={tool.style} />
             </Button>
           ))}
         </div>
 
         <Separator orientation="vertical" className="h-8" />
 
+        {/* Couleur et épaisseur */}
         <div className="flex items-center gap-2">
           <Label className="text-sm">Couleur:</Label>
           <Input
@@ -556,34 +897,62 @@ export function TemplateDrawingCanvas({
 
         <div className="flex items-center gap-2">
           <Label className="text-sm">Épaisseur:</Label>
-          <Input
-            type="number"
-            min="1"
-            max="20"
-            value={strokeWidth}
-            onChange={(e) => setStrokeWidth(parseInt(e.target.value) || 2)}
-            className="w-16"
-          />
+          <div className="w-32">
+            <Slider
+              value={[strokeWidth]}
+              onValueChange={([value]) => setStrokeWidth(value)}
+              min={1}
+              max={20}
+              step={1}
+            />
+          </div>
+          <Badge variant="outline">{strokeWidth}px</Badge>
         </div>
 
         <Separator orientation="vertical" className="h-8" />
 
+        {/* Zoom */}
         <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={handleZoomOut}>
+          <Button variant="outline" size="sm" onClick={handleZoomOut} title="Zoom arrière (-)">
             <ZoomOut className="h-4 w-4" />
           </Button>
           <Badge variant="outline" className="px-3">
             {Math.round(zoom * 100)}%
           </Badge>
-          <Button variant="outline" size="sm" onClick={handleZoomIn}>
+          <Button variant="outline" size="sm" onClick={handleZoomIn} title="Zoom avant (+)">
             <ZoomIn className="h-4 w-4" />
           </Button>
         </div>
 
         <Separator orientation="vertical" className="h-8" />
 
+        {/* Undo/Redo */}
         <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={handleDeleteSelected}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleUndo}
+            disabled={historyIndex <= 0}
+            title="Annuler (Ctrl+Z)"
+          >
+            <Undo className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRedo}
+            disabled={historyIndex >= history.length - 1}
+            title="Refaire (Ctrl+Y)"
+          >
+            <Redo className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <Separator orientation="vertical" className="h-8" />
+
+        {/* Actions */}
+        <div className="flex gap-1">
+          <Button variant="outline" size="sm" onClick={handleDeleteSelected} title="Supprimer (Suppr)">
             <Trash2 className="h-4 w-4 mr-2" />
             Supprimer
           </Button>
@@ -593,16 +962,49 @@ export function TemplateDrawingCanvas({
         </div>
       </div>
 
-      {/* Info */}
-      <div className="text-sm text-muted-foreground">
+      {/* Options de grille et snap */}
+      <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
+        <div className="flex items-center gap-2">
+          <Grid3x3 className="h-4 w-4 text-muted-foreground" />
+          <Label className="text-sm">Grille:</Label>
+          <Switch checked={showGrid} onCheckedChange={setShowGrid} />
+        </div>
+
+        {showGrid && (
+          <div className="flex items-center gap-2">
+            <Label className="text-sm">Taille grille:</Label>
+            <Input
+              type="number"
+              min="10"
+              max="100"
+              value={gridSize}
+              onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
+              className="w-20"
+            />
+            <span className="text-xs text-muted-foreground">px</span>
+          </div>
+        )}
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <div className="flex items-center gap-2">
+          <Magnet className="h-4 w-4 text-muted-foreground" />
+          <Label className="text-sm">Magnétisme:</Label>
+          <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+        </div>
+      </div>
+
+      {/* Info échelle */}
+      <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
         <p>
-          Échelle: 1 pixel = {(1 / scaleFactor).toFixed(3)} mm • Tracez les contours et
-          annotations sur le gabarit
+          <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •
+          <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
+          <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
         </p>
       </div>
 
       {/* Canvas */}
-      <div className="border rounded-lg overflow-auto bg-muted" style={{ maxHeight: "600px" }}>
+      <div className="border rounded-lg overflow-auto bg-white shadow-lg" style={{ maxHeight: "600px" }}>
         <canvas ref={canvasRef} />
       </div>
     </div>
