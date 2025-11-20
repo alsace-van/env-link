@@ -9,15 +9,7 @@ import { CompleteTaskDialog } from "./CompleteTaskDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-
-interface Subtask {
-  id: string;
-  todo_id: string;
-  title: string;
-  completed: boolean;
-  display_order: number;
-  created_at?: string;
-}
+import type { ProjectTodoSubtask } from "@/types/subtasks";
 
 interface WorkTaskItemProps {
   task: {
@@ -40,7 +32,7 @@ interface WorkTaskItemProps {
 
 export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: WorkTaskItemProps) => {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
-  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [subtasks, setSubtasks] = useState<ProjectTodoSubtask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [showSubtaskInput, setShowSubtaskInput] = useState(false);
 
@@ -50,7 +42,7 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
 
   const loadSubtasks = async () => {
     const { data, error } = await supabase
-      .from("project_todo_subtasks")
+      .from("project_todo_subtasks" as any)
       .select("*")
       .eq("todo_id", task.id)
       .order("display_order", { ascending: true });
@@ -58,7 +50,7 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
     if (error) {
       console.error("Error loading subtasks:", error);
     } else {
-      setSubtasks(data || []);
+      setSubtasks((data || []) as unknown as ProjectTodoSubtask[]);
     }
   };
 
@@ -66,7 +58,7 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
     if (!newSubtaskTitle.trim()) return;
 
     const { error } = await supabase
-      .from("project_todo_subtasks")
+      .from("project_todo_subtasks" as any)
       .insert({
         todo_id: task.id,
         title: newSubtaskTitle,
@@ -84,7 +76,7 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
 
   const toggleSubtask = async (subtaskId: string, completed: boolean) => {
     const { error } = await supabase
-      .from("project_todo_subtasks")
+      .from("project_todo_subtasks" as any)
       .update({ completed: !completed })
       .eq("id", subtaskId);
 
@@ -97,7 +89,7 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
 
   const deleteSubtask = async (subtaskId: string) => {
     const { error } = await supabase
-      .from("project_todo_subtasks")
+      .from("project_todo_subtasks" as any)
       .delete()
       .eq("id", subtaskId);
 
