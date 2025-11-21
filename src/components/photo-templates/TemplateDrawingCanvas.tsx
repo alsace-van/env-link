@@ -110,6 +110,7 @@ class EditableCurve extends Path {
         selectable: false,
         evented: false,
         opacity: 0.7,
+        objectCaching: false,
       },
     );
 
@@ -122,6 +123,7 @@ class EditableCurve extends Path {
         selectable: false,
         evented: false,
         opacity: 0.7,
+        objectCaching: false,
       },
     );
 
@@ -139,6 +141,7 @@ class EditableCurve extends Path {
       originY: "center",
       hasBorders: false,
       hasControls: false,
+      objectCaching: false,
     });
     (handleStart as any).curvePointType = "start";
     (handleStart as any).parentCurve = this;
@@ -154,6 +157,7 @@ class EditableCurve extends Path {
       originY: "center",
       hasBorders: false,
       hasControls: false,
+      objectCaching: false,
     });
     (handleControl as any).curvePointType = "control";
     (handleControl as any).parentCurve = this;
@@ -169,6 +173,7 @@ class EditableCurve extends Path {
       originY: "center",
       hasBorders: false,
       hasControls: false,
+      objectCaching: false,
     });
     (handleEnd as any).curvePointType = "end";
     (handleEnd as any).parentCurve = this;
@@ -617,6 +622,11 @@ export function TemplateDrawingCanvas({
           curve.controlHandles[0].set({ left: newStart.x, top: newStart.y });
           curve.controlHandles[1].set({ left: newControl.x, top: newControl.y });
           curve.controlHandles[2].set({ left: newEnd.x, top: newEnd.y });
+          
+          // Forcer les objets à se marquer comme "dirty"
+          curve.controlHandles[0].setCoords();
+          curve.controlHandles[1].setCoords();
+          curve.controlHandles[2].setCoords();
         }
         
         if (curve.controlLines.length === 2) {
@@ -632,9 +642,13 @@ export function TemplateDrawingCanvas({
             x2: newEnd.x,
             y2: newEnd.y,
           });
+          
+          curve.controlLines[0].setCoords();
+          curve.controlLines[1].setCoords();
         }
         
-        fabricCanvas.renderAll();
+        // Forcer un rendu complet pour éviter les trails
+        fabricCanvas.requestRenderAll();
       }
     };
 
