@@ -305,7 +305,7 @@ export function TemplateDrawingCanvas({
           evented: false,
         });
         canvas.add(line);
-        line.sendToBack();
+        canvas.sendObjectToBack(line);
         gridLinesRef.current.push(line);
       }
 
@@ -318,7 +318,7 @@ export function TemplateDrawingCanvas({
           evented: false,
         });
         canvas.add(line);
-        line.sendToBack();
+        canvas.sendObjectToBack(line);
         gridLinesRef.current.push(line);
       }
 
@@ -545,7 +545,7 @@ export function TemplateDrawingCanvas({
         originY: "center",
       });
       fabricCanvas.add(marker);
-      marker.bringToFront();
+      fabricCanvas.bringObjectToFront(marker);
       return marker;
     };
 
@@ -1115,7 +1115,13 @@ export function TemplateDrawingCanvas({
     }
   };
 
-  const tools = [
+  const tools: Array<{
+    id: string;
+    icon: any;
+    label: string;
+    style?: React.CSSProperties;
+    highlight?: boolean;
+  }> = [
     { id: "select", icon: Hand, label: "Sélection (V)" },
     { id: "line", icon: Minus, label: "Ligne (L)" },
     { id: "rectangle", icon: Square, label: "Rectangle (R)" },
@@ -1133,7 +1139,7 @@ export function TemplateDrawingCanvas({
     { id: "spline", icon: Workflow, label: "Spline (4+ pts)" },
     { id: "dimension", icon: Ruler, label: "Cote (D)" },
     { id: "text", icon: Type, label: "Texte (T)" },
-  ] as const;
+  ];
 
   const getToolInstructions = () => {
     switch (activeTool) {
