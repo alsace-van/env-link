@@ -87,6 +87,13 @@ class EditableCurve extends Path {
     // Nettoyer les anciennes poignées
     this.removeHandles(canvas);
 
+    // 🔧 BUG FIX #3 : Nettoyer TOUS les cercles bleus temporaires qui traînent
+    canvas.getObjects().forEach((obj) => {
+      if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
+        canvas.remove(obj);
+      }
+    });
+
     // Lignes de contrôle (pointillées)
     const line1 = new Line(
       [
@@ -123,7 +130,7 @@ class EditableCurve extends Path {
     const handleStart = new Circle({
       left: this.controlPoints.start.x,
       top: this.controlPoints.start.y,
-      radius: 3, // 🔧 BUG FIX #3 : Réduit de 6 à 3px
+      radius: 2, // 🔧 BUG FIX : Réduit à 2px (très discret)
       fill: "#ffffff",
       stroke: color,
       strokeWidth: 2,
@@ -138,7 +145,7 @@ class EditableCurve extends Path {
     const handleControl = new Circle({
       left: this.controlPoints.control.x,
       top: this.controlPoints.control.y,
-      radius: 4, // 🔧 BUG FIX #3 : Réduit de 8 à 4px
+      radius: 3, // 🔧 BUG FIX : Réduit à 3px (discret)
       fill: color,
       stroke: "#ffffff",
       strokeWidth: 2,
@@ -153,7 +160,7 @@ class EditableCurve extends Path {
     const handleEnd = new Circle({
       left: this.controlPoints.end.x,
       top: this.controlPoints.end.y,
-      radius: 3, // 🔧 BUG FIX #3 : Réduit de 6 à 3px
+      radius: 2, // 🔧 BUG FIX : Réduit à 2px (très discret)
       fill: "#ffffff",
       stroke: color,
       strokeWidth: 2,
@@ -751,6 +758,9 @@ export function TemplateDrawingCanvas({
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.e || isFinalizingCurve) return;
 
+        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
+        if (e.e instanceof MouseEvent && e.e.button === 1) return;
+
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
@@ -943,6 +953,9 @@ export function TemplateDrawingCanvas({
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.e) return;
 
+        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
+        if (e.e instanceof MouseEvent && e.e.button === 1) return;
+
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
@@ -1090,6 +1103,9 @@ export function TemplateDrawingCanvas({
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.e) return;
 
+        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
+        if (e.e instanceof MouseEvent && e.e.button === 1) return;
+
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
@@ -1184,6 +1200,9 @@ export function TemplateDrawingCanvas({
     if (["line", "rectangle", "circle", "ellipse"].includes(activeTool)) {
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.e) return;
+
+        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
+        if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint);
@@ -1285,6 +1304,9 @@ export function TemplateDrawingCanvas({
     if (activeTool === "text") {
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.e) return;
+
+        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
+        if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint);
@@ -1698,6 +1720,39 @@ export function TemplateDrawingCanvas({
                 {tool.highlight && <span className="ml-1">⭐</span>}
               </Button>
             ))}
+          </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          {/* 🔧 BUG FIX #4 : Ajouter les contrôles de grille en mode normal */}
+          <div className="flex items-center gap-2">
+            <Grid3x3 className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Grille:</Label>
+            <Switch checked={showGrid} onCheckedChange={setShowGrid} />
+          </div>
+
+          {showGrid && (
+            <>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Taille:</Label>
+                <div className="w-24">
+                  <Slider
+                    value={[gridSize]}
+                    onValueChange={([value]) => setGridSize(value)}
+                    min={10}
+                    max={100}
+                    step={10}
+                  />
+                </div>
+                <Badge variant="outline">{gridSize}px</Badge>
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Magnet className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Magnétisme:</Label>
+            <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
           </div>
 
           <Separator orientation="vertical" className="h-8" />
