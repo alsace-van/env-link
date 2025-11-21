@@ -14,6 +14,7 @@ import {
   Control,
   Point,
   util,
+  Text as FabricText,
 } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -286,6 +287,8 @@ export function TemplateDrawingCanvas({
   const [showGrid, setShowGrid] = useState(true);
   const [gridSize, setGridSize] = useState(50);
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [gridSizeCm, setGridSizeCm] = useState(10); // Taille d'une case en cm
+  const [showRulers, setShowRulers] = useState(true);
   const [history, setHistory] = useState<HistoryState[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -567,7 +570,91 @@ export function TemplateDrawingCanvas({
   useEffect(() => {
     if (!fabricCanvas || !imgRef.current) return;
     createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
-  }, [showGrid, gridSize, fabricCanvas, createGrid]);
+    
+    // Dessiner les règles graduées
+    if (showRulers) {
+      // Supprimer les anciennes règles
+      const objects = fabricCanvas.getObjects();
+      objects.forEach((obj: any) => {
+        if (obj.isRuler) {
+          fabricCanvas.remove(obj);
+        }
+      });
+
+      const pixelsPerCm = (fabricCanvas.width || 1000) / 100; // Approximation : 100cm pour la largeur du canvas
+      const rulerColor = "#333333";
+      const rulerTextColor = "#000000";
+
+      // Règle horizontale (axe X)
+      for (let i = 0; i <= (fabricCanvas.width || 1000); i += pixelsPerCm * gridSizeCm) {
+        const cm = Math.round((i / pixelsPerCm) * 10) / 10;
+        
+        // Trait vertical
+        const line = new Line([i, 0, i, 20], {
+          stroke: rulerColor,
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+        });
+        (line as any).isRuler = true;
+        fabricCanvas.add(line);
+        fabricCanvas.bringObjectToFront(line);
+
+        // Texte tous les gridSizeCm cm
+        const text = new FabricText(`${cm}cm`, {
+          left: i + 2,
+          top: 2,
+          fontSize: 10,
+          fill: rulerTextColor,
+          selectable: false,
+          evented: false,
+        });
+        (text as any).isRuler = true;
+        fabricCanvas.add(text);
+        fabricCanvas.bringObjectToFront(text);
+      }
+
+      // Règle verticale (axe Y)
+      for (let i = 0; i <= (fabricCanvas.height || 700); i += pixelsPerCm * gridSizeCm) {
+        const cm = Math.round((i / pixelsPerCm) * 10) / 10;
+        
+        // Trait horizontal
+        const line = new Line([0, i, 20, i], {
+          stroke: rulerColor,
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+        });
+        (line as any).isRuler = true;
+        fabricCanvas.add(line);
+        fabricCanvas.bringObjectToFront(line);
+
+        // Texte tous les gridSizeCm cm
+        const text = new FabricText(`${cm}cm`, {
+          left: 22,
+          top: i + 2,
+          fontSize: 10,
+          fill: rulerTextColor,
+          selectable: false,
+          evented: false,
+        });
+        (text as any).isRuler = true;
+        fabricCanvas.add(text);
+        fabricCanvas.bringObjectToFront(text);
+      }
+
+      fabricCanvas.renderAll();
+    } else {
+      // Supprimer les règles si désactivées
+      const objects = fabricCanvas.getObjects();
+      objects.forEach((obj: any) => {
+        if (obj.isRuler) {
+          fabricCanvas.remove(obj);
+        }
+      });
+      fabricCanvas.renderAll();
+    }
+  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, gridSizeCm]);
 
   // 🔧 BUG FIX #6 : Gérer la sélection et le déplacement des courbes éditables
   useEffect(() => {
@@ -1805,6 +1892,31 @@ export function TemplateDrawingCanvas({
                   </div>
                   <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Ruler className="h-3 w-3 text-muted-foreground" />
+                    <Label className="text-xs">Règles</Label>
+                  </div>
+                  <Switch checked={showRulers} onCheckedChange={setShowRulers} />
+                </div>
+
+                {showRulers && (
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Graduat°:</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={gridSizeCm}
+                        onChange={(e) => setGridSizeCm(parseInt(e.target.value) || 10)}
+                        className="w-16 h-7 text-xs"
+                      />
+                      <span className="text-xs text-muted-foreground">cm</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Separator />
@@ -1902,6 +2014,29 @@ export function TemplateDrawingCanvas({
             <Label className="text-sm">Magnétisme:</Label>
             <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
           </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          <div className="flex items-center gap-2">
+            <Ruler className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Règles:</Label>
+            <Switch checked={showRulers} onCheckedChange={setShowRulers} />
+          </div>
+
+          {showRulers && (
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Graduations:</Label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={gridSizeCm}
+                onChange={(e) => setGridSizeCm(parseInt(e.target.value) || 10)}
+                className="w-20 h-8"
+              />
+              <span className="text-sm text-muted-foreground">cm/case</span>
+            </div>
+          )}
 
           <Separator orientation="vertical" className="h-8" />
 
