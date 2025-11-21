@@ -1270,12 +1270,6 @@ export function TemplateDrawingCanvas({
 
   return (
     <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-background" : "space-y-4"}`}>
-      {isFullscreen && (
-        <div className="h-screen w-screen flex items-center justify-center overflow-hidden">
-          <canvas ref={canvasRef} className="max-w-full max-h-full" />
-        </div>
-      )}
-
       {!isFullscreen && instructions && (
         <Alert className={activeTool === "editableCurve" ? "border-blue-500 bg-blue-50" : ""}>
           <Info className="h-4 w-4" />
@@ -1547,7 +1541,12 @@ export function TemplateDrawingCanvas({
         </div>
       )}
 
-      {!isFullscreen && (
+      {/* Canvas - adapté selon le mode */}
+      {isFullscreen ? (
+        <div className="h-screen w-screen flex items-center justify-center overflow-hidden">
+          <canvas ref={canvasRef} className="max-w-full max-h-full" />
+        </div>
+      ) : (
         <>
           <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
             <div className="flex items-center gap-2">
