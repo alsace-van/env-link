@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { DraggableToolbar } from "./DraggableToolbar";
 
 interface TemplateDrawingCanvasProps {
   imageUrl: string;
@@ -432,12 +433,22 @@ export function TemplateDrawingCanvas({
     img.onload = () => {
       imgRef.current = img;
 
-      const maxWidth = 1000;
-      const maxHeight = 700;
-      const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
+      let finalWidth, finalHeight, scale;
 
-      const finalWidth = img.width * scale;
-      const finalHeight = img.height * scale;
+      if (isFullscreen) {
+        // En mode plein écran, utiliser toute la hauteur et largeur disponible
+        const maxWidth = window.innerWidth - 40;
+        const maxHeight = window.innerHeight - 40;
+        scale = Math.min(maxWidth / img.width, maxHeight / img.height);
+        finalWidth = img.width * scale;
+        finalHeight = img.height * scale;
+      } else {
+        const maxWidth = 1000;
+        const maxHeight = 700;
+        scale = Math.min(maxWidth / img.width, maxHeight / img.height);
+        finalWidth = img.width * scale;
+        finalHeight = img.height * scale;
+      }
 
       canvas.setWidth(finalWidth);
       canvas.setHeight(finalHeight);
@@ -465,7 +476,7 @@ export function TemplateDrawingCanvas({
     return () => {
       canvas.dispose();
     };
-  }, [imageUrl]);
+  }, [imageUrl, isFullscreen]);
 
   // Recréer la grille quand les paramètres changent
   useEffect(() => {
@@ -1441,7 +1452,7 @@ export function TemplateDrawingCanvas({
         </div>
       )}
 
-      <div className={`${isFullscreen ? "flex-1 overflow-hidden bg-white" : "border rounded-lg overflow-auto bg-white shadow-lg"}`} style={!isFullscreen ? { maxHeight: "600px" } : undefined}>
+      <div className={`${isFullscreen ? "flex items-center justify-center w-full h-full" : "border rounded-lg overflow-auto bg-white shadow-lg"}`} style={!isFullscreen ? { maxHeight: "600px" } : undefined}>
         <canvas ref={canvasRef} />
       </div>
     </div>
