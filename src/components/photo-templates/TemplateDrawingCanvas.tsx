@@ -41,6 +41,10 @@ import {
   Magnet,
   Info,
   Sparkles,
+  Move,
+  Maximize,
+  Minimize,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -256,7 +260,10 @@ export function TemplateDrawingCanvas({
     | "editableCurve"
     | "polygon"
     | "dimension"
+    | "pan"
   >("select");
+
+
 
   const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
   const [tempObjects, setTempObjects] = useState<any[]>([]);
@@ -269,9 +276,11 @@ export function TemplateDrawingCanvas({
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [history, setHistory] = useState<HistoryState[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const gridLinesRef = useRef<any[]>([]);
   const activeCurveRef = useRef<EditableCurve | null>(null);
+  const lastPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Fonction snap to grid
   const snapPoint = useCallback(
@@ -518,6 +527,66 @@ export function TemplateDrawingCanvas({
     fabricCanvas.off("mouse:down");
     fabricCanvas.off("mouse:move");
     fabricCanvas.off("mouse:up");
+    fabricCanvas.off("mouse:wheel");
+
+    // Zoom avec la molette (toujours actif)
+    fabricCanvas.on("mouse:wheel", (opt) => {
+      const delta = opt.e.deltaY;
+      let newZoom = fabricCanvas.getZoom();
+      newZoom *= 0.999 ** delta;
+      if (newZoom > 5) newZoom = 5;
+      if (newZoom < 0.3) newZoom = 0.3;
+      fabricCanvas.zoomToPoint(
+        new Point(opt.e.offsetX, opt.e.offsetY),
+        newZoom
+      );
+      setZoom(newZoom);
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+    });
+
+    // Gestion du pan (déplacement)
+    if (activeTool === "pan") {
+      fabricCanvas.selection = false;
+      fabricCanvas.defaultCursor = "grab";
+      let panning = false;
+      
+      fabricCanvas.on("mouse:down", (opt) => {
+        const evt = opt.e;
+        if (evt instanceof MouseEvent || evt instanceof TouchEvent) {
+          panning = true;
+          fabricCanvas.selection = false;
+          fabricCanvas.defaultCursor = "grabbing";
+          lastPosRef.current = { 
+            x: (evt as MouseEvent).clientX || 0, 
+            y: (evt as MouseEvent).clientY || 0 
+          };
+        }
+      });
+
+      fabricCanvas.on("mouse:move", (opt) => {
+        if (panning && lastPosRef.current) {
+          const evt = opt.e;
+          if (evt instanceof MouseEvent) {
+            const vpt = fabricCanvas.viewportTransform;
+            if (vpt) {
+              vpt[4] += evt.clientX - lastPosRef.current.x;
+              vpt[5] += evt.clientY - lastPosRef.current.y;
+              fabricCanvas.requestRenderAll();
+              lastPosRef.current = { x: evt.clientX, y: evt.clientY };
+            }
+          }
+        }
+      });
+
+      fabricCanvas.on("mouse:up", () => {
+        panning = false;
+        fabricCanvas.defaultCursor = "grab";
+        lastPosRef.current = null;
+      });
+
+      return;
+    }
 
     if (activeTool === "select" || activeTool === "pencil") return;
 
@@ -1098,21 +1167,28 @@ export function TemplateDrawingCanvas({
   };
 
   const handleZoomIn = () => {
-    setZoom((z) => Math.min(3, z + 0.25));
-    if (fabricCanvas) {
-      const newZoom = Math.min(3, zoom + 0.25);
-      fabricCanvas.setZoom(newZoom);
-      fabricCanvas.renderAll();
-    }
+    if (!fabricCanvas) return;
+    const newZoom = Math.min(3, zoom + 0.25);
+    setZoom(newZoom);
+    const center = fabricCanvas.getCenter();
+    fabricCanvas.zoomToPoint(new Point(center.left, center.top), newZoom);
+    fabricCanvas.renderAll();
   };
 
   const handleZoomOut = () => {
-    setZoom((z) => Math.max(0.5, z - 0.25));
-    if (fabricCanvas) {
-      const newZoom = Math.max(0.5, zoom - 0.25);
-      fabricCanvas.setZoom(newZoom);
-      fabricCanvas.renderAll();
-    }
+    if (!fabricCanvas) return;
+    const newZoom = Math.max(0.5, zoom - 0.25);
+    setZoom(newZoom);
+    const center = fabricCanvas.getCenter();
+    fabricCanvas.zoomToPoint(new Point(center.left, center.top), newZoom);
+    fabricCanvas.renderAll();
+  };
+
+  const handleResetView = () => {
+    if (!fabricCanvas) return;
+    setZoom(1);
+    fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    fabricCanvas.renderAll();
   };
 
   const tools: Array<{
@@ -1123,6 +1199,7 @@ export function TemplateDrawingCanvas({
     highlight?: boolean;
   }> = [
     { id: "select", icon: Hand, label: "Sélection (V)" },
+    { id: "pan", icon: Move, label: "Déplacer la vue (H)" },
     { id: "line", icon: Minus, label: "Ligne (L)" },
     { id: "rectangle", icon: Square, label: "Rectangle (R)" },
     { id: "circle", icon: CircleIcon, label: "Cercle (C)" },
@@ -1163,8 +1240,22 @@ export function TemplateDrawingCanvas({
   const instructions = getToolInstructions();
 
   return (
-    <div className="space-y-4">
-      {instructions && (
+    <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-background flex flex-col" : "space-y-4"}`}>
+      {isFullscreen && (
+        <div className="flex items-center justify-between p-4 bg-muted/95 backdrop-blur-sm border-b">
+          <h3 className="text-lg font-semibold">Mode Plein Écran - Dessin Technique</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsFullscreen(false)}
+          >
+            <Minimize className="h-4 w-4 mr-2" />
+            Quitter
+          </Button>
+        </div>
+      )}
+
+      {instructions && !isFullscreen && (
         <Alert className={activeTool === "editableCurve" ? "border-blue-500 bg-blue-50" : ""}>
           <Info className="h-4 w-4" />
           <AlertDescription className="font-medium">{instructions}</AlertDescription>
@@ -1172,7 +1263,7 @@ export function TemplateDrawingCanvas({
       )}
 
       {tempPoints.length > 0 && (
-        <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-2 ${isFullscreen ? "absolute top-20 left-4 z-10" : ""}`}>
           <Badge variant="secondary" className="animate-pulse">
             {activeTool === "editableCurve"
               ? `Courbe éditable: ${tempPoints.length}/3 points`
@@ -1186,13 +1277,13 @@ export function TemplateDrawingCanvas({
                       ? `Cote: ${tempPoints.length}/2 points`
                       : ""}
           </Badge>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-sm text-muted-foreground bg-background/80 px-2 py-1 rounded">
             Appuyez sur <kbd className="px-2 py-1 bg-muted rounded">Échap</kbd> pour annuler
           </span>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-4 p-4 bg-muted rounded-lg">
+      <div className={`flex flex-wrap items-center gap-4 p-4 bg-muted/95 backdrop-blur-sm rounded-lg ${isFullscreen ? "absolute top-2 left-1/2 -translate-x-1/2 z-10 max-w-[95vw] shadow-lg" : ""}`}>
         <div className="flex flex-wrap gap-1">
           {tools.map((tool) => (
             <Button
@@ -1251,6 +1342,9 @@ export function TemplateDrawingCanvas({
           <Button variant="outline" size="sm" onClick={handleZoomIn} title="Zoom avant (+)">
             <ZoomIn className="h-4 w-4" />
           </Button>
+          <Button variant="outline" size="sm" onClick={handleResetView} title="Réinitialiser la vue">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
 
         <Separator orientation="vertical" className="h-8" />
@@ -1287,51 +1381,67 @@ export function TemplateDrawingCanvas({
             Effacer tout
           </Button>
         </div>
+
+        <Separator orientation="vertical" className="h-8" />
+
+        <Button
+          variant={isFullscreen ? "default" : "outline"}
+          size="sm"
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          title="Mode plein écran"
+        >
+          {isFullscreen ? <Minimize className="h-4 w-4 mr-2" /> : <Maximize className="h-4 w-4 mr-2" />}
+          {isFullscreen ? "Normal" : "Plein écran"}
+        </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
-        <div className="flex items-center gap-2">
-          <Grid3x3 className="h-4 w-4 text-muted-foreground" />
-          <Label className="text-sm">Grille:</Label>
-          <Switch checked={showGrid} onCheckedChange={setShowGrid} />
-        </div>
-
-        {showGrid && (
+      {!isFullscreen && (
+        <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-2">
-            <Label className="text-sm">Taille grille:</Label>
-            <Input
-              type="number"
-              min="10"
-              max="100"
-              value={gridSize}
-              onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
-              className="w-20"
-            />
-            <span className="text-xs text-muted-foreground">px</span>
+            <Grid3x3 className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Grille:</Label>
+            <Switch checked={showGrid} onCheckedChange={setShowGrid} />
           </div>
-        )}
 
-        <Separator orientation="vertical" className="h-6" />
+          {showGrid && (
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Taille grille:</Label>
+              <Input
+                type="number"
+                min="10"
+                max="100"
+                value={gridSize}
+                onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
+                className="w-20"
+              />
+              <span className="text-xs text-muted-foreground">px</span>
+            </div>
+          )}
 
-        <div className="flex items-center gap-2">
-          <Magnet className="h-4 w-4 text-muted-foreground" />
-          <Label className="text-sm">Magnétisme:</Label>
-          <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+          <Separator orientation="vertical" className="h-6" />
+
+          <div className="flex items-center gap-2">
+            <Magnet className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Magnétisme:</Label>
+            <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
-        <p>
-          <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
-          <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
-          <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
-        </p>
-        <p className="mt-1 text-blue-600 font-medium">
-          💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel !
-        </p>
-      </div>
+      {!isFullscreen && (
+        <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
+          <p>
+            <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
+            <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
+            <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
+          </p>
+          <p className="mt-1 text-blue-600 font-medium">
+            💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Utilisez la molette pour zoomer et l'outil "Déplacer" pour naviguer.
+          </p>
+        </div>
+      )}
 
-      <div className="border rounded-lg overflow-auto bg-white shadow-lg" style={{ maxHeight: "600px" }}>
+      <div className={`${isFullscreen ? "flex-1 overflow-hidden bg-white" : "border rounded-lg overflow-auto bg-white shadow-lg"}`} style={!isFullscreen ? { maxHeight: "600px" } : undefined}>
         <canvas ref={canvasRef} />
       </div>
     </div>
