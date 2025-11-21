@@ -632,23 +632,19 @@ export function TemplateDrawingCanvas({
         });
         (line as any).isRuler = true;
         fabricCanvas.add(line);
-        fabricCanvas.bringObjectToFront(line);
 
-        // Texte en bas (tous les gridSizeCm cm)
-        if (cm % gridSizeCm === 0 || i === 0) {
-          const text = new FabricText(`${cm}cm`, {
-            left: x + 2,
-            top: canvasHeight + 10,
-            fontSize: 10,
-            fill: textColor,
-            selectable: false,
-            evented: false,
-            fontWeight: 'normal',
-          });
-          (text as any).isRuler = true;
-          fabricCanvas.add(text);
-          fabricCanvas.bringObjectToFront(text);
-        }
+        // Texte en bas (à chaque trait)
+        const text = new FabricText(`${cm}`, {
+          left: x - 8,
+          top: canvasHeight + 12,
+          fontSize: 12,
+          fill: textColor,
+          selectable: false,
+          evented: false,
+          fontWeight: 'normal',
+        });
+        (text as any).isRuler = true;
+        fabricCanvas.add(text);
       }
 
       // Règle verticale (axe Y) - à gauche, 0 en bas, alignée avec la grille
@@ -669,23 +665,19 @@ export function TemplateDrawingCanvas({
         });
         (line as any).isRuler = true;
         fabricCanvas.add(line);
-        fabricCanvas.bringObjectToFront(line);
 
-        // Texte à gauche (tous les gridSizeCm cm)
-        if (cm % gridSizeCm === 0 || i === 0) {
-          const text = new FabricText(`${cm}cm`, {
-            left: -28,
-            top: y - 6,
-            fontSize: 10,
-            fill: textColor,
-            selectable: false,
-            evented: false,
-            fontWeight: 'normal',
-          });
-          (text as any).isRuler = true;
-          fabricCanvas.add(text);
-          fabricCanvas.bringObjectToFront(text);
-        }
+        // Texte à gauche (à chaque trait)
+        const text = new FabricText(`${cm}`, {
+          left: -28,
+          top: y - 6,
+          fontSize: 12,
+          fill: textColor,
+          selectable: false,
+          evented: false,
+          fontWeight: 'normal',
+        });
+        (text as any).isRuler = true;
+        fabricCanvas.add(text);
       }
 
       fabricCanvas.renderAll();
