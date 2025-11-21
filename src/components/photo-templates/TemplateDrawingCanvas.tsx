@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import Draggable from "react-draggable";
 import {
   Canvas as FabricCanvas,
   Line,
@@ -532,17 +533,26 @@ export function TemplateDrawingCanvas({
     // Zoom avec la molette (toujours actif)
     fabricCanvas.on("mouse:wheel", (opt) => {
       const delta = opt.e.deltaY;
+      const evt = opt.e;
+      evt.preventDefault();
+      evt.stopPropagation();
+      
       let newZoom = fabricCanvas.getZoom();
       newZoom *= 0.999 ** delta;
       if (newZoom > 5) newZoom = 5;
-      if (newZoom < 0.3) newZoom = 0.3;
+      if (newZoom < 0.1) newZoom = 0.1;
+      
+      // Utiliser le centre du canvas si on ne peut pas obtenir la position de la souris
+      const canvasEl = fabricCanvas.getElement();
+      const rect = canvasEl.getBoundingClientRect();
+      const mouseX = evt.clientX - rect.left;
+      const mouseY = evt.clientY - rect.top;
+      
       fabricCanvas.zoomToPoint(
-        new Point(opt.e.offsetX, opt.e.offsetY),
+        new Point(mouseX, mouseY),
         newZoom
       );
       setZoom(newZoom);
-      opt.e.preventDefault();
-      opt.e.stopPropagation();
     });
 
     // Gestion du pan (déplacement)
@@ -1168,7 +1178,7 @@ export function TemplateDrawingCanvas({
 
   const handleZoomIn = () => {
     if (!fabricCanvas) return;
-    const newZoom = Math.min(3, zoom + 0.25);
+    const newZoom = Math.min(5, zoom + 0.25);
     setZoom(newZoom);
     const center = fabricCanvas.getCenter();
     fabricCanvas.zoomToPoint(new Point(center.left, center.top), newZoom);
@@ -1177,7 +1187,7 @@ export function TemplateDrawingCanvas({
 
   const handleZoomOut = () => {
     if (!fabricCanvas) return;
-    const newZoom = Math.max(0.5, zoom - 0.25);
+    const newZoom = Math.max(0.1, zoom - 0.25);
     setZoom(newZoom);
     const center = fabricCanvas.getCenter();
     fabricCanvas.zoomToPoint(new Point(center.left, center.top), newZoom);
@@ -1185,9 +1195,28 @@ export function TemplateDrawingCanvas({
   };
 
   const handleResetView = () => {
-    if (!fabricCanvas) return;
+    if (!fabricCanvas || !imgRef.current) return;
     setZoom(1);
     fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    
+    // Centrer l'image si on est en plein écran
+    if (isFullscreen && canvasRef.current) {
+      const containerWidth = window.innerWidth;
+      const containerHeight = window.innerHeight - 80; // Moins l'espace pour le header
+      const canvasWidth = fabricCanvas.getWidth();
+      const canvasHeight = fabricCanvas.getHeight();
+      
+      // Calculer l'échelle pour remplir au maximum l'espace
+      const scale = Math.min(containerWidth / canvasWidth, containerHeight / canvasHeight) * 0.95;
+      
+      // Centrer
+      const offsetX = (containerWidth - canvasWidth * scale) / 2;
+      const offsetY = (containerHeight - canvasHeight * scale) / 2;
+      
+      fabricCanvas.setViewportTransform([scale, 0, 0, scale, offsetX, offsetY]);
+      setZoom(scale);
+    }
+    
     fabricCanvas.renderAll();
   };
 
@@ -1240,22 +1269,14 @@ export function TemplateDrawingCanvas({
   const instructions = getToolInstructions();
 
   return (
-    <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-background flex flex-col" : "space-y-4"}`}>
+    <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-background" : "space-y-4"}`}>
       {isFullscreen && (
-        <div className="flex items-center justify-between p-4 bg-muted/95 backdrop-blur-sm border-b">
-          <h3 className="text-lg font-semibold">Mode Plein Écran - Dessin Technique</h3>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsFullscreen(false)}
-          >
-            <Minimize className="h-4 w-4 mr-2" />
-            Quitter
-          </Button>
+        <div className="h-screen w-screen flex items-center justify-center overflow-hidden">
+          <canvas ref={canvasRef} className="max-w-full max-h-full" />
         </div>
       )}
 
-      {instructions && !isFullscreen && (
+      {!isFullscreen && instructions && (
         <Alert className={activeTool === "editableCurve" ? "border-blue-500 bg-blue-50" : ""}>
           <Info className="h-4 w-4" />
           <AlertDescription className="font-medium">{instructions}</AlertDescription>
@@ -1263,7 +1284,7 @@ export function TemplateDrawingCanvas({
       )}
 
       {tempPoints.length > 0 && (
-        <div className={`flex items-center gap-2 ${isFullscreen ? "absolute top-20 left-4 z-10" : ""}`}>
+        <div className={`flex items-center gap-2 ${isFullscreen ? "fixed top-4 left-4 z-[60]" : ""}`}>
           <Badge variant="secondary" className="animate-pulse">
             {activeTool === "editableCurve"
               ? `Courbe éditable: ${tempPoints.length}/3 points`
@@ -1283,167 +1304,298 @@ export function TemplateDrawingCanvas({
         </div>
       )}
 
-      <div className={`flex flex-wrap items-center gap-4 p-4 bg-muted/95 backdrop-blur-sm rounded-lg ${isFullscreen ? "absolute top-2 left-1/2 -translate-x-1/2 z-10 max-w-[95vw] shadow-lg" : ""}`}>
-        <div className="flex flex-wrap gap-1">
-          {tools.map((tool) => (
-            <Button
-              key={tool.id}
-              variant={activeTool === tool.id ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                setActiveTool(tool.id as any);
-                setTempPoints([]);
-                setTempObjects([]);
-              }}
-              title={tool.label}
-              className={tool.highlight ? "ring-2 ring-blue-500 animate-pulse" : ""}
-            >
-              <tool.icon className="h-4 w-4" style={tool.style} />
-              {tool.highlight && <span className="ml-1">⭐</span>}
-            </Button>
-          ))}
-        </div>
+      {/* Toolbar - draggable en mode plein écran */}
+      {isFullscreen ? (
+        <Draggable handle=".drag-handle" defaultPosition={{ x: 20, y: 20 }}>
+          <div className="fixed z-[60] bg-background/95 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-border max-w-[350px]">
+            <div className="drag-handle cursor-move bg-muted/50 p-2 rounded-t-lg border-b flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className="text-xs font-medium ml-2">Outils de Dessin</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsFullscreen(false)}
+                className="h-6 w-6 p-0"
+              >
+                <Minimize className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="p-3 space-y-3 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-4 gap-1">
+                {tools.map((tool) => (
+                  <Button
+                    key={tool.id}
+                    variant={activeTool === tool.id ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveTool(tool.id as any);
+                      setTempPoints([]);
+                      setTempObjects([]);
+                    }}
+                    title={tool.label}
+                    className={`h-9 w-9 p-0 ${tool.highlight ? "ring-2 ring-blue-500" : ""}`}
+                  >
+                    <tool.icon className="h-4 w-4" style={tool.style} />
+                  </Button>
+                ))}
+              </div>
 
-        <Separator orientation="vertical" className="h-8" />
+              <Separator />
 
-        <div className="flex items-center gap-2">
-          <Label className="text-sm">Couleur:</Label>
-          <Input
-            type="color"
-            value={strokeColor}
-            onChange={(e) => setStrokeColor(e.target.value)}
-            className="w-16 h-8"
-          />
-        </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Couleur</Label>
+                  <Input
+                    type="color"
+                    value={strokeColor}
+                    onChange={(e) => setStrokeColor(e.target.value)}
+                    className="w-16 h-7"
+                  />
+                </div>
 
-        <div className="flex items-center gap-2">
-          <Label className="text-sm">Épaisseur:</Label>
-          <div className="w-32">
-            <Slider
-              value={[strokeWidth]}
-              onValueChange={([value]) => setStrokeWidth(value)}
-              min={1}
-              max={20}
-              step={1}
+                <div className="space-y-1">
+                  <Label className="text-xs">Épaisseur: {strokeWidth}px</Label>
+                  <Slider
+                    value={[strokeWidth]}
+                    onValueChange={([value]) => setStrokeWidth(value)}
+                    min={1}
+                    max={20}
+                    step={1}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Zoom: {Math.round(zoom * 100)}%</Label>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="sm" onClick={handleZoomOut} className="h-7 w-7 p-0">
+                      <ZoomOut className="h-3 w-3" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleZoomIn} className="h-7 w-7 p-0">
+                      <ZoomIn className="h-3 w-3" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleResetView} className="h-7 w-7 p-0">
+                      <RefreshCw className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex flex-col gap-1">
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUndo}
+                    disabled={historyIndex <= 0}
+                    className="flex-1 h-8"
+                  >
+                    <Undo className="h-3 w-3 mr-1" />
+                    Annuler
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRedo}
+                    disabled={historyIndex >= history.length - 1}
+                    className="flex-1 h-8"
+                  >
+                    <Redo className="h-3 w-3 mr-1" />
+                    Refaire
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex flex-col gap-1">
+                <Button variant="outline" size="sm" onClick={handleDeleteSelected} className="h-8">
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Supprimer
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleClear} className="h-8">
+                  Effacer tout
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Draggable>
+      ) : (
+        <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/95 backdrop-blur-sm rounded-lg">
+          <div className="flex flex-wrap gap-1">
+            {tools.map((tool) => (
+              <Button
+                key={tool.id}
+                variant={activeTool === tool.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setActiveTool(tool.id as any);
+                  setTempPoints([]);
+                  setTempObjects([]);
+                }}
+                title={tool.label}
+                className={tool.highlight ? "ring-2 ring-blue-500 animate-pulse" : ""}
+              >
+                <tool.icon className="h-4 w-4" style={tool.style} />
+                {tool.highlight && <span className="ml-1">⭐</span>}
+              </Button>
+            ))}
+          </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          <div className="flex items-center gap-2">
+            <Label className="text-sm">Couleur:</Label>
+            <Input
+              type="color"
+              value={strokeColor}
+              onChange={(e) => setStrokeColor(e.target.value)}
+              className="w-16 h-8"
             />
           </div>
-          <Badge variant="outline">{strokeWidth}px</Badge>
-        </div>
 
-        <Separator orientation="vertical" className="h-8" />
-
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={handleZoomOut} title="Zoom arrière (-)">
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Badge variant="outline" className="px-3">
-            {Math.round(zoom * 100)}%
-          </Badge>
-          <Button variant="outline" size="sm" onClick={handleZoomIn} title="Zoom avant (+)">
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleResetView} title="Réinitialiser la vue">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <Separator orientation="vertical" className="h-8" />
-
-        <div className="flex gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleUndo}
-            disabled={historyIndex <= 0}
-            title="Annuler (Ctrl+Z)"
-          >
-            <Undo className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRedo}
-            disabled={historyIndex >= history.length - 1}
-            title="Refaire (Ctrl+Y)"
-          >
-            <Redo className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <Separator orientation="vertical" className="h-8" />
-
-        <div className="flex gap-1">
-          <Button variant="outline" size="sm" onClick={handleDeleteSelected} title="Supprimer (Suppr)">
-            <Trash2 className="h-4 w-4 mr-2" />
-            Supprimer
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleClear}>
-            Effacer tout
-          </Button>
-        </div>
-
-        <Separator orientation="vertical" className="h-8" />
-
-        <Button
-          variant={isFullscreen ? "default" : "outline"}
-          size="sm"
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          title="Mode plein écran"
-        >
-          {isFullscreen ? <Minimize className="h-4 w-4 mr-2" /> : <Maximize className="h-4 w-4 mr-2" />}
-          {isFullscreen ? "Normal" : "Plein écran"}
-        </Button>
-      </div>
-
-      {!isFullscreen && (
-        <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-2">
-            <Grid3x3 className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm">Grille:</Label>
-            <Switch checked={showGrid} onCheckedChange={setShowGrid} />
-          </div>
-
-          {showGrid && (
-            <div className="flex items-center gap-2">
-              <Label className="text-sm">Taille grille:</Label>
-              <Input
-                type="number"
-                min="10"
-                max="100"
-                value={gridSize}
-                onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
-                className="w-20"
+            <Label className="text-sm">Épaisseur:</Label>
+            <div className="w-32">
+              <Slider
+                value={[strokeWidth]}
+                onValueChange={([value]) => setStrokeWidth(value)}
+                min={1}
+                max={20}
+                step={1}
               />
-              <span className="text-xs text-muted-foreground">px</span>
             </div>
-          )}
-
-          <Separator orientation="vertical" className="h-6" />
-
-          <div className="flex items-center gap-2">
-            <Magnet className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm">Magnétisme:</Label>
-            <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+            <Badge variant="outline">{strokeWidth}px</Badge>
           </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" onClick={handleZoomOut} title="Zoom arrière (-)">
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Badge variant="outline" className="px-3">
+              {Math.round(zoom * 100)}%
+            </Badge>
+            <Button variant="outline" size="sm" onClick={handleZoomIn} title="Zoom avant (+)">
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleResetView} title="Réinitialiser la vue">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUndo}
+              disabled={historyIndex <= 0}
+              title="Annuler (Ctrl+Z)"
+            >
+              <Undo className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRedo}
+              disabled={historyIndex >= history.length - 1}
+              title="Refaire (Ctrl+Y)"
+            >
+              <Redo className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" onClick={handleDeleteSelected} title="Supprimer (Suppr)">
+              <Trash2 className="h-4 w-4 mr-2" />
+              Supprimer
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleClear}>
+              Effacer tout
+            </Button>
+          </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setIsFullscreen(true);
+              // Centrer l'image après un court délai pour laisser le temps au DOM de se mettre à jour
+              setTimeout(() => handleResetView(), 100);
+            }}
+            title="Mode plein écran"
+          >
+            <Maximize className="h-4 w-4 mr-2" />
+            Plein écran
+          </Button>
         </div>
       )}
 
       {!isFullscreen && (
-        <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
-          <p>
-            <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
-            <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
-            <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
-          </p>
-          <p className="mt-1 text-blue-600 font-medium">
-            💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Utilisez la molette pour zoomer et l'outil "Déplacer" pour naviguer.
-          </p>
-        </div>
-      )}
+        <>
+          <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Grid3x3 className="h-4 w-4 text-muted-foreground" />
+              <Label className="text-sm">Grille:</Label>
+              <Switch checked={showGrid} onCheckedChange={setShowGrid} />
+            </div>
 
-      <div className={`${isFullscreen ? "flex-1 overflow-hidden bg-white" : "border rounded-lg overflow-auto bg-white shadow-lg"}`} style={!isFullscreen ? { maxHeight: "600px" } : undefined}>
-        <canvas ref={canvasRef} />
-      </div>
+            {showGrid && (
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Taille grille:</Label>
+                <Input
+                  type="number"
+                  min="10"
+                  max="100"
+                  value={gridSize}
+                  onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
+                  className="w-20"
+                />
+                <span className="text-xs text-muted-foreground">px</span>
+              </div>
+            )}
+
+            <Separator orientation="vertical" className="h-6" />
+
+            <div className="flex items-center gap-2">
+              <Magnet className="h-4 w-4 text-muted-foreground" />
+              <Label className="text-sm">Magnétisme:</Label>
+              <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+            </div>
+          </div>
+
+          <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
+            <p>
+              <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
+              <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
+              <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
+            </p>
+            <p className="mt-1 text-blue-600 font-medium">
+              💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Utilisez la molette pour zoomer et l'outil "Déplacer" pour naviguer.
+            </p>
+          </div>
+
+          <div className="border rounded-lg overflow-auto bg-white shadow-lg" style={{ maxHeight: "600px" }}>
+            <canvas ref={canvasRef} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
