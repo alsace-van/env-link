@@ -775,30 +775,10 @@ export function TemplateDrawingCanvas({
           toast.info("Première extrémité placée. Cliquez pour placer la deuxième extrémité");
         } else if (updatedPoints.length === 2) {
           // Deuxième point = deuxième extrémité
-          toast.info("Deuxième extrémité placée. Déplacez la souris pour ajuster la courbure");
+          toast.info("Deuxième extrémité placée. Déplacez la souris pour ajuster la courbure, puis cliquez");
 
-          // Créer un point de contrôle initial au milieu
-          const [start, end] = updatedPoints;
-          const midX = (start.x + end.x) / 2;
-          const midY = (start.y + end.y) / 2;
-          const initialControl = { x: midX, y: midY };
-
-          // Créer la courbe immédiatement avec le point de contrôle au milieu
-          const curve = new EditableCurve(
-            new Point(start.x, start.y),
-            new Point(initialControl.x, initialControl.y),
-            new Point(end.x, end.y),
-            {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
-              fill: "transparent",
-              strokeLineCap: "round",
-              strokeLineJoin: "round",
-            },
-          );
-
-          fabricCanvas.add(curve);
-          setTempObjects((prev) => [...prev, curve]);
+          // 🔧 BUG FIX : NE PAS créer de courbe temporaire ici
+          // On laisse uniquement l'aperçu dans mouse:move gérer l'affichage
         } else if (updatedPoints.length === 3) {
           // Troisième point = ajustement final du point de contrôle
           isFinalizingCurve = true;
@@ -809,9 +789,22 @@ export function TemplateDrawingCanvas({
             fabricCanvas.remove(obj);
           });
 
-          // Supprimer aussi toutes les lignes temporaires qui pourraient traîner
+          // 🔧 BUG FIX : Supprimer TOUTES les courbes temporaires EditableCurve
           fabricCanvas.getObjects().forEach((obj) => {
+            // Supprimer les EditableCurve temporaires (celles sans poignées visibles)
+            if (
+              obj instanceof Path &&
+              (obj as any).customType === "editableCurve" &&
+              !(obj as EditableCurve).controlHandles?.length
+            ) {
+              fabricCanvas.remove(obj);
+            }
+            // Supprimer les lignes temporaires en pointillés
             if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
+              fabricCanvas.remove(obj);
+            }
+            // Supprimer les cercles temporaires (marqueurs)
+            if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
               fabricCanvas.remove(obj);
             }
           });
