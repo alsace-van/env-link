@@ -285,6 +285,15 @@ export function TemplateDrawingCanvas({
     height: number;
     viewportTransform: number[] | null;
   } | null>(null);
+  // Fonction pour obtenir les coordonnées correctes du canvas en tenant compte du zoom/pan
+  const getCanvasPoint = useCallback((canvas: FabricCanvas, e: any): { x: number; y: number } => {
+    if (!canvas) return { x: 0, y: 0 };
+
+    // Obtenir la position de la souris par rapport au canvas
+    const pointer = canvas.getPointer(e);
+    return { x: pointer.x, y: pointer.y };
+  }, []);
+
   // Fonction snap to grid
   const snapPoint = useCallback(
     (point: { x: number; y: number }) => {
@@ -689,9 +698,10 @@ export function TemplateDrawingCanvas({
     // === OUTIL COURBE ÉDITABLE (le nouveau !) ===
     if (activeTool === "editableCurve") {
       fabricCanvas.on("mouse:down", (e) => {
-        if (!e.pointer) return;
+        if (!e.e) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
         const updatedPoints = [...tempPoints, newPoint];
         setTempPoints(updatedPoints);
@@ -732,11 +742,10 @@ export function TemplateDrawingCanvas({
           // Troisième point = ajustement final du point de contrôle
           const [start, end, control] = updatedPoints;
 
-          // Supprimer la courbe temporaire
-          const tempCurve = tempObjects.find((obj) => obj instanceof EditableCurve);
-          if (tempCurve) {
-            fabricCanvas.remove(tempCurve);
-          }
+          // Supprimer TOUS les objets temporaires (courbe temporaire, marqueurs, lignes)
+          tempObjects.forEach((obj) => {
+            fabricCanvas.remove(obj);
+          });
 
           // Créer la courbe finale
           const finalCurve = new EditableCurve(
@@ -755,7 +764,8 @@ export function TemplateDrawingCanvas({
           fabricCanvas.add(finalCurve);
           finalCurve.createHandles(fabricCanvas, strokeColor);
 
-          cleanTempObjects();
+          // Nettoyer complètement
+          setTempObjects([]);
           if (previewCurve) {
             fabricCanvas.remove(previewCurve);
             setPreviewCurve(null);
@@ -769,23 +779,31 @@ export function TemplateDrawingCanvas({
       });
 
       fabricCanvas.on("mouse:move", (e) => {
-        if (!e.pointer || tempPoints.length === 0) return;
+        if (!e.e || tempPoints.length === 0) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
 
-        // Supprimer l'ancien aperçu
-        if (previewObject) {
-          fabricCanvas.remove(previewObject);
-          previewObject = null;
-        }
+        // Supprimer TOUS les objets d'aperçu précédents
+        tempObjects.forEach((obj) => {
+          // Ne supprimer que les objets d'aperçu (lignes, pas les marqueurs ni la courbe temporaire)
+          if (obj instanceof Line && obj.strokeDashArray) {
+            fabricCanvas.remove(obj);
+          }
+        });
+
+        // Nettoyer les objets temporaires de lignes
+        setTempObjects((prev) => prev.filter((obj) => !(obj instanceof Line && obj.strokeDashArray)));
+
         if (previewCurve) {
           fabricCanvas.remove(previewCurve);
+          setPreviewCurve(null);
         }
 
         if (tempPoints.length === 1) {
           // Aperçu ligne droite vers la deuxième extrémité
           const lastPoint = tempPoints[0];
-          previewObject = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
+          const previewLine = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             strokeDashArray: [5, 5],
@@ -793,7 +811,8 @@ export function TemplateDrawingCanvas({
             evented: false,
             opacity: 0.7,
           });
-          fabricCanvas.add(previewObject);
+          fabricCanvas.add(previewLine);
+          setTempObjects((prev) => [...prev, previewLine]);
         } else if (tempPoints.length === 2) {
           // Aperçu de la courbe avec le point de contrôle qui suit la souris
           const [start, end] = tempPoints;
@@ -832,11 +851,7 @@ export function TemplateDrawingCanvas({
           });
           fabricCanvas.add(line2);
 
-          setTempObjects((prev) => {
-            // Garder seulement les marqueurs et la courbe temporaire
-            const filtered = prev.filter((obj) => obj instanceof Circle || obj instanceof EditableCurve);
-            return [...filtered, line1, line2];
-          });
+          setTempObjects((prev) => [...prev, line1, line2]);
         }
 
         fabricCanvas.renderAll();
@@ -844,12 +859,10 @@ export function TemplateDrawingCanvas({
 
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape" && tempPoints.length > 0) {
-          cleanTempObjects();
+          // Nettoyer COMPLÈTEMENT tous les objets temporaires
+          tempObjects.forEach((obj) => fabricCanvas.remove(obj));
+          setTempObjects([]);
           setTempPoints([]);
-          if (previewObject) {
-            fabricCanvas.remove(previewObject);
-            previewObject = null;
-          }
           if (previewCurve) {
             fabricCanvas.remove(previewCurve);
             setPreviewCurve(null);
@@ -868,9 +881,10 @@ export function TemplateDrawingCanvas({
     // === OUTILS MULTI-POINTS (Bézier, Spline, Polygon) ===
     if (activeTool === "bezier" || activeTool === "spline" || activeTool === "polygon") {
       fabricCanvas.on("mouse:down", (e) => {
-        if (!e.pointer) return;
+        if (!e.e) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
 
         if ((activeTool === "spline" || activeTool === "polygon") && tempPoints.length >= 2) {
@@ -969,9 +983,10 @@ export function TemplateDrawingCanvas({
       });
 
       fabricCanvas.on("mouse:move", (e) => {
-        if (!e.pointer || tempPoints.length === 0) return;
+        if (!e.e || tempPoints.length === 0) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
 
         if (previewObject) {
           fabricCanvas.remove(previewObject);
@@ -1013,9 +1028,10 @@ export function TemplateDrawingCanvas({
     // === OUTIL DIMENSION ===
     if (activeTool === "dimension") {
       fabricCanvas.on("mouse:down", (e) => {
-        if (!e.pointer) return;
+        if (!e.e) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
         const updatedPoints = [...tempPoints, newPoint];
         setTempPoints(updatedPoints);
@@ -1081,9 +1097,10 @@ export function TemplateDrawingCanvas({
       });
 
       fabricCanvas.on("mouse:move", (e) => {
-        if (!e.pointer || tempPoints.length !== 1) return;
+        if (!e.e || tempPoints.length !== 1) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
 
         if (previewObject) {
           fabricCanvas.remove(previewObject);
@@ -1106,9 +1123,10 @@ export function TemplateDrawingCanvas({
     // === OUTILS STANDARDS ===
     if (["line", "rectangle", "circle", "ellipse"].includes(activeTool)) {
       fabricCanvas.on("mouse:down", (e) => {
-        if (!e.pointer) return;
+        if (!e.e) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
         isDrawing = true;
         startPoint = { x: snappedPoint.x, y: snappedPoint.y };
 
@@ -1155,9 +1173,10 @@ export function TemplateDrawingCanvas({
       });
 
       fabricCanvas.on("mouse:move", (e) => {
-        if (!isDrawing || !startPoint || !e.pointer || !activeObject) return;
+        if (!isDrawing || !startPoint || !e.e || !activeObject) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
 
         if (activeTool === "line") {
           activeObject.set({
@@ -1205,9 +1224,10 @@ export function TemplateDrawingCanvas({
     // === OUTIL TEXTE ===
     if (activeTool === "text") {
       fabricCanvas.on("mouse:down", (e) => {
-        if (!e.pointer) return;
+        if (!e.e) return;
 
-        const snappedPoint = snapPoint(e.pointer);
+        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        const snappedPoint = snapPoint(canvasPoint);
         const text = new Textbox("Double-clic pour éditer", {
           left: snappedPoint.x,
           top: snappedPoint.y,
