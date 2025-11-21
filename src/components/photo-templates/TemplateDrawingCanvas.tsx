@@ -264,8 +264,6 @@ export function TemplateDrawingCanvas({
     | "pan"
   >("select");
 
-
-
   const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
   const [tempObjects, setTempObjects] = useState<any[]>([]);
   const [previewCurve, setPreviewCurve] = useState<Path | null>(null);
@@ -314,7 +312,7 @@ export function TemplateDrawingCanvas({
       const bg = canvas.backgroundImage as FabricImage | null;
       let gridWidth = width;
       let gridHeight = height;
-      
+
       if (bg && bg.width && bg.height) {
         // Dimensions réelles de l'image avec son échelle
         gridWidth = bg.width * (bg.scaleX || 1);
@@ -551,28 +549,67 @@ export function TemplateDrawingCanvas({
     fabricCanvas.off("mouse:up");
     fabricCanvas.off("mouse:wheel");
 
+    // Gestion du pan avec le bouton du milieu (molette)
+    let isPanningWithMiddleButton = false;
+    let lastPanPos: { x: number; y: number } | null = null;
+
+    fabricCanvas.on("mouse:down", (opt) => {
+      const evt = opt.e;
+      if (evt instanceof MouseEvent && evt.button === 1) {
+        // Bouton du milieu (molette)
+        isPanningWithMiddleButton = true;
+        fabricCanvas.selection = false;
+        lastPanPos = { x: evt.clientX, y: evt.clientY };
+        evt.preventDefault();
+        evt.stopPropagation();
+      }
+    });
+
+    fabricCanvas.on("mouse:move", (opt) => {
+      const evt = opt.e;
+      if (isPanningWithMiddleButton && lastPanPos && evt instanceof MouseEvent) {
+        const vpt = fabricCanvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += evt.clientX - lastPanPos.x;
+          vpt[5] += evt.clientY - lastPanPos.y;
+          fabricCanvas.requestRenderAll();
+          lastPanPos = { x: evt.clientX, y: evt.clientY };
+        }
+        evt.preventDefault();
+        evt.stopPropagation();
+      }
+    });
+
+    fabricCanvas.on("mouse:up", (opt) => {
+      const evt = opt.e;
+      if (evt instanceof MouseEvent && evt.button === 1) {
+        isPanningWithMiddleButton = false;
+        fabricCanvas.selection = true;
+        lastPanPos = null;
+        evt.preventDefault();
+        evt.stopPropagation();
+      }
+    });
+
     // Zoom avec la molette (toujours actif)
     fabricCanvas.on("mouse:wheel", (opt) => {
       const delta = opt.e.deltaY;
       const evt = opt.e;
       evt.preventDefault();
       evt.stopPropagation();
-      
+
       let newZoom = fabricCanvas.getZoom();
       newZoom *= 0.999 ** delta;
       if (newZoom > 5) newZoom = 5;
       if (newZoom < 0.1) newZoom = 0.1;
-      
+
       // Utiliser le centre du canvas si on ne peut pas obtenir la position de la souris
       const canvasEl = fabricCanvas.getElement();
       const rect = canvasEl.getBoundingClientRect();
       const mouseX = evt.clientX - rect.left;
       const mouseY = evt.clientY - rect.top;
-      
-      fabricCanvas.zoomToPoint(
-        new Point(mouseX, mouseY),
-        newZoom
-      );
+
+      fabricCanvas.zoomToPoint(new Point(mouseX, mouseY), newZoom);
       setZoom(newZoom);
     });
 
@@ -581,16 +618,16 @@ export function TemplateDrawingCanvas({
       fabricCanvas.selection = false;
       fabricCanvas.defaultCursor = "grab";
       let panning = false;
-      
+
       fabricCanvas.on("mouse:down", (opt) => {
         const evt = opt.e;
         if (evt instanceof MouseEvent || evt instanceof TouchEvent) {
           panning = true;
           fabricCanvas.selection = false;
           fabricCanvas.defaultCursor = "grabbing";
-          lastPosRef.current = { 
-            x: (evt as MouseEvent).clientX || 0, 
-            y: (evt as MouseEvent).clientY || 0 
+          lastPosRef.current = {
+            x: (evt as MouseEvent).clientX || 0,
+            y: (evt as MouseEvent).clientY || 0,
           };
         }
       });
@@ -663,15 +700,46 @@ export function TemplateDrawingCanvas({
         setTempObjects((prev) => [...prev, marker]);
 
         if (updatedPoints.length === 1) {
-          // Premier point placé
-          toast.info("Point de départ placé");
+          // Premier point = première extrémité
+          toast.info("Première extrémité placée. Cliquez pour placer la deuxième extrémité");
         } else if (updatedPoints.length === 2) {
-          // Deuxième point = point de contrôle initial
-          toast.info("Déplacez la souris pour ajuster la courbe");
-        } else if (updatedPoints.length === 3) {
-          // Troisième point = fin, créer la courbe
-          const [start, control, end] = updatedPoints;
+          // Deuxième point = deuxième extrémité
+          toast.info("Deuxième extrémité placée. Déplacez la souris pour ajuster la courbure");
+
+          // Créer un point de contrôle initial au milieu
+          const [start, end] = updatedPoints;
+          const midX = (start.x + end.x) / 2;
+          const midY = (start.y + end.y) / 2;
+          const initialControl = { x: midX, y: midY };
+
+          // Créer la courbe immédiatement avec le point de contrôle au milieu
           const curve = new EditableCurve(
+            new Point(start.x, start.y),
+            new Point(initialControl.x, initialControl.y),
+            new Point(end.x, end.y),
+            {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              fill: "transparent",
+              strokeLineCap: "round",
+              strokeLineJoin: "round",
+            },
+          );
+
+          fabricCanvas.add(curve);
+          setTempObjects((prev) => [...prev, curve]);
+        } else if (updatedPoints.length === 3) {
+          // Troisième point = ajustement final du point de contrôle
+          const [start, end, control] = updatedPoints;
+
+          // Supprimer la courbe temporaire
+          const tempCurve = tempObjects.find((obj) => obj instanceof EditableCurve);
+          if (tempCurve) {
+            fabricCanvas.remove(tempCurve);
+          }
+
+          // Créer la courbe finale
+          const finalCurve = new EditableCurve(
             new Point(start.x, start.y),
             new Point(control.x, control.y),
             new Point(end.x, end.y),
@@ -684,8 +752,8 @@ export function TemplateDrawingCanvas({
             },
           );
 
-          fabricCanvas.add(curve);
-          curve.createHandles(fabricCanvas, strokeColor);
+          fabricCanvas.add(finalCurve);
+          finalCurve.createHandles(fabricCanvas, strokeColor);
 
           cleanTempObjects();
           if (previewCurve) {
@@ -715,36 +783,36 @@ export function TemplateDrawingCanvas({
         }
 
         if (tempPoints.length === 1) {
-          // Aperçu ligne vers le point de contrôle
+          // Aperçu ligne droite vers la deuxième extrémité
           const lastPoint = tempPoints[0];
           previewObject = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
-            stroke: "#3b82f6",
-            strokeWidth: 1,
+            stroke: strokeColor,
+            strokeWidth: strokeWidth,
             strokeDashArray: [5, 5],
             selectable: false,
             evented: false,
-            opacity: 0.5,
+            opacity: 0.7,
           });
           fabricCanvas.add(previewObject);
         } else if (tempPoints.length === 2) {
-          // Aperçu de la courbe complète
-          const [start, control] = tempPoints;
-          const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${snappedPoint.x} ${snappedPoint.y}`;
+          // Aperçu de la courbe avec le point de contrôle qui suit la souris
+          const [start, end] = tempPoints;
+          const pathData = `M ${start.x} ${start.y} Q ${snappedPoint.x} ${snappedPoint.y} ${end.x} ${end.y}`;
           const preview = new Path(pathData, {
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             fill: "transparent",
             strokeLineCap: "round",
             strokeLineJoin: "round",
-            opacity: 0.5,
+            opacity: 0.7,
             selectable: false,
             evented: false,
           });
           fabricCanvas.add(preview);
           setPreviewCurve(preview);
 
-          // Ligne pointillée vers la fin
-          previewObject = new Line([control.x, control.y, snappedPoint.x, snappedPoint.y], {
+          // Lignes pointillées pour montrer le point de contrôle
+          const line1 = new Line([start.x, start.y, snappedPoint.x, snappedPoint.y], {
             stroke: "#3b82f6",
             strokeWidth: 1,
             strokeDashArray: [5, 5],
@@ -752,7 +820,23 @@ export function TemplateDrawingCanvas({
             evented: false,
             opacity: 0.5,
           });
-          fabricCanvas.add(previewObject);
+          fabricCanvas.add(line1);
+
+          const line2 = new Line([snappedPoint.x, snappedPoint.y, end.x, end.y], {
+            stroke: "#3b82f6",
+            strokeWidth: 1,
+            strokeDashArray: [5, 5],
+            selectable: false,
+            evented: false,
+            opacity: 0.5,
+          });
+          fabricCanvas.add(line2);
+
+          setTempObjects((prev) => {
+            // Garder seulement les marqueurs et la courbe temporaire
+            const filtered = prev.filter((obj) => obj instanceof Circle || obj instanceof EditableCurve);
+            return [...filtered, line1, line2];
+          });
         }
 
         fabricCanvas.renderAll();
@@ -1289,7 +1373,7 @@ export function TemplateDrawingCanvas({
   const getToolInstructions = () => {
     switch (activeTool) {
       case "editableCurve":
-        return "⭐ NOUVEAU : Cliquez 3 fois (début → contrôle → fin). La courbe s'ajuste en temps réel ! Sélectionnez-la après pour modifier les poignées.";
+        return "⭐ NOUVEAU : Cliquez 3 fois (1ère extrémité → 2ème extrémité → courbure). La courbe s'ajuste en temps réel ! Sélectionnez-la après pour modifier les poignées.";
       case "bezier":
         return "Cliquez 4 points : début → contrôle 1 → contrôle 2 → fin";
       case "spline":
@@ -1356,9 +1440,7 @@ export function TemplateDrawingCanvas({
                     const { width, height, viewportTransform } = previousCanvasSizeRef.current;
                     fabricCanvas.setWidth(width);
                     fabricCanvas.setHeight(height);
-                    fabricCanvas.setViewportTransform(
-                      (viewportTransform || [1, 0, 0, 1, 0, 0]) as any,
-                    );
+                    fabricCanvas.setViewportTransform((viewportTransform || [1, 0, 0, 1, 0, 0]) as any);
                     createGrid(fabricCanvas, width, height);
                     fabricCanvas.renderAll();
                     setZoom(1);
@@ -1470,8 +1552,6 @@ export function TemplateDrawingCanvas({
                   <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
                 </div>
               </div>
-
-              
 
               <Separator />
 
@@ -1645,7 +1725,14 @@ export function TemplateDrawingCanvas({
       )}
 
       {/* Canvas - unique, style adapté selon le mode */}
-      <div className={isFullscreen ? "h-screen w-screen flex items-center justify-center overflow-hidden" : "border rounded-lg overflow-auto bg-white shadow-lg"} style={isFullscreen ? {} : { maxHeight: "600px" }}>
+      <div
+        className={
+          isFullscreen
+            ? "h-screen w-screen flex items-center justify-center overflow-hidden"
+            : "border rounded-lg overflow-auto bg-white shadow-lg"
+        }
+        style={isFullscreen ? {} : { maxHeight: "600px" }}
+      >
         <canvas ref={canvasRef} className={isFullscreen ? "max-w-full max-h-full" : ""} />
       </div>
 
@@ -1657,7 +1744,8 @@ export function TemplateDrawingCanvas({
             <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
           </p>
           <p className="mt-1 text-blue-600 font-medium">
-            💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Utilisez la molette pour zoomer et l'outil "Déplacer" pour naviguer.
+            💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Maintenez le bouton du
+            milieu (molette) pour déplacer la vue, ou utilisez la molette pour zoomer.
           </p>
         </div>
       )}
