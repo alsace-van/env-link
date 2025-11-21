@@ -10,6 +10,8 @@ import {
   Polygon,
   Ellipse,
   Group,
+  Control,
+  Point,
 } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,30 +32,207 @@ import {
   Trash2,
   Undo,
   Redo,
-  Download,
   Waves,
   Workflow,
   CircleDot,
-  RectangleHorizontal,
   Ruler,
   Pentagon,
-  Move,
   Grid3x3,
   Magnet,
   Info,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface TemplateDrawingCanvasProps {
   imageUrl: string;
-  scaleFactor: number; // pixels per mm
+  scaleFactor: number;
   onDrawingsChanged?: (drawingsData: any) => void;
   initialDrawings?: any;
 }
 
 interface HistoryState {
   objects: any[];
+}
+
+// Classe personnalisée pour les courbes éditables
+class EditableCurve extends Path {
+  public controlPoints: { start: Point; control: Point; end: Point };
+  public controlHandles: Circle[];
+  public controlLines: Line[];
+
+  constructor(start: Point, control: Point, end: Point, options: any = {}) {
+    const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`;
+    super(pathData, {
+      ...options,
+      objectCaching: false,
+    });
+
+    this.controlPoints = { start, control, end };
+    this.controlHandles = [];
+    this.controlLines = [];
+
+    // Type personnalisé pour identifier cette courbe
+    this.set("customType", "editableCurve");
+  }
+
+  // Créer les poignées de contrôle visuelles
+  createHandles(canvas: FabricCanvas, color: string = "#3b82f6") {
+    // Nettoyer les anciennes poignées
+    this.removeHandles(canvas);
+
+    // Lignes de contrôle (pointillées)
+    const line1 = new Line(
+      [
+        this.controlPoints.start.x,
+        this.controlPoints.start.y,
+        this.controlPoints.control.x,
+        this.controlPoints.control.y,
+      ],
+      {
+        stroke: color,
+        strokeWidth: 1,
+        strokeDashArray: [5, 5],
+        selectable: false,
+        evented: false,
+        opacity: 0.7,
+      },
+    );
+
+    const line2 = new Line(
+      [this.controlPoints.control.x, this.controlPoints.control.y, this.controlPoints.end.x, this.controlPoints.end.y],
+      {
+        stroke: color,
+        strokeWidth: 1,
+        strokeDashArray: [5, 5],
+        selectable: false,
+        evented: false,
+        opacity: 0.7,
+      },
+    );
+
+    this.controlLines = [line1, line2];
+
+    // Poignées (cercles)
+    const handleStart = new Circle({
+      left: this.controlPoints.start.x,
+      top: this.controlPoints.start.y,
+      radius: 6,
+      fill: "#ffffff",
+      stroke: color,
+      strokeWidth: 2,
+      originX: "center",
+      originY: "center",
+      hasBorders: false,
+      hasControls: false,
+    });
+    (handleStart as any).curvePointType = "start";
+    (handleStart as any).parentCurve = this;
+
+    const handleControl = new Circle({
+      left: this.controlPoints.control.x,
+      top: this.controlPoints.control.y,
+      radius: 8,
+      fill: color,
+      stroke: "#ffffff",
+      strokeWidth: 2,
+      originX: "center",
+      originY: "center",
+      hasBorders: false,
+      hasControls: false,
+    });
+    (handleControl as any).curvePointType = "control";
+    (handleControl as any).parentCurve = this;
+
+    const handleEnd = new Circle({
+      left: this.controlPoints.end.x,
+      top: this.controlPoints.end.y,
+      radius: 6,
+      fill: "#ffffff",
+      stroke: color,
+      strokeWidth: 2,
+      originX: "center",
+      originY: "center",
+      hasBorders: false,
+      hasControls: false,
+    });
+    (handleEnd as any).curvePointType = "end";
+    (handleEnd as any).parentCurve = this;
+
+    this.controlHandles = [handleStart, handleControl, handleEnd];
+
+    // Ajouter au canvas
+    this.controlLines.forEach((line) => canvas.add(line));
+    this.controlHandles.forEach((handle) => canvas.add(handle));
+
+    // Event handlers pour déplacer les poignées
+    this.controlHandles.forEach((handle) => {
+      handle.on("moving", () => {
+        this.updateCurveFromHandle(handle as Circle, canvas);
+      });
+    });
+
+    canvas.renderAll();
+  }
+
+  // Mettre à jour la courbe quand une poignée bouge
+  updateCurveFromHandle(handle: Circle, canvas: FabricCanvas) {
+    const pointType = (handle as any).curvePointType;
+    const newX = handle.left!;
+    const newY = handle.top!;
+
+    if (pointType === "start") {
+      this.controlPoints.start = new Point(newX, newY);
+    } else if (pointType === "control") {
+      this.controlPoints.control = new Point(newX, newY);
+    } else if (pointType === "end") {
+      this.controlPoints.end = new Point(newX, newY);
+    }
+
+    // Recalculer le path
+    const newPathData = `M ${this.controlPoints.start.x} ${this.controlPoints.start.y} Q ${this.controlPoints.control.x} ${this.controlPoints.control.y} ${this.controlPoints.end.x} ${this.controlPoints.end.y}`;
+    this.set("path", (new Path(newPathData) as any).path);
+
+    // Mettre à jour les lignes de contrôle
+    if (this.controlLines[0]) {
+      this.controlLines[0].set({
+        x1: this.controlPoints.start.x,
+        y1: this.controlPoints.start.y,
+        x2: this.controlPoints.control.x,
+        y2: this.controlPoints.control.y,
+      });
+    }
+    if (this.controlLines[1]) {
+      this.controlLines[1].set({
+        x1: this.controlPoints.control.x,
+        y1: this.controlPoints.control.y,
+        x2: this.controlPoints.end.x,
+        y2: this.controlPoints.end.y,
+      });
+    }
+
+    canvas.renderAll();
+  }
+
+  // Supprimer les poignées
+  removeHandles(canvas: FabricCanvas) {
+    this.controlLines.forEach((line) => canvas.remove(line));
+    this.controlHandles.forEach((handle) => canvas.remove(handle));
+    this.controlLines = [];
+    this.controlHandles = [];
+  }
+
+  // Cacher/Montrer les poignées
+  hideHandles() {
+    this.controlLines.forEach((line) => line.set("visible", false));
+    this.controlHandles.forEach((handle) => handle.set("visible", false));
+  }
+
+  showHandles() {
+    this.controlLines.forEach((line) => line.set("visible", true));
+    this.controlHandles.forEach((handle) => handle.set("visible", true));
+  }
 }
 
 export function TemplateDrawingCanvas({
@@ -74,13 +253,14 @@ export function TemplateDrawingCanvas({
     | "text"
     | "bezier"
     | "spline"
-    | "arc3points"
+    | "editableCurve"
     | "polygon"
     | "dimension"
   >("select");
 
   const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
   const [tempObjects, setTempObjects] = useState<any[]>([]);
+  const [previewCurve, setPreviewCurve] = useState<Path | null>(null);
   const [strokeColor, setStrokeColor] = useState("#ef4444");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [zoom, setZoom] = useState(1);
@@ -91,6 +271,7 @@ export function TemplateDrawingCanvas({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const gridLinesRef = useRef<any[]>([]);
+  const activeCurveRef = useRef<EditableCurve | null>(null);
 
   // Fonction snap to grid
   const snapPoint = useCallback(
@@ -107,7 +288,6 @@ export function TemplateDrawingCanvas({
   // Créer la grille
   const createGrid = useCallback(
     (canvas: FabricCanvas, width: number, height: number) => {
-      // Supprimer l'ancienne grille
       gridLinesRef.current.forEach((line) => canvas.remove(line));
       gridLinesRef.current = [];
 
@@ -116,7 +296,6 @@ export function TemplateDrawingCanvas({
       const gridColor = "#e0e0e0";
       const gridStrokeWidth = 0.5;
 
-      // Lignes verticales
       for (let i = 0; i <= Math.ceil(width / gridSize); i++) {
         const x = i * gridSize;
         const line = new Line([x, 0, x, height], {
@@ -126,11 +305,10 @@ export function TemplateDrawingCanvas({
           evented: false,
         });
         canvas.add(line);
-        canvas.sendObjectToBack(line);
+        line.sendToBack();
         gridLinesRef.current.push(line);
       }
 
-      // Lignes horizontales
       for (let i = 0; i <= Math.ceil(height / gridSize); i++) {
         const y = i * gridSize;
         const line = new Line([0, y, width, y], {
@@ -140,7 +318,7 @@ export function TemplateDrawingCanvas({
           evented: false,
         });
         canvas.add(line);
-        canvas.sendObjectToBack(line);
+        line.sendToBack();
         gridLinesRef.current.push(line);
       }
 
@@ -152,7 +330,13 @@ export function TemplateDrawingCanvas({
   // Sauvegarder l'état pour undo/redo
   const saveState = useCallback(
     (canvas: FabricCanvas) => {
-      const objects = canvas.getObjects().filter((obj) => !gridLinesRef.current.includes(obj));
+      const objects = canvas
+        .getObjects()
+        .filter(
+          (obj) =>
+            (!gridLinesRef.current.includes(obj) && !(obj as any).curvePointType && obj.type !== "line") ||
+            (obj.type === "line" && !(obj as any).strokeDashArray),
+        );
       const state: HistoryState = {
         objects: objects.map((obj) => obj.toJSON()),
       };
@@ -160,7 +344,6 @@ export function TemplateDrawingCanvas({
       const newHistory = history.slice(0, historyIndex + 1);
       newHistory.push(state);
 
-      // Limiter l'historique à 50 états
       if (newHistory.length > 50) {
         newHistory.shift();
       } else {
@@ -179,15 +362,17 @@ export function TemplateDrawingCanvas({
     const newIndex = historyIndex - 1;
     const state = history[newIndex];
 
-    // Supprimer tous les objets sauf la grille
     const objects = fabricCanvas.getObjects();
     objects.forEach((obj) => {
-      if (!gridLinesRef.current.includes(obj)) {
+      if (
+        !gridLinesRef.current.includes(obj) &&
+        !(obj as any).curvePointType &&
+        (obj.type !== "line" || !(obj as any).strokeDashArray)
+      ) {
         fabricCanvas.remove(obj);
       }
     });
 
-    // Restaurer l'état
     state.objects.forEach((objData: any) => {
       fabricCanvas.add(objData);
     });
@@ -204,15 +389,17 @@ export function TemplateDrawingCanvas({
     const newIndex = historyIndex + 1;
     const state = history[newIndex];
 
-    // Supprimer tous les objets sauf la grille
     const objects = fabricCanvas.getObjects();
     objects.forEach((obj) => {
-      if (!gridLinesRef.current.includes(obj)) {
+      if (
+        !gridLinesRef.current.includes(obj) &&
+        !(obj as any).curvePointType &&
+        (obj.type !== "line" || !(obj as any).strokeDashArray)
+      ) {
         fabricCanvas.remove(obj);
       }
     });
 
-    // Restaurer l'état
     state.objects.forEach((objData: any) => {
       fabricCanvas.add(objData);
     });
@@ -232,12 +419,10 @@ export function TemplateDrawingCanvas({
       backgroundColor: "#ffffff",
     });
 
-    // Charger l'image de fond
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
 
-      // Ajuster les dimensions du canvas à l'image
       const maxWidth = 1000;
       const maxHeight = 700;
       const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
@@ -248,7 +433,6 @@ export function TemplateDrawingCanvas({
       canvas.setWidth(finalWidth);
       canvas.setHeight(finalHeight);
 
-      // Ajouter l'image comme objet de fond non sélectionnable
       FabricImage.fromURL(imageUrl).then((fabricImg) => {
         fabricImg.set({
           scaleX: scale,
@@ -259,11 +443,9 @@ export function TemplateDrawingCanvas({
         canvas.backgroundImage = fabricImg;
         canvas.renderAll();
 
-        // Créer la grille après l'image
         createGrid(canvas, finalWidth, finalHeight);
       });
 
-      // Sauvegarder l'état initial
       saveState(canvas);
     };
     img.src = imageUrl;
@@ -282,6 +464,45 @@ export function TemplateDrawingCanvas({
     createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
   }, [showGrid, gridSize, fabricCanvas, createGrid]);
 
+  // Gérer la sélection des courbes éditables
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    const handleSelection = (e: any) => {
+      const selected = e.selected?.[0];
+
+      // Cacher les poignées de la courbe précédente
+      if (activeCurveRef.current && activeCurveRef.current !== selected) {
+        activeCurveRef.current.removeHandles(fabricCanvas);
+        activeCurveRef.current = null;
+      }
+
+      // Si c'est une courbe éditable, montrer les poignées
+      if (selected && (selected as any).customType === "editableCurve") {
+        const curve = selected as EditableCurve;
+        curve.createHandles(fabricCanvas, strokeColor);
+        activeCurveRef.current = curve;
+      }
+    };
+
+    const handleDeselection = () => {
+      if (activeCurveRef.current) {
+        activeCurveRef.current.removeHandles(fabricCanvas);
+        activeCurveRef.current = null;
+      }
+    };
+
+    fabricCanvas.on("selection:created", handleSelection);
+    fabricCanvas.on("selection:updated", handleSelection);
+    fabricCanvas.on("selection:cleared", handleDeselection);
+
+    return () => {
+      fabricCanvas.off("selection:created", handleSelection);
+      fabricCanvas.off("selection:updated", handleSelection);
+      fabricCanvas.off("selection:cleared", handleDeselection);
+    };
+  }, [fabricCanvas, strokeColor]);
+
   // Gérer les outils
   useEffect(() => {
     if (!fabricCanvas) return;
@@ -294,27 +515,22 @@ export function TemplateDrawingCanvas({
       fabricCanvas.freeDrawingBrush.width = strokeWidth;
     }
 
-    // Nettoyer les écouteurs d'événements précédents
     fabricCanvas.off("mouse:down");
     fabricCanvas.off("mouse:move");
     fabricCanvas.off("mouse:up");
-    fabricCanvas.off("mouse:dblclick");
 
     if (activeTool === "select" || activeTool === "pencil") return;
 
-    // Variables pour le dessin
     let isDrawing = false;
     let startPoint: { x: number; y: number } | null = null;
     let activeObject: any = null;
     let previewObject: any = null;
 
-    // Fonction pour nettoyer les objets temporaires
     const cleanTempObjects = () => {
       tempObjects.forEach((obj) => fabricCanvas.remove(obj));
       setTempObjects([]);
     };
 
-    // Fonction pour créer un marqueur de point
     const createMarker = (point: { x: number; y: number }, color: string = strokeColor) => {
       const marker = new Circle({
         left: point.x,
@@ -329,28 +545,156 @@ export function TemplateDrawingCanvas({
         originY: "center",
       });
       fabricCanvas.add(marker);
-      fabricCanvas.bringObjectToFront(marker);
+      marker.bringToFront();
       return marker;
     };
 
-    // === OUTILS MULTI-POINTS ===
+    // === OUTIL COURBE ÉDITABLE (le nouveau !) ===
+    if (activeTool === "editableCurve") {
+      fabricCanvas.on("mouse:down", (e) => {
+        if (!e.pointer) return;
 
-    if (activeTool === "bezier" || activeTool === "spline" || activeTool === "arc3points" || activeTool === "polygon") {
+        const snappedPoint = snapPoint(e.pointer);
+        const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
+        const updatedPoints = [...tempPoints, newPoint];
+        setTempPoints(updatedPoints);
+
+        const marker = createMarker(newPoint, "#3b82f6");
+        setTempObjects((prev) => [...prev, marker]);
+
+        if (updatedPoints.length === 1) {
+          // Premier point placé
+          toast.info("Point de départ placé");
+        } else if (updatedPoints.length === 2) {
+          // Deuxième point = point de contrôle initial
+          toast.info("Déplacez la souris pour ajuster la courbe");
+        } else if (updatedPoints.length === 3) {
+          // Troisième point = fin, créer la courbe
+          const [start, control, end] = updatedPoints;
+          const curve = new EditableCurve(
+            new Point(start.x, start.y),
+            new Point(control.x, control.y),
+            new Point(end.x, end.y),
+            {
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              fill: "transparent",
+              strokeLineCap: "round",
+              strokeLineJoin: "round",
+            },
+          );
+
+          fabricCanvas.add(curve);
+          curve.createHandles(fabricCanvas, strokeColor);
+
+          cleanTempObjects();
+          if (previewCurve) {
+            fabricCanvas.remove(previewCurve);
+            setPreviewCurve(null);
+          }
+          setTempPoints([]);
+          saveState(fabricCanvas);
+          toast.success("Courbe créée ! Sélectionnez-la pour la modifier");
+        }
+
+        fabricCanvas.renderAll();
+      });
+
+      fabricCanvas.on("mouse:move", (e) => {
+        if (!e.pointer || tempPoints.length === 0) return;
+
+        const snappedPoint = snapPoint(e.pointer);
+
+        // Supprimer l'ancien aperçu
+        if (previewObject) {
+          fabricCanvas.remove(previewObject);
+          previewObject = null;
+        }
+        if (previewCurve) {
+          fabricCanvas.remove(previewCurve);
+        }
+
+        if (tempPoints.length === 1) {
+          // Aperçu ligne vers le point de contrôle
+          const lastPoint = tempPoints[0];
+          previewObject = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
+            stroke: "#3b82f6",
+            strokeWidth: 1,
+            strokeDashArray: [5, 5],
+            selectable: false,
+            evented: false,
+            opacity: 0.5,
+          });
+          fabricCanvas.add(previewObject);
+        } else if (tempPoints.length === 2) {
+          // Aperçu de la courbe complète
+          const [start, control] = tempPoints;
+          const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${snappedPoint.x} ${snappedPoint.y}`;
+          const preview = new Path(pathData, {
+            stroke: strokeColor,
+            strokeWidth: strokeWidth,
+            fill: "transparent",
+            strokeLineCap: "round",
+            strokeLineJoin: "round",
+            opacity: 0.5,
+            selectable: false,
+            evented: false,
+          });
+          fabricCanvas.add(preview);
+          setPreviewCurve(preview);
+
+          // Ligne pointillée vers la fin
+          previewObject = new Line([control.x, control.y, snappedPoint.x, snappedPoint.y], {
+            stroke: "#3b82f6",
+            strokeWidth: 1,
+            strokeDashArray: [5, 5],
+            selectable: false,
+            evented: false,
+            opacity: 0.5,
+          });
+          fabricCanvas.add(previewObject);
+        }
+
+        fabricCanvas.renderAll();
+      });
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape" && tempPoints.length > 0) {
+          cleanTempObjects();
+          setTempPoints([]);
+          if (previewObject) {
+            fabricCanvas.remove(previewObject);
+            previewObject = null;
+          }
+          if (previewCurve) {
+            fabricCanvas.remove(previewCurve);
+            setPreviewCurve(null);
+          }
+          fabricCanvas.renderAll();
+          toast.info("Courbe annulée");
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown);
+      };
+    }
+
+    // === OUTILS MULTI-POINTS (Bézier, Spline, Polygon) ===
+    if (activeTool === "bezier" || activeTool === "spline" || activeTool === "polygon") {
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.pointer) return;
 
         const snappedPoint = snapPoint(e.pointer);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
 
-        // Détecter le double-clic pour terminer (spline et polygon)
         if ((activeTool === "spline" || activeTool === "polygon") && tempPoints.length >= 2) {
           const lastPoint = tempPoints[tempPoints.length - 1];
           const distance = Math.sqrt(Math.pow(newPoint.x - lastPoint.x, 2) + Math.pow(newPoint.y - lastPoint.y, 2));
 
           if (distance < 15) {
-            // Double-clic détecté - finaliser la forme
             if (activeTool === "polygon") {
-              // Créer le polygone
               const polygon = new Polygon(tempPoints, {
                 stroke: strokeColor,
                 strokeWidth: strokeWidth,
@@ -360,7 +704,6 @@ export function TemplateDrawingCanvas({
               fabricCanvas.add(polygon);
               toast.success("Polygone créé");
             } else if (activeTool === "spline") {
-              // Créer une spline lissée (Catmull-Rom)
               let pathData = `M ${tempPoints[0].x},${tempPoints[0].y}`;
 
               for (let i = 1; i < tempPoints.length; i++) {
@@ -397,15 +740,12 @@ export function TemplateDrawingCanvas({
           }
         }
 
-        // Ajouter le nouveau point
         const updatedPoints = [...tempPoints, newPoint];
         setTempPoints(updatedPoints);
 
-        // Créer un marqueur visuel
         const marker = createMarker(newPoint);
         setTempObjects((prev) => [...prev, marker]);
 
-        // Dessiner une ligne de connexion
         if (updatedPoints.length > 1) {
           const prevPoint = updatedPoints[updatedPoints.length - 2];
           const connectionLine = new Line([prevPoint.x, prevPoint.y, newPoint.x, newPoint.y], {
@@ -419,12 +759,10 @@ export function TemplateDrawingCanvas({
           setTempObjects((prev) => [...prev, connectionLine]);
         }
 
-        // Vérifier si la forme est complète
-        const requiredPoints = activeTool === "bezier" ? 4 : activeTool === "arc3points" ? 3 : null;
+        const requiredPoints = activeTool === "bezier" ? 4 : null;
 
         if (requiredPoints && updatedPoints.length === requiredPoints) {
           if (activeTool === "bezier") {
-            // Courbe de Bézier cubique
             const [p0, p1, p2, p3] = updatedPoints;
             const pathData = `M ${p0.x},${p0.y} C ${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
             const bezierPath = new Path(pathData, {
@@ -436,19 +774,6 @@ export function TemplateDrawingCanvas({
             });
             fabricCanvas.add(bezierPath);
             toast.success("Courbe de Bézier créée");
-          } else if (activeTool === "arc3points") {
-            // Arc par 3 points
-            const [p1, p2, p3] = updatedPoints;
-            const pathData = `M ${p1.x},${p1.y} Q ${p2.x},${p2.y} ${p3.x},${p3.y}`;
-            const arcPath = new Path(pathData, {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
-              fill: "transparent",
-              strokeLineCap: "round",
-              strokeLineJoin: "round",
-            });
-            fabricCanvas.add(arcPath);
-            toast.success("Arc créé");
           }
 
           cleanTempObjects();
@@ -459,19 +784,16 @@ export function TemplateDrawingCanvas({
         fabricCanvas.renderAll();
       });
 
-      // Afficher un aperçu pour polygon et spline
       fabricCanvas.on("mouse:move", (e) => {
         if (!e.pointer || tempPoints.length === 0) return;
 
         const snappedPoint = snapPoint(e.pointer);
 
-        // Supprimer l'ancien aperçu
         if (previewObject) {
           fabricCanvas.remove(previewObject);
           previewObject = null;
         }
 
-        // Dessiner une ligne de prévisualisation
         const lastPoint = tempPoints[tempPoints.length - 1];
         previewObject = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
           stroke: strokeColor,
@@ -485,7 +807,6 @@ export function TemplateDrawingCanvas({
         fabricCanvas.renderAll();
       });
 
-      // Échap pour annuler
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape" && tempPoints.length > 0) {
           cleanTempObjects();
@@ -506,7 +827,6 @@ export function TemplateDrawingCanvas({
     }
 
     // === OUTIL DIMENSION ===
-
     if (activeTool === "dimension") {
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.pointer) return;
@@ -526,17 +846,14 @@ export function TemplateDrawingCanvas({
           const distance = Math.sqrt(dx * dx + dy * dy);
           const realDistance = (distance / scaleFactor).toFixed(1);
 
-          // Ligne de cote principale
           const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
             stroke: "#3b82f6",
             strokeWidth: 2,
           });
 
-          // Flèches aux extrémités
           const arrowSize = 10;
           const angle = Math.atan2(dy, dx);
 
-          // Flèche 1
           const arrow1Path = `M ${p1.x} ${p1.y} 
                              L ${p1.x + arrowSize * Math.cos(angle + 2.8)} ${p1.y + arrowSize * Math.sin(angle + 2.8)} 
                              L ${p1.x + arrowSize * Math.cos(angle - 2.8)} ${p1.y + arrowSize * Math.sin(angle - 2.8)} Z`;
@@ -546,7 +863,6 @@ export function TemplateDrawingCanvas({
             strokeWidth: 1,
           });
 
-          // Flèche 2
           const arrow2Path = `M ${p2.x} ${p2.y} 
                              L ${p2.x - arrowSize * Math.cos(angle + 2.8)} ${p2.y - arrowSize * Math.sin(angle + 2.8)} 
                              L ${p2.x - arrowSize * Math.cos(angle - 2.8)} ${p2.y - arrowSize * Math.sin(angle - 2.8)} Z`;
@@ -556,7 +872,6 @@ export function TemplateDrawingCanvas({
             strokeWidth: 1,
           });
 
-          // Texte de la cote avec fond
           const text = new Textbox(`${realDistance} mm`, {
             left: (p1.x + p2.x) / 2,
             top: (p1.y + p2.y) / 2 - 20,
@@ -570,7 +885,6 @@ export function TemplateDrawingCanvas({
             originY: "center",
           });
 
-          // Grouper tous les éléments de la cote
           const dimensionGroup = new Group([dimensionLine, arrow1, arrow2, text]);
           fabricCanvas.add(dimensionGroup);
 
@@ -605,8 +919,7 @@ export function TemplateDrawingCanvas({
       });
     }
 
-    // === OUTILS STANDARDS (ligne, rectangle, cercle, ellipse) ===
-
+    // === OUTILS STANDARDS ===
     if (["line", "rectangle", "circle", "ellipse"].includes(activeTool)) {
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.pointer) return;
@@ -706,7 +1019,6 @@ export function TemplateDrawingCanvas({
     }
 
     // === OUTIL TEXTE ===
-
     if (activeTool === "text") {
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.pointer) return;
@@ -730,9 +1042,19 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("mouse:down");
       fabricCanvas.off("mouse:move");
       fabricCanvas.off("mouse:up");
-      fabricCanvas.off("mouse:dblclick");
     };
-  }, [activeTool, strokeColor, strokeWidth, fabricCanvas, tempPoints, snapPoint, saveState, scaleFactor, tempObjects]);
+  }, [
+    activeTool,
+    strokeColor,
+    strokeWidth,
+    fabricCanvas,
+    tempPoints,
+    snapPoint,
+    saveState,
+    scaleFactor,
+    tempObjects,
+    previewCurve,
+  ]);
 
   const saveDrawings = () => {
     if (!fabricCanvas) return;
@@ -761,7 +1083,13 @@ export function TemplateDrawingCanvas({
     if (!fabricCanvas) return;
     const activeObjects = fabricCanvas.getActiveObjects();
     if (activeObjects.length > 0) {
-      activeObjects.forEach((obj) => fabricCanvas.remove(obj));
+      activeObjects.forEach((obj) => {
+        // Si c'est une courbe éditable, supprimer aussi ses poignées
+        if ((obj as any).customType === "editableCurve") {
+          (obj as EditableCurve).removeHandles(fabricCanvas);
+        }
+        fabricCanvas.remove(obj);
+      });
       fabricCanvas.discardActiveObject();
       fabricCanvas.renderAll();
       saveState(fabricCanvas);
@@ -787,38 +1115,36 @@ export function TemplateDrawingCanvas({
     }
   };
 
-  const handleExportDXF = () => {
-    if (!fabricCanvas) return;
-
-    // TODO: Implémenter l'export DXF
-    toast.info("Export DXF en cours de développement");
-  };
-
   const tools = [
     { id: "select", icon: Hand, label: "Sélection (V)" },
     { id: "line", icon: Minus, label: "Ligne (L)" },
     { id: "rectangle", icon: Square, label: "Rectangle (R)" },
     { id: "circle", icon: CircleIcon, label: "Cercle (C)" },
-    { id: "ellipse", icon: CircleIcon, label: "Ellipse (E)", style: { transform: "scaleX(1.5)" } },
+    {
+      id: "ellipse",
+      icon: CircleIcon,
+      label: "Ellipse (E)",
+      style: { transform: "scaleX(1.5)" },
+    },
     { id: "polygon", icon: Pentagon, label: "Polygone (P)" },
     { id: "pencil", icon: Pencil, label: "Crayon libre (F)" },
+    { id: "editableCurve", icon: Sparkles, label: "Courbe éditable ⭐ (NOUVEAU)", highlight: true },
     { id: "bezier", icon: Waves, label: "Courbe de Bézier (4 pts)" },
-    { id: "spline", icon: Workflow, label: "Spline (4+ pts, double-clic)" },
-    { id: "arc3points", icon: CircleDot, label: "Arc 3 points" },
+    { id: "spline", icon: Workflow, label: "Spline (4+ pts)" },
     { id: "dimension", icon: Ruler, label: "Cote (D)" },
     { id: "text", icon: Type, label: "Texte (T)" },
   ] as const;
 
   const getToolInstructions = () => {
     switch (activeTool) {
+      case "editableCurve":
+        return "⭐ NOUVEAU : Cliquez 3 fois (début → contrôle → fin). La courbe s'ajuste en temps réel ! Sélectionnez-la après pour modifier les poignées.";
       case "bezier":
         return "Cliquez 4 points : début → contrôle 1 → contrôle 2 → fin";
       case "spline":
-        return "Cliquez pour ajouter des points (min 3). Double-cliquez sur le dernier point pour terminer ou appuyez sur Échap";
-      case "arc3points":
-        return "Cliquez 3 points : début → milieu → fin";
+        return "Cliquez pour ajouter des points (min 3). Double-cliquez pour terminer";
       case "polygon":
-        return "Cliquez pour ajouter des sommets (min 3). Double-cliquez sur le dernier point pour fermer ou appuyez sur Échap";
+        return "Cliquez pour ajouter des sommets (min 3). Double-cliquez pour fermer";
       case "dimension":
         return "Cliquez 2 points pour créer une cote avec la distance réelle";
       case "text":
@@ -832,24 +1158,22 @@ export function TemplateDrawingCanvas({
 
   return (
     <div className="space-y-4">
-      {/* Instructions contextuelles */}
       {instructions && (
-        <Alert>
+        <Alert className={activeTool === "editableCurve" ? "border-blue-500 bg-blue-50" : ""}>
           <Info className="h-4 w-4" />
-          <AlertDescription>{instructions}</AlertDescription>
+          <AlertDescription className="font-medium">{instructions}</AlertDescription>
         </Alert>
       )}
 
-      {/* Badge pour les outils multi-points */}
       {tempPoints.length > 0 && (
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="animate-pulse">
-            {activeTool === "bezier"
-              ? `Bézier: ${tempPoints.length}/4 points`
-              : activeTool === "spline"
-                ? `Spline: ${tempPoints.length} points`
-                : activeTool === "arc3points"
-                  ? `Arc: ${tempPoints.length}/3 points`
+            {activeTool === "editableCurve"
+              ? `Courbe éditable: ${tempPoints.length}/3 points`
+              : activeTool === "bezier"
+                ? `Bézier: ${tempPoints.length}/4 points`
+                : activeTool === "spline"
+                  ? `Spline: ${tempPoints.length} points`
                   : activeTool === "polygon"
                     ? `Polygone: ${tempPoints.length} sommets`
                     : activeTool === "dimension"
@@ -862,7 +1186,6 @@ export function TemplateDrawingCanvas({
         </div>
       )}
 
-      {/* Toolbar principal */}
       <div className="flex flex-wrap items-center gap-4 p-4 bg-muted rounded-lg">
         <div className="flex flex-wrap gap-1">
           {tools.map((tool) => (
@@ -876,15 +1199,16 @@ export function TemplateDrawingCanvas({
                 setTempObjects([]);
               }}
               title={tool.label}
+              className={tool.highlight ? "ring-2 ring-blue-500 animate-pulse" : ""}
             >
-              <tool.icon className="h-4 w-4" style={"style" in tool ? tool.style : undefined} />
+              <tool.icon className="h-4 w-4" style={tool.style} />
+              {tool.highlight && <span className="ml-1">⭐</span>}
             </Button>
           ))}
         </div>
 
         <Separator orientation="vertical" className="h-8" />
 
-        {/* Couleur et épaisseur */}
         <div className="flex items-center gap-2">
           <Label className="text-sm">Couleur:</Label>
           <Input
@@ -911,7 +1235,6 @@ export function TemplateDrawingCanvas({
 
         <Separator orientation="vertical" className="h-8" />
 
-        {/* Zoom */}
         <div className="flex gap-1">
           <Button variant="outline" size="sm" onClick={handleZoomOut} title="Zoom arrière (-)">
             <ZoomOut className="h-4 w-4" />
@@ -926,7 +1249,6 @@ export function TemplateDrawingCanvas({
 
         <Separator orientation="vertical" className="h-8" />
 
-        {/* Undo/Redo */}
         <div className="flex gap-1">
           <Button
             variant="outline"
@@ -950,7 +1272,6 @@ export function TemplateDrawingCanvas({
 
         <Separator orientation="vertical" className="h-8" />
 
-        {/* Actions */}
         <div className="flex gap-1">
           <Button variant="outline" size="sm" onClick={handleDeleteSelected} title="Supprimer (Suppr)">
             <Trash2 className="h-4 w-4 mr-2" />
@@ -962,7 +1283,6 @@ export function TemplateDrawingCanvas({
         </div>
       </div>
 
-      {/* Options de grille et snap */}
       <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
         <div className="flex items-center gap-2">
           <Grid3x3 className="h-4 w-4 text-muted-foreground" />
@@ -994,16 +1314,17 @@ export function TemplateDrawingCanvas({
         </div>
       </div>
 
-      {/* Info échelle */}
       <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
         <p>
-          <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •
+          <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
           <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
           <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
         </p>
+        <p className="mt-1 text-blue-600 font-medium">
+          💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel !
+        </p>
       </div>
 
-      {/* Canvas */}
       <div className="border rounded-lg overflow-auto bg-white shadow-lg" style={{ maxHeight: "600px" }}>
         <canvas ref={canvasRef} />
       </div>
