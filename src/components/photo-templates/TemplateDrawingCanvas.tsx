@@ -282,7 +282,11 @@ export function TemplateDrawingCanvas({
   const gridLinesRef = useRef<any[]>([]);
   const activeCurveRef = useRef<EditableCurve | null>(null);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
-
+  const previousCanvasSizeRef = useRef<{
+    width: number;
+    height: number;
+    viewportTransform: number[] | null;
+  } | null>(null);
   // Fonction snap to grid
   const snapPoint = useCallback(
     (point: { x: number; y: number }) => {
@@ -1176,6 +1180,36 @@ export function TemplateDrawingCanvas({
     }
   };
 
+  const adjustForFullscreen = useCallback(() => {
+    if (!fabricCanvas || !imgRef.current) return;
+
+    const containerWidth = window.innerWidth;
+    const containerHeight = window.innerHeight;
+
+    // Adapter la taille du canvas à la fenêtre
+    fabricCanvas.setWidth(containerWidth);
+    fabricCanvas.setHeight(containerHeight);
+
+    const bg = fabricCanvas.backgroundImage as FabricImage | null;
+    if (bg && bg.width && bg.height) {
+      const imgWidth = bg.width * (bg.scaleX || 1);
+      const imgHeight = bg.height * (bg.scaleY || 1);
+
+      const scale = Math.min(containerWidth / imgWidth, containerHeight / imgHeight);
+      const offsetX = (containerWidth - imgWidth * scale) / 2;
+      const offsetY = (containerHeight - imgHeight * scale) / 2;
+
+      fabricCanvas.setViewportTransform([scale, 0, 0, scale, offsetX, offsetY]);
+      setZoom(scale);
+    } else {
+      fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      setZoom(1);
+    }
+
+    createGrid(fabricCanvas, containerWidth, containerHeight);
+    fabricCanvas.renderAll();
+  }, [fabricCanvas, createGrid]);
+
   const handleZoomIn = () => {
     if (!fabricCanvas) return;
     const newZoom = Math.min(5, zoom + 0.25);
@@ -1198,25 +1232,13 @@ export function TemplateDrawingCanvas({
     if (!fabricCanvas || !imgRef.current) return;
     setZoom(1);
     fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-    
-    // Centrer l'image si on est en plein écran
-    if (isFullscreen && canvasRef.current) {
-      const containerWidth = window.innerWidth;
-      const containerHeight = window.innerHeight - 80; // Moins l'espace pour le header
-      const canvasWidth = fabricCanvas.getWidth();
-      const canvasHeight = fabricCanvas.getHeight();
-      
-      // Calculer l'échelle pour remplir au maximum l'espace
-      const scale = Math.min(containerWidth / canvasWidth, containerHeight / canvasHeight) * 0.95;
-      
-      // Centrer
-      const offsetX = (containerWidth - canvasWidth * scale) / 2;
-      const offsetY = (containerHeight - canvasHeight * scale) / 2;
-      
-      fabricCanvas.setViewportTransform([scale, 0, 0, scale, offsetX, offsetY]);
-      setZoom(scale);
+
+    // Recentrer si on est en plein écran
+    if (isFullscreen) {
+      adjustForFullscreen();
+      return;
     }
-    
+
     fabricCanvas.renderAll();
   };
 
@@ -1312,7 +1334,20 @@ export function TemplateDrawingCanvas({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsFullscreen(false)}
+                onClick={() => {
+                  if (fabricCanvas && previousCanvasSizeRef.current) {
+                    const { width, height, viewportTransform } = previousCanvasSizeRef.current;
+                    fabricCanvas.setWidth(width);
+                    fabricCanvas.setHeight(height);
+                    fabricCanvas.setViewportTransform(
+                      (viewportTransform || [1, 0, 0, 1, 0, 0]) as any,
+                    );
+                    createGrid(fabricCanvas, width, height);
+                    fabricCanvas.renderAll();
+                    setZoom(1);
+                  }
+                  setIsFullscreen(false);
+                }}
                 className="h-6 w-6 p-0"
               >
                 <Minimize className="h-3 w-3" />
@@ -1529,26 +1564,20 @@ export function TemplateDrawingCanvas({
             variant="outline"
             size="sm"
             onClick={() => {
+              if (fabricCanvas) {
+                previousCanvasSizeRef.current = {
+                  width: fabricCanvas.getWidth() || 0,
+                  height: fabricCanvas.getHeight() || 0,
+                  viewportTransform: fabricCanvas.viewportTransform
+                    ? [...fabricCanvas.viewportTransform]
+                    : [1, 0, 0, 1, 0, 0],
+                };
+              }
+
               setIsFullscreen(true);
-              // Centrer l'image après un délai pour que le DOM se mette à jour
+              // Ajuster l'image après un délai pour que le DOM se mette à jour
               setTimeout(() => {
-                if (fabricCanvas && imgRef.current) {
-                  const containerWidth = window.innerWidth;
-                  const containerHeight = window.innerHeight;
-                  const canvasWidth = fabricCanvas.getWidth();
-                  const canvasHeight = fabricCanvas.getHeight();
-                  
-                  // Calculer l'échelle pour remplir l'espace
-                  const scale = Math.min(containerWidth / canvasWidth, containerHeight / canvasHeight) * 0.9;
-                  
-                  // Centrer
-                  const offsetX = (containerWidth - canvasWidth * scale) / 2;
-                  const offsetY = (containerHeight - canvasHeight * scale) / 2;
-                  
-                  fabricCanvas.setViewportTransform([scale, 0, 0, scale, offsetX, offsetY]);
-                  setZoom(scale);
-                  fabricCanvas.renderAll();
-                }
+                adjustForFullscreen();
               }, 150);
             }}
             title="Mode plein écran"
