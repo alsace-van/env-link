@@ -566,45 +566,6 @@ export function TemplateDrawingCanvas({
     };
   }, [imageUrl]);
 
-  // Fonction pour détecter si une zone de l'image est sombre ou claire
-  const getImageBrightness = useCallback((x: number, y: number, width: number = 50, height: number = 20): number => {
-    if (!fabricCanvas || !imgRef.current) return 128;
-
-    try {
-      // Créer un canvas temporaire pour analyser les pixels
-      const tempCanvas = document.createElement('canvas');
-      const ctx = tempCanvas.getContext('2d');
-      if (!ctx) return 128;
-
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      
-      // Dessiner la portion d'image
-      ctx.drawImage(imgRef.current, x, y, width, height, 0, 0, width, height);
-      
-      // Récupérer les données des pixels
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const data = imageData.data;
-      
-      let totalBrightness = 0;
-      let count = 0;
-      
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        // Formule de luminosité perceptuelle
-        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-        totalBrightness += brightness;
-        count++;
-      }
-      
-      return totalBrightness / count;
-    } catch (error) {
-      return 128; // Valeur par défaut moyenne
-    }
-  }, [fabricCanvas, imgRef]);
-
   // Recréer la grille quand les paramètres changent
   useEffect(() => {
     if (!fabricCanvas || !imgRef.current) return;
@@ -624,20 +585,48 @@ export function TemplateDrawingCanvas({
       const pixelsPerCm = scaleFactor; // scaleFactor contient déjà les pixels par cm
       const canvasWidth = fabricCanvas.width || 1000;
       const canvasHeight = fabricCanvas.height || 700;
-      const rulerColor = "#666666";
+      const rulerColor = "#000000";
+      const textColor = "#000000";
+      const rulerMargin = 30; // Marge pour dessiner les règles en dehors de l'image
 
-      // Règle horizontale (axe X) - en bas
-      const numTicksX = Math.ceil(canvasWidth / (pixelsPerCm * gridSizeCm));
+      // Créer un fond blanc pour les règles (en dehors de l'image)
+      const bottomRulerBg = new Rect({
+        left: 0,
+        top: canvasHeight,
+        width: canvasWidth,
+        height: rulerMargin,
+        fill: "#ffffff",
+        selectable: false,
+        evented: false,
+      });
+      (bottomRulerBg as any).isRuler = true;
+      fabricCanvas.add(bottomRulerBg);
+
+      const leftRulerBg = new Rect({
+        left: -rulerMargin,
+        top: 0,
+        width: rulerMargin,
+        height: canvasHeight,
+        fill: "#ffffff",
+        selectable: false,
+        evented: false,
+      });
+      (leftRulerBg as any).isRuler = true;
+      fabricCanvas.add(leftRulerBg);
+
+      // Règle horizontale (axe X) - en bas, alignée avec la grille
+      const numTicksX = Math.ceil(canvasWidth / gridSize);
       for (let i = 0; i <= numTicksX; i++) {
-        const x = i * pixelsPerCm * gridSizeCm;
+        const x = i * gridSize;
         if (x > canvasWidth) break;
         
-        const cm = i * gridSizeCm;
+        // Calculer les cm en utilisant le scaleFactor
+        const cm = Math.round((x / scaleFactor) * 10) / 10;
         
-        // Trait vertical partant du bas
-        const line = new Line([x, canvasHeight - 25, x, canvasHeight], {
+        // Trait vertical petit (en dehors de l'image)
+        const line = new Line([x, canvasHeight, x, canvasHeight + 8], {
           stroke: rulerColor,
-          strokeWidth: 2,
+          strokeWidth: 1,
           selectable: false,
           evented: false,
         });
@@ -645,39 +634,36 @@ export function TemplateDrawingCanvas({
         fabricCanvas.add(line);
         fabricCanvas.bringObjectToFront(line);
 
-        // Déterminer la couleur du texte selon la luminosité
-        const brightness = getImageBrightness(x, canvasHeight - 40, 50, 20);
-        const textColor = brightness > 128 ? "#000000" : "#FFFFFF";
-
-        // Texte en bas
-        const text = new FabricText(`${cm}cm`, {
-          left: x + 3,
-          top: canvasHeight - 22,
-          fontSize: 12,
-          fill: textColor,
-          selectable: false,
-          evented: false,
-          fontWeight: 'bold',
-          stroke: brightness > 128 ? "#FFFFFF" : "#000000",
-          strokeWidth: 0.5,
-        });
-        (text as any).isRuler = true;
-        fabricCanvas.add(text);
-        fabricCanvas.bringObjectToFront(text);
+        // Texte en bas (tous les gridSizeCm cm)
+        if (cm % gridSizeCm === 0 || i === 0) {
+          const text = new FabricText(`${cm}cm`, {
+            left: x + 2,
+            top: canvasHeight + 10,
+            fontSize: 10,
+            fill: textColor,
+            selectable: false,
+            evented: false,
+            fontWeight: 'normal',
+          });
+          (text as any).isRuler = true;
+          fabricCanvas.add(text);
+          fabricCanvas.bringObjectToFront(text);
+        }
       }
 
-      // Règle verticale (axe Y) - à gauche, 0 en bas
-      const numTicksY = Math.ceil(canvasHeight / (pixelsPerCm * gridSizeCm));
+      // Règle verticale (axe Y) - à gauche, 0 en bas, alignée avec la grille
+      const numTicksY = Math.ceil(canvasHeight / gridSize);
       for (let i = 0; i <= numTicksY; i++) {
-        const y = canvasHeight - (i * pixelsPerCm * gridSizeCm); // Inverser l'axe Y
+        const y = canvasHeight - (i * gridSize); // Inverser l'axe Y
         if (y < 0) break;
         
-        const cm = i * gridSizeCm;
+        // Calculer les cm en utilisant le scaleFactor
+        const cm = Math.round((i * gridSize / scaleFactor) * 10) / 10;
         
-        // Trait horizontal partant de la gauche
-        const line = new Line([0, y, 25, y], {
+        // Trait horizontal petit (en dehors de l'image)
+        const line = new Line([-8, y, 0, y], {
           stroke: rulerColor,
-          strokeWidth: 2,
+          strokeWidth: 1,
           selectable: false,
           evented: false,
         });
@@ -685,25 +671,21 @@ export function TemplateDrawingCanvas({
         fabricCanvas.add(line);
         fabricCanvas.bringObjectToFront(line);
 
-        // Déterminer la couleur du texte selon la luminosité
-        const brightness = getImageBrightness(28, y - 10, 50, 20);
-        const textColor = brightness > 128 ? "#000000" : "#FFFFFF";
-
-        // Texte à gauche
-        const text = new FabricText(`${cm}cm`, {
-          left: 28,
-          top: y - 6,
-          fontSize: 12,
-          fill: textColor,
-          selectable: false,
-          evented: false,
-          fontWeight: 'bold',
-          stroke: brightness > 128 ? "#FFFFFF" : "#000000",
-          strokeWidth: 0.5,
-        });
-        (text as any).isRuler = true;
-        fabricCanvas.add(text);
-        fabricCanvas.bringObjectToFront(text);
+        // Texte à gauche (tous les gridSizeCm cm)
+        if (cm % gridSizeCm === 0 || i === 0) {
+          const text = new FabricText(`${cm}cm`, {
+            left: -28,
+            top: y - 6,
+            fontSize: 10,
+            fill: textColor,
+            selectable: false,
+            evented: false,
+            fontWeight: 'normal',
+          });
+          (text as any).isRuler = true;
+          fabricCanvas.add(text);
+          fabricCanvas.bringObjectToFront(text);
+        }
       }
 
       fabricCanvas.renderAll();
@@ -717,7 +699,7 @@ export function TemplateDrawingCanvas({
       });
       fabricCanvas.renderAll();
     }
-  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, gridSizeCm, scaleFactor, getImageBrightness]);
+  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, gridSizeCm, scaleFactor]);
 
   // 🔧 BUG FIX #6 : Gérer la sélection et le déplacement des courbes éditables
   useEffect(() => {
