@@ -299,7 +299,7 @@ export function TemplateDrawingCanvas({
     [snapToGrid, gridSize],
   );
 
-  // Créer la grille
+  // Créer la grille limitée à l'image
   const createGrid = useCallback(
     (canvas: FabricCanvas, width: number, height: number) => {
       gridLinesRef.current.forEach((line) => canvas.remove(line));
@@ -310,30 +310,47 @@ export function TemplateDrawingCanvas({
       const gridColor = "#e0e0e0";
       const gridStrokeWidth = 0.5;
 
-      for (let i = 0; i <= Math.ceil(width / gridSize); i++) {
-        const x = i * gridSize;
-        const line = new Line([x, 0, x, height], {
-          stroke: gridColor,
-          strokeWidth: gridStrokeWidth,
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(line);
-        canvas.sendObjectToBack(line);
-        gridLinesRef.current.push(line);
+      // Utiliser les dimensions de l'image background si disponible
+      const bg = canvas.backgroundImage as FabricImage | null;
+      let gridWidth = width;
+      let gridHeight = height;
+      
+      if (bg && bg.width && bg.height) {
+        // Dimensions réelles de l'image avec son échelle
+        gridWidth = bg.width * (bg.scaleX || 1);
+        gridHeight = bg.height * (bg.scaleY || 1);
       }
 
-      for (let i = 0; i <= Math.ceil(height / gridSize); i++) {
+      // Lignes verticales
+      for (let i = 0; i <= Math.ceil(gridWidth / gridSize); i++) {
+        const x = i * gridSize;
+        if (x <= gridWidth) {
+          const line = new Line([x, 0, x, gridHeight], {
+            stroke: gridColor,
+            strokeWidth: gridStrokeWidth,
+            selectable: false,
+            evented: false,
+          });
+          canvas.add(line);
+          canvas.sendObjectToBack(line);
+          gridLinesRef.current.push(line);
+        }
+      }
+
+      // Lignes horizontales
+      for (let i = 0; i <= Math.ceil(gridHeight / gridSize); i++) {
         const y = i * gridSize;
-        const line = new Line([0, y, width, y], {
-          stroke: gridColor,
-          strokeWidth: gridStrokeWidth,
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(line);
-        canvas.sendObjectToBack(line);
-        gridLinesRef.current.push(line);
+        if (y <= gridHeight) {
+          const line = new Line([0, y, gridWidth, y], {
+            stroke: gridColor,
+            strokeWidth: gridStrokeWidth,
+            selectable: false,
+            evented: false,
+          });
+          canvas.add(line);
+          canvas.sendObjectToBack(line);
+          gridLinesRef.current.push(line);
+        }
       }
 
       canvas.renderAll();
@@ -1668,49 +1685,16 @@ export function TemplateDrawingCanvas({
       </div>
 
       {!isFullscreen && (
-        <>
-          <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
-            <div className="flex items-center gap-2">
-              <Grid3x3 className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-sm">Grille:</Label>
-              <Switch checked={showGrid} onCheckedChange={setShowGrid} />
-            </div>
-
-            {showGrid && (
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Taille grille:</Label>
-                <Input
-                  type="number"
-                  min="10"
-                  max="100"
-                  value={gridSize}
-                  onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
-                  className="w-20"
-                />
-                <span className="text-xs text-muted-foreground">px</span>
-              </div>
-            )}
-
-            <Separator orientation="vertical" className="h-6" />
-
-            <div className="flex items-center gap-2">
-              <Magnet className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-sm">Magnétisme:</Label>
-              <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
-            </div>
-          </div>
-
-          <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
-            <p>
-              <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
-              <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
-              <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
-            </p>
-            <p className="mt-1 text-blue-600 font-medium">
-              💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Utilisez la molette pour zoomer et l'outil "Déplacer" pour naviguer.
-            </p>
-          </div>
-        </>
+        <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
+          <p>
+            <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
+            <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
+            <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
+          </p>
+          <p className="mt-1 text-blue-600 font-medium">
+            💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Utilisez la molette pour zoomer et l'outil "Déplacer" pour naviguer.
+          </p>
+        </div>
       )}
     </div>
   );
