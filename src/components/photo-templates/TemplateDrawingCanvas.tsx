@@ -13,6 +13,7 @@ import {
   Group,
   Control,
   Point,
+  util,
 } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -438,8 +439,8 @@ export function TemplateDrawingCanvas({
         })
       : undefined;
 
-    state.objects.forEach((objData: any) => {
-      FabricCanvas.fromObject(objData).then((obj: any) => {
+    util.enlivenObjects(state.objects).then((objs: any[]) => {
+      objs.forEach((obj: any) => {
         fabricCanvas.add(obj);
       });
     });
@@ -467,8 +468,8 @@ export function TemplateDrawingCanvas({
         })
       : undefined;
 
-    state.objects.forEach((objData: any) => {
-      FabricCanvas.fromObject(objData).then((obj: any) => {
+    util.enlivenObjects(state.objects).then((objs: any[]) => {
+      objs.forEach((obj: any) => {
         fabricCanvas.add(obj);
       });
     });
@@ -524,8 +525,10 @@ export function TemplateDrawingCanvas({
       const finalWidth = img.width * scale;
       const finalHeight = img.height * scale;
 
-      canvas.setWidth(finalWidth);
-      canvas.setHeight(finalHeight);
+      // S'assurer que les dimensions sont valides
+      if (finalWidth > 0 && finalHeight > 0 && isFinite(finalWidth) && isFinite(finalHeight)) {
+        canvas.setDimensions({ width: finalWidth, height: finalHeight });
+      }
 
       FabricImage.fromURL(imageUrl).then((fabricImg) => {
         fabricImg.set({
@@ -732,7 +735,9 @@ export function TemplateDrawingCanvas({
 
         isPanning = true;
         fabricCanvas.selection = false;
-        lastPos = { x: evt.clientX, y: evt.clientY };
+        const clientX = evt instanceof MouseEvent ? evt.clientX : evt.touches?.[0]?.clientX || 0;
+        const clientY = evt instanceof MouseEvent ? evt.clientY : evt.touches?.[0]?.clientY || 0;
+        lastPos = { x: clientX, y: clientY };
       });
 
       fabricCanvas.on("mouse:move", (opt) => {
@@ -740,10 +745,12 @@ export function TemplateDrawingCanvas({
         if (isPanning && lastPos) {
           const vpt = fabricCanvas.viewportTransform;
           if (vpt) {
-            vpt[4] += evt.clientX - lastPos.x;
-            vpt[5] += evt.clientY - lastPos.y;
+            const clientX = evt instanceof MouseEvent ? evt.clientX : evt.touches?.[0]?.clientX || 0;
+            const clientY = evt instanceof MouseEvent ? evt.clientY : evt.touches?.[0]?.clientY || 0;
+            vpt[4] += clientX - lastPos.x;
+            vpt[5] += clientY - lastPos.y;
             fabricCanvas.requestRenderAll();
-            lastPos = { x: evt.clientX, y: evt.clientY };
+            lastPos = { x: clientX, y: clientY };
           }
         }
       });
@@ -1291,8 +1298,9 @@ export function TemplateDrawingCanvas({
     const containerHeight = window.innerHeight;
 
     // Adapter la taille du canvas à la fenêtre
-    fabricCanvas.setWidth(containerWidth);
-    fabricCanvas.setHeight(containerHeight);
+    if (containerWidth > 0 && containerHeight > 0 && isFinite(containerWidth) && isFinite(containerHeight)) {
+      fabricCanvas.setDimensions({ width: containerWidth, height: containerHeight });
+    }
 
     const bg = fabricCanvas.backgroundImage as FabricImage | null;
     if (bg && bg.width && bg.height) {
@@ -1441,12 +1449,13 @@ export function TemplateDrawingCanvas({
                 onClick={() => {
                   if (fabricCanvas && previousCanvasSizeRef.current) {
                     const { width, height, viewportTransform } = previousCanvasSizeRef.current;
-                    fabricCanvas.setWidth(width);
-                    fabricCanvas.setHeight(height);
-                    fabricCanvas.setViewportTransform((viewportTransform || [1, 0, 0, 1, 0, 0]) as any);
-                    createGrid(fabricCanvas, width, height);
-                    fabricCanvas.renderAll();
-                    setZoom(1);
+                    if (width > 0 && height > 0 && isFinite(width) && isFinite(height)) {
+                      fabricCanvas.setDimensions({ width, height });
+                      fabricCanvas.setViewportTransform((viewportTransform || [1, 0, 0, 1, 0, 0]) as any);
+                      createGrid(fabricCanvas, width, height);
+                      fabricCanvas.renderAll();
+                      setZoom(1);
+                    }
                   }
                   setIsFullscreen(false);
                 }}
