@@ -64,6 +64,7 @@ import ProjectForm from "@/components/ProjectForm";
 import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleInspectionTab";
 import { WorkTabMain } from "@/components/work/WorkTabMain";
 import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
+import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -1615,27 +1616,7 @@ const ProjectDetail = () => {
                   </TabsContent>
 
                   <TabsContent value="templates" className="mt-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <Camera className="h-5 w-5" />
-                          Gabarits & Traçage CNC
-                        </CardTitle>
-                        <CardDescription>
-                          Créez des gabarits précis à partir de photos avec correction automatique de perspective et distorsion
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <Button
-                          size="lg"
-                          onClick={() => navigate(`/project/${project.id}/templates`)}
-                          className="w-full"
-                        >
-                          <Ruler className="h-5 w-5 mr-2" />
-                          Accéder aux gabarits
-                        </Button>
-                      </CardContent>
-                    </Card>
+                    <PhotoTemplatesContent projectId={project.id} />
                   </TabsContent>
                 </Tabs>
               </TabsContent>
