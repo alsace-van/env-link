@@ -82,7 +82,7 @@ class EditableCurve extends Path {
     this.set("customType", "editableCurve");
   }
 
-  // Créer les poignées de contrôle visuelles
+  // 🔧 BUG FIX #3 : Réduire la taille des poignées (3px au lieu de 6-8px)
   createHandles(canvas: FabricCanvas, color: string = "#3b82f6") {
     // Nettoyer les anciennes poignées
     this.removeHandles(canvas);
@@ -119,11 +119,11 @@ class EditableCurve extends Path {
 
     this.controlLines = [line1, line2];
 
-    // Poignées (cercles)
+    // 🔧 BUG FIX #3 : Poignées réduites à 3-4px
     const handleStart = new Circle({
       left: this.controlPoints.start.x,
       top: this.controlPoints.start.y,
-      radius: 6,
+      radius: 3, // ✅ Réduit de 6 à 3
       fill: "#ffffff",
       stroke: color,
       strokeWidth: 2,
@@ -138,7 +138,7 @@ class EditableCurve extends Path {
     const handleControl = new Circle({
       left: this.controlPoints.control.x,
       top: this.controlPoints.control.y,
-      radius: 8,
+      radius: 4, // ✅ Réduit de 8 à 4
       fill: color,
       stroke: "#ffffff",
       strokeWidth: 2,
@@ -153,7 +153,7 @@ class EditableCurve extends Path {
     const handleEnd = new Circle({
       left: this.controlPoints.end.x,
       top: this.controlPoints.end.y,
-      radius: 6,
+      radius: 3, // ✅ Réduit de 6 à 3
       fill: "#ffffff",
       stroke: color,
       strokeWidth: 2,
@@ -285,6 +285,12 @@ export function TemplateDrawingCanvas({
     height: number;
     viewportTransform: number[] | null;
   } | null>(null);
+
+  // 🔧 BUG FIX #2 : États pour l'édition des propriétés de l'objet sélectionné
+  const [selectedObject, setSelectedObject] = useState<any>(null);
+  const [selectedStrokeWidth, setSelectedStrokeWidth] = useState(2);
+  const [selectedStrokeColor, setSelectedStrokeColor] = useState("#ef4444");
+
   // Fonction pour obtenir les coordonnées correctes du canvas en tenant compte du zoom/pan
   const getCanvasPoint = useCallback((canvas: FabricCanvas, e: any): { x: number; y: number } => {
     if (!canvas) return { x: 0, y: 0 };
@@ -359,93 +365,119 @@ export function TemplateDrawingCanvas({
           gridLinesRef.current.push(line);
         }
       }
-
-      canvas.renderAll();
     },
     [showGrid, gridSize],
   );
 
-  // Sauvegarder l'état pour undo/redo
+  // Fonction pour nettoyer COMPLÈTEMENT tous les objets temporaires
+  const cleanAllTempObjects = useCallback(() => {
+    if (!fabricCanvas) return;
+
+    // Supprimer tous les objets temporaires (cercles, lignes, courbes preview)
+    tempObjects.forEach((obj) => {
+      fabricCanvas.remove(obj);
+    });
+    setTempObjects([]);
+    setTempPoints([]);
+
+    // Supprimer les lignes en pointillés qui peuvent traîner
+    fabricCanvas.getObjects().forEach((obj) => {
+      if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
+        fabricCanvas.remove(obj);
+      }
+    });
+
+    // Supprimer la preview curve si elle existe
+    if (previewCurve) {
+      fabricCanvas.remove(previewCurve);
+      setPreviewCurve(null);
+    }
+
+    fabricCanvas.renderAll();
+  }, [fabricCanvas, tempObjects, previewCurve]);
+
+  // Sauvegarder l'état pour l'historique
   const saveState = useCallback(
     (canvas: FabricCanvas) => {
-      const objects = canvas
-        .getObjects()
-        .filter(
-          (obj) =>
-            (!gridLinesRef.current.includes(obj) && !(obj as any).curvePointType && obj.type !== "line") ||
-            (obj.type === "line" && !(obj as any).strokeDashArray),
-        );
+      const objects = canvas.getObjects().filter((obj) => {
+        // Exclure la grille, les poignées de contrôle et les lignes de contrôle
+        if (gridLinesRef.current.includes(obj)) return false;
+        if ((obj as any).curvePointType) return false; // Poignées
+        if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) return false; // Lignes de contrôle
+        return true;
+      });
+
       const state: HistoryState = {
-        objects: objects.map((obj) => obj.toJSON()),
+        objects: objects.map((obj) => obj.toObject()),
       };
 
-      const newHistory = history.slice(0, historyIndex + 1);
-      newHistory.push(state);
-
-      if (newHistory.length > 50) {
-        newHistory.shift();
-      } else {
-        setHistoryIndex(historyIndex + 1);
-      }
-
-      setHistory(newHistory);
+      setHistory((prev) => {
+        const newHistory = prev.slice(0, historyIndex + 1);
+        newHistory.push(state);
+        return newHistory;
+      });
+      setHistoryIndex((prev) => prev + 1);
     },
-    [history, historyIndex],
+    [historyIndex],
   );
 
-  // Annuler
+  // Undo
   const handleUndo = useCallback(() => {
-    if (historyIndex <= 0 || !fabricCanvas) return;
+    if (!fabricCanvas || historyIndex <= 0) return;
 
     const newIndex = historyIndex - 1;
     const state = history[newIndex];
 
-    const objects = fabricCanvas.getObjects();
-    objects.forEach((obj) => {
-      if (
-        !gridLinesRef.current.includes(obj) &&
-        !(obj as any).curvePointType &&
-        (obj.type !== "line" || !(obj as any).strokeDashArray)
-      ) {
-        fabricCanvas.remove(obj);
-      }
-    });
+    fabricCanvas.clear();
+    fabricCanvas.backgroundImage = imgRef.current
+      ? new FabricImage(imgRef.current, {
+          scaleX: fabricCanvas.width! / imgRef.current.width,
+          scaleY: fabricCanvas.height! / imgRef.current.height,
+          selectable: false,
+          evented: false,
+        })
+      : undefined;
 
     state.objects.forEach((objData: any) => {
-      fabricCanvas.add(objData);
+      FabricCanvas.fromObject(objData).then((obj: any) => {
+        fabricCanvas.add(obj);
+      });
     });
 
+    createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
     setHistoryIndex(newIndex);
     fabricCanvas.renderAll();
-    onDrawingsChanged?.(fabricCanvas.toJSON());
-  }, [historyIndex, history, fabricCanvas, onDrawingsChanged]);
+    toast.success("Annulation effectuée");
+  }, [fabricCanvas, history, historyIndex, createGrid]);
 
-  // Refaire
+  // Redo
   const handleRedo = useCallback(() => {
-    if (historyIndex >= history.length - 1 || !fabricCanvas) return;
+    if (!fabricCanvas || historyIndex >= history.length - 1) return;
 
     const newIndex = historyIndex + 1;
     const state = history[newIndex];
 
-    const objects = fabricCanvas.getObjects();
-    objects.forEach((obj) => {
-      if (
-        !gridLinesRef.current.includes(obj) &&
-        !(obj as any).curvePointType &&
-        (obj.type !== "line" || !(obj as any).strokeDashArray)
-      ) {
-        fabricCanvas.remove(obj);
-      }
-    });
+    fabricCanvas.clear();
+    fabricCanvas.backgroundImage = imgRef.current
+      ? new FabricImage(imgRef.current, {
+          scaleX: fabricCanvas.width! / imgRef.current.width,
+          scaleY: fabricCanvas.height! / imgRef.current.height,
+          selectable: false,
+          evented: false,
+        })
+      : undefined;
 
     state.objects.forEach((objData: any) => {
-      fabricCanvas.add(objData);
+      FabricCanvas.fromObject(objData).then((obj: any) => {
+        fabricCanvas.add(obj);
+      });
     });
 
+    createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
     setHistoryIndex(newIndex);
     fabricCanvas.renderAll();
-    onDrawingsChanged?.(fabricCanvas.toJSON());
-  }, [historyIndex, history, fabricCanvas, onDrawingsChanged]);
+    toast.success("Rétablissement effectué");
+  }, [fabricCanvas, history, historyIndex, createGrid]);
 
   // Nettoyer les objets temporaires quand on change d'outil
   useEffect(() => {
@@ -526,7 +558,7 @@ export function TemplateDrawingCanvas({
     createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
   }, [showGrid, gridSize, fabricCanvas, createGrid]);
 
-  // Gérer la sélection des courbes éditables
+  // 🔧 BUG FIX #2 : Gérer la sélection d'objets pour permettre l'édition
   useEffect(() => {
     if (!fabricCanvas) return;
 
@@ -542,16 +574,27 @@ export function TemplateDrawingCanvas({
       // Si c'est une courbe éditable, montrer les poignées
       if (selected && (selected as any).customType === "editableCurve") {
         const curve = selected as EditableCurve;
-        curve.createHandles(fabricCanvas, strokeColor);
+        curve.createHandles(fabricCanvas, selected.stroke || strokeColor);
         activeCurveRef.current = curve;
+      }
+
+      // 🔧 BUG FIX #2 : Sauvegarder l'objet sélectionné et ses propriétés
+      if (selected) {
+        setSelectedObject(selected);
+        setSelectedStrokeWidth(selected.strokeWidth || 2);
+        setSelectedStrokeColor(selected.stroke || "#ef4444");
+      } else {
+        setSelectedObject(null);
       }
     };
 
     const handleDeselection = () => {
+      // 🔧 BUG FIX #1 : Nettoyer la ref activeCurveRef lors de la désélection
       if (activeCurveRef.current) {
         activeCurveRef.current.removeHandles(fabricCanvas);
         activeCurveRef.current = null;
       }
+      setSelectedObject(null);
     };
 
     fabricCanvas.on("selection:created", handleSelection);
@@ -564,6 +607,26 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("selection:cleared", handleDeselection);
     };
   }, [fabricCanvas, strokeColor]);
+
+  // 🔧 BUG FIX #2 : Fonction pour appliquer les modifications aux objets sélectionnés
+  const applyStrokeToSelected = useCallback(() => {
+    if (!fabricCanvas || !selectedObject) return;
+
+    selectedObject.set({
+      stroke: selectedStrokeColor,
+      strokeWidth: selectedStrokeWidth,
+    });
+
+    // Si c'est une courbe éditable, mettre à jour les poignées
+    if ((selectedObject as any).customType === "editableCurve" && activeCurveRef.current) {
+      activeCurveRef.current.removeHandles(fabricCanvas);
+      activeCurveRef.current.createHandles(fabricCanvas, selectedStrokeColor);
+    }
+
+    fabricCanvas.renderAll();
+    saveState(fabricCanvas);
+    toast.success("Propriétés modifiées !");
+  }, [fabricCanvas, selectedObject, selectedStrokeColor, selectedStrokeWidth, saveState]);
 
   // Gérer les outils
   useEffect(() => {
@@ -582,23 +645,26 @@ export function TemplateDrawingCanvas({
     fabricCanvas.off("mouse:up");
     fabricCanvas.off("mouse:wheel");
 
-    // Gestion du pan avec le bouton du milieu (molette)
+    // 🔧 BUG FIX #4 : Améliorer la gestion du pan avec la molette
     let isPanningWithMiddleButton = false;
     let lastPanPos: { x: number; y: number } | null = null;
 
-    fabricCanvas.on("mouse:down", (opt) => {
+    // Handler pour le bouton du milieu (AVANT les autres outils)
+    const handleMiddleButtonDown = (opt: any) => {
       const evt = opt.e;
       if (evt instanceof MouseEvent && evt.button === 1) {
         // Bouton du milieu (molette)
         isPanningWithMiddleButton = true;
         fabricCanvas.selection = false;
+        fabricCanvas.defaultCursor = "grabbing";
         lastPanPos = { x: evt.clientX, y: evt.clientY };
         evt.preventDefault();
         evt.stopPropagation();
+        return false; // ✅ Empêcher la propagation
       }
-    });
+    };
 
-    fabricCanvas.on("mouse:move", (opt) => {
+    const handleMiddleButtonMove = (opt: any) => {
       const evt = opt.e;
       if (isPanningWithMiddleButton && lastPanPos && evt instanceof MouseEvent) {
         const vpt = fabricCanvas.viewportTransform;
@@ -610,19 +676,27 @@ export function TemplateDrawingCanvas({
         }
         evt.preventDefault();
         evt.stopPropagation();
+        return false; // ✅ Empêcher la propagation
       }
-    });
+    };
 
-    fabricCanvas.on("mouse:up", (opt) => {
+    const handleMiddleButtonUp = (opt: any) => {
       const evt = opt.e;
       if (evt instanceof MouseEvent && evt.button === 1) {
         isPanningWithMiddleButton = false;
-        fabricCanvas.selection = true;
+        fabricCanvas.selection = activeTool === "select";
+        fabricCanvas.defaultCursor = "default";
         lastPanPos = null;
         evt.preventDefault();
         evt.stopPropagation();
+        return false; // ✅ Empêcher la propagation
       }
-    });
+    };
+
+    // ✅ Enregistrer les handlers en premier (priorité au pan avec molette)
+    fabricCanvas.on("mouse:down", handleMiddleButtonDown);
+    fabricCanvas.on("mouse:move", handleMiddleButtonMove);
+    fabricCanvas.on("mouse:up", handleMiddleButtonUp);
 
     // Zoom avec la molette (toujours actif)
     fabricCanvas.on("mouse:wheel", (opt) => {
@@ -648,155 +722,253 @@ export function TemplateDrawingCanvas({
 
     // Gestion du pan (déplacement)
     if (activeTool === "pan") {
-      fabricCanvas.selection = false;
-      fabricCanvas.defaultCursor = "grab";
-      let panning = false;
+      let isPanning = false;
+      let lastPos: { x: number; y: number } | null = null;
 
       fabricCanvas.on("mouse:down", (opt) => {
         const evt = opt.e;
-        if (evt instanceof MouseEvent || evt instanceof TouchEvent) {
-          panning = true;
-          fabricCanvas.selection = false;
-          fabricCanvas.defaultCursor = "grabbing";
-          lastPosRef.current = {
-            x: (evt as MouseEvent).clientX || 0,
-            y: (evt as MouseEvent).clientY || 0,
-          };
-        }
+        // ✅ Ignorer si c'est le bouton du milieu (déjà géré)
+        if (evt instanceof MouseEvent && evt.button === 1) return;
+
+        isPanning = true;
+        fabricCanvas.selection = false;
+        lastPos = { x: evt.clientX, y: evt.clientY };
       });
 
       fabricCanvas.on("mouse:move", (opt) => {
-        if (panning && lastPosRef.current) {
-          const evt = opt.e;
-          if (evt instanceof MouseEvent) {
-            const vpt = fabricCanvas.viewportTransform;
-            if (vpt) {
-              vpt[4] += evt.clientX - lastPosRef.current.x;
-              vpt[5] += evt.clientY - lastPosRef.current.y;
-              fabricCanvas.requestRenderAll();
-              lastPosRef.current = { x: evt.clientX, y: evt.clientY };
-            }
+        const evt = opt.e;
+        if (isPanning && lastPos) {
+          const vpt = fabricCanvas.viewportTransform;
+          if (vpt) {
+            vpt[4] += evt.clientX - lastPos.x;
+            vpt[5] += evt.clientY - lastPos.y;
+            fabricCanvas.requestRenderAll();
+            lastPos = { x: evt.clientX, y: evt.clientY };
           }
         }
       });
 
       fabricCanvas.on("mouse:up", () => {
-        panning = false;
-        fabricCanvas.defaultCursor = "grab";
-        lastPosRef.current = null;
+        isPanning = false;
+        fabricCanvas.selection = true;
+        lastPos = null;
       });
-
-      return;
     }
 
-    if (activeTool === "select" || activeTool === "pencil") return;
+    // === OUTILS DE DESSIN STANDARD ===
+    if (activeTool === "line" || activeTool === "rectangle" || activeTool === "circle" || activeTool === "ellipse") {
+      let isDrawing = false;
+      let startPoint: { x: number; y: number } | null = null;
+      let currentShape: any = null;
 
-    let isDrawing = false;
-    let startPoint: { x: number; y: number } | null = null;
-    let activeObject: any = null;
-    let previewObject: any = null;
+      fabricCanvas.on("mouse:down", (opt) => {
+        const evt = opt.e;
+        // ✅ Ignorer si c'est le bouton du milieu
+        if (evt instanceof MouseEvent && evt.button === 1) return;
 
-    const cleanTempObjects = () => {
-      tempObjects.forEach((obj) => fabricCanvas.remove(obj));
-      setTempObjects([]);
-    };
-
-    const createMarker = (point: { x: number; y: number }, color: string = strokeColor) => {
-      const marker = new Circle({
-        left: point.x,
-        top: point.y,
-        radius: 5,
-        fill: color,
-        stroke: "#ffffff",
-        strokeWidth: 2,
-        selectable: false,
-        evented: false,
-        originX: "center",
-        originY: "center",
+        isDrawing = true;
+        const canvasPoint = getCanvasPoint(fabricCanvas, evt);
+        const snappedPoint = snapPoint(canvasPoint);
+        startPoint = { x: snappedPoint.x, y: snappedPoint.y };
       });
-      fabricCanvas.add(marker);
-      fabricCanvas.bringObjectToFront(marker);
-      return marker;
-    };
 
-    // Fonction pour nettoyer COMPLÈTEMENT tous les objets temporaires
-    const cleanAllTempObjects = () => {
-      tempObjects.forEach((obj) => fabricCanvas.remove(obj));
-      setTempObjects([]);
-      setTempPoints([]);
-      if (previewCurve) {
-        fabricCanvas.remove(previewCurve);
-        setPreviewCurve(null);
-      }
+      fabricCanvas.on("mouse:move", (opt) => {
+        if (!isDrawing || !startPoint) return;
 
-      // Supprimer aussi tous les objets avec strokeDashArray (lignes temporaires)
-      fabricCanvas.getObjects().forEach((obj) => {
-        if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
-          fabricCanvas.remove(obj);
+        const evt = opt.e;
+        const canvasPoint = getCanvasPoint(fabricCanvas, evt);
+        const snappedPoint = snapPoint(canvasPoint);
+
+        if (currentShape) {
+          fabricCanvas.remove(currentShape);
+        }
+
+        if (activeTool === "line") {
+          currentShape = new Line([startPoint.x, startPoint.y, snappedPoint.x, snappedPoint.y], {
+            stroke: strokeColor,
+            strokeWidth: strokeWidth,
+          });
+        } else if (activeTool === "rectangle") {
+          const width = snappedPoint.x - startPoint.x;
+          const height = snappedPoint.y - startPoint.y;
+          currentShape = new Rect({
+            left: startPoint.x,
+            top: startPoint.y,
+            width: Math.abs(width),
+            height: Math.abs(height),
+            stroke: strokeColor,
+            strokeWidth: strokeWidth,
+            fill: "transparent",
+          });
+          if (width < 0) currentShape.set({ left: snappedPoint.x });
+          if (height < 0) currentShape.set({ top: snappedPoint.y });
+        } else if (activeTool === "circle" || activeTool === "ellipse") {
+          const radiusX = Math.abs(snappedPoint.x - startPoint.x) / 2;
+          const radiusY = Math.abs(snappedPoint.y - startPoint.y) / 2;
+
+          if (activeTool === "circle") {
+            const radius = Math.max(radiusX, radiusY);
+            currentShape = new Circle({
+              left: startPoint.x,
+              top: startPoint.y,
+              radius: radius,
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              fill: "transparent",
+              originX: "center",
+              originY: "center",
+            });
+          } else {
+            currentShape = new Ellipse({
+              left: startPoint.x,
+              top: startPoint.y,
+              rx: radiusX,
+              ry: radiusY,
+              stroke: strokeColor,
+              strokeWidth: strokeWidth,
+              fill: "transparent",
+              originX: "center",
+              originY: "center",
+            });
+          }
+        }
+
+        if (currentShape) {
+          fabricCanvas.add(currentShape);
+          fabricCanvas.renderAll();
         }
       });
 
-      fabricCanvas.renderAll();
-    };
+      fabricCanvas.on("mouse:up", () => {
+        isDrawing = false;
+        startPoint = null;
+        if (currentShape) {
+          saveState(fabricCanvas);
+          currentShape = null;
+        }
+      });
+    }
 
-    // === OUTIL COURBE ÉDITABLE (le nouveau !) ===
+    // === TEXTE ===
+    if (activeTool === "text") {
+      fabricCanvas.on("mouse:down", (opt) => {
+        const evt = opt.e;
+        // ✅ Ignorer si c'est le bouton du milieu
+        if (evt instanceof MouseEvent && evt.button === 1) return;
+
+        const canvasPoint = getCanvasPoint(fabricCanvas, evt);
+        const snappedPoint = snapPoint(canvasPoint);
+
+        const textbox = new Textbox("Texte", {
+          left: snappedPoint.x,
+          top: snappedPoint.y,
+          fontSize: 20,
+          fill: strokeColor,
+          width: 200,
+        });
+        fabricCanvas.add(textbox);
+        fabricCanvas.setActiveObject(textbox);
+        textbox.enterEditing();
+        saveState(fabricCanvas);
+      });
+    }
+
+    // === COTE (DIMENSION) ===
+    if (activeTool === "dimension") {
+      let dimensionPoints: { x: number; y: number }[] = [];
+
+      fabricCanvas.on("mouse:down", (opt) => {
+        const evt = opt.e;
+        // ✅ Ignorer si c'est le bouton du milieu
+        if (evt instanceof MouseEvent && evt.button === 1) return;
+
+        const canvasPoint = getCanvasPoint(fabricCanvas, evt);
+        const snappedPoint = snapPoint(canvasPoint);
+
+        dimensionPoints.push(snappedPoint);
+
+        if (dimensionPoints.length === 2) {
+          const [p1, p2] = dimensionPoints;
+          const distance = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+          const realDistance = (distance * scaleFactor).toFixed(1);
+
+          const line = new Line([p1.x, p1.y, p2.x, p2.y], {
+            stroke: strokeColor,
+            strokeWidth: strokeWidth,
+          });
+
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+
+          const label = new Textbox(`${realDistance} mm`, {
+            left: midX,
+            top: midY - 15,
+            fontSize: 14,
+            fill: strokeColor,
+            backgroundColor: "white",
+            textAlign: "center",
+            width: 100,
+          });
+
+          fabricCanvas.add(line);
+          fabricCanvas.add(label);
+          fabricCanvas.renderAll();
+          saveState(fabricCanvas);
+
+          dimensionPoints = [];
+          toast.success(`Cote créée: ${realDistance} mm`);
+        }
+      });
+    }
+
+    // === OUTIL COURBE ÉDITABLE ===
     if (activeTool === "editableCurve") {
+      // Fonction helper pour créer un marqueur bleu
+      const createMarker = (point: { x: number; y: number }) => {
+        return new Circle({
+          left: point.x,
+          top: point.y,
+          radius: 3, // ✅ Réduit à 3px
+          fill: "#3b82f6",
+          stroke: "#ffffff",
+          strokeWidth: 2,
+          originX: "center",
+          originY: "center",
+          selectable: false,
+          evented: false,
+        });
+      };
+
+      // Flag pour éviter la création multiple pendant la finalisation
       let isFinalizingCurve = false;
 
       fabricCanvas.on("mouse:down", (e) => {
         if (!e.e || isFinalizingCurve) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        // 🔧 BUG FIX #5 : Appliquer le magnétisme aux courbes
         const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
+
         const updatedPoints = [...tempPoints, newPoint];
         setTempPoints(updatedPoints);
 
-        const marker = createMarker(newPoint, "#3b82f6");
+        const marker = createMarker(newPoint);
+        fabricCanvas.add(marker);
         setTempObjects((prev) => [...prev, marker]);
 
-        if (updatedPoints.length === 1) {
-          // Premier point = première extrémité
-          toast.info("Première extrémité placée. Cliquez pour placer la deuxième extrémité");
-        } else if (updatedPoints.length === 2) {
-          // Deuxième point = deuxième extrémité
-          toast.info("Deuxième extrémité placée. Déplacez la souris pour ajuster la courbure");
-
-          // Créer un point de contrôle initial au milieu
-          const [start, end] = updatedPoints;
-          const midX = (start.x + end.x) / 2;
-          const midY = (start.y + end.y) / 2;
-          const initialControl = { x: midX, y: midY };
-
-          // Créer la courbe immédiatement avec le point de contrôle au milieu
-          const curve = new EditableCurve(
-            new Point(start.x, start.y),
-            new Point(initialControl.x, initialControl.y),
-            new Point(end.x, end.y),
-            {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
-              fill: "transparent",
-              strokeLineCap: "round",
-              strokeLineJoin: "round",
-            },
-          );
-
-          fabricCanvas.add(curve);
-          setTempObjects((prev) => [...prev, curve]);
-        } else if (updatedPoints.length === 3) {
-          // Troisième point = ajustement final du point de contrôle
+        if (updatedPoints.length === 3) {
+          // Finaliser la courbe
           isFinalizingCurve = true;
+
           const [start, end, control] = updatedPoints;
 
-          // NETTOYAGE COMPLET - Supprimer TOUS les objets temporaires
-          tempObjects.forEach((obj) => {
-            fabricCanvas.remove(obj);
-          });
-
-          // Supprimer aussi toutes les lignes temporaires qui pourraient traîner
+          // Nettoyer TOUT avant de créer la courbe finale
           fabricCanvas.getObjects().forEach((obj) => {
-            if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
+            if (obj instanceof Circle && (obj as any).fill === "#3b82f6") {
+              fabricCanvas.remove(obj);
+            }
+            if (obj instanceof Line && (obj as any).strokeDashArray) {
               fabricCanvas.remove(obj);
             }
           });
@@ -847,6 +1019,7 @@ export function TemplateDrawingCanvas({
         if (!e.e || tempPoints.length === 0 || isFinalizingCurve) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+        // 🔧 BUG FIX #5 : Appliquer le magnétisme aux courbes
         const snappedPoint = snapPoint(canvasPoint);
 
         // Supprimer TOUS les objets d'aperçu précédents (lignes en pointillés seulement)
@@ -935,10 +1108,36 @@ export function TemplateDrawingCanvas({
 
     // === OUTILS MULTI-POINTS (Bézier, Spline, Polygon) ===
     if (activeTool === "bezier" || activeTool === "spline" || activeTool === "polygon") {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
+      // Fonction helper pour créer un marqueur
+      const createMarker = (point: { x: number; y: number }) => {
+        return new Circle({
+          left: point.x,
+          top: point.y,
+          radius: 3, // ✅ Réduit à 3px
+          fill: "#3b82f6",
+          stroke: "#ffffff",
+          strokeWidth: 2,
+          originX: "center",
+          originY: "center",
+          selectable: false,
+          evented: false,
+        });
+      };
 
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+      // Fonction helper pour nettoyer les objets temporaires
+      const cleanTempObjects = () => {
+        tempObjects.forEach((obj) => fabricCanvas.remove(obj));
+        setTempObjects([]);
+      };
+
+      fabricCanvas.on("mouse:down", (e) => {
+        const evt = e.e;
+        // ✅ Ignorer si c'est le bouton du milieu
+        if (evt instanceof MouseEvent && evt.button === 1) return;
+
+        if (!evt) return;
+
+        const canvasPoint = getCanvasPoint(fabricCanvas, evt);
         const snappedPoint = snapPoint(canvasPoint);
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
 
@@ -998,66 +1197,38 @@ export function TemplateDrawingCanvas({
 
         const marker = createMarker(newPoint);
         setTempObjects((prev) => [...prev, marker]);
+        fabricCanvas.add(marker);
 
         if (updatedPoints.length > 1) {
-          const prevPoint = updatedPoints[updatedPoints.length - 2];
-          const connectionLine = new Line([prevPoint.x, prevPoint.y, newPoint.x, newPoint.y], {
+          const lastPoint = updatedPoints[updatedPoints.length - 2];
+          const line = new Line([lastPoint.x, lastPoint.y, newPoint.x, newPoint.y], {
             stroke: strokeColor,
-            strokeWidth: 1,
+            strokeWidth: strokeWidth,
             strokeDashArray: [5, 5],
             selectable: false,
             evented: false,
           });
-          fabricCanvas.add(connectionLine);
-          setTempObjects((prev) => [...prev, connectionLine]);
+          setTempObjects((prev) => [...prev, line]);
+          fabricCanvas.add(line);
         }
 
-        const requiredPoints = activeTool === "bezier" ? 4 : null;
-
-        if (requiredPoints && updatedPoints.length === requiredPoints) {
-          if (activeTool === "bezier") {
-            const [p0, p1, p2, p3] = updatedPoints;
-            const pathData = `M ${p0.x},${p0.y} C ${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
-            const bezierPath = new Path(pathData, {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
-              fill: "transparent",
-              strokeLineCap: "round",
-              strokeLineJoin: "round",
-            });
-            fabricCanvas.add(bezierPath);
-            toast.success("Courbe de Bézier créée");
-          }
-
+        if (activeTool === "bezier" && updatedPoints.length === 4) {
+          const [p1, cp1, cp2, p2] = updatedPoints;
+          const pathData = `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
+          const bezier = new Path(pathData, {
+            stroke: strokeColor,
+            strokeWidth: strokeWidth,
+            fill: "transparent",
+            strokeLineCap: "round",
+            strokeLineJoin: "round",
+          });
+          fabricCanvas.add(bezier);
           cleanTempObjects();
           setTempPoints([]);
           saveState(fabricCanvas);
+          toast.success("Courbe de Bézier créée");
         }
 
-        fabricCanvas.renderAll();
-      });
-
-      fabricCanvas.on("mouse:move", (e) => {
-        if (!e.e || tempPoints.length === 0) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
-
-        if (previewObject) {
-          fabricCanvas.remove(previewObject);
-          previewObject = null;
-        }
-
-        const lastPoint = tempPoints[tempPoints.length - 1];
-        previewObject = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
-          stroke: strokeColor,
-          strokeWidth: 1,
-          strokeDashArray: [3, 3],
-          selectable: false,
-          evented: false,
-          opacity: 0.5,
-        });
-        fabricCanvas.add(previewObject);
         fabricCanvas.renderAll();
       });
 
@@ -1065,12 +1236,7 @@ export function TemplateDrawingCanvas({
         if (e.key === "Escape" && tempPoints.length > 0) {
           cleanTempObjects();
           setTempPoints([]);
-          if (previewObject) {
-            fabricCanvas.remove(previewObject);
-            previewObject = null;
-          }
-          fabricCanvas.renderAll();
-          toast.info("Tracé annulé");
+          toast.info("Dessin annulé");
         }
       };
       window.addEventListener("keydown", handleKeyDown);
@@ -1079,265 +1245,22 @@ export function TemplateDrawingCanvas({
         window.removeEventListener("keydown", handleKeyDown);
       };
     }
-
-    // === OUTIL DIMENSION ===
-    if (activeTool === "dimension") {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
-        const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
-        const updatedPoints = [...tempPoints, newPoint];
-        setTempPoints(updatedPoints);
-
-        const marker = createMarker(newPoint, "#3b82f6");
-        setTempObjects((prev) => [...prev, marker]);
-
-        if (updatedPoints.length === 2) {
-          const [p1, p2] = updatedPoints;
-          const dx = p2.x - p1.x;
-          const dy = p2.y - p1.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          const realDistance = (distance / scaleFactor).toFixed(1);
-
-          const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
-            stroke: "#3b82f6",
-            strokeWidth: 2,
-          });
-
-          const arrowSize = 10;
-          const angle = Math.atan2(dy, dx);
-
-          const arrow1Path = `M ${p1.x} ${p1.y} 
-                             L ${p1.x + arrowSize * Math.cos(angle + 2.8)} ${p1.y + arrowSize * Math.sin(angle + 2.8)} 
-                             L ${p1.x + arrowSize * Math.cos(angle - 2.8)} ${p1.y + arrowSize * Math.sin(angle - 2.8)} Z`;
-          const arrow1 = new Path(arrow1Path, {
-            fill: "#3b82f6",
-            stroke: "#3b82f6",
-            strokeWidth: 1,
-          });
-
-          const arrow2Path = `M ${p2.x} ${p2.y} 
-                             L ${p2.x - arrowSize * Math.cos(angle + 2.8)} ${p2.y - arrowSize * Math.sin(angle + 2.8)} 
-                             L ${p2.x - arrowSize * Math.cos(angle - 2.8)} ${p2.y - arrowSize * Math.sin(angle - 2.8)} Z`;
-          const arrow2 = new Path(arrow2Path, {
-            fill: "#3b82f6",
-            stroke: "#3b82f6",
-            strokeWidth: 1,
-          });
-
-          const text = new Textbox(`${realDistance} mm`, {
-            left: (p1.x + p2.x) / 2,
-            top: (p1.y + p2.y) / 2 - 20,
-            fill: "#3b82f6",
-            fontSize: 16,
-            fontWeight: "bold",
-            backgroundColor: "white",
-            padding: 4,
-            textAlign: "center",
-            originX: "center",
-            originY: "center",
-          });
-
-          const dimensionGroup = new Group([dimensionLine, arrow1, arrow2, text]);
-          fabricCanvas.add(dimensionGroup);
-
-          cleanTempObjects();
-          setTempPoints([]);
-          saveState(fabricCanvas);
-          fabricCanvas.renderAll();
-          toast.success(`Cote ajoutée: ${realDistance} mm`);
-        }
-      });
-
-      fabricCanvas.on("mouse:move", (e) => {
-        if (!e.e || tempPoints.length !== 1) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
-
-        if (previewObject) {
-          fabricCanvas.remove(previewObject);
-        }
-
-        const p1 = tempPoints[0];
-        previewObject = new Line([p1.x, p1.y, snappedPoint.x, snappedPoint.y], {
-          stroke: "#3b82f6",
-          strokeWidth: 2,
-          strokeDashArray: [5, 5],
-          selectable: false,
-          evented: false,
-          opacity: 0.5,
-        });
-        fabricCanvas.add(previewObject);
-        fabricCanvas.renderAll();
-      });
-    }
-
-    // === OUTILS STANDARDS ===
-    if (["line", "rectangle", "circle", "ellipse"].includes(activeTool)) {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
-        isDrawing = true;
-        startPoint = { x: snappedPoint.x, y: snappedPoint.y };
-
-        if (activeTool === "line") {
-          activeObject = new Line([startPoint.x, startPoint.y, startPoint.x, startPoint.y], {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            strokeLineCap: "round",
-          });
-        } else if (activeTool === "rectangle") {
-          activeObject = new Rect({
-            left: startPoint.x,
-            top: startPoint.y,
-            width: 0,
-            height: 0,
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            fill: "transparent",
-          });
-        } else if (activeTool === "circle") {
-          activeObject = new Circle({
-            left: startPoint.x,
-            top: startPoint.y,
-            radius: 0,
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            fill: "transparent",
-            originX: "center",
-            originY: "center",
-          });
-        } else if (activeTool === "ellipse") {
-          activeObject = new Ellipse({
-            left: startPoint.x,
-            top: startPoint.y,
-            rx: 0,
-            ry: 0,
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            fill: "transparent",
-          });
-        }
-
-        fabricCanvas.add(activeObject);
-      });
-
-      fabricCanvas.on("mouse:move", (e) => {
-        if (!isDrawing || !startPoint || !e.e || !activeObject) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
-
-        if (activeTool === "line") {
-          activeObject.set({
-            x2: snappedPoint.x,
-            y2: snappedPoint.y,
-          });
-        } else if (activeTool === "rectangle") {
-          const width = snappedPoint.x - startPoint.x;
-          const height = snappedPoint.y - startPoint.y;
-          activeObject.set({
-            width: Math.abs(width),
-            height: Math.abs(height),
-            left: width > 0 ? startPoint.x : snappedPoint.x,
-            top: height > 0 ? startPoint.y : snappedPoint.y,
-          });
-        } else if (activeTool === "circle") {
-          const dx = snappedPoint.x - startPoint.x;
-          const dy = snappedPoint.y - startPoint.y;
-          const radius = Math.sqrt(dx * dx + dy * dy);
-          activeObject.set({ radius: radius });
-        } else if (activeTool === "ellipse") {
-          const rx = Math.abs(snappedPoint.x - startPoint.x);
-          const ry = Math.abs(snappedPoint.y - startPoint.y);
-          activeObject.set({
-            rx: rx,
-            ry: ry,
-            left: snappedPoint.x > startPoint.x ? startPoint.x : snappedPoint.x,
-            top: snappedPoint.y > startPoint.y ? startPoint.y : snappedPoint.y,
-          });
-        }
-
-        fabricCanvas.renderAll();
-      });
-
-      fabricCanvas.on("mouse:up", () => {
-        if (isDrawing) {
-          isDrawing = false;
-          startPoint = null;
-          activeObject = null;
-          saveState(fabricCanvas);
-        }
-      });
-    }
-
-    // === OUTIL TEXTE ===
-    if (activeTool === "text") {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
-        const text = new Textbox("Double-clic pour éditer", {
-          left: snappedPoint.x,
-          top: snappedPoint.y,
-          fill: strokeColor,
-          fontSize: 20,
-          fontFamily: "Arial",
-        });
-        fabricCanvas.add(text);
-        fabricCanvas.setActiveObject(text);
-        text.enterEditing();
-        saveState(fabricCanvas);
-      });
-    }
-
-    return () => {
-      fabricCanvas.off("mouse:down");
-      fabricCanvas.off("mouse:move");
-      fabricCanvas.off("mouse:up");
-    };
   }, [
+    fabricCanvas,
     activeTool,
     strokeColor,
     strokeWidth,
-    fabricCanvas,
     tempPoints,
+    tempObjects,
+    getCanvasPoint,
     snapPoint,
     saveState,
     scaleFactor,
-    tempObjects,
+    cleanAllTempObjects,
     previewCurve,
   ]);
 
-  const saveDrawings = () => {
-    if (!fabricCanvas) return;
-    const json = fabricCanvas.toJSON();
-    onDrawingsChanged?.(json);
-  };
-
-  const handleClear = () => {
-    if (!fabricCanvas) return;
-    const backgroundImg = fabricCanvas.backgroundImage;
-    const objects = fabricCanvas.getObjects();
-    objects.forEach((obj) => {
-      if (!gridLinesRef.current.includes(obj)) {
-        fabricCanvas.remove(obj);
-      }
-    });
-    if (backgroundImg) {
-      fabricCanvas.backgroundImage = backgroundImg;
-    }
-    fabricCanvas.renderAll();
-    saveState(fabricCanvas);
-    toast.success("Dessins effacés");
-  };
-
+  // 🔧 BUG FIX #1 : Améliorer la fonction de suppression
   const handleDeleteSelected = () => {
     if (!fabricCanvas) return;
     const activeObjects = fabricCanvas.getActiveObjects();
@@ -1346,12 +1269,17 @@ export function TemplateDrawingCanvas({
         // Si c'est une courbe éditable, supprimer aussi ses poignées
         if ((obj as any).customType === "editableCurve") {
           (obj as EditableCurve).removeHandles(fabricCanvas);
+          // ✅ BUG FIX #1 : Nettoyer la ref si c'est la courbe active
+          if (activeCurveRef.current === obj) {
+            activeCurveRef.current = null;
+          }
         }
         fabricCanvas.remove(obj);
       });
       fabricCanvas.discardActiveObject();
       fabricCanvas.renderAll();
       saveState(fabricCanvas);
+      setSelectedObject(null); // ✅ BUG FIX #1 : Nettoyer aussi l'objet sélectionné
       toast.success("Objet(s) supprimé(s)");
     }
   };
@@ -1551,7 +1479,7 @@ export function TemplateDrawingCanvas({
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs">Couleur</Label>
+                  <Label className="text-xs">Couleur (nouveaux)</Label>
                   <Input
                     type="color"
                     value={strokeColor}
@@ -1561,7 +1489,7 @@ export function TemplateDrawingCanvas({
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs">Épaisseur: {strokeWidth}px</Label>
+                  <Label className="text-xs">Épaisseur (nouveaux): {strokeWidth}px</Label>
                   <Slider
                     value={[strokeWidth]}
                     onValueChange={([value]) => setStrokeWidth(value)}
@@ -1571,6 +1499,43 @@ export function TemplateDrawingCanvas({
                   />
                 </div>
               </div>
+
+              {/* 🔧 BUG FIX #2 : Section pour éditer l'objet sélectionné */}
+              {selectedObject && (
+                <>
+                  <Separator />
+                  <div className="space-y-2 bg-blue-50 p-2 rounded border border-blue-200">
+                    <Label className="text-xs font-semibold text-blue-700">✏️ Modifier l'objet sélectionné</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Couleur</Label>
+                      <Input
+                        type="color"
+                        value={selectedStrokeColor}
+                        onChange={(e) => setSelectedStrokeColor(e.target.value)}
+                        className="w-16 h-7"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Épaisseur: {selectedStrokeWidth}px</Label>
+                      <Slider
+                        value={[selectedStrokeWidth]}
+                        onValueChange={([value]) => setSelectedStrokeWidth(value)}
+                        min={1}
+                        max={20}
+                        step={1}
+                      />
+                    </div>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={applyStrokeToSelected}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                      ✓ Appliquer
+                    </Button>
+                  </div>
+                </>
+              )}
 
               <Separator />
 
@@ -1603,19 +1568,15 @@ export function TemplateDrawingCanvas({
                 </div>
 
                 {showGrid && (
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Taille:</Label>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min="10"
-                        max="100"
-                        value={gridSize}
-                        onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
-                        className="w-16 h-7 text-xs"
-                      />
-                      <span className="text-xs text-muted-foreground">px</span>
-                    </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Taille: {gridSize}px</Label>
+                    <Slider
+                      value={[gridSize]}
+                      onValueChange={([value]) => setGridSize(value)}
+                      min={10}
+                      max={100}
+                      step={10}
+                    />
                   </div>
                 )}
 
@@ -1630,48 +1591,60 @@ export function TemplateDrawingCanvas({
 
               <Separator />
 
-              <div className="flex flex-col gap-1">
-                <div className="flex gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleUndo}
-                    disabled={historyIndex <= 0}
-                    className="flex-1 h-8"
-                  >
-                    <Undo className="h-3 w-3 mr-1" />
-                    Annuler
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRedo}
-                    disabled={historyIndex >= history.length - 1}
-                    className="flex-1 h-8"
-                  >
-                    <Redo className="h-3 w-3 mr-1" />
-                    Refaire
-                  </Button>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="flex flex-col gap-1">
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUndo}
+                  disabled={historyIndex <= 0}
+                  className="flex-1 h-8"
+                >
+                  <Undo className="h-3 w-3 mr-1" />
+                  Annuler
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRedo}
+                  disabled={historyIndex >= history.length - 1}
+                  className="flex-1 h-8"
+                >
+                  <Redo className="h-3 w-3 mr-1" />
+                  Rétablir
+                </Button>
                 <Button variant="outline" size="sm" onClick={handleDeleteSelected} className="h-8">
                   <Trash2 className="h-3 w-3 mr-1" />
-                  Supprimer
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleClear} className="h-8">
-                  Effacer tout
+                  Suppr
                 </Button>
               </div>
             </div>
           </div>
         </Draggable>
       ) : (
-        <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/95 backdrop-blur-sm rounded-lg">
-          <div className="flex flex-wrap gap-1">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-semibold">Outils de Dessin</Label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (fabricCanvas) {
+                  previousCanvasSizeRef.current = {
+                    width: fabricCanvas.width || 1000,
+                    height: fabricCanvas.height || 700,
+                    viewportTransform: fabricCanvas.viewportTransform ? [...fabricCanvas.viewportTransform] : null,
+                  };
+                  setIsFullscreen(true);
+                  setTimeout(() => adjustForFullscreen(), 100);
+                }
+              }}
+            >
+              <Maximize className="h-4 w-4 mr-2" />
+              Plein écran
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-2">
             {tools.map((tool) => (
               <Button
                 key={tool.id}
@@ -1683,29 +1656,23 @@ export function TemplateDrawingCanvas({
                   setTempObjects([]);
                 }}
                 title={tool.label}
-                className={tool.highlight ? "ring-2 ring-blue-500 animate-pulse" : ""}
+                className={`h-10 ${tool.highlight ? "ring-2 ring-blue-500" : ""}`}
               >
                 <tool.icon className="h-4 w-4" style={tool.style} />
-                {tool.highlight && <span className="ml-1">⭐</span>}
               </Button>
             ))}
           </div>
 
-          <Separator orientation="vertical" className="h-8" />
+          <Separator />
 
-          <div className="flex items-center gap-2">
-            <Label className="text-sm">Couleur:</Label>
-            <Input
-              type="color"
-              value={strokeColor}
-              onChange={(e) => setStrokeColor(e.target.value)}
-              className="w-16 h-8"
-            />
-          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Couleur (nouveaux)</Label>
+              <Input type="color" value={strokeColor} onChange={(e) => setStrokeColor(e.target.value)} />
+            </div>
 
-          <div className="flex items-center gap-2">
-            <Label className="text-sm">Épaisseur:</Label>
-            <div className="w-32">
+            <div className="space-y-2">
+              <Label>Épaisseur (nouveaux): {strokeWidth}px</Label>
               <Slider
                 value={[strokeWidth]}
                 onValueChange={([value]) => setStrokeWidth(value)}
@@ -1714,29 +1681,98 @@ export function TemplateDrawingCanvas({
                 step={1}
               />
             </div>
-            <Badge variant="outline">{strokeWidth}px</Badge>
           </div>
 
-          <Separator orientation="vertical" className="h-8" />
+          {/* 🔧 BUG FIX #2 : Section pour éditer l'objet sélectionné */}
+          {selectedObject && (
+            <>
+              <Separator />
+              <div className="space-y-3 bg-blue-50 p-3 rounded border border-blue-200">
+                <Label className="font-semibold text-blue-700">✏️ Modifier l'objet sélectionné</Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Couleur</Label>
+                    <Input
+                      type="color"
+                      value={selectedStrokeColor}
+                      onChange={(e) => setSelectedStrokeColor(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Épaisseur: {selectedStrokeWidth}px</Label>
+                    <Slider
+                      value={[selectedStrokeWidth]}
+                      onValueChange={([value]) => setSelectedStrokeWidth(value)}
+                      min={1}
+                      max={20}
+                      step={1}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={applyStrokeToSelected}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                >
+                  ✓ Appliquer les modifications
+                </Button>
+              </div>
+            </>
+          )}
 
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" onClick={handleZoomOut} title="Zoom arrière (-)">
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <Badge variant="outline" className="px-3">
-              {Math.round(zoom * 100)}%
-            </Badge>
-            <Button variant="outline" size="sm" onClick={handleZoomIn} title="Zoom avant (+)">
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleResetView} title="Réinitialiser la vue">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+          <Separator />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Zoom: {Math.round(zoom * 100)}%</Label>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleZoomOut}>
+                  <ZoomOut className="h-4 w-4 mr-2" />-
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleZoomIn}>
+                  <ZoomIn className="h-4 w-4 mr-2" />+
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleResetView}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Réinitialiser
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Grid3x3 className="h-4 w-4" />
+                <Label>Afficher la grille</Label>
+              </div>
+              <Switch checked={showGrid} onCheckedChange={setShowGrid} />
+            </div>
+
+            {showGrid && (
+              <div className="space-y-2">
+                <Label>Taille de la grille: {gridSize}px</Label>
+                <Slider
+                  value={[gridSize]}
+                  onValueChange={([value]) => setGridSize(value)}
+                  min={10}
+                  max={100}
+                  step={10}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Magnet className="h-4 w-4" />
+                <Label>Magnétisme de la grille</Label>
+              </div>
+              <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+            </div>
           </div>
 
-          <Separator orientation="vertical" className="h-8" />
+          <Separator />
 
-          <div className="flex gap-1">
+          <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -1744,84 +1780,34 @@ export function TemplateDrawingCanvas({
               disabled={historyIndex <= 0}
               title="Annuler (Ctrl+Z)"
             >
-              <Undo className="h-4 w-4" />
+              <Undo className="h-4 w-4 mr-2" />
+              Annuler
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={handleRedo}
               disabled={historyIndex >= history.length - 1}
-              title="Refaire (Ctrl+Y)"
+              title="Rétablir (Ctrl+Y)"
             >
-              <Redo className="h-4 w-4" />
+              <Redo className="h-4 w-4 mr-2" />
+              Rétablir
             </Button>
-          </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <div className="flex gap-1">
             <Button variant="outline" size="sm" onClick={handleDeleteSelected} title="Supprimer (Suppr)">
               <Trash2 className="h-4 w-4 mr-2" />
               Supprimer
             </Button>
-            <Button variant="outline" size="sm" onClick={handleClear}>
-              Effacer tout
-            </Button>
           </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (fabricCanvas) {
-                previousCanvasSizeRef.current = {
-                  width: fabricCanvas.getWidth() || 0,
-                  height: fabricCanvas.getHeight() || 0,
-                  viewportTransform: fabricCanvas.viewportTransform
-                    ? [...fabricCanvas.viewportTransform]
-                    : [1, 0, 0, 1, 0, 0],
-                };
-              }
-
-              setIsFullscreen(true);
-              // Ajuster l'image après un délai pour que le DOM se mette à jour
-              setTimeout(() => {
-                adjustForFullscreen();
-              }, 150);
-            }}
-            title="Mode plein écran"
-          >
-            <Maximize className="h-4 w-4 mr-2" />
-            Plein écran
-          </Button>
         </div>
       )}
 
-      {/* Canvas - unique, style adapté selon le mode */}
-      <div
-        className={
-          isFullscreen
-            ? "h-screen w-screen flex items-center justify-center overflow-hidden"
-            : "border rounded-lg overflow-auto bg-white shadow-lg"
-        }
-        style={isFullscreen ? {} : { maxHeight: "600px" }}
-      >
-        <canvas ref={canvasRef} className={isFullscreen ? "max-w-full max-h-full" : ""} />
-      </div>
+      <canvas ref={canvasRef} className={isFullscreen ? "absolute" : "border border-gray-300 rounded-md"} />
 
+      {/* 🔧 BUG FIX #4 : Aide visuelle pour le pan avec molette */}
       {!isFullscreen && (
-        <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
-          <p>
-            <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
-            <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
-            <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
-          </p>
-          <p className="mt-1 text-blue-600 font-medium">
-            💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Maintenez le bouton du
-            milieu (molette) pour déplacer la vue, ou utilisez la molette pour zoomer.
-          </p>
+        <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">
+          💡 <strong>Astuce :</strong> Utilisez la molette de la souris pour zoomer, et maintenez le{" "}
+          <strong>bouton du milieu (molette)</strong> enfoncé pour déplacer la vue !
         </div>
       )}
     </div>
