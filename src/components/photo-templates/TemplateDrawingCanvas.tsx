@@ -1530,8 +1530,26 @@ export function TemplateDrawingCanvas({
             size="sm"
             onClick={() => {
               setIsFullscreen(true);
-              // Centrer l'image après un court délai pour laisser le temps au DOM de se mettre à jour
-              setTimeout(() => handleResetView(), 100);
+              // Centrer l'image après un délai pour que le DOM se mette à jour
+              setTimeout(() => {
+                if (fabricCanvas && imgRef.current) {
+                  const containerWidth = window.innerWidth;
+                  const containerHeight = window.innerHeight;
+                  const canvasWidth = fabricCanvas.getWidth();
+                  const canvasHeight = fabricCanvas.getHeight();
+                  
+                  // Calculer l'échelle pour remplir l'espace
+                  const scale = Math.min(containerWidth / canvasWidth, containerHeight / canvasHeight) * 0.9;
+                  
+                  // Centrer
+                  const offsetX = (containerWidth - canvasWidth * scale) / 2;
+                  const offsetY = (containerHeight - canvasHeight * scale) / 2;
+                  
+                  fabricCanvas.setViewportTransform([scale, 0, 0, scale, offsetX, offsetY]);
+                  setZoom(scale);
+                  fabricCanvas.renderAll();
+                }
+              }, 150);
             }}
             title="Mode plein écran"
           >
@@ -1541,12 +1559,12 @@ export function TemplateDrawingCanvas({
         </div>
       )}
 
-      {/* Canvas - adapté selon le mode */}
-      {isFullscreen ? (
-        <div className="h-screen w-screen flex items-center justify-center overflow-hidden">
-          <canvas ref={canvasRef} className="max-w-full max-h-full" />
-        </div>
-      ) : (
+      {/* Canvas - unique, style adapté selon le mode */}
+      <div className={isFullscreen ? "h-screen w-screen flex items-center justify-center overflow-hidden" : "border rounded-lg overflow-auto bg-white shadow-lg"} style={isFullscreen ? {} : { maxHeight: "600px" }}>
+        <canvas ref={canvasRef} className={isFullscreen ? "max-w-full max-h-full" : ""} />
+      </div>
+
+      {!isFullscreen && (
         <>
           <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
             <div className="flex items-center gap-2">
@@ -1588,10 +1606,6 @@ export function TemplateDrawingCanvas({
             <p className="mt-1 text-blue-600 font-medium">
               💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Utilisez la molette pour zoomer et l'outil "Déplacer" pour naviguer.
             </p>
-          </div>
-
-          <div className="border rounded-lg overflow-auto bg-white shadow-lg" style={{ maxHeight: "600px" }}>
-            <canvas ref={canvasRef} />
           </div>
         </>
       )}
