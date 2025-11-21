@@ -286,6 +286,7 @@ export function TemplateDrawingCanvas({
     height: number;
     viewportTransform: number[] | null;
   } | null>(null);
+  const draggableNodeRef = useRef<HTMLDivElement>(null);
 
   // 🔧 BUG FIX #2 : États pour l'édition des propriétés de l'objet sélectionné
   const [selectedObject, setSelectedObject] = useState<any>(null);
@@ -525,10 +526,9 @@ export function TemplateDrawingCanvas({
       const finalWidth = img.width * scale;
       const finalHeight = img.height * scale;
 
-      // S'assurer que les dimensions sont valides
-      if (finalWidth > 0 && finalHeight > 0 && isFinite(finalWidth) && isFinite(finalHeight)) {
-        canvas.setDimensions({ width: finalWidth, height: finalHeight });
-      }
+      // Définir les dimensions directement
+      canvas.width = finalWidth;
+      canvas.height = finalHeight;
 
       FabricImage.fromURL(imageUrl).then((fabricImg) => {
         fabricImg.set({
@@ -1298,9 +1298,8 @@ export function TemplateDrawingCanvas({
     const containerHeight = window.innerHeight;
 
     // Adapter la taille du canvas à la fenêtre
-    if (containerWidth > 0 && containerHeight > 0 && isFinite(containerWidth) && isFinite(containerHeight)) {
-      fabricCanvas.setDimensions({ width: containerWidth, height: containerHeight });
-    }
+    fabricCanvas.width = containerWidth;
+    fabricCanvas.height = containerHeight;
 
     const bg = fabricCanvas.backgroundImage as FabricImage | null;
     if (bg && bg.width && bg.height) {
@@ -1434,8 +1433,8 @@ export function TemplateDrawingCanvas({
 
       {/* Toolbar - draggable en mode plein écran */}
       {isFullscreen ? (
-        <Draggable handle=".drag-handle" defaultPosition={{ x: 20, y: 20 }}>
-          <div className="fixed z-[60] bg-background/95 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-border max-w-[350px]">
+        <Draggable handle=".drag-handle" defaultPosition={{ x: 20, y: 20 }} nodeRef={draggableNodeRef}>
+          <div ref={draggableNodeRef} className="fixed z-[60] bg-background/95 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-border max-w-[350px]">
             <div className="drag-handle cursor-move bg-muted/50 p-2 rounded-t-lg border-b flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-red-500" />
@@ -1449,13 +1448,12 @@ export function TemplateDrawingCanvas({
                 onClick={() => {
                   if (fabricCanvas && previousCanvasSizeRef.current) {
                     const { width, height, viewportTransform } = previousCanvasSizeRef.current;
-                    if (width > 0 && height > 0 && isFinite(width) && isFinite(height)) {
-                      fabricCanvas.setDimensions({ width, height });
-                      fabricCanvas.setViewportTransform((viewportTransform || [1, 0, 0, 1, 0, 0]) as any);
-                      createGrid(fabricCanvas, width, height);
-                      fabricCanvas.renderAll();
-                      setZoom(1);
-                    }
+                    fabricCanvas.width = width;
+                    fabricCanvas.height = height;
+                    fabricCanvas.setViewportTransform((viewportTransform || [1, 0, 0, 1, 0, 0]) as any);
+                    createGrid(fabricCanvas, width, height);
+                    fabricCanvas.renderAll();
+                    setZoom(1);
                   }
                   setIsFullscreen(false);
                 }}
