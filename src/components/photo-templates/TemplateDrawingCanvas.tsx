@@ -447,6 +447,30 @@ export function TemplateDrawingCanvas({
     onDrawingsChanged?.(fabricCanvas.toJSON());
   }, [historyIndex, history, fabricCanvas, onDrawingsChanged]);
 
+  // Nettoyer les objets temporaires quand on change d'outil
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    // Nettoyer tous les objets temporaires
+    tempObjects.forEach((obj) => fabricCanvas.remove(obj));
+    setTempObjects([]);
+    setTempPoints([]);
+
+    // Supprimer les lignes en pointillés qui traînent
+    fabricCanvas.getObjects().forEach((obj) => {
+      if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
+        fabricCanvas.remove(obj);
+      }
+    });
+
+    if (previewCurve) {
+      fabricCanvas.remove(previewCurve);
+      setPreviewCurve(null);
+    }
+
+    fabricCanvas.renderAll();
+  }, [activeTool, fabricCanvas]);
+
   // Initialisation du canvas
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -695,10 +719,32 @@ export function TemplateDrawingCanvas({
       return marker;
     };
 
+    // Fonction pour nettoyer COMPLÈTEMENT tous les objets temporaires
+    const cleanAllTempObjects = () => {
+      tempObjects.forEach((obj) => fabricCanvas.remove(obj));
+      setTempObjects([]);
+      setTempPoints([]);
+      if (previewCurve) {
+        fabricCanvas.remove(previewCurve);
+        setPreviewCurve(null);
+      }
+
+      // Supprimer aussi tous les objets avec strokeDashArray (lignes temporaires)
+      fabricCanvas.getObjects().forEach((obj) => {
+        if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
+          fabricCanvas.remove(obj);
+        }
+      });
+
+      fabricCanvas.renderAll();
+    };
+
     // === OUTIL COURBE ÉDITABLE (le nouveau !) ===
     if (activeTool === "editableCurve") {
+      let isFinalizingCurve = false;
+
       fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
+        if (!e.e || isFinalizingCurve) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint);
@@ -740,12 +786,26 @@ export function TemplateDrawingCanvas({
           setTempObjects((prev) => [...prev, curve]);
         } else if (updatedPoints.length === 3) {
           // Troisième point = ajustement final du point de contrôle
+          isFinalizingCurve = true;
           const [start, end, control] = updatedPoints;
 
-          // Supprimer TOUS les objets temporaires (courbe temporaire, marqueurs, lignes)
+          // NETTOYAGE COMPLET - Supprimer TOUS les objets temporaires
           tempObjects.forEach((obj) => {
             fabricCanvas.remove(obj);
           });
+
+          // Supprimer aussi toutes les lignes temporaires qui pourraient traîner
+          fabricCanvas.getObjects().forEach((obj) => {
+            if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
+              fabricCanvas.remove(obj);
+            }
+          });
+
+          // Supprimer la preview curve si elle existe
+          if (previewCurve) {
+            fabricCanvas.remove(previewCurve);
+            setPreviewCurve(null);
+          }
 
           // Créer la courbe finale
           const finalCurve = new EditableCurve(
@@ -764,36 +824,41 @@ export function TemplateDrawingCanvas({
           fabricCanvas.add(finalCurve);
           finalCurve.createHandles(fabricCanvas, strokeColor);
 
-          // Nettoyer complètement
+          // RÉINITIALISER COMPLÈTEMENT les états
           setTempObjects([]);
-          if (previewCurve) {
-            fabricCanvas.remove(previewCurve);
-            setPreviewCurve(null);
-          }
           setTempPoints([]);
           saveState(fabricCanvas);
-          toast.success("Courbe créée ! Sélectionnez-la pour la modifier");
+
+          // Passer en mode sélection pour éviter de recréer immédiatement
+          setActiveTool("select");
+
+          toast.success("Courbe créée ! Mode sélection activé.");
+
+          // Réinitialiser le flag après un court délai
+          setTimeout(() => {
+            isFinalizingCurve = false;
+          }, 100);
         }
 
         fabricCanvas.renderAll();
       });
 
       fabricCanvas.on("mouse:move", (e) => {
-        if (!e.e || tempPoints.length === 0) return;
+        if (!e.e || tempPoints.length === 0 || isFinalizingCurve) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint);
 
-        // Supprimer TOUS les objets d'aperçu précédents
-        tempObjects.forEach((obj) => {
-          // Ne supprimer que les objets d'aperçu (lignes, pas les marqueurs ni la courbe temporaire)
-          if (obj instanceof Line && obj.strokeDashArray) {
+        // Supprimer TOUS les objets d'aperçu précédents (lignes en pointillés seulement)
+        fabricCanvas.getObjects().forEach((obj) => {
+          if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
             fabricCanvas.remove(obj);
           }
         });
 
-        // Nettoyer les objets temporaires de lignes
-        setTempObjects((prev) => prev.filter((obj) => !(obj instanceof Line && obj.strokeDashArray)));
+        // Nettoyer aussi les objets d'aperçu dans tempObjects
+        const cleanedTempObjects = tempObjects.filter((obj) => !(obj instanceof Line && (obj as any).strokeDashArray));
+        setTempObjects(cleanedTempObjects);
 
         if (previewCurve) {
           fabricCanvas.remove(previewCurve);
@@ -812,7 +877,6 @@ export function TemplateDrawingCanvas({
             opacity: 0.7,
           });
           fabricCanvas.add(previewLine);
-          setTempObjects((prev) => [...prev, previewLine]);
         } else if (tempPoints.length === 2) {
           // Aperçu de la courbe avec le point de contrôle qui suit la souris
           const [start, end] = tempPoints;
@@ -850,8 +914,6 @@ export function TemplateDrawingCanvas({
             opacity: 0.5,
           });
           fabricCanvas.add(line2);
-
-          setTempObjects((prev) => [...prev, line1, line2]);
         }
 
         fabricCanvas.renderAll();
@@ -859,15 +921,8 @@ export function TemplateDrawingCanvas({
 
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === "Escape" && tempPoints.length > 0) {
-          // Nettoyer COMPLÈTEMENT tous les objets temporaires
-          tempObjects.forEach((obj) => fabricCanvas.remove(obj));
-          setTempObjects([]);
-          setTempPoints([]);
-          if (previewCurve) {
-            fabricCanvas.remove(previewCurve);
-            setPreviewCurve(null);
-          }
-          fabricCanvas.renderAll();
+          // Utiliser la fonction de nettoyage complet
+          cleanAllTempObjects();
           toast.info("Courbe annulée");
         }
       };
