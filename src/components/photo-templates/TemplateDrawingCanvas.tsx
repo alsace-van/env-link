@@ -1419,6 +1419,80 @@ export function TemplateDrawingCanvas({
 
               <Separator />
 
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Grid3x3 className="h-3 w-3 text-muted-foreground" />
+                    <Label className="text-xs">Grille</Label>
+                  </div>
+                  <Switch checked={showGrid} onCheckedChange={setShowGrid} />
+                </div>
+
+                {showGrid && (
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Taille:</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min="10"
+                        max="100"
+                        value={gridSize}
+                        onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
+                        className="w-16 h-7 text-xs"
+                      />
+                      <span className="text-xs text-muted-foreground">px</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Magnet className="h-3 w-3 text-muted-foreground" />
+                    <Label className="text-xs">Magnétisme</Label>
+                  </div>
+                  <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Grid3x3 className="h-3 w-3 text-muted-foreground" />
+                    <Label className="text-xs">Grille</Label>
+                  </div>
+                  <Switch checked={showGrid} onCheckedChange={setShowGrid} />
+                </div>
+
+                {showGrid && (
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Taille:</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min="10"
+                        max="100"
+                        value={gridSize}
+                        onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
+                        className="w-16 h-7 text-xs"
+                      />
+                      <span className="text-xs text-muted-foreground">px</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Magnet className="h-3 w-3 text-muted-foreground" />
+                    <Label className="text-xs">Magnétisme</Label>
+                  </div>
+                  <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
+                </div>
+              </div>
+
+              <Separator />
+
               <div className="flex flex-col gap-1">
                 <div className="flex gap-1">
                   <Button
