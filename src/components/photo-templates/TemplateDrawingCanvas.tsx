@@ -69,7 +69,7 @@ class EditableCurve extends Path {
   public controlPoints: { start: Point; control: Point; end: Point };
   public controlHandles: Circle[];
   public controlLines: Line[];
-  private canvas: FabricCanvas | null = null;
+  public canvasRef: FabricCanvas | null = null;
 
   constructor(start: Point, control: Point, end: Point, options: any = {}) {
     const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`;
@@ -94,7 +94,7 @@ class EditableCurve extends Path {
 
   // 🔧 NOUVEAU : Synchroniser les poignées quand la courbe est déplacée
   syncHandlesOnMove() {
-    if (!this.canvas || this.controlHandles.length === 0) return;
+    if (!this.canvasRef || this.controlHandles.length === 0) return;
 
     // Calculer le décalage de la courbe (transformation)
     const matrix = this.calcTransformMatrix();
@@ -138,12 +138,12 @@ class EditableCurve extends Path {
       this.controlLines[1].setCoords();
     }
 
-    this.canvas.renderAll();
+    this.canvasRef.renderAll();
   }
 
   // Créer les poignées de contrôle visuelles
   createHandles(canvas: FabricCanvas, color: string = "#3b82f6") {
-    this.canvas = canvas;
+    this.canvasRef = canvas;
 
     // Nettoyer les anciennes poignées
     this.removeHandles(canvas);
@@ -417,7 +417,7 @@ export function TemplateDrawingCanvas({
 
         objects.forEach((obj) => {
           if ((obj as any).customType === "editableCurve") {
-            const curve = obj as EditableCurve;
+            const curve = obj as unknown as EditableCurve;
 
             // 🔧 BUG FIX : Utiliser les coordonnées absolues en appliquant la transformation
             const matrix = curve.calcTransformMatrix();
@@ -1170,7 +1170,7 @@ export function TemplateDrawingCanvas({
             if (
               obj instanceof Path &&
               (obj as any).customType === "editableCurve" &&
-              !(obj as EditableCurve).controlHandles?.length
+              !(obj as unknown as EditableCurve).controlHandles?.length
             ) {
               fabricCanvas.remove(obj);
             }
@@ -1746,9 +1746,9 @@ export function TemplateDrawingCanvas({
       activeObjects.forEach((obj) => {
         // Si c'est une courbe éditable, supprimer aussi ses poignées
         if ((obj as any).customType === "editableCurve") {
-          (obj as EditableCurve).removeHandles(fabricCanvas);
+          (obj as unknown as EditableCurve).removeHandles(fabricCanvas);
           // 🔧 BUG FIX #1 : Nettoyer la ref si c'est la courbe active
-          if (activeCurveRef.current === obj) {
+          if (activeCurveRef.current === (obj as unknown as EditableCurve)) {
             activeCurveRef.current = null;
           }
         }
