@@ -763,9 +763,17 @@ export function TemplateDrawingCanvas({
       canvas.setHeight(finalHeight);
 
       FabricImage.fromURL(imageUrl).then((fabricImg) => {
+        // Centrer l'image sur le canvas
+        const imgWidth = img.width * scale;
+        const imgHeight = img.height * scale;
+        const left = (finalWidth - imgWidth) / 2;
+        const top = (finalHeight - imgHeight) / 2;
+        
         fabricImg.set({
           scaleX: scale,
           scaleY: scale,
+          left: left,
+          top: top,
           selectable: false,
           evented: false,
         });
