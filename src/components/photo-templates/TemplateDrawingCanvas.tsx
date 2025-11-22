@@ -197,22 +197,8 @@ class EditableCurve extends Path {
   createHandles(canvas: FabricCanvas, color: string = "#3b82f6") {
     this.canvasRef = canvas;
 
-    // Nettoyer les anciennes poignées
+    // Nettoyer les anciennes poignées (inclut le nettoyage des lignes orphelines)
     this.removeHandles(canvas);
-
-    // 🔧 BUG FIX #3 : Nettoyer TOUS les cercles bleus temporaires qui traînent
-    canvas.getObjects().forEach((obj) => {
-      if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
-        canvas.remove(obj);
-      }
-    });
-
-    // 🔧 BUG FIX : Nettoyer toutes les lignes de contrôle orphelines
-    canvas.getObjects().forEach((obj) => {
-      if (obj instanceof Line && (obj as any).isControlLine) {
-        canvas.remove(obj);
-      }
-    });
 
     // Positions des points directement depuis controlPoints (coordonnées du path)
     const startPos = this.controlPoints.start;
@@ -415,10 +401,22 @@ class EditableCurve extends Path {
 
   // Supprimer les poignées
   removeHandles(canvas: FabricCanvas) {
+    // Supprimer les lignes de contrôle de cette courbe
     this.controlLines.forEach((line) => canvas.remove(line));
-    this.controlHandles.forEach((handle) => canvas.remove(handle));
     this.controlLines = [];
+
+    // Supprimer les poignées de cette courbe
+    this.controlHandles.forEach((handle) => canvas.remove(handle));
     this.controlHandles = [];
+
+    // 🔧 Nettoyage complet : supprimer toutes les lignes de contrôle orphelines du canvas
+    const linesToRemove: Line[] = [];
+    canvas.getObjects().forEach((obj) => {
+      if (obj instanceof Line && (obj as any).isControlLine) {
+        linesToRemove.push(obj as Line);
+      }
+    });
+    linesToRemove.forEach((line) => canvas.remove(line));
 
     // Réactiver le déplacement de la courbe
     this.set({ lockMovementX: false, lockMovementY: false });
@@ -498,9 +496,8 @@ export function TemplateDrawingCanvas({
   const snapPoint = useCallback(
     (point: { x: number; y: number }, canvas?: FabricCanvas) => {
       const SNAP_DISTANCE = 20; // Distance de détection en pixels
-      let snappedPoint = { ...point };
 
-      // Snapping vers les points d'extrémité des objets si magnétisme activé
+      // Snapping uniquement vers les points d'extrémité des objets si magnétisme activé
       if (snapToGrid && canvas) {
         const objects = canvas.getObjects();
         let minDistance = SNAP_DISTANCE;
@@ -514,7 +511,7 @@ export function TemplateDrawingCanvas({
 
           let snapPoints: { x: number; y: number }[] = [];
 
-          // 🎯 Pour les courbes éditables
+          // 🎯 Pour les courbes éditables - UNIQUEMENT les extrémités
           if ((obj as any).customType === "editableCurve") {
             const curve = obj as unknown as EditableCurve;
 
@@ -525,12 +522,12 @@ export function TemplateDrawingCanvas({
 
             snapPoints.push({ x: startAbs.x, y: startAbs.y }, { x: endAbs.x, y: endAbs.y });
           }
-          // 🎯 Pour les lignes
+          // 🎯 Pour les lignes - UNIQUEMENT les extrémités
           else if (obj instanceof Line) {
             const line = obj as Line;
             snapPoints.push({ x: line.x1 ?? 0, y: line.y1 ?? 0 }, { x: line.x2 ?? 0, y: line.y2 ?? 0 });
           }
-          // 🎯 Pour les rectangles
+          // 🎯 Pour les rectangles - coins uniquement
           else if (obj instanceof Rect) {
             const rect = obj as Rect;
             const left = rect.left ?? 0;
@@ -543,13 +540,9 @@ export function TemplateDrawingCanvas({
               { x: left + width, y: top }, // Coin supérieur droit
               { x: left, y: top + height }, // Coin inférieur gauche
               { x: left + width, y: top + height }, // Coin inférieur droit
-              { x: left + width / 2, y: top }, // Milieu haut
-              { x: left + width / 2, y: top + height }, // Milieu bas
-              { x: left, y: top + height / 2 }, // Milieu gauche
-              { x: left + width, y: top + height / 2 }, // Milieu droit
             );
           }
-          // 🎯 Pour les cercles
+          // 🎯 Pour les cercles - points cardinaux uniquement
           else if (obj instanceof Circle) {
             const circle = obj as Circle;
             const cx = circle.left ?? 0;
@@ -557,16 +550,14 @@ export function TemplateDrawingCanvas({
             const r = circle.radius ?? 0;
 
             snapPoints.push(
-              { x: cx, y: cy }, // Centre
               { x: cx - r, y: cy }, // Gauche
               { x: cx + r, y: cy }, // Droite
               { x: cx, y: cy - r }, // Haut
               { x: cx, y: cy + r }, // Bas
             );
           }
-          // 🎯 Pour les polygones et autres paths
+          // 🎯 Pour les polygones et autres paths - points uniquement
           else if (obj instanceof Polygon || obj instanceof Path) {
-            // Récupérer les points du polygon
             if (obj instanceof Polygon) {
               const polygon = obj as Polygon;
               const matrix = polygon.calcTransformMatrix();
@@ -592,12 +583,8 @@ export function TemplateDrawingCanvas({
         }
       }
 
-      // Sinon, snap vers la grille
-      if (!snapToGrid) return snappedPoint;
-      return {
-        x: Math.round(snappedPoint.x / gridSize) * gridSize,
-        y: Math.round(snappedPoint.y / gridSize) * gridSize,
-      };
+      // Pas de snap vers la grille - retourner le point original
+      return point;
     },
     [snapToGrid, gridSize],
   );
