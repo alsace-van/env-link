@@ -399,10 +399,12 @@ export function TemplateDrawingCanvas({
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
-  const [gridSize, setGridSize] = useState(50);
+  const [scaleIntervalCm, setScaleIntervalCm] = useState(10); // Intervalle de l'échelle en cm (valeur ronde)
   const [snapToGrid, setSnapToGrid] = useState(true);
-  const [gridSizeCm, setGridSizeCm] = useState(10); // Taille d'une case en cm
   const [showRulers, setShowRulers] = useState(true);
+  
+  // Calculer la taille de la grille en pixels en fonction de l'échelle en cm
+  const gridSize = scaleIntervalCm * scaleFactor;
   const [history, setHistory] = useState<HistoryState[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -755,8 +757,6 @@ export function TemplateDrawingCanvas({
         }
       });
 
-      // Utiliser le scaleFactor pour calculer les vrais centimètres
-      const pixelsPerCm = scaleFactor; // scaleFactor contient déjà les pixels par cm
       const canvasWidth = fabricCanvas.width || 1000;
       const canvasHeight = fabricCanvas.height || 700;
       const rulerColor = "#000000";
@@ -788,14 +788,14 @@ export function TemplateDrawingCanvas({
       (leftRulerBg as any).isRuler = true;
       fabricCanvas.add(leftRulerBg);
 
-      // Règle horizontale (axe X) - en bas, alignée avec la grille
+      // Règle horizontale (axe X) - chiffres ronds tous les scaleIntervalCm
       const numTicksX = Math.ceil(canvasWidth / gridSize);
       for (let i = 0; i <= numTicksX; i++) {
         const x = i * gridSize;
         if (x > canvasWidth) break;
 
-        // Calculer les cm en utilisant le scaleFactor
-        const cm = Math.round((x / scaleFactor) * 10) / 10;
+        // Afficher des valeurs rondes (multiple de scaleIntervalCm)
+        const cm = i * scaleIntervalCm;
 
         // Trait vertical petit (en dehors de l'image)
         const line = new Line([x, canvasHeight, x, canvasHeight + 8], {
@@ -821,14 +821,14 @@ export function TemplateDrawingCanvas({
         fabricCanvas.add(text);
       }
 
-      // Règle verticale (axe Y) - à gauche, 0 en bas, alignée avec la grille
+      // Règle verticale (axe Y) - à gauche, 0 en bas, chiffres ronds
       const numTicksY = Math.ceil(canvasHeight / gridSize);
       for (let i = 0; i <= numTicksY; i++) {
         const y = canvasHeight - i * gridSize; // Inverser l'axe Y
         if (y < 0) break;
 
-        // Calculer les cm en utilisant le scaleFactor
-        const cm = Math.round(((i * gridSize) / scaleFactor) * 10) / 10;
+        // Afficher des valeurs rondes (multiple de scaleIntervalCm)
+        const cm = i * scaleIntervalCm;
 
         // Trait horizontal petit (en dehors de l'image)
         const line = new Line([-8, y, 0, y], {
@@ -865,7 +865,7 @@ export function TemplateDrawingCanvas({
       });
       fabricCanvas.renderAll();
     }
-  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, gridSizeCm, scaleFactor]);
+  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, scaleIntervalCm, scaleFactor]);
 
   // 🔧 BUG FIX #6 : Gérer la sélection et le déplacement des courbes éditables
   useEffect(() => {
@@ -2016,23 +2016,6 @@ export function TemplateDrawingCanvas({
                   <Switch checked={showGrid} onCheckedChange={setShowGrid} />
                 </div>
 
-                {showGrid && (
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Taille:</Label>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min="10"
-                        max="100"
-                        value={gridSize}
-                        onChange={(e) => setGridSize(parseInt(e.target.value) || 50)}
-                        className="w-16 h-7 text-xs"
-                      />
-                      <span className="text-xs text-muted-foreground">px</span>
-                    </div>
-                  </div>
-                )}
-
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Magnet className="h-3 w-3 text-muted-foreground" />
@@ -2051,14 +2034,14 @@ export function TemplateDrawingCanvas({
 
                 {showRulers && (
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs">Graduat°:</Label>
+                    <Label className="text-xs">Échelle:</Label>
                     <div className="flex items-center gap-1">
                       <Input
                         type="number"
                         min="1"
                         max="100"
-                        value={gridSizeCm}
-                        onChange={(e) => setGridSizeCm(parseInt(e.target.value) || 10)}
+                        value={scaleIntervalCm}
+                        onChange={(e) => setScaleIntervalCm(parseInt(e.target.value) || 10)}
                         className="w-16 h-7 text-xs"
                       />
                       <span className="text-xs text-muted-foreground">cm</span>
@@ -2139,24 +2122,6 @@ export function TemplateDrawingCanvas({
             <Switch checked={showGrid} onCheckedChange={setShowGrid} />
           </div>
 
-          {showGrid && (
-            <>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Taille:</Label>
-                <div className="w-24">
-                  <Slider
-                    value={[gridSize]}
-                    onValueChange={([value]) => setGridSize(value)}
-                    min={10}
-                    max={100}
-                    step={10}
-                  />
-                </div>
-                <Badge variant="outline">{gridSize}px</Badge>
-              </div>
-            </>
-          )}
-
           <div className="flex items-center gap-2">
             <Magnet className="h-4 w-4 text-muted-foreground" />
             <Label className="text-sm">Magnétisme:</Label>
@@ -2173,16 +2138,16 @@ export function TemplateDrawingCanvas({
 
           {showRulers && (
             <div className="flex items-center gap-2">
-              <Label className="text-sm">Graduations:</Label>
+              <Label className="text-sm">Échelle:</Label>
               <Input
                 type="number"
                 min="1"
                 max="100"
-                value={gridSizeCm}
-                onChange={(e) => setGridSizeCm(parseInt(e.target.value) || 10)}
+                value={scaleIntervalCm}
+                onChange={(e) => setScaleIntervalCm(parseInt(e.target.value) || 10)}
                 className="w-20 h-8"
               />
-              <span className="text-sm text-muted-foreground">cm/case</span>
+              <span className="text-sm text-muted-foreground">cm</span>
             </div>
           )}
 
