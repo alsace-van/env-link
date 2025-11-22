@@ -206,28 +206,8 @@ class EditableCurve extends Path {
     const controlPos = this.controlPoints.control;
     const endPos = this.controlPoints.end;
 
-    // Lignes de contrôle (pointillées)
-    const line1 = new Line([startPos.x, startPos.y, controlPos.x, controlPos.y], {
-      stroke: color,
-      strokeWidth: 1,
-      strokeDashArray: [5, 5],
-      selectable: false,
-      evented: false,
-      opacity: 0.7,
-      objectCaching: false,
-    });
-
-    const line2 = new Line([controlPos.x, controlPos.y, endPos.x, endPos.y], {
-      stroke: color,
-      strokeWidth: 1,
-      strokeDashArray: [5, 5],
-      selectable: false,
-      evented: false,
-      opacity: 0.7,
-      objectCaching: false,
-    });
-
-    this.controlLines = [line1, line2];
+    // Lignes de contrôle désactivées pour éviter les traits permanents
+    this.controlLines = [];
 
     // Poignées (cercles)
     const handleStart = new Circle({
