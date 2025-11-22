@@ -69,7 +69,6 @@ class EditableCurve extends Path {
   public controlPoints: { start: Point; control: Point; end: Point };
   public controlHandles: Circle[];
   public controlLines: Line[];
-  private canvas: FabricCanvas | null = null;
 
   constructor(start: Point, control: Point, end: Point, options: any = {}) {
     const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`;
@@ -416,8 +415,8 @@ export function TemplateDrawingCanvas({
         let targetPoint: { x: number; y: number } | null = null;
 
         objects.forEach((obj) => {
-          if ((obj as any).customType === "editableCurve") {
-            const curve = obj as EditableCurve;
+          if ((obj as any).customType === "editableCurve" && obj instanceof Path) {
+            const curve = obj as unknown as EditableCurve;
 
             // 🔧 BUG FIX : Utiliser les coordonnées absolues en appliquant la transformation
             const matrix = curve.calcTransformMatrix();
@@ -1170,7 +1169,7 @@ export function TemplateDrawingCanvas({
             if (
               obj instanceof Path &&
               (obj as any).customType === "editableCurve" &&
-              !(obj as EditableCurve).controlHandles?.length
+              !(obj as unknown as EditableCurve).controlHandles?.length
             ) {
               fabricCanvas.remove(obj);
             }
@@ -1745,10 +1744,10 @@ export function TemplateDrawingCanvas({
     if (activeObjects.length > 0) {
       activeObjects.forEach((obj) => {
         // Si c'est une courbe éditable, supprimer aussi ses poignées
-        if ((obj as any).customType === "editableCurve") {
-          (obj as EditableCurve).removeHandles(fabricCanvas);
+        if ((obj as any).customType === "editableCurve" && obj instanceof Path) {
+          (obj as unknown as EditableCurve).removeHandles(fabricCanvas);
           // 🔧 BUG FIX #1 : Nettoyer la ref si c'est la courbe active
-          if (activeCurveRef.current === obj) {
+          if (activeCurveRef.current && (activeCurveRef.current as any) === obj) {
             activeCurveRef.current = null;
           }
         }
