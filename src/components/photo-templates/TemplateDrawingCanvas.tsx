@@ -531,15 +531,19 @@ export function TemplateDrawingCanvas({
     [showGrid, gridSize],
   );
 
-  // Sauvegarder l'état pour undo/redo
+  // Sauvegarder l'état pour undo/redo (en excluant les poignées et éléments UI temporaires)
   const saveState = useCallback(
     (canvas: FabricCanvas) => {
       const objects = canvas
         .getObjects()
         .filter(
           (obj) =>
-            (!gridLinesRef.current.includes(obj) && !(obj as any).curvePointType && obj.type !== "line") ||
-            (obj.type === "line" && !(obj as any).strokeDashArray),
+            !gridLinesRef.current.includes(obj) && // Pas la grille
+            !(obj as any).curvePointType && // Pas les poignées de courbe
+            !(obj as any).isRuler && // Pas les règles
+            (obj.type !== "line" || !(obj as any).strokeDashArray) && // Pas les lignes de construction
+            obj.selectable !== false || // Garder les objets sélectionnables
+            (obj as any).customType === "editableCurve" // Toujours garder les courbes éditables
         );
       const state: HistoryState = {
         objects: objects.map((obj) => obj.toJSON()),
@@ -1217,10 +1221,10 @@ export function TemplateDrawingCanvas({
           
           saveState(fabricCanvas);
 
-          // Passer en mode sélection pour éviter de recréer immédiatement
-          setActiveTool("select");
+          // NE PAS changer d'outil - rester en mode editableCurve pour tracer d'autres courbes
+          // setActiveTool("select");
 
-          toast.success("Courbe créée ! Traits de construction effacés.");
+          toast.success("Courbe créée ! Cliquez pour tracer une nouvelle courbe.");
 
           // Réinitialiser le flag après un court délai
           setTimeout(() => {
