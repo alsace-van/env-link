@@ -1028,6 +1028,23 @@ export function TemplateDrawingCanvas({
       fabricCanvas.hoverCursor = "move";
     }
 
+    // 🎯 S'assurer que tous les objets existants sont sélectionnables
+    fabricCanvas.getObjects().forEach((obj: any) => {
+      // Ne pas modifier les objets qui ne doivent pas être sélectionnables (grille, règles, etc.)
+      if (
+        !obj.isRuler &&
+        !obj.isControlHandle &&
+        !(obj instanceof Line && obj.strokeDashArray && gridLinesRef.current.includes(obj))
+      ) {
+        obj.selectable = true;
+        obj.evented = true;
+        // Définir le curseur de survol pour chaque objet
+        if (activeTool === "select") {
+          obj.hoverCursor = "move";
+        }
+      }
+    });
+
     if (activeTool === "pencil" && fabricCanvas.freeDrawingBrush) {
       fabricCanvas.freeDrawingBrush.color = strokeColor;
       fabricCanvas.freeDrawingBrush.width = strokeWidth;
@@ -1470,6 +1487,8 @@ export function TemplateDrawingCanvas({
                 strokeWidth: strokeWidth,
                 fill: "transparent",
                 strokeLineJoin: "round",
+                selectable: true,
+                evented: true,
               });
               fabricCanvas.add(polygon);
               toast.success("Polygone créé");
@@ -1497,6 +1516,8 @@ export function TemplateDrawingCanvas({
                 fill: "transparent",
                 strokeLineCap: "round",
                 strokeLineJoin: "round",
+                selectable: true,
+                evented: true,
               });
               fabricCanvas.add(splinePath);
               toast.success("Spline créée");
@@ -1541,6 +1562,8 @@ export function TemplateDrawingCanvas({
               fill: "transparent",
               strokeLineCap: "round",
               strokeLineJoin: "round",
+              selectable: true,
+              evented: true,
             });
             fabricCanvas.add(bezierPath);
             toast.success("Courbe de Bézier créée");
@@ -1624,6 +1647,8 @@ export function TemplateDrawingCanvas({
           const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
             stroke: "#3b82f6",
             strokeWidth: 2,
+            selectable: true,
+            evented: true,
           });
 
           const arrowSize = 10;
@@ -1636,6 +1661,8 @@ export function TemplateDrawingCanvas({
             fill: "#3b82f6",
             stroke: "#3b82f6",
             strokeWidth: 1,
+            selectable: true,
+            evented: true,
           });
 
           const arrow2Path = `M ${p2.x} ${p2.y} 
@@ -1645,6 +1672,8 @@ export function TemplateDrawingCanvas({
             fill: "#3b82f6",
             stroke: "#3b82f6",
             strokeWidth: 1,
+            selectable: true,
+            evented: true,
           });
 
           const text = new Textbox(`${realDistance} mm`, {
@@ -1658,9 +1687,14 @@ export function TemplateDrawingCanvas({
             textAlign: "center",
             originX: "center",
             originY: "center",
+            selectable: true,
+            evented: true,
           });
 
-          const dimensionGroup = new Group([dimensionLine, arrow1, arrow2, text]);
+          const dimensionGroup = new Group([dimensionLine, arrow1, arrow2, text], {
+            selectable: true,
+            evented: true,
+          });
           fabricCanvas.add(dimensionGroup);
 
           cleanTempObjects();
@@ -1713,6 +1747,8 @@ export function TemplateDrawingCanvas({
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             strokeLineCap: "round",
+            selectable: true,
+            evented: true,
           });
         } else if (activeTool === "rectangle") {
           activeObject = new Rect({
@@ -1723,6 +1759,8 @@ export function TemplateDrawingCanvas({
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             fill: "transparent",
+            selectable: true,
+            evented: true,
           });
         } else if (activeTool === "circle") {
           activeObject = new Circle({
@@ -1734,6 +1772,8 @@ export function TemplateDrawingCanvas({
             fill: "transparent",
             originX: "center",
             originY: "center",
+            selectable: true,
+            evented: true,
           });
         } else if (activeTool === "ellipse") {
           activeObject = new Ellipse({
@@ -1744,6 +1784,8 @@ export function TemplateDrawingCanvas({
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             fill: "transparent",
+            selectable: true,
+            evented: true,
           });
         }
 
@@ -1815,6 +1857,8 @@ export function TemplateDrawingCanvas({
           fill: strokeColor,
           fontSize: 20,
           fontFamily: "Arial",
+          selectable: true,
+          evented: true,
         });
         fabricCanvas.add(text);
         fabricCanvas.setActiveObject(text);
