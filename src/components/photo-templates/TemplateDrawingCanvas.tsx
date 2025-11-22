@@ -340,6 +340,19 @@ class EditableCurve extends Path {
         canvas.setActiveObject(handle);
         canvas.renderAll();
       });
+
+      // 🔧 Nettoyage après modification
+      handle.on("mouseup", () => {
+        // Nettoyer les lignes de contrôle orphelines
+        const objectsToRemove: any[] = [];
+        canvas.getObjects().forEach((obj) => {
+          if (obj instanceof Line && (obj as any).isControlLine && !this.controlLines.includes(obj)) {
+            objectsToRemove.push(obj);
+          }
+        });
+        objectsToRemove.forEach((obj) => canvas.remove(obj));
+        canvas.requestRenderAll();
+      });
     });
 
     canvas.renderAll();
@@ -363,6 +376,15 @@ class EditableCurve extends Path {
     // Recalculer le path avec les nouvelles coordonnées
     const newPathData = `M ${this.controlPoints.start.x} ${this.controlPoints.start.y} Q ${this.controlPoints.control.x} ${this.controlPoints.control.y} ${this.controlPoints.end.x} ${this.controlPoints.end.y}`;
     this.set("path", (new Path(newPathData) as any).path);
+
+    // 🔧 NETTOYAGE AGRESSIF : Supprimer toutes les anciennes lignes de contrôle orphelines
+    const objectsToRemove: any[] = [];
+    canvas.getObjects().forEach((obj) => {
+      if (obj instanceof Line && (obj as any).isControlLine && !this.controlLines.includes(obj)) {
+        objectsToRemove.push(obj);
+      }
+    });
+    objectsToRemove.forEach((obj) => canvas.remove(obj));
 
     // Mettre à jour les lignes de contrôle
     const startAbs = this.controlPoints.start;
@@ -475,54 +497,94 @@ export function TemplateDrawingCanvas({
   // ✅ CORRECTION : Fonction snap améliorée avec snapping vers les courbes
   const snapPoint = useCallback(
     (point: { x: number; y: number }, canvas?: FabricCanvas) => {
-      const SNAP_DISTANCE = 20; // ✅ Augmenté de 15 à 20 pixels pour plus de tolérance
+      const SNAP_DISTANCE = 20; // Distance de détection en pixels
       let snappedPoint = { ...point };
 
-      // Snapping vers les points d'extrémité des courbes si magnétisme activé
+      // Snapping vers les points d'extrémité des objets si magnétisme activé
       if (snapToGrid && canvas) {
         const objects = canvas.getObjects();
         let minDistance = SNAP_DISTANCE;
         let targetPoint: { x: number; y: number } | null = null;
 
         objects.forEach((obj) => {
+          // Ignorer les objets non sélectionnables (grille, règles, poignées)
+          if ((obj as any).isRuler || (obj as any).isControlHandle || (obj as any).isControlLine || !obj.selectable) {
+            return;
+          }
+
+          let snapPoints: { x: number; y: number }[] = [];
+
+          // 🎯 Pour les courbes éditables
           if ((obj as any).customType === "editableCurve") {
             const curve = obj as unknown as EditableCurve;
 
-            // ✅ CORRECTION : Récupérer directement les coordonnées des poignées si elles existent
-            // Les poignées sont déjà en coordonnées absolues du canvas
-            if (curve.controlHandles && curve.controlHandles.length >= 2) {
-              const startHandle = curve.controlHandles[0];
-              const endHandle = curve.controlHandles[2];
+            // Utiliser les controlPoints directement (coordonnées absolues)
+            const matrix = curve.calcTransformMatrix();
+            const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
+            const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
 
-              const points = [
-                { x: startHandle.left ?? 0, y: startHandle.top ?? 0 },
-                { x: endHandle.left ?? 0, y: endHandle.top ?? 0 },
-              ];
+            snapPoints.push({ x: startAbs.x, y: startAbs.y }, { x: endAbs.x, y: endAbs.y });
+          }
+          // 🎯 Pour les lignes
+          else if (obj instanceof Line) {
+            const line = obj as Line;
+            snapPoints.push({ x: line.x1 ?? 0, y: line.y1 ?? 0 }, { x: line.x2 ?? 0, y: line.y2 ?? 0 });
+          }
+          // 🎯 Pour les rectangles
+          else if (obj instanceof Rect) {
+            const rect = obj as Rect;
+            const left = rect.left ?? 0;
+            const top = rect.top ?? 0;
+            const width = rect.width ?? 0;
+            const height = rect.height ?? 0;
 
-              points.forEach((p) => {
-                const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
-                if (distance < minDistance) {
-                  minDistance = distance;
-                  targetPoint = { x: p.x, y: p.y };
-                }
-              });
-            } else {
-              // ✅ Fallback : utiliser les controlPoints avec transformation
-              const matrix = curve.calcTransformMatrix();
-              const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
-              const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
+            snapPoints.push(
+              { x: left, y: top }, // Coin supérieur gauche
+              { x: left + width, y: top }, // Coin supérieur droit
+              { x: left, y: top + height }, // Coin inférieur gauche
+              { x: left + width, y: top + height }, // Coin inférieur droit
+              { x: left + width / 2, y: top }, // Milieu haut
+              { x: left + width / 2, y: top + height }, // Milieu bas
+              { x: left, y: top + height / 2 }, // Milieu gauche
+              { x: left + width, y: top + height / 2 }, // Milieu droit
+            );
+          }
+          // 🎯 Pour les cercles
+          else if (obj instanceof Circle) {
+            const circle = obj as Circle;
+            const cx = circle.left ?? 0;
+            const cy = circle.top ?? 0;
+            const r = circle.radius ?? 0;
 
-              const points = [startAbs, endAbs];
-
-              points.forEach((p) => {
-                const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
-                if (distance < minDistance) {
-                  minDistance = distance;
-                  targetPoint = { x: p.x, y: p.y };
-                }
+            snapPoints.push(
+              { x: cx, y: cy }, // Centre
+              { x: cx - r, y: cy }, // Gauche
+              { x: cx + r, y: cy }, // Droite
+              { x: cx, y: cy - r }, // Haut
+              { x: cx, y: cy + r }, // Bas
+            );
+          }
+          // 🎯 Pour les polygones et autres paths
+          else if (obj instanceof Polygon || obj instanceof Path) {
+            // Récupérer les points du polygon
+            if (obj instanceof Polygon) {
+              const polygon = obj as Polygon;
+              const matrix = polygon.calcTransformMatrix();
+              (polygon.points || []).forEach((pt: any) => {
+                const transformed = new Point(pt.x, pt.y).transform(matrix);
+                snapPoints.push({ x: transformed.x, y: transformed.y });
               });
             }
           }
+
+          // Tester tous les points de snap
+          snapPoints.forEach((p) => {
+            const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
+            if (distance < minDistance) {
+              minDistance = distance;
+              targetPoint = { x: p.x, y: p.y };
+            }
+          });
         });
 
         if (targetPoint) {
@@ -692,12 +754,25 @@ export function TemplateDrawingCanvas({
     setTempObjects([]);
     setTempPoints([]);
 
-    // Supprimer les lignes en pointillés qui traînent
+    // Supprimer les lignes en pointillés qui traînent (sauf les lignes de contrôle actives)
+    const objectsToRemove: any[] = [];
     fabricCanvas.getObjects().forEach((obj) => {
       if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
-        fabricCanvas.remove(obj);
+        // Vérifier si c'est une ligne de contrôle d'une courbe active
+        const isActiveControlLine = activeCurveRef.current?.controlLines.includes(obj);
+        if (!isActiveControlLine) {
+          objectsToRemove.push(obj);
+        }
+      }
+      // Nettoyer aussi les lignes de contrôle orphelines
+      if (obj instanceof Line && (obj as any).isControlLine) {
+        const belongsToActiveCurve = activeCurveRef.current?.controlLines.includes(obj);
+        if (!belongsToActiveCurve) {
+          objectsToRemove.push(obj);
+        }
       }
     });
+    objectsToRemove.forEach((obj) => fabricCanvas.remove(obj));
 
     if (previewCurve) {
       fabricCanvas.remove(previewCurve);
@@ -991,6 +1066,18 @@ export function TemplateDrawingCanvas({
       const obj = e.target;
       if (obj && (obj as any).customType === "editableCurve") {
         const curve = obj as unknown as EditableCurve;
+
+        // 🔧 NETTOYAGE AGRESSIF : Supprimer toutes les lignes de contrôle orphelines
+        const objectsToRemove: any[] = [];
+        fabricCanvas.getObjects().forEach((canvasObj) => {
+          if (canvasObj instanceof Line && (canvasObj as any).isControlLine) {
+            // Vérifier si cette ligne appartient à la courbe actuelle
+            if (!curve.controlLines.includes(canvasObj)) {
+              objectsToRemove.push(canvasObj);
+            }
+          }
+        });
+        objectsToRemove.forEach((toRemove) => fabricCanvas.remove(toRemove));
 
         // Re-synchroniser les poignées avec la courbe telle qu'elle est transformée
         curve.syncHandlesOnMove();
