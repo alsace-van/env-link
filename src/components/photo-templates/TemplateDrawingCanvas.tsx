@@ -768,7 +768,7 @@ export function TemplateDrawingCanvas({
         const imgHeight = img.height * scale;
         const left = (finalWidth - imgWidth) / 2;
         const top = (finalHeight - imgHeight) / 2;
-        
+
         fabricImg.set({
           scaleX: scale,
           scaleY: scale,
@@ -2332,7 +2332,7 @@ export function TemplateDrawingCanvas({
         className={
           isFullscreen
             ? "h-screen w-screen flex items-center justify-center overflow-hidden"
-            : "border rounded-lg overflow-auto bg-white shadow-lg"
+            : "border rounded-lg overflow-auto bg-white shadow-lg flex items-center justify-center"
         }
         style={isFullscreen ? {} : { maxHeight: "600px" }}
       >
