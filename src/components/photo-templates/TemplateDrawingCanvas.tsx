@@ -85,55 +85,60 @@ class EditableCurve extends Path {
     // Type personnalisé pour identifier cette courbe
     this.set("customType", "editableCurve");
 
-    // 🔧 BUG FIX : Ajouter des event listeners pour synchroniser les poignées lors du déplacement
+    // Garder les poignées synchronisées lors des mouvements
     this.on("moving", () => this.syncHandlesOnMove());
     this.on("modified", () => this.syncHandlesOnMove());
-    this.on("scaling", () => this.syncHandlesOnMove());
-    this.on("rotating", () => this.syncHandlesOnMove());
   }
 
-  // 🔧 NOUVEAU : Synchroniser les poignées quand la courbe est déplacée
+  // 🔧 NOUVEAU : Synchroniser les poignées quand la courbe est déplacée ou transformée
   syncHandlesOnMove() {
     if (!this.canvasRef || this.controlHandles.length === 0) return;
 
-    // Calculer le décalage de la courbe (transformation)
-    const matrix = this.calcTransformMatrix();
+    // Récupérer les points directement depuis le path actuel pour éviter tout décalage
+    const path = (this.path || []) as any[];
+    if (!path.length || path.length < 2) return;
 
-    // Mettre à jour les positions des poignées en fonction de la transformation de la courbe
-    const startTransformed = new Point(this.controlPoints.start.x, this.controlPoints.start.y).transform(matrix);
-    const controlTransformed = new Point(this.controlPoints.control.x, this.controlPoints.control.y).transform(matrix);
-    const endTransformed = new Point(this.controlPoints.end.x, this.controlPoints.end.y).transform(matrix);
+    const [, startX, startY] = path[0];
+    const [, controlX, controlY, endX, endY] = path[1];
+
+    this.controlPoints.start = new Point(startX, startY);
+    this.controlPoints.control = new Point(controlX, controlY);
+    this.controlPoints.end = new Point(endX, endY);
+
+    const start = this.controlPoints.start;
+    const control = this.controlPoints.control;
+    const end = this.controlPoints.end;
 
     // Mettre à jour les poignées
     if (this.controlHandles[0]) {
-      this.controlHandles[0].set({ left: startTransformed.x, top: startTransformed.y });
+      this.controlHandles[0].set({ left: start.x, top: start.y });
       this.controlHandles[0].setCoords();
     }
     if (this.controlHandles[1]) {
-      this.controlHandles[1].set({ left: controlTransformed.x, top: controlTransformed.y });
+      this.controlHandles[1].set({ left: control.x, top: control.y });
       this.controlHandles[1].setCoords();
     }
     if (this.controlHandles[2]) {
-      this.controlHandles[2].set({ left: endTransformed.x, top: endTransformed.y });
+      this.controlHandles[2].set({ left: end.x, top: end.y });
       this.controlHandles[2].setCoords();
     }
 
     // Mettre à jour les lignes de contrôle
     if (this.controlLines[0]) {
       this.controlLines[0].set({
-        x1: startTransformed.x,
-        y1: startTransformed.y,
-        x2: controlTransformed.x,
-        y2: controlTransformed.y,
+        x1: start.x,
+        y1: start.y,
+        x2: control.x,
+        y2: control.y,
       });
       this.controlLines[0].setCoords();
     }
     if (this.controlLines[1]) {
       this.controlLines[1].set({
-        x1: controlTransformed.x,
-        y1: controlTransformed.y,
-        x2: endTransformed.x,
-        y2: endTransformed.y,
+        x1: control.x,
+        y1: control.y,
+        x2: end.x,
+        y2: end.y,
       });
       this.controlLines[1].setCoords();
     }
@@ -155,11 +160,10 @@ class EditableCurve extends Path {
       }
     });
 
-    // Calculer les positions absolues des points (avec transformation de la courbe)
-    const matrix = this.calcTransformMatrix();
-    const startPos = new Point(this.controlPoints.start.x, this.controlPoints.start.y).transform(matrix);
-    const controlPos = new Point(this.controlPoints.control.x, this.controlPoints.control.y).transform(matrix);
-    const endPos = new Point(this.controlPoints.end.x, this.controlPoints.end.y).transform(matrix);
+    // Positions des points directement depuis controlPoints (coordonnées du path)
+    const startPos = this.controlPoints.start;
+    const controlPos = this.controlPoints.control;
+    const endPos = this.controlPoints.end;
 
     // Lignes de contrôle (pointillées)
     const line1 = new Line([startPos.x, startPos.y, controlPos.x, controlPos.y], {
@@ -285,27 +289,23 @@ class EditableCurve extends Path {
     const newX = handle.left!;
     const newY = handle.top!;
 
-    // 🔧 BUG FIX : Transformer les coordonnées de la poignée en coordonnées locales de la courbe
-    const matrix = this.calcTransformMatrix();
-    const inverseMatrix = fabric.util.invertTransform(matrix);
-    const localPoint = new Point(newX, newY).transform(inverseMatrix);
-
+    // Mettre à jour les points de contrôle directement en coordonnées du canevas
     if (pointType === "start") {
-      this.controlPoints.start = localPoint;
+      this.controlPoints.start = new Point(newX, newY);
     } else if (pointType === "control") {
-      this.controlPoints.control = localPoint;
+      this.controlPoints.control = new Point(newX, newY);
     } else if (pointType === "end") {
-      this.controlPoints.end = localPoint;
+      this.controlPoints.end = new Point(newX, newY);
     }
 
-    // Recalculer le path avec les nouvelles coordonnées locales
+    // Recalculer le path avec les nouvelles coordonnées
     const newPathData = `M ${this.controlPoints.start.x} ${this.controlPoints.start.y} Q ${this.controlPoints.control.x} ${this.controlPoints.control.y} ${this.controlPoints.end.x} ${this.controlPoints.end.y}`;
     this.set("path", (new Path(newPathData) as any).path);
 
-    // Mettre à jour les lignes de contrôle avec les positions absolues
-    const startAbs = new Point(this.controlPoints.start.x, this.controlPoints.start.y).transform(matrix);
-    const controlAbs = new Point(this.controlPoints.control.x, this.controlPoints.control.y).transform(matrix);
-    const endAbs = new Point(this.controlPoints.end.x, this.controlPoints.end.y).transform(matrix);
+    // Mettre à jour les lignes de contrôle
+    const startAbs = this.controlPoints.start;
+    const controlAbs = this.controlPoints.control;
+    const endAbs = this.controlPoints.end;
 
     if (this.controlLines[0]) {
       this.controlLines[0].set({
