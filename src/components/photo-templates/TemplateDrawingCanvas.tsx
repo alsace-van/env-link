@@ -215,14 +215,14 @@ class EditableCurve extends Path {
     // Lignes de contrôle désactivées pour éviter les traits permanents
     this.controlLines = [];
 
-    // Poignées (cercles) - AUGMENTÉES pour être plus faciles à attraper
+    // Poignées (cercles) - taille originale
     const handleStart = new Circle({
       left: startPos.x,
       top: startPos.y,
-      radius: 8, // ✅ Augmenté de 2 à 8 pour faciliter la sélection
+      radius: 2,
       fill: "#ffffff",
       stroke: color,
-      strokeWidth: 3,
+      strokeWidth: 2,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -235,7 +235,6 @@ class EditableCurve extends Path {
       borderColor: "transparent",
       cornerColor: "transparent",
       transparentCorners: false,
-      padding: 5, // ✅ Zone cliquable augmentée
       objectCaching: false,
     });
     (handleStart as any).curvePointType = "start";
@@ -245,10 +244,10 @@ class EditableCurve extends Path {
     const handleControl = new Circle({
       left: controlPos.x,
       top: controlPos.y,
-      radius: 10, // ✅ Augmenté de 3 à 10 pour le point de contrôle (le plus important)
+      radius: 3,
       fill: color,
       stroke: "#ffffff",
-      strokeWidth: 3,
+      strokeWidth: 2,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -261,7 +260,6 @@ class EditableCurve extends Path {
       borderColor: "transparent",
       cornerColor: "transparent",
       transparentCorners: false,
-      padding: 5, // ✅ Zone cliquable augmentée
       objectCaching: false,
     });
     (handleControl as any).curvePointType = "control";
@@ -271,10 +269,10 @@ class EditableCurve extends Path {
     const handleEnd = new Circle({
       left: endPos.x,
       top: endPos.y,
-      radius: 8, // ✅ Augmenté de 2 à 8 pour faciliter la sélection
+      radius: 2,
       fill: "#ffffff",
       stroke: color,
-      strokeWidth: 3,
+      strokeWidth: 2,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -287,7 +285,6 @@ class EditableCurve extends Path {
       borderColor: "transparent",
       cornerColor: "transparent",
       transparentCorners: false,
-      padding: 5, // ✅ Zone cliquable augmentée
       objectCaching: false,
     });
     (handleEnd as any).curvePointType = "end";
@@ -298,12 +295,23 @@ class EditableCurve extends Path {
 
     // Ajouter au canvas
     this.controlLines.forEach((line) => canvas.add(line));
-    this.controlHandles.forEach((handle) => canvas.add(handle));
+    this.controlHandles.forEach((handle) => {
+      canvas.add(handle);
+    });
+
+    // Rendre la courbe non-draggable quand les poignées sont visibles
+    this.set({ lockMovementX: true, lockMovementY: true });
 
     // Event handlers pour déplacer les poignées
     this.controlHandles.forEach((handle) => {
       handle.on("moving", () => {
         this.updateCurveFromHandle(handle as Circle, canvas);
+      });
+      
+      // Forcer la sélection du handle au mousedown
+      handle.on("mousedown", () => {
+        canvas.setActiveObject(handle);
+        canvas.renderAll();
       });
     });
 
@@ -360,6 +368,9 @@ class EditableCurve extends Path {
     this.controlHandles.forEach((handle) => canvas.remove(handle));
     this.controlLines = [];
     this.controlHandles = [];
+    
+    // Réactiver le déplacement de la courbe
+    this.set({ lockMovementX: false, lockMovementY: false });
   }
 
   // Cacher/Montrer les poignées
