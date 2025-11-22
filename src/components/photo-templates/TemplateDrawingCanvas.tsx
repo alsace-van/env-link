@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Draggable from "react-draggable";
+import * as fabric from "fabric";
 import {
   Canvas as FabricCanvas,
   Line,
@@ -13,6 +14,8 @@ import {
   Group,
   Control,
   Point,
+  util,
+  Text as FabricText,
 } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +69,7 @@ class EditableCurve extends Path {
   public controlPoints: { start: Point; control: Point; end: Point };
   public controlHandles: Circle[];
   public controlLines: Line[];
+  private canvas: FabricCanvas | null = null;
 
   constructor(start: Point, control: Point, end: Point, options: any = {}) {
     const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`;
@@ -80,10 +84,67 @@ class EditableCurve extends Path {
 
     // Type personnalisé pour identifier cette courbe
     this.set("customType", "editableCurve");
+
+    // 🔧 BUG FIX : Ajouter des event listeners pour synchroniser les poignées lors du déplacement
+    this.on("moving", () => this.syncHandlesOnMove());
+    this.on("modified", () => this.syncHandlesOnMove());
+    this.on("scaling", () => this.syncHandlesOnMove());
+    this.on("rotating", () => this.syncHandlesOnMove());
+  }
+
+  // 🔧 NOUVEAU : Synchroniser les poignées quand la courbe est déplacée
+  syncHandlesOnMove() {
+    if (!this.canvas || this.controlHandles.length === 0) return;
+
+    // Calculer le décalage de la courbe (transformation)
+    const matrix = this.calcTransformMatrix();
+
+    // Mettre à jour les positions des poignées en fonction de la transformation de la courbe
+    const startTransformed = new Point(this.controlPoints.start.x, this.controlPoints.start.y).transform(matrix);
+    const controlTransformed = new Point(this.controlPoints.control.x, this.controlPoints.control.y).transform(matrix);
+    const endTransformed = new Point(this.controlPoints.end.x, this.controlPoints.end.y).transform(matrix);
+
+    // Mettre à jour les poignées
+    if (this.controlHandles[0]) {
+      this.controlHandles[0].set({ left: startTransformed.x, top: startTransformed.y });
+      this.controlHandles[0].setCoords();
+    }
+    if (this.controlHandles[1]) {
+      this.controlHandles[1].set({ left: controlTransformed.x, top: controlTransformed.y });
+      this.controlHandles[1].setCoords();
+    }
+    if (this.controlHandles[2]) {
+      this.controlHandles[2].set({ left: endTransformed.x, top: endTransformed.y });
+      this.controlHandles[2].setCoords();
+    }
+
+    // Mettre à jour les lignes de contrôle
+    if (this.controlLines[0]) {
+      this.controlLines[0].set({
+        x1: startTransformed.x,
+        y1: startTransformed.y,
+        x2: controlTransformed.x,
+        y2: controlTransformed.y,
+      });
+      this.controlLines[0].setCoords();
+    }
+    if (this.controlLines[1]) {
+      this.controlLines[1].set({
+        x1: controlTransformed.x,
+        y1: controlTransformed.y,
+        x2: endTransformed.x,
+        y2: endTransformed.y,
+      });
+      this.controlLines[1].setCoords();
+    }
+
+    this.canvas.renderAll();
   }
 
   // Créer les poignées de contrôle visuelles
   createHandles(canvas: FabricCanvas, color: string = "#3b82f6") {
+    this.canvas = canvas;
+
     // Nettoyer les anciennes poignées
     this.removeHandles(canvas);
 
@@ -94,43 +155,40 @@ class EditableCurve extends Path {
       }
     });
 
-    // Lignes de contrôle (pointillées)
-    const line1 = new Line(
-      [
-        this.controlPoints.start.x,
-        this.controlPoints.start.y,
-        this.controlPoints.control.x,
-        this.controlPoints.control.y,
-      ],
-      {
-        stroke: color,
-        strokeWidth: 1,
-        strokeDashArray: [5, 5],
-        selectable: false,
-        evented: false,
-        opacity: 0.7,
-      },
-    );
+    // Calculer les positions absolues des points (avec transformation de la courbe)
+    const matrix = this.calcTransformMatrix();
+    const startPos = new Point(this.controlPoints.start.x, this.controlPoints.start.y).transform(matrix);
+    const controlPos = new Point(this.controlPoints.control.x, this.controlPoints.control.y).transform(matrix);
+    const endPos = new Point(this.controlPoints.end.x, this.controlPoints.end.y).transform(matrix);
 
-    const line2 = new Line(
-      [this.controlPoints.control.x, this.controlPoints.control.y, this.controlPoints.end.x, this.controlPoints.end.y],
-      {
-        stroke: color,
-        strokeWidth: 1,
-        strokeDashArray: [5, 5],
-        selectable: false,
-        evented: false,
-        opacity: 0.7,
-      },
-    );
+    // Lignes de contrôle (pointillées)
+    const line1 = new Line([startPos.x, startPos.y, controlPos.x, controlPos.y], {
+      stroke: color,
+      strokeWidth: 1,
+      strokeDashArray: [5, 5],
+      selectable: false,
+      evented: false,
+      opacity: 0.7,
+      objectCaching: false,
+    });
+
+    const line2 = new Line([controlPos.x, controlPos.y, endPos.x, endPos.y], {
+      stroke: color,
+      strokeWidth: 1,
+      strokeDashArray: [5, 5],
+      selectable: false,
+      evented: false,
+      opacity: 0.7,
+      objectCaching: false,
+    });
 
     this.controlLines = [line1, line2];
 
     // Poignées (cercles)
     const handleStart = new Circle({
-      left: this.controlPoints.start.x,
-      top: this.controlPoints.start.y,
-      radius: 2, // 🔧 BUG FIX : Réduit à 2px (très discret)
+      left: startPos.x,
+      top: startPos.y,
+      radius: 2,
       fill: "#ffffff",
       stroke: color,
       strokeWidth: 2,
@@ -138,14 +196,25 @@ class EditableCurve extends Path {
       originY: "center",
       hasBorders: false,
       hasControls: false,
+      selectable: true, // 🔧 Doit être true pour pouvoir déplacer
+      hoverCursor: "move", // Curseur de déplacement
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      borderColor: "transparent", // 🔧 Cacher la bordure de sélection
+      cornerColor: "transparent", // 🔧 Cacher les coins
+      transparentCorners: false,
+      padding: 0,
+      objectCaching: false,
     });
     (handleStart as any).curvePointType = "start";
     (handleStart as any).parentCurve = this;
+    (handleStart as any).isControlHandle = true; // Marqueur pour exclure de la sélection
 
     const handleControl = new Circle({
-      left: this.controlPoints.control.x,
-      top: this.controlPoints.control.y,
-      radius: 3, // 🔧 BUG FIX : Réduit à 3px (discret)
+      left: controlPos.x,
+      top: controlPos.y,
+      radius: 3,
       fill: color,
       stroke: "#ffffff",
       strokeWidth: 2,
@@ -153,14 +222,25 @@ class EditableCurve extends Path {
       originY: "center",
       hasBorders: false,
       hasControls: false,
+      selectable: true, // 🔧 Doit être true pour pouvoir déplacer
+      hoverCursor: "move", // Curseur de déplacement
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      borderColor: "transparent", // 🔧 Cacher la bordure de sélection
+      cornerColor: "transparent", // 🔧 Cacher les coins
+      transparentCorners: false,
+      padding: 0,
+      objectCaching: false,
     });
     (handleControl as any).curvePointType = "control";
     (handleControl as any).parentCurve = this;
+    (handleControl as any).isControlHandle = true; // Marqueur pour exclure de la sélection
 
     const handleEnd = new Circle({
-      left: this.controlPoints.end.x,
-      top: this.controlPoints.end.y,
-      radius: 2, // 🔧 BUG FIX : Réduit à 2px (très discret)
+      left: endPos.x,
+      top: endPos.y,
+      radius: 2,
       fill: "#ffffff",
       stroke: color,
       strokeWidth: 2,
@@ -168,9 +248,20 @@ class EditableCurve extends Path {
       originY: "center",
       hasBorders: false,
       hasControls: false,
+      selectable: true, // 🔧 Doit être true pour pouvoir déplacer
+      hoverCursor: "move", // Curseur de déplacement
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      borderColor: "transparent", // 🔧 Cacher la bordure de sélection
+      cornerColor: "transparent", // 🔧 Cacher les coins
+      transparentCorners: false,
+      padding: 0,
+      objectCaching: false,
     });
     (handleEnd as any).curvePointType = "end";
     (handleEnd as any).parentCurve = this;
+    (handleEnd as any).isControlHandle = true; // Marqueur pour exclure de la sélection
 
     this.controlHandles = [handleStart, handleControl, handleEnd];
 
@@ -194,33 +285,42 @@ class EditableCurve extends Path {
     const newX = handle.left!;
     const newY = handle.top!;
 
+    // 🔧 BUG FIX : Transformer les coordonnées de la poignée en coordonnées locales de la courbe
+    const matrix = this.calcTransformMatrix();
+    const inverseMatrix = fabric.util.invertTransform(matrix);
+    const localPoint = new Point(newX, newY).transform(inverseMatrix);
+
     if (pointType === "start") {
-      this.controlPoints.start = new Point(newX, newY);
+      this.controlPoints.start = localPoint;
     } else if (pointType === "control") {
-      this.controlPoints.control = new Point(newX, newY);
+      this.controlPoints.control = localPoint;
     } else if (pointType === "end") {
-      this.controlPoints.end = new Point(newX, newY);
+      this.controlPoints.end = localPoint;
     }
 
-    // Recalculer le path
+    // Recalculer le path avec les nouvelles coordonnées locales
     const newPathData = `M ${this.controlPoints.start.x} ${this.controlPoints.start.y} Q ${this.controlPoints.control.x} ${this.controlPoints.control.y} ${this.controlPoints.end.x} ${this.controlPoints.end.y}`;
     this.set("path", (new Path(newPathData) as any).path);
 
-    // Mettre à jour les lignes de contrôle
+    // Mettre à jour les lignes de contrôle avec les positions absolues
+    const startAbs = new Point(this.controlPoints.start.x, this.controlPoints.start.y).transform(matrix);
+    const controlAbs = new Point(this.controlPoints.control.x, this.controlPoints.control.y).transform(matrix);
+    const endAbs = new Point(this.controlPoints.end.x, this.controlPoints.end.y).transform(matrix);
+
     if (this.controlLines[0]) {
       this.controlLines[0].set({
-        x1: this.controlPoints.start.x,
-        y1: this.controlPoints.start.y,
-        x2: this.controlPoints.control.x,
-        y2: this.controlPoints.control.y,
+        x1: startAbs.x,
+        y1: startAbs.y,
+        x2: controlAbs.x,
+        y2: controlAbs.y,
       });
     }
     if (this.controlLines[1]) {
       this.controlLines[1].set({
-        x1: this.controlPoints.control.x,
-        y1: this.controlPoints.control.y,
-        x2: this.controlPoints.end.x,
-        y2: this.controlPoints.end.y,
+        x1: controlAbs.x,
+        y1: controlAbs.y,
+        x2: endAbs.x,
+        y2: endAbs.y,
       });
     }
 
@@ -280,6 +380,8 @@ export function TemplateDrawingCanvas({
   const [showGrid, setShowGrid] = useState(true);
   const [gridSize, setGridSize] = useState(50);
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [gridSizeCm, setGridSizeCm] = useState(10); // Taille d'une case en cm
+  const [showRulers, setShowRulers] = useState(true);
   const [history, setHistory] = useState<HistoryState[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -301,13 +403,49 @@ export function TemplateDrawingCanvas({
     return { x: pointer.x, y: pointer.y };
   }, []);
 
-  // Fonction snap to grid
+  // 🔧 BUG FIX #5 : Fonction snap améliorée avec snapping vers les courbes
   const snapPoint = useCallback(
-    (point: { x: number; y: number }) => {
-      if (!snapToGrid) return point;
+    (point: { x: number; y: number }, canvas?: FabricCanvas) => {
+      const SNAP_DISTANCE = 15; // Distance de magnétisme vers les courbes
+      let snappedPoint = { ...point };
+
+      // Snapping vers les points d'extrémité des courbes si magnétisme activé
+      if (snapToGrid && canvas) {
+        const objects = canvas.getObjects();
+        let minDistance = SNAP_DISTANCE;
+        let targetPoint: { x: number; y: number } | null = null;
+
+        objects.forEach((obj) => {
+          if ((obj as any).customType === "editableCurve") {
+            const curve = obj as EditableCurve;
+
+            // 🔧 BUG FIX : Utiliser les coordonnées absolues en appliquant la transformation
+            const matrix = curve.calcTransformMatrix();
+            const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
+            const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
+
+            const points = [startAbs, endAbs];
+
+            points.forEach((p) => {
+              const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
+              if (distance < minDistance) {
+                minDistance = distance;
+                targetPoint = { x: p.x, y: p.y };
+              }
+            });
+          }
+        });
+
+        if (targetPoint) {
+          return targetPoint;
+        }
+      }
+
+      // Sinon, snap vers la grille
+      if (!snapToGrid) return snappedPoint;
       return {
-        x: Math.round(point.x / gridSize) * gridSize,
-        y: Math.round(point.y / gridSize) * gridSize,
+        x: Math.round(snappedPoint.x / gridSize) * gridSize,
+        y: Math.round(snappedPoint.y / gridSize) * gridSize,
       };
     },
     [snapToGrid, gridSize],
@@ -486,7 +624,57 @@ export function TemplateDrawingCanvas({
       width: 1000,
       height: 700,
       backgroundColor: "#ffffff",
+      selection: true,
+      preserveObjectStacking: true,
     });
+
+    // 🔧 BUG FIX : Empêcher la sélection des poignées et lignes de contrôle
+    const filterSelection = (e: any) => {
+      const activeObject = canvas.getActiveObject();
+      if (!activeObject) return;
+
+      // Si c'est un seul objet
+      if (activeObject.type !== "activeSelection") {
+        // Si c'est une poignée ou une ligne de contrôle, désélectionner
+        if (
+          (activeObject as any).isControlHandle ||
+          (activeObject instanceof Line && (activeObject as any).strokeDashArray)
+        ) {
+          canvas.discardActiveObject();
+          canvas.renderAll();
+        }
+      }
+      // Si c'est une sélection multiple
+      else {
+        const objects = (activeObject as any)._objects || [];
+        const filtered = objects.filter((obj: any) => {
+          return !(
+            (obj as any).isControlHandle ||
+            (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj))
+          );
+        });
+
+        if (filtered.length === 0) {
+          // Tous les objets sont des contrôles, désélectionner
+          canvas.discardActiveObject();
+          canvas.renderAll();
+        } else if (filtered.length !== objects.length) {
+          // Certains objets sont des contrôles, recréer la sélection sans eux
+          canvas.discardActiveObject();
+          if (filtered.length === 1) {
+            canvas.setActiveObject(filtered[0]);
+          } else {
+            // Créer une nouvelle sélection avec les objets filtrés
+            const sel = new fabric.ActiveSelection(filtered, { canvas });
+            canvas.setActiveObject(sel);
+          }
+          canvas.renderAll();
+        }
+      }
+    };
+
+    canvas.on("selection:created", filterSelection);
+    canvas.on("selection:updated", filterSelection);
 
     const img = new Image();
     img.onload = () => {
@@ -531,9 +719,130 @@ export function TemplateDrawingCanvas({
   useEffect(() => {
     if (!fabricCanvas || !imgRef.current) return;
     createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
-  }, [showGrid, gridSize, fabricCanvas, createGrid]);
 
-  // Gérer la sélection des courbes éditables
+    // Dessiner les règles graduées
+    if (showRulers) {
+      // Supprimer les anciennes règles
+      const objects = fabricCanvas.getObjects();
+      objects.forEach((obj: any) => {
+        if (obj.isRuler) {
+          fabricCanvas.remove(obj);
+        }
+      });
+
+      // Utiliser le scaleFactor pour calculer les vrais centimètres
+      const pixelsPerCm = scaleFactor; // scaleFactor contient déjà les pixels par cm
+      const canvasWidth = fabricCanvas.width || 1000;
+      const canvasHeight = fabricCanvas.height || 700;
+      const rulerColor = "#000000";
+      const textColor = "#000000";
+      const rulerMargin = 30; // Marge pour dessiner les règles en dehors de l'image
+
+      // Créer un fond blanc pour les règles (en dehors de l'image)
+      const bottomRulerBg = new Rect({
+        left: 0,
+        top: canvasHeight,
+        width: canvasWidth,
+        height: rulerMargin,
+        fill: "#ffffff",
+        selectable: false,
+        evented: false,
+      });
+      (bottomRulerBg as any).isRuler = true;
+      fabricCanvas.add(bottomRulerBg);
+
+      const leftRulerBg = new Rect({
+        left: -rulerMargin,
+        top: 0,
+        width: rulerMargin,
+        height: canvasHeight,
+        fill: "#ffffff",
+        selectable: false,
+        evented: false,
+      });
+      (leftRulerBg as any).isRuler = true;
+      fabricCanvas.add(leftRulerBg);
+
+      // Règle horizontale (axe X) - en bas, alignée avec la grille
+      const numTicksX = Math.ceil(canvasWidth / gridSize);
+      for (let i = 0; i <= numTicksX; i++) {
+        const x = i * gridSize;
+        if (x > canvasWidth) break;
+
+        // Calculer les cm en utilisant le scaleFactor
+        const cm = Math.round((x / scaleFactor) * 10) / 10;
+
+        // Trait vertical petit (en dehors de l'image)
+        const line = new Line([x, canvasHeight, x, canvasHeight + 8], {
+          stroke: rulerColor,
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+        });
+        (line as any).isRuler = true;
+        fabricCanvas.add(line);
+
+        // Texte en bas (à chaque trait)
+        const text = new FabricText(`${cm}`, {
+          left: x - 8,
+          top: canvasHeight + 12,
+          fontSize: 12,
+          fill: textColor,
+          selectable: false,
+          evented: false,
+          fontWeight: "normal",
+        });
+        (text as any).isRuler = true;
+        fabricCanvas.add(text);
+      }
+
+      // Règle verticale (axe Y) - à gauche, 0 en bas, alignée avec la grille
+      const numTicksY = Math.ceil(canvasHeight / gridSize);
+      for (let i = 0; i <= numTicksY; i++) {
+        const y = canvasHeight - i * gridSize; // Inverser l'axe Y
+        if (y < 0) break;
+
+        // Calculer les cm en utilisant le scaleFactor
+        const cm = Math.round(((i * gridSize) / scaleFactor) * 10) / 10;
+
+        // Trait horizontal petit (en dehors de l'image)
+        const line = new Line([-8, y, 0, y], {
+          stroke: rulerColor,
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+        });
+        (line as any).isRuler = true;
+        fabricCanvas.add(line);
+
+        // Texte à gauche (à chaque trait)
+        const text = new FabricText(`${cm}`, {
+          left: -28,
+          top: y - 6,
+          fontSize: 12,
+          fill: textColor,
+          selectable: false,
+          evented: false,
+          fontWeight: "normal",
+        });
+        (text as any).isRuler = true;
+        fabricCanvas.add(text);
+      }
+
+      fabricCanvas.renderAll();
+    } else {
+      // Supprimer les règles si désactivées
+      const objects = fabricCanvas.getObjects();
+      objects.forEach((obj: any) => {
+        if (obj.isRuler) {
+          fabricCanvas.remove(obj);
+        }
+      });
+      fabricCanvas.renderAll();
+    }
+  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, gridSizeCm, scaleFactor]);
+
+  // 🔧 BUG FIX #6 : Gérer la sélection et le déplacement des courbes éditables
   useEffect(() => {
     if (!fabricCanvas) return;
 
@@ -561,14 +870,69 @@ export function TemplateDrawingCanvas({
       }
     };
 
+    // 🔧 BUG FIX : Mettre à jour les poignées quand la courbe bouge
+    const handleObjectMoving = (e: any) => {
+      const obj = e.target;
+      if (obj && (obj as any).customType === "editableCurve") {
+        // La synchronisation est maintenant gérée automatiquement par les event listeners dans EditableCurve
+        fabricCanvas.requestRenderAll();
+      }
+    };
+
+    // 🔧 BUG FIX : Mettre à jour les points de contrôle après modification (scaling, rotation)
+    const handleObjectModified = (e: any) => {
+      const obj = e.target;
+      if (obj && (obj as any).customType === "editableCurve") {
+        const curve = obj as EditableCurve;
+
+        // Appliquer la transformation aux points de contrôle
+        const matrix = curve.calcTransformMatrix();
+        const inverseMatrix = fabric.util.invertTransform(matrix);
+
+        const transformPoint = (p: Point) => {
+          const abs = new Point(p.x, p.y).transform(matrix);
+          return abs;
+        };
+
+        curve.controlPoints.start = transformPoint(curve.controlPoints.start);
+        curve.controlPoints.control = transformPoint(curve.controlPoints.control);
+        curve.controlPoints.end = transformPoint(curve.controlPoints.end);
+
+        // Réinitialiser la transformation de l'objet pour éviter les doubles transformations
+        curve.set({
+          left: 0,
+          top: 0,
+          scaleX: 1,
+          scaleY: 1,
+          angle: 0,
+        });
+
+        // Recréer le path avec les nouveaux points
+        const newPathData = `M ${curve.controlPoints.start.x} ${curve.controlPoints.start.y} Q ${curve.controlPoints.control.x} ${curve.controlPoints.control.y} ${curve.controlPoints.end.x} ${curve.controlPoints.end.y}`;
+        curve.set("path", (new Path(newPathData) as any).path);
+
+        // Recréer les poignées avec les nouvelles positions
+        if (activeCurveRef.current === curve) {
+          curve.removeHandles(fabricCanvas);
+          curve.createHandles(fabricCanvas, strokeColor);
+        }
+
+        fabricCanvas.renderAll();
+      }
+    };
+
     fabricCanvas.on("selection:created", handleSelection);
     fabricCanvas.on("selection:updated", handleSelection);
     fabricCanvas.on("selection:cleared", handleDeselection);
+    fabricCanvas.on("object:moving", handleObjectMoving);
+    fabricCanvas.on("object:modified", handleObjectModified);
 
     return () => {
       fabricCanvas.off("selection:created", handleSelection);
       fabricCanvas.off("selection:updated", handleSelection);
       fabricCanvas.off("selection:cleared", handleDeselection);
+      fabricCanvas.off("object:moving", handleObjectMoving);
+      fabricCanvas.off("object:modified", handleObjectModified);
     };
   }, [fabricCanvas, strokeColor]);
 
@@ -589,25 +953,25 @@ export function TemplateDrawingCanvas({
     fabricCanvas.off("mouse:up");
     fabricCanvas.off("mouse:wheel");
 
-    // 🔧 BUG FIX #4 : Gestion améliorée du pan avec le bouton du milieu (molette)
+    // 🔧 BUG FIX #7 : Gestion améliorée du pan avec le bouton du milieu (molette)
     let isPanningWithMiddleButton = false;
     let lastPanPos: { x: number; y: number } | null = null;
 
-    fabricCanvas.on("mouse:down", (opt) => {
+    const handleMiddleButtonDown = (opt: any) => {
       const evt = opt.e;
       if (evt instanceof MouseEvent && evt.button === 1) {
         // Bouton du milieu (molette)
         isPanningWithMiddleButton = true;
         fabricCanvas.selection = false;
-        fabricCanvas.defaultCursor = "grabbing"; // ✅ Curseur visuel
+        fabricCanvas.defaultCursor = "grabbing";
         lastPanPos = { x: evt.clientX, y: evt.clientY };
         evt.preventDefault();
         evt.stopPropagation();
-        return false; // ✅ Bloquer propagation
+        return false;
       }
-    });
+    };
 
-    fabricCanvas.on("mouse:move", (opt) => {
+    const handleMiddleButtonMove = (opt: any) => {
       const evt = opt.e;
       if (isPanningWithMiddleButton && lastPanPos && evt instanceof MouseEvent) {
         const vpt = fabricCanvas.viewportTransform;
@@ -619,11 +983,11 @@ export function TemplateDrawingCanvas({
         }
         evt.preventDefault();
         evt.stopPropagation();
-        return false; // ✅ Bloquer propagation
+        return false;
       }
-    });
+    };
 
-    fabricCanvas.on("mouse:up", (opt) => {
+    const handleMiddleButtonUp = (opt: any) => {
       const evt = opt.e;
       if (evt instanceof MouseEvent && evt.button === 1) {
         isPanningWithMiddleButton = false;
@@ -632,9 +996,20 @@ export function TemplateDrawingCanvas({
         lastPanPos = null;
         evt.preventDefault();
         evt.stopPropagation();
-        return false; // ✅ Bloquer propagation
+        return false;
       }
-    });
+    };
+
+    // Attacher les événements au niveau du canvas HTML pour capturer le bouton du milieu
+    const canvasElement = fabricCanvas.getElement();
+    canvasElement.addEventListener("mousedown", handleMiddleButtonDown as any, true);
+    canvasElement.addEventListener("mousemove", handleMiddleButtonMove as any, true);
+    canvasElement.addEventListener("mouseup", handleMiddleButtonUp as any, true);
+
+    // Également attacher aux événements Fabric pour compatibilité
+    fabricCanvas.on("mouse:down", handleMiddleButtonDown);
+    fabricCanvas.on("mouse:move", handleMiddleButtonMove);
+    fabricCanvas.on("mouse:up", handleMiddleButtonUp);
 
     // Zoom avec la molette (toujours actif)
     fabricCanvas.on("mouse:wheel", (opt) => {
@@ -762,7 +1137,7 @@ export function TemplateDrawingCanvas({
         if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
         const updatedPoints = [...tempPoints, newPoint];
         setTempPoints(updatedPoints);
@@ -855,7 +1230,7 @@ export function TemplateDrawingCanvas({
         if (!e.e || tempPoints.length === 0 || isFinalizingCurve) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
 
         // Supprimer TOUS les objets d'aperçu précédents (lignes en pointillés seulement)
         fabricCanvas.getObjects().forEach((obj) => {
@@ -950,7 +1325,7 @@ export function TemplateDrawingCanvas({
         if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
 
         if ((activeTool === "spline" || activeTool === "polygon") && tempPoints.length >= 2) {
@@ -1052,7 +1427,7 @@ export function TemplateDrawingCanvas({
         if (!e.e || tempPoints.length === 0) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
 
         if (previewObject) {
           fabricCanvas.remove(previewObject);
@@ -1100,7 +1475,7 @@ export function TemplateDrawingCanvas({
         if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
         const updatedPoints = [...tempPoints, newPoint];
         setTempPoints(updatedPoints);
@@ -1169,7 +1544,7 @@ export function TemplateDrawingCanvas({
         if (!e.e || tempPoints.length !== 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
 
         if (previewObject) {
           fabricCanvas.remove(previewObject);
@@ -1198,7 +1573,7 @@ export function TemplateDrawingCanvas({
         if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
         isDrawing = true;
         startPoint = { x: snappedPoint.x, y: snappedPoint.y };
 
@@ -1248,7 +1623,7 @@ export function TemplateDrawingCanvas({
         if (!isDrawing || !startPoint || !e.e || !activeObject) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
 
         if (activeTool === "line") {
           activeObject.set({
@@ -1302,7 +1677,7 @@ export function TemplateDrawingCanvas({
         if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint);
+        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
         const text = new Textbox("Double-clic pour éditer", {
           left: snappedPoint.x,
           top: snappedPoint.y,
@@ -1318,6 +1693,12 @@ export function TemplateDrawingCanvas({
     }
 
     return () => {
+      // Nettoyer les event listeners du canvas HTML
+      const canvasElement = fabricCanvas.getElement();
+      canvasElement.removeEventListener("mousedown", handleMiddleButtonDown as any, true);
+      canvasElement.removeEventListener("mousemove", handleMiddleButtonMove as any, true);
+      canvasElement.removeEventListener("mouseup", handleMiddleButtonUp as any, true);
+
       fabricCanvas.off("mouse:down");
       fabricCanvas.off("mouse:move");
       fabricCanvas.off("mouse:up");
@@ -1650,6 +2031,31 @@ export function TemplateDrawingCanvas({
                   </div>
                   <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Ruler className="h-3 w-3 text-muted-foreground" />
+                    <Label className="text-xs">Règles</Label>
+                  </div>
+                  <Switch checked={showRulers} onCheckedChange={setShowRulers} />
+                </div>
+
+                {showRulers && (
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Graduat°:</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={gridSizeCm}
+                        onChange={(e) => setGridSizeCm(parseInt(e.target.value) || 10)}
+                        className="w-16 h-7 text-xs"
+                      />
+                      <span className="text-xs text-muted-foreground">cm</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Separator />
@@ -1747,6 +2153,29 @@ export function TemplateDrawingCanvas({
             <Label className="text-sm">Magnétisme:</Label>
             <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
           </div>
+
+          <Separator orientation="vertical" className="h-8" />
+
+          <div className="flex items-center gap-2">
+            <Ruler className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Règles:</Label>
+            <Switch checked={showRulers} onCheckedChange={setShowRulers} />
+          </div>
+
+          {showRulers && (
+            <div className="flex items-center gap-2">
+              <Label className="text-sm">Graduations:</Label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={gridSizeCm}
+                onChange={(e) => setGridSizeCm(parseInt(e.target.value) || 10)}
+                className="w-20 h-8"
+              />
+              <span className="text-sm text-muted-foreground">cm/case</span>
+            </div>
+          )}
 
           <Separator orientation="vertical" className="h-8" />
 
