@@ -620,7 +620,12 @@ export function TemplateDrawingCanvas({
             strokeWidth: gridStrokeWidth,
             selectable: false,
             evented: false,
+            lockMovementX: true,
+            lockMovementY: true,
+            hasControls: false,
+            hasBorders: false,
           });
+          (line as any).isGridLine = true; // Marquer explicitement comme ligne de grille
           canvas.add(line);
           canvas.sendObjectToBack(line);
           gridLinesRef.current.push(line);
@@ -636,7 +641,12 @@ export function TemplateDrawingCanvas({
             strokeWidth: gridStrokeWidth,
             selectable: false,
             evented: false,
+            lockMovementX: true,
+            lockMovementY: true,
+            hasControls: false,
+            hasBorders: false,
           });
+          (line as any).isGridLine = true; // Marquer explicitement comme ligne de grille
           canvas.add(line);
           canvas.sendObjectToBack(line);
           gridLinesRef.current.push(line);
@@ -741,22 +751,31 @@ export function TemplateDrawingCanvas({
     setTempObjects([]);
     setTempPoints([]);
 
-    // Supprimer les lignes en pointillés qui traînent (sauf les lignes de contrôle actives)
+    // 🧹 NETTOYAGE COMPLET : Supprimer tous les objets temporaires et lignes de construction
     const objectsToRemove: any[] = [];
     fabricCanvas.getObjects().forEach((obj) => {
-      if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
+      // Supprimer les lignes en pointillés (sauf la grille)
+      if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
         // Vérifier si c'est une ligne de contrôle d'une courbe active
         const isActiveControlLine = activeCurveRef.current?.controlLines.includes(obj);
         if (!isActiveControlLine) {
           objectsToRemove.push(obj);
         }
       }
-      // Nettoyer aussi les lignes de contrôle orphelines
+      // Nettoyer TOUTES les lignes de contrôle orphelines (isControlLine)
       if (obj instanceof Line && (obj as any).isControlLine) {
         const belongsToActiveCurve = activeCurveRef.current?.controlLines.includes(obj);
         if (!belongsToActiveCurve) {
           objectsToRemove.push(obj);
         }
+      }
+      // Supprimer les marqueurs temporaires (cercles bleus non sélectionnables)
+      if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
+        objectsToRemove.push(obj);
+      }
+      // Supprimer les courbes de preview (paths avec opacity 0.7)
+      if (obj instanceof Path && !obj.selectable && (obj as any).opacity === 0.7) {
+        objectsToRemove.push(obj);
       }
     });
     objectsToRemove.forEach((obj) => fabricCanvas.remove(obj));
@@ -791,16 +810,18 @@ export function TemplateDrawingCanvas({
       preserveObjectStacking: true,
     });
 
-    // 🔧 BUG FIX : Empêcher la sélection des poignées et lignes de contrôle
+    // 🔧 BUG FIX : Empêcher la sélection de la grille, des poignées et lignes de contrôle
     const filterSelection = (e: any) => {
       const activeObject = canvas.getActiveObject();
       if (!activeObject) return;
 
       // Si c'est un seul objet
       if (activeObject.type !== "activeSelection") {
-        // Si c'est une poignée ou une ligne de contrôle, désélectionner
+        // Si c'est une grille, une poignée ou une ligne de contrôle, désélectionner
         if (
+          (activeObject as any).isGridLine ||
           (activeObject as any).isControlHandle ||
+          (activeObject as any).isControlLine ||
           (activeObject instanceof Line && (activeObject as any).strokeDashArray)
         ) {
           canvas.discardActiveObject();
@@ -812,17 +833,19 @@ export function TemplateDrawingCanvas({
         const objects = (activeObject as any)._objects || [];
         const filtered = objects.filter((obj: any) => {
           return !(
+            (obj as any).isGridLine ||
             (obj as any).isControlHandle ||
-            (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj))
+            (obj as any).isControlLine ||
+            (obj instanceof Line && (obj as any).strokeDashArray)
           );
         });
 
         if (filtered.length === 0) {
-          // Tous les objets sont des contrôles, désélectionner
+          // Tous les objets sont des contrôles/grille, désélectionner
           canvas.discardActiveObject();
           canvas.renderAll();
         } else if (filtered.length !== objects.length) {
-          // Certains objets sont des contrôles, recréer la sélection sans eux
+          // Certains objets sont des contrôles/grille, recréer la sélection sans eux
           canvas.discardActiveObject();
           if (filtered.length === 1) {
             canvas.setActiveObject(filtered[0]);
@@ -1136,7 +1159,9 @@ export function TemplateDrawingCanvas({
       // Ne pas modifier les objets qui ne doivent pas être sélectionnables (grille, règles, etc.)
       if (
         !obj.isRuler &&
+        !obj.isGridLine &&
         !obj.isControlHandle &&
+        !obj.isControlLine &&
         !(obj instanceof Line && obj.strokeDashArray && gridLinesRef.current.includes(obj))
       ) {
         obj.selectable = true;
@@ -1145,6 +1170,10 @@ export function TemplateDrawingCanvas({
         if (activeTool === "select") {
           obj.hoverCursor = "move";
         }
+      } else {
+        // Forcer les objets non sélectionnables à le rester
+        obj.selectable = false;
+        obj.evented = false;
       }
     });
 
@@ -1344,12 +1373,27 @@ export function TemplateDrawingCanvas({
         setPreviewCurve(null);
       }
 
-      // Supprimer aussi tous les objets avec strokeDashArray (lignes temporaires)
+      // 🧹 NETTOYAGE COMPLET : Supprimer tous les objets temporaires
+      const toRemove: any[] = [];
       fabricCanvas.getObjects().forEach((obj) => {
-        if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
-          fabricCanvas.remove(obj);
+        // Lignes en pointillés (sauf la grille)
+        if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
+          toRemove.push(obj);
+        }
+        // Lignes de contrôle orphelines
+        if (obj instanceof Line && (obj as any).isControlLine) {
+          toRemove.push(obj);
+        }
+        // Marqueurs temporaires
+        if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
+          toRemove.push(obj);
+        }
+        // Courbes de preview
+        if (obj instanceof Path && !obj.selectable && (obj as any).opacity === 0.7) {
+          toRemove.push(obj);
         }
       });
+      toRemove.forEach((obj) => fabricCanvas.remove(obj));
 
       fabricCanvas.renderAll();
     };
@@ -1407,29 +1451,35 @@ export function TemplateDrawingCanvas({
             fabricCanvas.remove(obj);
           });
 
-          // 🔧 BUG FIX : Supprimer TOUTES les lignes de construction et objets temporaires
+          // 🧹 NETTOYAGE COMPLET FINAL : Supprimer TOUS les objets temporaires et lignes de construction
+          const finalCleanup: any[] = [];
           fabricCanvas.getObjects().forEach((obj) => {
-            // Supprimer les EditableCurve temporaires (celles sans poignées visibles)
+            // EditableCurve temporaires (sans poignées)
             if (
               obj instanceof Path &&
               (obj as any).customType === "editableCurve" &&
               !(obj as unknown as EditableCurve).controlHandles?.length
             ) {
-              fabricCanvas.remove(obj);
+              finalCleanup.push(obj);
             }
-            // Supprimer TOUTES les lignes en pointillés (traits de construction)
-            if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
-              fabricCanvas.remove(obj);
+            // TOUTES les lignes en pointillés (sauf la grille)
+            if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
+              finalCleanup.push(obj);
             }
-            // Supprimer tous les cercles temporaires (marqueurs bleus)
+            // TOUTES les lignes de contrôle (isControlLine)
+            if (obj instanceof Line && (obj as any).isControlLine) {
+              finalCleanup.push(obj);
+            }
+            // Cercles temporaires (marqueurs bleus)
             if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
-              fabricCanvas.remove(obj);
+              finalCleanup.push(obj);
             }
-            // Supprimer toutes les courbes de preview
+            // Courbes de preview
             if (obj instanceof Path && !obj.selectable && (obj as any).opacity === 0.7) {
-              fabricCanvas.remove(obj);
+              finalCleanup.push(obj);
             }
           });
+          finalCleanup.forEach((obj) => fabricCanvas.remove(obj));
 
           // Supprimer la preview curve si elle existe
           if (previewCurve) {
@@ -1483,12 +1533,19 @@ export function TemplateDrawingCanvas({
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
 
-        // Supprimer TOUS les objets d'aperçu précédents (lignes en pointillés seulement)
+        // 🧹 Supprimer TOUS les objets d'aperçu précédents
+        const previewCleanup: any[] = [];
         fabricCanvas.getObjects().forEach((obj) => {
-          if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
-            fabricCanvas.remove(obj);
+          // Lignes en pointillés (sauf grille)
+          if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
+            previewCleanup.push(obj);
+          }
+          // Lignes de contrôle orphelines
+          if (obj instanceof Line && (obj as any).isControlLine && !activeCurveRef.current?.controlLines.includes(obj)) {
+            previewCleanup.push(obj);
           }
         });
+        previewCleanup.forEach((obj) => fabricCanvas.remove(obj));
 
         // Nettoyer aussi les objets d'aperçu dans tempObjects
         const cleanedTempObjects = tempObjects.filter((obj) => !(obj instanceof Line && (obj as any).strokeDashArray));
