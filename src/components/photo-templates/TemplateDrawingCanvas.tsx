@@ -879,45 +879,21 @@ export function TemplateDrawingCanvas({
       }
     };
 
-    // 🔧 BUG FIX : Mettre à jour les points de contrôle après modification (scaling, rotation)
+    // 🔧 BUG FIX : Mettre à jour les poignées après modification (scaling, rotation, etc.)
     const handleObjectModified = (e: any) => {
       const obj = e.target;
       if (obj && (obj as any).customType === "editableCurve") {
-        const curve = obj as EditableCurve;
+        const curve = obj as unknown as EditableCurve;
 
-        // Appliquer la transformation aux points de contrôle
-        const matrix = curve.calcTransformMatrix();
-        const inverseMatrix = fabric.util.invertTransform(matrix);
+        // Re-synchroniser les poignées avec la courbe telle qu'elle est transformée
+        curve.syncHandlesOnMove();
 
-        const transformPoint = (p: Point) => {
-          const abs = new Point(p.x, p.y).transform(matrix);
-          return abs;
-        };
-
-        curve.controlPoints.start = transformPoint(curve.controlPoints.start);
-        curve.controlPoints.control = transformPoint(curve.controlPoints.control);
-        curve.controlPoints.end = transformPoint(curve.controlPoints.end);
-
-        // Réinitialiser la transformation de l'objet pour éviter les doubles transformations
-        curve.set({
-          left: 0,
-          top: 0,
-          scaleX: 1,
-          scaleY: 1,
-          angle: 0,
-        });
-
-        // Recréer le path avec les nouveaux points
-        const newPathData = `M ${curve.controlPoints.start.x} ${curve.controlPoints.start.y} Q ${curve.controlPoints.control.x} ${curve.controlPoints.control.y} ${curve.controlPoints.end.x} ${curve.controlPoints.end.y}`;
-        curve.set("path", (new Path(newPathData) as any).path);
-
-        // Recréer les poignées avec les nouvelles positions
+        // S'assurer que la courbe active garde des poignées cohérentes
         if (activeCurveRef.current === curve) {
-          curve.removeHandles(fabricCanvas);
-          curve.createHandles(fabricCanvas, strokeColor);
+          activeCurveRef.current = curve;
         }
 
-        fabricCanvas.renderAll();
+        fabricCanvas.requestRenderAll();
       }
     };
 
