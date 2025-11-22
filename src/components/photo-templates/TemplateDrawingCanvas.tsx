@@ -997,6 +997,37 @@ export function TemplateDrawingCanvas({
     fabricCanvas.isDrawingMode = activeTool === "pencil";
     fabricCanvas.selection = activeTool === "select";
 
+    // 🎯 Gestion du curseur selon l'outil actif
+    const drawingTools = [
+      "line",
+      "rectangle",
+      "circle",
+      "ellipse",
+      "editableCurve",
+      "bezier",
+      "spline",
+      "polygon",
+      "dimension",
+      "text",
+    ];
+
+    if (activeTool === "pan") {
+      fabricCanvas.defaultCursor = "grab";
+      fabricCanvas.hoverCursor = "grab";
+    } else if (activeTool === "select") {
+      fabricCanvas.defaultCursor = "default";
+      fabricCanvas.hoverCursor = "move";
+    } else if (drawingTools.includes(activeTool)) {
+      fabricCanvas.defaultCursor = "crosshair";
+      fabricCanvas.hoverCursor = "crosshair";
+    } else if (activeTool === "pencil") {
+      fabricCanvas.defaultCursor = "crosshair";
+      fabricCanvas.hoverCursor = "crosshair";
+    } else {
+      fabricCanvas.defaultCursor = "default";
+      fabricCanvas.hoverCursor = "move";
+    }
+
     if (activeTool === "pencil" && fabricCanvas.freeDrawingBrush) {
       fabricCanvas.freeDrawingBrush.color = strokeColor;
       fabricCanvas.freeDrawingBrush.width = strokeWidth;
@@ -1046,7 +1077,30 @@ export function TemplateDrawingCanvas({
       if (evt instanceof MouseEvent && evt.button === 1) {
         isPanningWithMiddleButton = false;
         fabricCanvas.selection = activeTool === "select";
-        fabricCanvas.defaultCursor = "default";
+
+        // Remettre le curseur approprié selon l'outil actif
+        const drawingTools = [
+          "line",
+          "rectangle",
+          "circle",
+          "ellipse",
+          "editableCurve",
+          "bezier",
+          "spline",
+          "polygon",
+          "dimension",
+          "text",
+          "pencil",
+        ];
+
+        if (activeTool === "pan") {
+          fabricCanvas.defaultCursor = "grab";
+        } else if (drawingTools.includes(activeTool)) {
+          fabricCanvas.defaultCursor = "crosshair";
+        } else {
+          fabricCanvas.defaultCursor = "default";
+        }
+
         lastPanPos = null;
         evt.preventDefault();
         evt.stopPropagation();
