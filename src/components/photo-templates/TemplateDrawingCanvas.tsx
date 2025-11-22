@@ -190,7 +190,7 @@ class EditableCurve extends Path {
       this.controlLines[1].setCoords();
     }
 
-    this.canvasRef.renderAll();
+    this.canvasRef.requestRenderAll();
   }
 
   // Créer les poignées de contrôle visuelles
@@ -207,13 +207,40 @@ class EditableCurve extends Path {
       }
     });
 
+    // 🔧 BUG FIX : Nettoyer toutes les lignes de contrôle orphelines
+    canvas.getObjects().forEach((obj) => {
+      if (obj instanceof Line && (obj as any).isControlLine) {
+        canvas.remove(obj);
+      }
+    });
+
     // Positions des points directement depuis controlPoints (coordonnées du path)
     const startPos = this.controlPoints.start;
     const controlPos = this.controlPoints.control;
     const endPos = this.controlPoints.end;
 
-    // Lignes de contrôle désactivées pour éviter les traits permanents
-    this.controlLines = [];
+    // Créer les lignes de contrôle (traits en pointillés pour visualiser la relation)
+    const line1 = new Line([startPos.x, startPos.y, controlPos.x, controlPos.y], {
+      stroke: color,
+      strokeWidth: 1,
+      strokeDashArray: [4, 4],
+      selectable: false,
+      evented: false,
+      opacity: 0.5,
+    });
+    (line1 as any).isControlLine = true;
+
+    const line2 = new Line([controlPos.x, controlPos.y, endPos.x, endPos.y], {
+      stroke: color,
+      strokeWidth: 1,
+      strokeDashArray: [4, 4],
+      selectable: false,
+      evented: false,
+      opacity: 0.5,
+    });
+    (line2 as any).isControlLine = true;
+
+    this.controlLines = [line1, line2];
 
     // Poignées (cercles) - taille originale
     const handleStart = new Circle({
@@ -349,6 +376,7 @@ class EditableCurve extends Path {
         x2: controlAbs.x,
         y2: controlAbs.y,
       });
+      this.controlLines[0].setCoords();
     }
     if (this.controlLines[1]) {
       this.controlLines[1].set({
@@ -357,9 +385,10 @@ class EditableCurve extends Path {
         x2: endAbs.x,
         y2: endAbs.y,
       });
+      this.controlLines[1].setCoords();
     }
 
-    canvas.renderAll();
+    canvas.requestRenderAll();
   }
 
   // Supprimer les poignées
