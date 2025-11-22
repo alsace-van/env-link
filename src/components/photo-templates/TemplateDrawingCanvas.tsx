@@ -680,11 +680,21 @@ export function TemplateDrawingCanvas({
 
   // Initialisation du canvas
   useEffect(() => {
-    if (!canvasRef.current) return;
+    const canvasElement = canvasRef.current;
+    if (!canvasElement) return;
 
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: 1000,
-      height: 700,
+    // 🔧 BUG FIX : S'assurer que l'élément canvas est valide avant d'initialiser Fabric
+    if (!(canvasElement instanceof HTMLCanvasElement)) {
+      console.error("Canvas element is not a valid HTMLCanvasElement");
+      return;
+    }
+
+    // 🔧 BUG FIX #8 : Définir les dimensions du canvas HTML avant d'initialiser Fabric.js
+    // Cela évite l'erreur "Right side of assignment cannot be destructured"
+    canvasElement.width = 1000;
+    canvasElement.height = 700;
+
+    const canvas = new FabricCanvas(canvasElement, {
       backgroundColor: "#ffffff",
       selection: true,
       preserveObjectStacking: true,
