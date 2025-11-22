@@ -78,6 +78,12 @@ class EditableCurve extends Path {
     super(pathData, {
       ...options,
       objectCaching: false,
+      // Désactiver les contrôles de transformation pour éviter la bounding box
+      hasControls: false,
+      hasBorders: false,
+      lockScalingX: true,
+      lockScalingY: true,
+      lockRotation: true,
     });
 
     this.controlPoints = { start, control, end };
@@ -209,84 +215,84 @@ class EditableCurve extends Path {
     // Lignes de contrôle désactivées pour éviter les traits permanents
     this.controlLines = [];
 
-    // Poignées (cercles)
+    // Poignées (cercles) - AUGMENTÉES pour être plus faciles à attraper
     const handleStart = new Circle({
       left: startPos.x,
       top: startPos.y,
-      radius: 2,
+      radius: 8, // ✅ Augmenté de 2 à 8 pour faciliter la sélection
       fill: "#ffffff",
       stroke: color,
-      strokeWidth: 2,
+      strokeWidth: 3,
       originX: "center",
       originY: "center",
       hasBorders: false,
       hasControls: false,
-      selectable: true, // 🔧 Doit être true pour pouvoir déplacer
-      hoverCursor: "move", // Curseur de déplacement
+      selectable: true,
+      hoverCursor: "move",
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
-      borderColor: "transparent", // 🔧 Cacher la bordure de sélection
-      cornerColor: "transparent", // 🔧 Cacher les coins
+      borderColor: "transparent",
+      cornerColor: "transparent",
       transparentCorners: false,
-      padding: 0,
+      padding: 5, // ✅ Zone cliquable augmentée
       objectCaching: false,
     });
     (handleStart as any).curvePointType = "start";
     (handleStart as any).parentCurve = this;
-    (handleStart as any).isControlHandle = true; // Marqueur pour exclure de la sélection
+    (handleStart as any).isControlHandle = true;
 
     const handleControl = new Circle({
       left: controlPos.x,
       top: controlPos.y,
-      radius: 3,
+      radius: 10, // ✅ Augmenté de 3 à 10 pour le point de contrôle (le plus important)
       fill: color,
       stroke: "#ffffff",
-      strokeWidth: 2,
+      strokeWidth: 3,
       originX: "center",
       originY: "center",
       hasBorders: false,
       hasControls: false,
-      selectable: true, // 🔧 Doit être true pour pouvoir déplacer
-      hoverCursor: "move", // Curseur de déplacement
+      selectable: true,
+      hoverCursor: "move",
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
-      borderColor: "transparent", // 🔧 Cacher la bordure de sélection
-      cornerColor: "transparent", // 🔧 Cacher les coins
+      borderColor: "transparent",
+      cornerColor: "transparent",
       transparentCorners: false,
-      padding: 0,
+      padding: 5, // ✅ Zone cliquable augmentée
       objectCaching: false,
     });
     (handleControl as any).curvePointType = "control";
     (handleControl as any).parentCurve = this;
-    (handleControl as any).isControlHandle = true; // Marqueur pour exclure de la sélection
+    (handleControl as any).isControlHandle = true;
 
     const handleEnd = new Circle({
       left: endPos.x,
       top: endPos.y,
-      radius: 2,
+      radius: 8, // ✅ Augmenté de 2 à 8 pour faciliter la sélection
       fill: "#ffffff",
       stroke: color,
-      strokeWidth: 2,
+      strokeWidth: 3,
       originX: "center",
       originY: "center",
       hasBorders: false,
       hasControls: false,
-      selectable: true, // 🔧 Doit être true pour pouvoir déplacer
-      hoverCursor: "move", // Curseur de déplacement
+      selectable: true,
+      hoverCursor: "move",
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
-      borderColor: "transparent", // 🔧 Cacher la bordure de sélection
-      cornerColor: "transparent", // 🔧 Cacher les coins
+      borderColor: "transparent",
+      cornerColor: "transparent",
       transparentCorners: false,
-      padding: 0,
+      padding: 5, // ✅ Zone cliquable augmentée
       objectCaching: false,
     });
     (handleEnd as any).curvePointType = "end";
     (handleEnd as any).parentCurve = this;
-    (handleEnd as any).isControlHandle = true; // Marqueur pour exclure de la sélection
+    (handleEnd as any).isControlHandle = true;
 
     this.controlHandles = [handleStart, handleControl, handleEnd];
 
@@ -426,10 +432,10 @@ export function TemplateDrawingCanvas({
     return { x: pointer.x, y: pointer.y };
   }, []);
 
-  // 🔧 BUG FIX #5 : Fonction snap améliorée avec snapping vers les courbes
+  // ✅ CORRECTION : Fonction snap améliorée avec snapping vers les courbes
   const snapPoint = useCallback(
     (point: { x: number; y: number }, canvas?: FabricCanvas) => {
-      const SNAP_DISTANCE = 15; // Distance de magnétisme vers les courbes
+      const SNAP_DISTANCE = 20; // ✅ Augmenté de 15 à 20 pixels pour plus de tolérance
       let snappedPoint = { ...point };
 
       // Snapping vers les points d'extrémité des courbes si magnétisme activé
@@ -442,20 +448,40 @@ export function TemplateDrawingCanvas({
           if ((obj as any).customType === "editableCurve") {
             const curve = obj as unknown as EditableCurve;
 
-            // 🔧 BUG FIX : Utiliser les coordonnées absolues en appliquant la transformation
-            const matrix = curve.calcTransformMatrix();
-            const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
-            const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
+            // ✅ CORRECTION : Récupérer directement les coordonnées des poignées si elles existent
+            // Les poignées sont déjà en coordonnées absolues du canvas
+            if (curve.controlHandles && curve.controlHandles.length >= 2) {
+              const startHandle = curve.controlHandles[0];
+              const endHandle = curve.controlHandles[2];
 
-            const points = [startAbs, endAbs];
+              const points = [
+                { x: startHandle.left ?? 0, y: startHandle.top ?? 0 },
+                { x: endHandle.left ?? 0, y: endHandle.top ?? 0 },
+              ];
 
-            points.forEach((p) => {
-              const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
-              if (distance < minDistance) {
-                minDistance = distance;
-                targetPoint = { x: p.x, y: p.y };
-              }
-            });
+              points.forEach((p) => {
+                const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
+                if (distance < minDistance) {
+                  minDistance = distance;
+                  targetPoint = { x: p.x, y: p.y };
+                }
+              });
+            } else {
+              // ✅ Fallback : utiliser les controlPoints avec transformation
+              const matrix = curve.calcTransformMatrix();
+              const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
+              const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
+
+              const points = [startAbs, endAbs];
+
+              points.forEach((p) => {
+                const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
+                if (distance < minDistance) {
+                  minDistance = distance;
+                  targetPoint = { x: p.x, y: p.y };
+                }
+              });
+            }
           }
         });
 
