@@ -70,6 +70,8 @@ class EditableCurve extends Path {
   public controlHandles: Circle[];
   public controlLines: Line[];
   public canvasRef: FabricCanvas | null = null;
+  private lastLeft: number = 0;
+  private lastTop: number = 0;
 
   constructor(start: Point, control: Point, end: Point, options: any = {}) {
     const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`;
@@ -85,12 +87,51 @@ class EditableCurve extends Path {
     // Type personnalisé pour identifier cette courbe
     this.set("customType", "editableCurve");
 
-    // Garder les poignées synchronisées lors des mouvements
-    this.on("moving", () => this.syncHandlesOnMove());
+    // Initialiser la position de référence pour le déplacement
+    this.lastLeft = this.left ?? 0;
+    this.lastTop = this.top ?? 0;
+
+    // Événements : déplacement de la courbe et mise à jour des poignées après modif (ex: depuis l'UI)
+    this.on("moving", () => this.handleMoving());
     this.on("modified", () => this.syncHandlesOnMove());
   }
 
-  // 🔧 NOUVEAU : Synchroniser les poignées quand la courbe est déplacée ou transformée
+  // Déplacement de la courbe : faire suivre les poignées et les lignes
+  private handleMoving() {
+    if (!this.canvasRef) return;
+
+    const newLeft = this.left ?? 0;
+    const newTop = this.top ?? 0;
+    const dx = newLeft - this.lastLeft;
+    const dy = newTop - this.lastTop;
+
+    if (dx === 0 && dy === 0) return;
+
+    // Déplacer les poignées
+    this.controlHandles.forEach((handle) => {
+      if (handle.left == null || handle.top == null) return;
+      handle.set({ left: handle.left + dx, top: handle.top + dy });
+      handle.setCoords();
+    });
+
+    // Déplacer les lignes de contrôle
+    this.controlLines.forEach((line) => {
+      line.set({
+        x1: (line.x1 ?? 0) + dx,
+        y1: (line.y1 ?? 0) + dy,
+        x2: (line.x2 ?? 0) + dx,
+        y2: (line.y2 ?? 0) + dy,
+      });
+      line.setCoords();
+    });
+
+    this.lastLeft = newLeft;
+    this.lastTop = newTop;
+
+    this.canvasRef.requestRenderAll();
+  }
+
+  // Synchroniser les poignées avec la courbe (par ex. après une modification de path)
   syncHandlesOnMove() {
     if (!this.canvasRef || this.controlHandles.length === 0) return;
 
