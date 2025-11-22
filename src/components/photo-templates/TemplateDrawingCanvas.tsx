@@ -1156,12 +1156,12 @@ export function TemplateDrawingCanvas({
           isFinalizingCurve = true;
           const [start, end, control] = updatedPoints;
 
-          // NETTOYAGE COMPLET - Supprimer TOUS les objets temporaires
+          // NETTOYAGE COMPLET - Supprimer TOUS les objets temporaires (marqueurs)
           tempObjects.forEach((obj) => {
             fabricCanvas.remove(obj);
           });
 
-          // 🔧 BUG FIX : Supprimer TOUTES les courbes temporaires EditableCurve
+          // 🔧 BUG FIX : Supprimer TOUTES les lignes de construction et objets temporaires
           fabricCanvas.getObjects().forEach((obj) => {
             // Supprimer les EditableCurve temporaires (celles sans poignées visibles)
             if (
@@ -1171,12 +1171,16 @@ export function TemplateDrawingCanvas({
             ) {
               fabricCanvas.remove(obj);
             }
-            // Supprimer les lignes temporaires en pointillés
+            // Supprimer TOUTES les lignes en pointillés (traits de construction)
             if (obj instanceof Line && (obj as any).strokeDashArray && !gridLinesRef.current.includes(obj)) {
               fabricCanvas.remove(obj);
             }
-            // Supprimer les cercles temporaires (marqueurs)
+            // Supprimer tous les cercles temporaires (marqueurs bleus)
             if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
+              fabricCanvas.remove(obj);
+            }
+            // Supprimer toutes les courbes de preview
+            if (obj instanceof Path && !obj.selectable && (obj as any).opacity === 0.7) {
               fabricCanvas.remove(obj);
             }
           });
@@ -1207,12 +1211,16 @@ export function TemplateDrawingCanvas({
           // RÉINITIALISER COMPLÈTEMENT les états
           setTempObjects([]);
           setTempPoints([]);
+          
+          // Rendu final pour s'assurer que tout est bien nettoyé
+          fabricCanvas.requestRenderAll();
+          
           saveState(fabricCanvas);
 
           // Passer en mode sélection pour éviter de recréer immédiatement
           setActiveTool("select");
 
-          toast.success("Courbe créée ! Mode sélection activé.");
+          toast.success("Courbe créée ! Traits de construction effacés.");
 
           // Réinitialiser le flag après un court délai
           setTimeout(() => {
