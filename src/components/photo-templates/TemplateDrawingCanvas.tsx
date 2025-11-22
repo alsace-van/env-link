@@ -307,7 +307,7 @@ class EditableCurve extends Path {
       handle.on("moving", () => {
         this.updateCurveFromHandle(handle as Circle, canvas);
       });
-      
+
       // Forcer la sélection du handle au mousedown
       handle.on("mousedown", () => {
         canvas.setActiveObject(handle);
@@ -368,7 +368,7 @@ class EditableCurve extends Path {
     this.controlHandles.forEach((handle) => canvas.remove(handle));
     this.controlLines = [];
     this.controlHandles = [];
-    
+
     // Réactiver le déplacement de la courbe
     this.set({ lockMovementX: false, lockMovementY: false });
   }
@@ -419,7 +419,7 @@ export function TemplateDrawingCanvas({
   const [scaleIntervalCm, setScaleIntervalCm] = useState(10); // Intervalle de l'échelle en cm (valeur ronde)
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
-  
+
   // Calculer la taille de la grille en pixels en fonction de l'échelle en cm
   const gridSize = scaleIntervalCm * scaleFactor;
   const [history, setHistory] = useState<HistoryState[]>([]);
@@ -573,17 +573,15 @@ export function TemplateDrawingCanvas({
   // Sauvegarder l'état pour undo/redo (en excluant les poignées et éléments UI temporaires)
   const saveState = useCallback(
     (canvas: FabricCanvas) => {
-      const objects = canvas
-        .getObjects()
-        .filter(
-          (obj) =>
-            !gridLinesRef.current.includes(obj) && // Pas la grille
+      const objects = canvas.getObjects().filter(
+        (obj) =>
+          (!gridLinesRef.current.includes(obj) && // Pas la grille
             !(obj as any).curvePointType && // Pas les poignées de courbe
             !(obj as any).isRuler && // Pas les règles
             (obj.type !== "line" || !(obj as any).strokeDashArray) && // Pas les lignes de construction
-            obj.selectable !== false || // Garder les objets sélectionnables
-            (obj as any).customType === "editableCurve" // Toujours garder les courbes éditables
-        );
+            obj.selectable !== false) || // Garder les objets sélectionnables
+          (obj as any).customType === "editableCurve", // Toujours garder les courbes éditables
+      );
       const state: HistoryState = {
         objects: objects.map((obj) => obj.toJSON()),
       };
@@ -1174,6 +1172,21 @@ export function TemplateDrawingCanvas({
         // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
         if (e.e instanceof MouseEvent && e.e.button === 1) return;
 
+        // 🔧 NOUVEAU FIX : Vérifier si on clique sur une courbe existante
+        const clickedObject = e.target;
+        if (clickedObject && (clickedObject as any).customType === "editableCurve") {
+          // On a cliqué sur une courbe existante, permettre sa sélection
+          fabricCanvas.setActiveObject(clickedObject);
+          fabricCanvas.renderAll();
+          return; // Ne pas créer de nouveau point
+        }
+
+        // 🔧 NOUVEAU FIX : Vérifier si on clique sur une poignée de contrôle
+        if (clickedObject && (clickedObject as any).isControlHandle) {
+          // On a cliqué sur une poignée, la laisser être sélectionnée
+          return;
+        }
+
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
         const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
@@ -1252,10 +1265,10 @@ export function TemplateDrawingCanvas({
           // RÉINITIALISER COMPLÈTEMENT les états
           setTempObjects([]);
           setTempPoints([]);
-          
+
           // Rendu final pour s'assurer que tout est bien nettoyé
           fabricCanvas.requestRenderAll();
-          
+
           saveState(fabricCanvas);
 
           // NE PAS changer d'outil - rester en mode editableCurve pour tracer d'autres courbes
