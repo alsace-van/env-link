@@ -170,13 +170,13 @@ class EditableCurve extends Path {
       fill: "#ffffff",
       stroke: color,
       strokeWidth: 2,
-      originX: "center",
-      originY: "center",
+      originX: "center" as const,
+      originY: "center" as const,
       hasControls: false,
       hasBorders: false,
       selectable: false, // IMPORTANT: false pour gérer le drag manuellement et ne pas perdre la sélection courbe
       evented: true, // IMPORTANT: true pour capter les clics
-      hoverCursor: "move",
+      hoverCursor: "move" as const,
       excludeFromExport: true,
     };
 
@@ -534,7 +534,7 @@ export function TemplateDrawingCanvas({
   const saveState = (canvas: FabricCanvas) => {
     // Sauvegarde dans l'historique pour Undo/Redo
     // Exclure les objets temporaires (grille, poignées)
-    const json = canvas.toJSON(["customType"]); // Inclure les propriétés custom
+    const json = canvas.toJSON(); // Inclure les propriétés custom (typings v6 ne prennent plus de paramètres)
     // Filtrer le JSON pour retirer les poignées si elles y sont (normalement excludeFromExport gère ça)
     // ...
   };
