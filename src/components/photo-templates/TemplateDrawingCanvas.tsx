@@ -420,6 +420,9 @@ class EditableCurve extends Path {
 
     // Réactiver le déplacement de la courbe
     this.set({ lockMovementX: false, lockMovementY: false });
+
+    // Forcer un rafraîchissement pour bien effacer les traits
+    canvas.requestRenderAll();
   }
 
   // Cacher/Montrer les poignées
@@ -1454,14 +1457,6 @@ export function TemplateDrawingCanvas({
           // 🧹 NETTOYAGE COMPLET FINAL : Supprimer TOUS les objets temporaires et lignes de construction
           const finalCleanup: any[] = [];
           fabricCanvas.getObjects().forEach((obj) => {
-            // EditableCurve temporaires (sans poignées)
-            if (
-              obj instanceof Path &&
-              (obj as any).customType === "editableCurve" &&
-              !(obj as unknown as EditableCurve).controlHandles?.length
-            ) {
-              finalCleanup.push(obj);
-            }
             // TOUTES les lignes en pointillés (sauf la grille)
             if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
               finalCleanup.push(obj);
@@ -1502,7 +1497,8 @@ export function TemplateDrawingCanvas({
           );
 
           fabricCanvas.add(finalCurve);
-          finalCurve.createHandles(fabricCanvas, strokeColor);
+          // Sélectionner automatiquement la courbe pour afficher ses poignées
+          fabricCanvas.setActiveObject(finalCurve);
 
           // RÉINITIALISER COMPLÈTEMENT les états
           setTempObjects([]);
