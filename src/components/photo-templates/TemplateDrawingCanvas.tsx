@@ -813,19 +813,19 @@ export function TemplateDrawingCanvas({
       preserveObjectStacking: true,
     });
 
-    // 🔧 BUG FIX : Empêcher la sélection de la grille, des poignées et lignes de contrôle
+    // 🔧 Filtre de sélection : empêcher uniquement la sélection de la grille et des traits de construction,
+    // mais laisser les poignées de courbe éditable sélectionnables pour permettre l'édition.
     const filterSelection = (e: any) => {
       const activeObject = canvas.getActiveObject();
       if (!activeObject) return;
 
       // Si c'est un seul objet
       if (activeObject.type !== "activeSelection") {
-        // Si c'est une grille, une poignée ou une ligne de contrôle, désélectionner
+        // Si c'est une ligne de grille ou un trait de construction, désélectionner
         if (
           (activeObject as any).isGridLine ||
-          (activeObject as any).isControlHandle ||
-          (activeObject as any).isControlLine ||
-          (activeObject instanceof Line && (activeObject as any).strokeDashArray)
+          (activeObject as any).isRuler ||
+          (activeObject instanceof Line && (activeObject as any).strokeDashArray && !(activeObject as any).isControlLine)
         ) {
           canvas.discardActiveObject();
           canvas.renderAll();
@@ -837,18 +837,17 @@ export function TemplateDrawingCanvas({
         const filtered = objects.filter((obj: any) => {
           return !(
             (obj as any).isGridLine ||
-            (obj as any).isControlHandle ||
-            (obj as any).isControlLine ||
-            (obj instanceof Line && (obj as any).strokeDashArray)
+            (obj as any).isRuler ||
+            (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isControlLine)
           );
         });
 
         if (filtered.length === 0) {
-          // Tous les objets sont des contrôles/grille, désélectionner
+          // Tous les objets sont de la grille / construction, désélectionner
           canvas.discardActiveObject();
           canvas.renderAll();
         } else if (filtered.length !== objects.length) {
-          // Certains objets sont des contrôles/grille, recréer la sélection sans eux
+          // Certains objets sont à exclure, recréer la sélection sans eux
           canvas.discardActiveObject();
           if (filtered.length === 1) {
             canvas.setActiveObject(filtered[0]);
