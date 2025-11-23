@@ -1523,39 +1523,46 @@ export function TemplateDrawingCanvas({
         fabricCanvas.renderAll();
       });
 
+      let previewMain: Path | null = null;
+      let previewLine1: Line | null = null;
+      let previewLine2: Line | null = null;
+
       fabricCanvas.on("mouse:move", (e) => {
         if (!e.e || tempPoints.length === 0 || isFinalizingCurve) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
         const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
 
-        // 🧹 Supprimer TOUS les objets d'aperçu précédents
-        const previewCleanup: any[] = [];
-        fabricCanvas.getObjects().forEach((obj) => {
-          // Lignes en pointillés (sauf grille)
-          if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
-            previewCleanup.push(obj);
-          }
-          // Lignes de contrôle orphelines
-          if (obj instanceof Line && (obj as any).isControlLine && !activeCurveRef.current?.controlLines.includes(obj)) {
-            previewCleanup.push(obj);
-          }
-        });
-        previewCleanup.forEach((obj) => fabricCanvas.remove(obj));
+        // 🧹 Supprimer l'ancien aperçu (courbe + lignes)
+        if (previewMain) {
+          fabricCanvas.remove(previewMain);
+          previewMain = null;
+        }
+        if (previewLine1) {
+          fabricCanvas.remove(previewLine1);
+          previewLine1 = null;
+        }
+        if (previewLine2) {
+          fabricCanvas.remove(previewLine2);
+          previewLine2 = null;
+        }
 
-        // Nettoyer aussi les objets d'aperçu dans tempObjects
-        const cleanedTempObjects = tempObjects.filter((obj) => !(obj instanceof Line && (obj as any).strokeDashArray));
-        setTempObjects(cleanedTempObjects);
-
-        if (previewCurve) {
-          fabricCanvas.remove(previewCurve);
-          setPreviewCurve(null);
+        // Nettoyer aussi les objets d'aperçu dans tempObjects (anciens traits pointillés)
+        const cleanedTempObjects = tempObjects.filter(
+          (obj) => !(obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine),
+        );
+        if (cleanedTempObjects.length !== tempObjects.length) {
+          tempObjects.forEach((obj) => {
+            if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
+              fabricCanvas.remove(obj);
+            }
+          });
         }
 
         if (tempPoints.length === 1) {
           // Aperçu ligne droite vers la deuxième extrémité
           const lastPoint = tempPoints[0];
-          const previewLine = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
+          previewLine1 = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             strokeDashArray: [5, 5],
@@ -1563,12 +1570,12 @@ export function TemplateDrawingCanvas({
             evented: false,
             opacity: 0.7,
           });
-          fabricCanvas.add(previewLine);
+          fabricCanvas.add(previewLine1);
         } else if (tempPoints.length === 2) {
           // Aperçu de la courbe avec le point de contrôle qui suit la souris
           const [start, end] = tempPoints;
           const pathData = `M ${start.x} ${start.y} Q ${snappedPoint.x} ${snappedPoint.y} ${end.x} ${end.y}`;
-          const preview = new Path(pathData, {
+          previewMain = new Path(pathData, {
             stroke: strokeColor,
             strokeWidth: strokeWidth,
             fill: "transparent",
@@ -1578,11 +1585,10 @@ export function TemplateDrawingCanvas({
             selectable: false,
             evented: false,
           });
-          fabricCanvas.add(preview);
-          setPreviewCurve(preview);
+          fabricCanvas.add(previewMain);
 
           // Lignes pointillées pour montrer le point de contrôle
-          const line1 = new Line([start.x, start.y, snappedPoint.x, snappedPoint.y], {
+          previewLine1 = new Line([start.x, start.y, snappedPoint.x, snappedPoint.y], {
             stroke: "#3b82f6",
             strokeWidth: 1,
             strokeDashArray: [5, 5],
@@ -1590,9 +1596,9 @@ export function TemplateDrawingCanvas({
             evented: false,
             opacity: 0.5,
           });
-          fabricCanvas.add(line1);
+          fabricCanvas.add(previewLine1);
 
-          const line2 = new Line([snappedPoint.x, snappedPoint.y, end.x, end.y], {
+          previewLine2 = new Line([snappedPoint.x, snappedPoint.y, end.x, end.y], {
             stroke: "#3b82f6",
             strokeWidth: 1,
             strokeDashArray: [5, 5],
@@ -1600,7 +1606,7 @@ export function TemplateDrawingCanvas({
             evented: false,
             opacity: 0.5,
           });
-          fabricCanvas.add(line2);
+          fabricCanvas.add(previewLine2);
         }
 
         fabricCanvas.renderAll();
