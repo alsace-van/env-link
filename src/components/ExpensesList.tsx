@@ -40,6 +40,8 @@ interface ExpensesListProps {
   projectId: string;
   onExpenseChange?: () => void;
   refreshTrigger?: number;
+  scenarioId?: string;
+  isLocked?: boolean;
 }
 
 interface PaymentTransaction {
@@ -47,7 +49,7 @@ interface PaymentTransaction {
   montant: number;
 }
 
-const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger }: ExpensesListProps) => {
+const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, isLocked = false }: ExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
