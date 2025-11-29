@@ -8,16 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  X,
-  ShoppingCart,
-  Truck,
-  PackageCheck,
-  Calendar,
-  Building2,
-  Package,
-  ChevronRight,
-} from "lucide-react";
+import { X, ShoppingCart, Truck, PackageCheck, Calendar, Building2, Package, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -58,7 +49,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
 
   const loadAllOrders = async () => {
     setIsLoading(true);
-    
+
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       setIsLoading(false);
@@ -66,13 +57,10 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger tous les projets de l'utilisateur
-    const { data: projects } = await supabase
-      .from("projects")
-      .select("id, name")
-      .eq("user_id", userData.user.id);
+    const { data: projects } = await supabase.from("projects").select("id, name").eq("user_id", userData.user.id);
 
-    const projectMap = new Map(projects?.map(p => [p.id, p.name]) || []);
-    const projectIds = projects?.map(p => p.id) || [];
+    const projectMap = new Map(projects?.map((p) => [p.id, p.name]) || []);
+    const projectIds = projects?.map((p) => p.id) || [];
 
     if (projectIds.length === 0) {
       setIsLoading(false);
@@ -107,10 +95,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateOrderStatus = async (id: string, newStatus: "commande" | "en_livraison" | "livre") => {
-    const { error } = await supabase
-      .from("project_expenses")
-      .update({ statut_livraison: newStatus })
-      .eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -123,10 +108,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await supabase
-      .from("project_expenses")
-      .update({ expected_delivery_date: date })
-      .eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
@@ -173,14 +155,14 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     if (selectedItems.size === shoppingList.length) {
       setSelectedItems(new Set());
     } else {
-      setSelectedItems(new Set(shoppingList.map(item => item.id)));
+      setSelectedItems(new Set(shoppingList.map((item) => item.id)));
     }
   };
 
   // Grouper les articles par fournisseur
   const groupBySupplier = (items: OrderItem[]) => {
     const grouped: Record<string, OrderItem[]> = {};
-    items.forEach(item => {
+    items.forEach((item) => {
       const supplier = item.fournisseur || "Sans fournisseur";
       if (!grouped[supplier]) {
         grouped[supplier] = [];
@@ -194,7 +176,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose}>
-      <div 
+      <div
         className="fixed right-0 top-0 h-full w-[500px] bg-background shadow-xl animate-in slide-in-from-right duration-300"
         onClick={(e) => e.stopPropagation()}
       >
@@ -213,24 +195,29 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
         <Tabs defaultValue="shopping" className="flex-1">
           <TabsList className="w-full justify-start px-4 pt-2">
             <TabsTrigger value="shopping" className="flex items-center gap-1">
-              <ShoppingCart className="h-4 w-4" />
-              À commander
+              <ShoppingCart className="h-4 w-4" />À commander
               {shoppingList.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{shoppingList.length}</Badge>
+                <Badge variant="secondary" className="ml-1">
+                  {shoppingList.length}
+                </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="inprogress" className="flex items-center gap-1">
               <Truck className="h-4 w-4" />
               En cours
               {ordersInProgress.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{ordersInProgress.length}</Badge>
+                <Badge variant="secondary" className="ml-1">
+                  {ordersInProgress.length}
+                </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="received" className="flex items-center gap-1">
               <PackageCheck className="h-4 w-4" />
               Réceptionnées
               {receivedOrders.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{receivedOrders.length}</Badge>
+                <Badge variant="secondary" className="ml-1">
+                  {receivedOrders.length}
+                </Badge>
               )}
             </TabsTrigger>
           </TabsList>
@@ -240,7 +227,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             <div className="p-4 border-b bg-muted/30">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Checkbox 
+                  <Checkbox
                     checked={selectedItems.size === shoppingList.length && shoppingList.length > 0}
                     onCheckedChange={selectAllShoppingList}
                   />
@@ -269,18 +256,18 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                   {shoppingList.map((item) => (
                     <Card key={item.id} className="p-3">
                       <div className="flex items-start gap-3">
-                        <Checkbox 
+                        <Checkbox
                           checked={selectedItems.has(item.id)}
                           onCheckedChange={() => toggleSelectItem(item.id)}
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-medium truncate">{item.nom_accessoire}</span>
-                            <Badge variant="outline" className="text-xs">x{item.quantite}</Badge>
+                            <Badge variant="outline" className="text-xs">
+                              x{item.quantite}
+                            </Badge>
                           </div>
-                          {item.marque && (
-                            <p className="text-xs text-muted-foreground">{item.marque}</p>
-                          )}
+                          {item.marque && <p className="text-xs text-muted-foreground">{item.marque}</p>}
                           <div className="flex items-center gap-2 mt-1">
                             <Badge variant="secondary" className="text-xs">
                               {item.project_name}
@@ -340,11 +327,11 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium truncate">{item.nom_accessoire}</span>
-                                <Badge variant="outline" className="text-xs">x{item.quantite}</Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  x{item.quantite}
+                                </Badge>
                               </div>
-                              {item.marque && (
-                                <p className="text-xs text-muted-foreground">{item.marque}</p>
-                              )}
+                              {item.marque && <p className="text-xs text-muted-foreground">{item.marque}</p>}
                               <Badge variant="secondary" className="text-xs mt-1">
                                 {item.project_name}
                               </Badge>
@@ -360,8 +347,8 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                             </div>
                             <div className="flex flex-col items-end gap-2">
                               <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
-                              <Button 
-                                size="sm" 
+                              <Button
+                                size="sm"
                                 variant="outline"
                                 className="h-7 text-xs"
                                 onClick={() => updateOrderStatus(item.id, "livre")}
@@ -406,11 +393,11 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                               <div className="flex items-center gap-2">
                                 <PackageCheck className="h-4 w-4 text-green-600" />
                                 <span className="font-medium truncate">{item.nom_accessoire}</span>
-                                <Badge variant="outline" className="text-xs">x{item.quantite}</Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  x{item.quantite}
+                                </Badge>
                               </div>
-                              {item.marque && (
-                                <p className="text-xs text-muted-foreground ml-6">{item.marque}</p>
-                              )}
+                              {item.marque && <p className="text-xs text-muted-foreground ml-6">{item.marque}</p>}
                               <div className="flex items-center gap-2 ml-6 mt-1">
                                 <Badge variant="secondary" className="text-xs">
                                   {item.project_name}
