@@ -864,8 +864,15 @@ export function TemplateDrawingCanvas({
       const finalWidth = img.width * scale;
       const finalHeight = img.height * scale;
 
-      canvas.setWidth(finalWidth);
-      canvas.setHeight(finalHeight);
+      // 🔧 BUG FIX: Vérifier que le canvas est initialisé avant de définir les dimensions
+      try {
+        if (canvas.lowerCanvasEl) {
+          canvas.setWidth(finalWidth);
+          canvas.setHeight(finalHeight);
+        }
+      } catch (e) {
+        console.warn('Canvas dimensions warning:', e);
+      }
 
       FabricImage.fromURL(imageUrl).then((fabricImg) => {
         // Centrer l'image sur le canvas
@@ -2380,8 +2387,16 @@ export function TemplateDrawingCanvas({
     const containerHeight = window.innerHeight;
 
     // Adapter la taille du canvas à la fenêtre
-    fabricCanvas.setWidth(containerWidth);
-    fabricCanvas.setHeight(containerHeight);
+    // 🔧 BUG FIX: Vérifier que le canvas est initialisé avant de définir les dimensions
+    try {
+      if (fabricCanvas.lowerCanvasEl) {
+        fabricCanvas.setWidth(containerWidth);
+        fabricCanvas.setHeight(containerHeight);
+      }
+    } catch (e) {
+      console.warn('Fullscreen canvas dimensions warning:', e);
+      return;
+    }
 
     const bg = fabricCanvas.backgroundImage as FabricImage | null;
     if (bg && bg.width && bg.height) {
