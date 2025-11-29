@@ -4,8 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertCircle, CheckCircle, Calculator, Zap, Ruler } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type CalculationMode = "section" | "current" | "length";
 
@@ -126,19 +126,33 @@ export const CableSectionCalculator = () => {
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="mode" className="text-base font-semibold">
-            Mode de calcul
-          </Label>
-          <Select value={calculationMode} onValueChange={(value) => setCalculationMode(value as CalculationMode)}>
-            <SelectTrigger className="h-12 text-lg">
-              <SelectValue placeholder="Sélectionner le mode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="section">Calculer la section minimale</SelectItem>
-              <SelectItem value="current">Calculer l'intensité maximale</SelectItem>
-              <SelectItem value="length">Calculer la longueur maximale</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label className="text-base font-semibold">Mode de calcul</Label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={calculationMode === "section" ? "default" : "outline"}
+              onClick={() => setCalculationMode("section")}
+              className="flex items-center gap-2"
+            >
+              <Calculator className="h-4 w-4" />
+              Calculer la section minimale
+            </Button>
+            <Button
+              variant={calculationMode === "current" ? "default" : "outline"}
+              onClick={() => setCalculationMode("current")}
+              className="flex items-center gap-2"
+            >
+              <Zap className="h-4 w-4" />
+              Calculer l'intensité maximale
+            </Button>
+            <Button
+              variant={calculationMode === "length" ? "default" : "outline"}
+              onClick={() => setCalculationMode("length")}
+              className="flex items-center gap-2"
+            >
+              <Ruler className="h-4 w-4" />
+              Calculer la longueur maximale
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -212,8 +226,8 @@ export const CableSectionCalculator = () => {
               <Label htmlFor="section" className="text-base font-semibold">
                 Section (mm²)
               </Label>
-              <Select 
-                value={selectedSection > 0 ? selectedSection.toString() : ""} 
+              <Select
+                value={selectedSection > 0 ? selectedSection.toString() : ""}
                 onValueChange={(value) => setSelectedSection(Number(value))}
               >
                 <SelectTrigger className="h-12 text-lg">
@@ -245,18 +259,42 @@ export const CableSectionCalculator = () => {
         )}
 
         {calculationMode === "length" && maxLengthResult !== null && selectedSection > 0 && current > 0 && (
-          <Alert className={maxLengthResult > 0 ? "bg-purple-50 dark:bg-purple-950 border-purple-500" : "bg-red-50 dark:bg-red-950 border-red-500"}>
-            <CheckCircle className={maxLengthResult > 0 ? "h-4 w-4 text-purple-600 dark:text-purple-400" : "h-4 w-4 text-red-600 dark:text-red-400"} />
-            <AlertDescription className={maxLengthResult > 0 ? "text-purple-800 dark:text-purple-200" : "text-red-800 dark:text-red-200"}>
+          <Alert
+            className={
+              maxLengthResult > 0
+                ? "bg-purple-50 dark:bg-purple-950 border-purple-500"
+                : "bg-red-50 dark:bg-red-950 border-red-500"
+            }
+          >
+            <CheckCircle
+              className={
+                maxLengthResult > 0
+                  ? "h-4 w-4 text-purple-600 dark:text-purple-400"
+                  : "h-4 w-4 text-red-600 dark:text-red-400"
+              }
+            />
+            <AlertDescription
+              className={
+                maxLengthResult > 0 ? "text-purple-800 dark:text-purple-200" : "text-red-800 dark:text-red-200"
+              }
+            >
               <span className="font-semibold text-xl">
-                {maxLengthResult > 0 ? `Longueur maximale : ${maxLengthResult.toFixed(1)} m (distance simple)` : "Section insuffisante"}
+                {maxLengthResult > 0
+                  ? `Longueur maximale : ${maxLengthResult.toFixed(1)} m (distance simple)`
+                  : "Section insuffisante"}
               </span>
               <br />
               <span className="text-sm">
                 {maxLengthResult > 0 ? (
-                  <>Pour {current} A avec une section de {selectedSection} mm² et une chute de tension max de 3%. Câble total nécessaire : {(maxLengthResult * 2).toFixed(1)} m</>
+                  <>
+                    Pour {current} A avec une section de {selectedSection} mm² et une chute de tension max de 3%. Câble
+                    total nécessaire : {(maxLengthResult * 2).toFixed(1)} m
+                  </>
                 ) : (
-                  <>L'intensité de {current} A dépasse la capacité maximale d'une section de {selectedSection} mm² ({maxCurrentBySectionMap[selectedSection]} A max)</>
+                  <>
+                    L'intensité de {current} A dépasse la capacité maximale d'une section de {selectedSection} mm² (
+                    {maxCurrentBySectionMap[selectedSection]} A max)
+                  </>
                 )}
               </span>
             </AlertDescription>
