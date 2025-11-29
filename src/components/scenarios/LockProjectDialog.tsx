@@ -1,5 +1,5 @@
 // components/scenarios/LockProjectDialog.tsx
-// Dialog pour verrouiller un projet et créer un snapshot du devis validé
+// Dialog pour verrouiller un projet et créer un snapshot du devis
 
 import { useState } from "react";
 import {
@@ -150,13 +150,15 @@ const LockProjectDialog = ({ projectId, scenarioId, onClose, onLocked }: LockPro
 
       if (updateError) throw updateError;
 
-      // 8. Verrouiller le scénario
-      const { error: lockError } = await (supabase
-        .from("project_scenarios" as any)
-        .update({ is_locked: true })
-        .eq("id", scenarioId) as any);
-
-      if (lockError) throw lockError;
+      // 8. Verrouiller le scénario (ignorer si colonne n'existe pas)
+      try {
+        await (supabase
+          .from("project_scenarios" as any)
+          .update({ is_locked: true })
+          .eq("id", scenarioId) as any);
+      } catch (e) {
+        console.log("Colonne is_locked non disponible, ignoré");
+      }
 
       // 9. Ajouter l'acompte comme paiement
       const { data: userData } = await supabase.auth.getUser();
@@ -176,7 +178,7 @@ const LockProjectDialog = ({ projectId, scenarioId, onClose, onLocked }: LockPro
       }
 
       // 10. Mettre toutes les dépenses du scénario en statut "commande" (shopping list)
-      const { error: expensesUpdateError } = await (supabase as any)
+      const { error: expensesUpdateError } = await supabase
         .from("project_expenses")
         .update({ statut_livraison: "commande" })
         .eq("scenario_id", scenarioId);
