@@ -43,7 +43,7 @@ interface Expense {
   intensite_amperes?: number;
 }
 
-const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange }: CompactExpensesListProps) => {
+const CompactExpensesList: React.FC<CompactExpensesListProps> = ({ projectId, scenarioId, isLocked, onExpenseChange }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
