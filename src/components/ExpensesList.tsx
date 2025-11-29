@@ -5,14 +5,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Settings, FileText, ShoppingCart } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Settings, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
 import { Input } from "@/components/ui/input";
 import CategoryManagementDialog from "./CategoryManagementDialog";
 import { NoticeSearchDialog } from "./NoticeSearchDialog";
-import OrderTrackingSidebar from "./OrderTrackingSidebar";
 
 interface Expense {
   id: string;
@@ -50,7 +49,13 @@ interface PaymentTransaction {
   montant: number;
 }
 
-const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, isLocked = false }: ExpensesListProps) => {
+const ExpensesList = ({
+  projectId,
+  onExpenseChange,
+  refreshTrigger,
+  scenarioId,
+  isLocked = false,
+}: ExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -62,7 +67,6 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isNoticeDialogOpen, setIsNoticeDialogOpen] = useState(false);
   const [selectedExpenseForNotice, setSelectedExpenseForNotice] = useState<Expense | null>(null);
-  const [isOrderTrackingOpen, setIsOrderTrackingOpen] = useState(false);
 
   useEffect(() => {
     loadExpenses();
@@ -70,11 +74,13 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
   }, [projectId, refreshTrigger]);
 
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
-  const [userCategories, setUserCategories] = useState<Array<{ id: string; nom: string; icon?: string; parent_id: string | null; user_id: string }>>([]);
+  const [userCategories, setUserCategories] = useState<
+    Array<{ id: string; nom: string; icon?: string; parent_id: string | null; user_id: string }>
+  >([]);
 
   const loadExpenses = async () => {
     setIsLoading(true);
-    
+
     // Charger les icônes des catégories
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user) {
@@ -82,17 +88,17 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
         .from("categories")
         .select("id, nom, icon, parent_id, user_id")
         .eq("user_id", userData.user.id);
-      
+
       if (categoriesData) {
         const iconsMap: Record<string, string> = {};
         categoriesData.forEach((cat: any) => {
-          iconsMap[cat.nom] = cat.icon || '📦';
+          iconsMap[cat.nom] = cat.icon || "📦";
         });
         setCategoryIcons(iconsMap);
         setUserCategories(categoriesData);
       }
     }
-    
+
     const { data, error } = await supabase
       .from("project_expenses")
       .select("*")
@@ -301,16 +307,10 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Liste des dépenses</h3>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsOrderTrackingOpen(true)}>
-            <ShoppingCart className="h-4 w-4 mr-2" />
-            Suivi commandes
-          </Button>
-          <Button onClick={() => setIsDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter une dépense
-          </Button>
-        </div>
+        <Button onClick={() => setIsDialogOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Ajouter une dépense
+        </Button>
       </div>
 
       {categories.length > 0 && (
@@ -329,15 +329,11 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
               size="sm"
               onClick={() => setSelectedCategory(cat)}
             >
-              <span className="mr-1.5">{categoryIcons[cat] || '📦'}</span>
+              <span className="mr-1.5">{categoryIcons[cat] || "📦"}</span>
               {cat} ({groupedByCategory[cat].length})
             </Button>
           ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsCategoryDialogOpen(true)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setIsCategoryDialogOpen(true)}>
             <Settings className="h-4 w-4 mr-1" />
             Gérer les catégories
           </Button>
@@ -354,7 +350,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-medium">{expense.nom_accessoire}</h4>
                       <Badge variant="outline" className="text-xs flex items-center gap-1">
-                        <span>{categoryIcons[expense.categorie] || '📦'}</span>
+                        <span>{categoryIcons[expense.categorie] || "📦"}</span>
                         {expense.categorie}
                       </Badge>
                       {expense.marque && (
@@ -542,7 +538,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
               <AccordionItem key={category} value={category} className="border rounded-lg px-4">
                 <AccordionTrigger className="hover:no-underline">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">{categoryIcons[category] || '📦'}</span>
+                    <span className="text-xl">{categoryIcons[category] || "📦"}</span>
                     <span className="font-semibold">{category}</span>
                     <Badge variant="secondary">{groupedByCategory[category].length} article(s)</Badge>
                   </div>
@@ -805,15 +801,6 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
           }}
         />
       )}
-
-      <OrderTrackingSidebar
-        isOpen={isOrderTrackingOpen}
-        onClose={() => setIsOrderTrackingOpen(false)}
-        onOrderChange={() => {
-          loadExpenses();
-          onExpenseChange?.();
-        }}
-      />
     </div>
   );
 };
