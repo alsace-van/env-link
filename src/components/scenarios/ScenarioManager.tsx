@@ -22,9 +22,10 @@ interface ScenarioManagerProps {
   projectId: string;
   project: ProjectWithStatus;
   onExpenseChange?: () => void;
+  onProjectChange?: () => void;
 }
 
-const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManagerProps) => {
+const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange }: ScenarioManagerProps) => {
   const { scenarios, principalScenario, isLoading, reloadScenarios } = useScenarios(projectId);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
@@ -234,7 +235,10 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
                     onExpenseChange?.();
                     reloadScenarios();
                   }}
-                  onScenarioChange={reloadScenarios}
+                  onScenarioChange={() => {
+                    reloadScenarios();
+                    onProjectChange?.();
+                  }}
                 />
               </div>
             ))}
