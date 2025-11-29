@@ -499,6 +499,8 @@ export function TemplateDrawingCanvas({
   const imgRef = useRef<HTMLImageElement | null>(null);
   const gridLinesRef = useRef<any[]>([]);
   const activeCurveRef = useRef<EditableCurve | null>(null);
+  const activeLineRef = useRef<Line | null>(null);
+  const lineHandlesRef = useRef<Circle[]>([]);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const previousCanvasSizeRef = useRef<{
     width: number;
@@ -514,100 +516,65 @@ export function TemplateDrawingCanvas({
     return { x: pointer.x, y: pointer.y };
   }, []);
 
-  // ✅ CORRECTION : Fonction snap améliorée avec snapping vers les courbes
+  // ✅ Fonction snap simplifiée - UNIQUEMENT vers les objets utilisateur
   const snapPoint = useCallback(
     (point: { x: number; y: number }, canvas?: FabricCanvas) => {
-      const SNAP_DISTANCE = 20; // Distance de détection en pixels
-
-      // Snapping uniquement vers les points d'extrémité des objets UTILISATEUR si magnétisme activé
-      if (snapToGrid && canvas) {
-        const objects = canvas.getObjects();
-        let minDistance = SNAP_DISTANCE;
-        let targetPoint: { x: number; y: number } | null = null;
-
-        objects.forEach((obj) => {
-          // SEULEMENT snapper vers les objets créés par l'utilisateur (marqués isUserDrawn)
-          // Ignorer TOUT le reste (grille, règles, poignées, etc.)
-          if (!(obj as any).isUserDrawn) {
-            return;
-          }
-
-          let snapPoints: { x: number; y: number }[] = [];
-
-          // 🎯 Pour les courbes éditables - UNIQUEMENT les extrémités
-          if ((obj as any).customType === "editableCurve") {
-            const curve = obj as unknown as EditableCurve;
-
-            // Utiliser les controlPoints directement (coordonnées absolues)
-            const matrix = curve.calcTransformMatrix();
-            const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
-            const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
-
-            snapPoints.push({ x: startAbs.x, y: startAbs.y }, { x: endAbs.x, y: endAbs.y });
-          }
-          // 🎯 Pour les lignes - UNIQUEMENT les extrémités
-          else if (obj instanceof Line) {
-            const line = obj as Line;
-            snapPoints.push({ x: line.x1 ?? 0, y: line.y1 ?? 0 }, { x: line.x2 ?? 0, y: line.y2 ?? 0 });
-          }
-          // 🎯 Pour les rectangles - coins uniquement
-          else if (obj instanceof Rect) {
-            const rect = obj as Rect;
-            const left = rect.left ?? 0;
-            const top = rect.top ?? 0;
-            const width = rect.width ?? 0;
-            const height = rect.height ?? 0;
-
-            snapPoints.push(
-              { x: left, y: top }, // Coin supérieur gauche
-              { x: left + width, y: top }, // Coin supérieur droit
-              { x: left, y: top + height }, // Coin inférieur gauche
-              { x: left + width, y: top + height }, // Coin inférieur droit
-            );
-          }
-          // 🎯 Pour les cercles - points cardinaux uniquement
-          else if (obj instanceof Circle) {
-            const circle = obj as Circle;
-            const cx = circle.left ?? 0;
-            const cy = circle.top ?? 0;
-            const r = circle.radius ?? 0;
-
-            snapPoints.push(
-              { x: cx - r, y: cy }, // Gauche
-              { x: cx + r, y: cy }, // Droite
-              { x: cx, y: cy - r }, // Haut
-              { x: cx, y: cy + r }, // Bas
-            );
-          }
-          // 🎯 Pour les polygones et autres paths - points uniquement
-          else if (obj instanceof Polygon || obj instanceof Path) {
-            if (obj instanceof Polygon) {
-              const polygon = obj as Polygon;
-              const matrix = polygon.calcTransformMatrix();
-              (polygon.points || []).forEach((pt: any) => {
-                const transformed = new Point(pt.x, pt.y).transform(matrix);
-                snapPoints.push({ x: transformed.x, y: transformed.y });
-              });
-            }
-          }
-
-          // Tester tous les points de snap
-          snapPoints.forEach((p) => {
-            const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
-            if (distance < minDistance) {
-              minDistance = distance;
-              targetPoint = { x: p.x, y: p.y };
-            }
-          });
-        });
-
-        if (targetPoint) {
-          return targetPoint;
-        }
+      // Si magnétisme désactivé, retourner le point tel quel
+      if (!snapToGrid || !canvas) {
+        return point;
       }
 
-      // Pas de snap vers la grille - retourner le point original
-      return point;
+      const SNAP_DISTANCE = 15; // Distance de détection en pixels
+      let minDistance = SNAP_DISTANCE;
+      let targetPoint: { x: number; y: number } | null = null;
+
+      canvas.getObjects().forEach((obj) => {
+        // UNIQUEMENT les objets créés par l'utilisateur, ignorer les poignées
+        if (!(obj as any).isUserDrawn || (obj as any).isLineHandle) {
+          return;
+        }
+
+        let endpoints: { x: number; y: number }[] = [];
+
+        // Lignes : extrémités
+        if (obj instanceof Line) {
+          const line = obj as Line;
+          endpoints.push({ x: line.x1 ?? 0, y: line.y1 ?? 0 }, { x: line.x2 ?? 0, y: line.y2 ?? 0 });
+        }
+        // Courbes éditables : extrémités
+        else if ((obj as any).customType === "editableCurve") {
+          const curve = obj as unknown as EditableCurve;
+          const matrix = curve.calcTransformMatrix();
+          const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
+          const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
+          endpoints.push({ x: startAbs.x, y: startAbs.y }, { x: endAbs.x, y: endAbs.y });
+        }
+        // Rectangles : coins
+        else if (obj instanceof Rect) {
+          const rect = obj as Rect;
+          const left = rect.left ?? 0;
+          const top = rect.top ?? 0;
+          const width = (rect.width ?? 0) * (rect.scaleX ?? 1);
+          const height = (rect.height ?? 0) * (rect.scaleY ?? 1);
+          endpoints.push(
+            { x: left, y: top },
+            { x: left + width, y: top },
+            { x: left, y: top + height },
+            { x: left + width, y: top + height },
+          );
+        }
+
+        // Tester la distance vers chaque point
+        endpoints.forEach((p) => {
+          const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
+          if (distance < minDistance) {
+            minDistance = distance;
+            targetPoint = { x: p.x, y: p.y };
+          }
+        });
+      });
+
+      return targetPoint || point;
     },
     [snapToGrid],
   );
@@ -927,14 +894,7 @@ export function TemplateDrawingCanvas({
     toast.success("Canevas de traçage prêt !");
 
     return () => {
-      try {
-        if (canvas && canvas.lowerCanvasEl) {
-          canvas.dispose();
-        }
-      } catch (e) {
-        // Canvas may already be disposed, ignore cleanup errors
-        console.warn('Canvas cleanup warning:', e);
-      }
+      canvas.dispose();
     };
   }, [imageUrl]);
 
@@ -1075,13 +1035,100 @@ export function TemplateDrawingCanvas({
   useEffect(() => {
     if (!fabricCanvas) return;
 
+    // Fonction pour créer les poignées d'une ligne
+    const createLineHandles = (line: Line) => {
+      removeLineHandles();
+
+      const x1 = line.x1 ?? 0;
+      const y1 = line.y1 ?? 0;
+      const x2 = line.x2 ?? 0;
+      const y2 = line.y2 ?? 0;
+
+      const handleProps = {
+        radius: 6,
+        fill: "#3b82f6",
+        stroke: "#ffffff",
+        strokeWidth: 2,
+        selectable: true,
+        evented: true,
+        hasControls: false,
+        hasBorders: false,
+        originX: "center" as const,
+        originY: "center" as const,
+        hoverCursor: "pointer",
+      };
+
+      const handle1 = new Circle({ ...handleProps, left: x1, top: y1 });
+      const handle2 = new Circle({ ...handleProps, left: x2, top: y2 });
+
+      (handle1 as any).isLineHandle = true;
+      (handle1 as any).handleType = "start";
+      (handle1 as any).parentLine = line;
+
+      (handle2 as any).isLineHandle = true;
+      (handle2 as any).handleType = "end";
+      (handle2 as any).parentLine = line;
+
+      // Gérer le déplacement des poignées avec magnétisme
+      handle1.on("moving", () => {
+        const pos = { x: handle1.left ?? 0, y: handle1.top ?? 0 };
+        const snapped = snapPoint(pos, fabricCanvas);
+        handle1.set({ left: snapped.x, top: snapped.y });
+        line.set({ x1: snapped.x, y1: snapped.y });
+        line.setCoords();
+        fabricCanvas.requestRenderAll();
+      });
+
+      handle2.on("moving", () => {
+        const pos = { x: handle2.left ?? 0, y: handle2.top ?? 0 };
+        const snapped = snapPoint(pos, fabricCanvas);
+        handle2.set({ left: snapped.x, top: snapped.y });
+        line.set({ x2: snapped.x, y2: snapped.y });
+        line.setCoords();
+        fabricCanvas.requestRenderAll();
+      });
+
+      fabricCanvas.add(handle1);
+      fabricCanvas.add(handle2);
+      lineHandlesRef.current = [handle1, handle2];
+    };
+
+    // Fonction pour supprimer les poignées
+    const removeLineHandles = () => {
+      lineHandlesRef.current.forEach((handle) => {
+        fabricCanvas.remove(handle);
+      });
+      lineHandlesRef.current = [];
+    };
+
+    // Synchroniser les poignées avec la position de la ligne
+    const syncLineHandles = (line: Line) => {
+      if (lineHandlesRef.current.length === 2) {
+        lineHandlesRef.current[0].set({ left: line.x1, top: line.y1 });
+        lineHandlesRef.current[0].setCoords();
+        lineHandlesRef.current[1].set({ left: line.x2, top: line.y2 });
+        lineHandlesRef.current[1].setCoords();
+      }
+    };
+
     const handleSelection = (e: any) => {
       const selected = e.selected?.[0];
+
+      // Ignorer la sélection des poignées (ligne ou courbe)
+      if (selected && ((selected as any).isLineHandle || (selected as any).isControlHandle)) {
+        return;
+      }
 
       // Cacher les poignées de la courbe précédente
       if (activeCurveRef.current && activeCurveRef.current !== selected) {
         activeCurveRef.current.removeHandles(fabricCanvas);
         activeCurveRef.current = null;
+      }
+
+      // Cacher les poignées de la ligne précédente
+      if (activeLineRef.current && activeLineRef.current !== selected) {
+        removeLineHandles();
+        activeLineRef.current = null;
       }
 
       // Si c'est une courbe éditable, montrer les poignées
@@ -1090,6 +1137,11 @@ export function TemplateDrawingCanvas({
         curve.createHandles(fabricCanvas, strokeColor);
         activeCurveRef.current = curve;
       }
+      // Si c'est une ligne utilisateur, montrer les poignées aux extrémités
+      else if (selected && selected instanceof Line && (selected as any).isUserDrawn) {
+        createLineHandles(selected);
+        activeLineRef.current = selected;
+      }
     };
 
     const handleDeselection = () => {
@@ -1097,13 +1149,21 @@ export function TemplateDrawingCanvas({
         activeCurveRef.current.removeHandles(fabricCanvas);
         activeCurveRef.current = null;
       }
+      if (activeLineRef.current) {
+        removeLineHandles();
+        activeLineRef.current = null;
+      }
     };
 
-    // 🔧 BUG FIX : Mettre à jour les poignées quand la courbe bouge
+    // 🔧 BUG FIX : Mettre à jour les poignées quand la courbe ou ligne bouge
     const handleObjectMoving = (e: any) => {
       const obj = e.target;
       if (obj && (obj as any).customType === "editableCurve") {
-        // La synchronisation est maintenant gérée automatiquement par les event listeners dans EditableCurve
+        fabricCanvas.requestRenderAll();
+      }
+      // Ne pas synchroniser si c'est une poignée qui bouge
+      if (obj && obj instanceof Line && (obj as any).isUserDrawn && !(obj as any).isLineHandle) {
+        syncLineHandles(obj);
         fabricCanvas.requestRenderAll();
       }
     };
@@ -1151,7 +1211,7 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("object:moving", handleObjectMoving);
       fabricCanvas.off("object:modified", handleObjectModified);
     };
-  }, [fabricCanvas, strokeColor]);
+  }, [fabricCanvas, strokeColor, snapPoint]);
 
   // Gérer les outils
   useEffect(() => {
@@ -1200,6 +1260,7 @@ export function TemplateDrawingCanvas({
         !obj.isGridLine &&
         !obj.isControlHandle &&
         !obj.isControlLine &&
+        !obj.isLineHandle &&
         !gridLinesRef.current.includes(obj)
       ) {
         obj.selectable = true;
@@ -1209,6 +1270,10 @@ export function TemplateDrawingCanvas({
         if (activeTool === "select") {
           obj.hoverCursor = "move";
         }
+      } else if (obj.isLineHandle || obj.isControlHandle) {
+        // Les poignées restent sélectionnables
+        obj.selectable = true;
+        obj.evented = true;
       } else {
         // Forcer les objets non sélectionnables à le rester
         obj.selectable = false;
@@ -1995,6 +2060,10 @@ export function TemplateDrawingCanvas({
             selectable: true,
             evented: true,
             objectCaching: false,
+            hasControls: false, // Pas de bounding box
+            hasBorders: false, // Pas de bordure
+            lockRotation: true,
+            perPixelTargetFind: true, // Sélection précise sur le trait
           });
           (activeObject as any).isUserDrawn = true;
         } else if (activeTool === "rectangle") {
@@ -2049,43 +2118,50 @@ export function TemplateDrawingCanvas({
         if (!isDrawing || !startPoint || !e.e || !activeObject) return;
 
         const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
+        // Pas de snap pendant le tracé pour fluidité
 
         if (activeTool === "line") {
           activeObject.set({
-            x2: snappedPoint.x,
-            y2: snappedPoint.y,
+            x2: canvasPoint.x,
+            y2: canvasPoint.y,
           });
         } else if (activeTool === "rectangle") {
-          const width = snappedPoint.x - startPoint.x;
-          const height = snappedPoint.y - startPoint.y;
+          const width = canvasPoint.x - startPoint.x;
+          const height = canvasPoint.y - startPoint.y;
           activeObject.set({
             width: Math.abs(width),
             height: Math.abs(height),
-            left: width > 0 ? startPoint.x : snappedPoint.x,
-            top: height > 0 ? startPoint.y : snappedPoint.y,
+            left: width > 0 ? startPoint.x : canvasPoint.x,
+            top: height > 0 ? startPoint.y : canvasPoint.y,
           });
         } else if (activeTool === "circle") {
-          const dx = snappedPoint.x - startPoint.x;
-          const dy = snappedPoint.y - startPoint.y;
+          const dx = canvasPoint.x - startPoint.x;
+          const dy = canvasPoint.y - startPoint.y;
           const radius = Math.sqrt(dx * dx + dy * dy);
           activeObject.set({ radius: radius });
         } else if (activeTool === "ellipse") {
-          const rx = Math.abs(snappedPoint.x - startPoint.x);
-          const ry = Math.abs(snappedPoint.y - startPoint.y);
+          const rx = Math.abs(canvasPoint.x - startPoint.x);
+          const ry = Math.abs(canvasPoint.y - startPoint.y);
           activeObject.set({
             rx: rx,
             ry: ry,
-            left: snappedPoint.x > startPoint.x ? startPoint.x : snappedPoint.x,
-            top: snappedPoint.y > startPoint.y ? startPoint.y : snappedPoint.y,
+            left: canvasPoint.x > startPoint.x ? startPoint.x : canvasPoint.x,
+            top: canvasPoint.y > startPoint.y ? startPoint.y : canvasPoint.y,
           });
         }
 
         fabricCanvas.renderAll();
       });
 
-      fabricCanvas.on("mouse:up", () => {
+      fabricCanvas.on("mouse:up", (e) => {
         if (isDrawing && activeObject) {
+          // Appliquer le magnétisme uniquement au point final si activé
+          if (activeTool === "line" && e.e) {
+            const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
+            const snappedEnd = snapPoint(canvasPoint, fabricCanvas);
+            activeObject.set({ x2: snappedEnd.x, y2: snappedEnd.y });
+          }
+
           // S'assurer que l'objet est bien sélectionnable
           activeObject.setCoords();
           activeObject.set({
