@@ -1,10 +1,10 @@
 // hooks/useScenarios.ts
 // Hook pour gérer les scénarios d'un projet
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import type { Scenario } from '@/types/scenarios';
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import type { Scenario } from "@/types/scenarios";
 
 export const useScenarios = (projectId: string) => {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -13,24 +13,23 @@ export const useScenarios = (projectId: string) => {
 
   const loadScenarios = async () => {
     if (!projectId) return;
-    
+
     setIsLoading(true);
     const { data, error } = await (supabase
-      .from('project_scenarios' as any)
-      .select('*')
-      .eq('project_id', projectId)
-      .order('ordre', { ascending: true }) as any);
+      .from("project_scenarios" as any)
+      .select("*")
+      .eq("project_id", projectId)
+      .order("ordre", { ascending: true }) as any);
 
     if (error) {
-      console.error('Erreur lors du chargement des scénarios:', error);
-      // Si la table n'existe pas encore, ne pas afficher d'erreur
-      if (!error.message?.includes('does not exist')) {
-        toast.error('Erreur lors du chargement des scénarios');
+      console.error("Erreur lors du chargement des scénarios:", error);
+      if (!error.message?.includes("does not exist")) {
+        toast.error("Erreur lors du chargement des scénarios");
       }
     } else {
       const scenariosData = (data || []) as Scenario[];
       setScenarios(scenariosData);
-      const principal = scenariosData.find(s => s.est_principal);
+      const principal = scenariosData.find((s) => s.est_principal);
       setPrincipalScenario(principal || null);
     }
     setIsLoading(false);
@@ -41,23 +40,23 @@ export const useScenarios = (projectId: string) => {
   }, [projectId]);
 
   const createScenario = async (nom: string, couleur?: string, icone?: string) => {
-    const maxOrdre = Math.max(...scenarios.map(s => s.ordre), 0);
-    
+    const maxOrdre = Math.max(...scenarios.map((s) => s.ordre), 0);
+
     const { data, error } = await (supabase
-      .from('project_scenarios' as any)
+      .from("project_scenarios" as any)
       .insert({
         project_id: projectId,
         nom,
-        couleur: couleur || '#3B82F6',
-        icone: icone || '📋',
-        est_principal: scenarios.length === 0, // Premier scénario = principal
-        ordre: maxOrdre + 1
+        couleur: couleur || "#3B82F6",
+        icone: icone || "📋",
+        est_principal: scenarios.length === 0,
+        ordre: maxOrdre + 1,
       })
       .select()
       .single() as any);
 
     if (error) {
-      toast.error('Erreur lors de la création du scénario');
+      toast.error("Erreur lors de la création du scénario");
       console.error(error);
       return null;
     }
@@ -68,12 +67,13 @@ export const useScenarios = (projectId: string) => {
   };
 
   const duplicateScenario = async (scenarioId: string, nouveauNom: string) => {
-    // Récupérer les dépenses du scénario à dupliquer
-    const result: any = await supabase.from('project_expenses').select('*').eq('project_id', projectId);
+    // ✅ CORRECTION : Filtrer par scenario_id au lieu de project_id
+    const result: any = await supabase.from("project_expenses").select("*").eq("scenario_id", scenarioId); // ✅ FIX: Filtrer par le bon scénario
+
     const { data: expenses, error: expensesError } = result;
 
     if (expensesError) {
-      toast.error('Erreur lors de la duplication');
+      toast.error("Erreur lors de la duplication");
       console.error(expensesError);
       return null;
     }
@@ -88,20 +88,20 @@ export const useScenarios = (projectId: string) => {
         const { id, created_at, ...expenseData } = expense;
         return {
           ...expenseData,
-          scenario_id: newScenario.id
+          scenario_id: newScenario.id,
         };
       });
 
-      const { error: insertError } = await supabase
-        .from('project_expenses')
-        .insert(newExpenses);
+      const { error: insertError } = await supabase.from("project_expenses").insert(newExpenses);
 
       if (insertError) {
-        toast.error('Erreur lors de la copie des dépenses');
+        toast.error("Erreur lors de la copie des dépenses");
         console.error(insertError);
       } else {
         toast.success(`Scénario dupliqué avec ${expenses.length} articles`);
       }
+    } else {
+      toast.success(`Scénario "${nouveauNom}" créé (vide)`);
     }
 
     return newScenario;
@@ -109,12 +109,12 @@ export const useScenarios = (projectId: string) => {
 
   const updateScenario = async (scenarioId: string, updates: Partial<Scenario>) => {
     const { error } = await (supabase
-      .from('project_scenarios' as any)
+      .from("project_scenarios" as any)
       .update(updates)
-      .eq('id', scenarioId) as any);
+      .eq("id", scenarioId) as any);
 
     if (error) {
-      toast.error('Erreur lors de la mise à jour');
+      toast.error("Erreur lors de la mise à jour");
       console.error(error);
       return false;
     }
@@ -124,24 +124,24 @@ export const useScenarios = (projectId: string) => {
   };
 
   const deleteScenario = async (scenarioId: string) => {
-    const scenario = scenarios.find(s => s.id === scenarioId);
+    const scenario = scenarios.find((s) => s.id === scenarioId);
     if (scenario?.est_principal) {
-      toast.error('Impossible de supprimer le scénario principal');
+      toast.error("Impossible de supprimer le scénario principal");
       return false;
     }
 
     const { error } = await (supabase
-      .from('project_scenarios' as any)
+      .from("project_scenarios" as any)
       .delete()
-      .eq('id', scenarioId) as any);
+      .eq("id", scenarioId) as any);
 
     if (error) {
-      toast.error('Erreur lors de la suppression');
+      toast.error("Erreur lors de la suppression");
       console.error(error);
       return false;
     }
 
-    toast.success('Scénario supprimé');
+    toast.success("Scénario supprimé");
     await loadScenarios();
     return true;
   };
@@ -151,23 +151,23 @@ export const useScenarios = (projectId: string) => {
 
     // Rétrogader l'ancien principal
     await (supabase
-      .from('project_scenarios' as any)
+      .from("project_scenarios" as any)
       .update({ est_principal: false })
-      .eq('id', principalScenario.id) as any);
+      .eq("id", principalScenario.id) as any);
 
     // Promouvoir le nouveau
     const { error } = await (supabase
-      .from('project_scenarios' as any)
+      .from("project_scenarios" as any)
       .update({ est_principal: true })
-      .eq('id', scenarioId) as any);
+      .eq("id", scenarioId) as any);
 
     if (error) {
-      toast.error('Erreur lors de la promotion');
+      toast.error("Erreur lors de la promotion");
       console.error(error);
       return false;
     }
 
-    toast.success('Scénario promu en principal');
+    toast.success("Scénario promu en principal");
     await loadScenarios();
     return true;
   };
@@ -181,6 +181,6 @@ export const useScenarios = (projectId: string) => {
     updateScenario,
     deleteScenario,
     promoteScenario,
-    reloadScenarios: loadScenarios
+    reloadScenarios: loadScenarios,
   };
 };
