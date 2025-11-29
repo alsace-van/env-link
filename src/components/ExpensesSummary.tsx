@@ -33,7 +33,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
   const loadExpensesData = async () => {
     // D'abord, trouver le scénario principal du projet
-    const { data: scenarios } = await supabase
+    const { data: scenarios } = await (supabase as any)
       .from("project_scenarios")
       .select("id")
       .eq("project_id", projectId)
@@ -52,7 +52,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
     }
 
     // Charger uniquement les dépenses du scénario principal
-    const { data, error } = await supabase.from("project_expenses").select("*").eq("scenario_id", scenarios.id);
+    const { data, error } = await (supabase as any).from("project_expenses").select("*").eq("scenario_id", scenarios.id);
 
     if (error) {
       console.error(error);
