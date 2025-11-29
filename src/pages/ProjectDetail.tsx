@@ -1518,11 +1518,22 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
-                <ScenarioManager
-                  projectId={project.id}
-                  project={project as any}
-                  onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
-                />
+                <Tabs defaultValue="scenarios" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="scenarios">Scénarios & Dépenses</TabsTrigger>
+                    <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="scenarios" className="mt-4">
+                    <ScenarioManager
+                      projectId={project.id}
+                      project={project as any}
+                      onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                    />
+                  </TabsContent>
+                  <TabsContent value="bilan" className="mt-4">
+                    <BilanComptable projectId={project.id} projectName={project.nom} />
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
 
               <TabsContent value="documents" className="mt-6">
