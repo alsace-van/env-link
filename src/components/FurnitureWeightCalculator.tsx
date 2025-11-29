@@ -46,6 +46,12 @@ interface CustomWoodType {
   density: number;
 }
 
+interface CustomHardwareType {
+  id: string;
+  name: string;
+  weight: number;
+}
+
 // Types de contreplaqué par défaut avec leur masse volumique (kg/m³)
 const defaultPlywoodTypes = [
   { id: "peuplier", name: "Peuplier", density: 450 },
@@ -58,8 +64,8 @@ const defaultPlywoodTypes = [
 // Épaisseurs standards (mm)
 const standardThicknesses = [3, 5, 6, 8, 9, 10, 12, 15, 18, 21, 24, 27, 30];
 
-// Quincaillerie avec poids approximatifs (grammes)
-const hardwareTypes = [
+// Quincaillerie par défaut avec poids approximatifs (grammes)
+const defaultHardwareTypes = [
   { id: "coulisse_300", name: "Coulisse 300mm", weight: 300 },
   { id: "coulisse_400", name: "Coulisse 400mm", weight: 400 },
   { id: "coulisse_500", name: "Coulisse 500mm", weight: 500 },
@@ -75,7 +81,8 @@ const hardwareTypes = [
   { id: "equerre", name: "Équerre", weight: 50 },
 ];
 
-const STORAGE_KEY = "furniture_custom_wood_types";
+const WOOD_STORAGE_KEY = "furniture_custom_wood_types";
+const HARDWARE_STORAGE_KEY = "furniture_custom_hardware_types";
 
 const createDefaultColumn = (): FurnitureColumn => ({
   id: Date.now().toString(),
@@ -97,31 +104,54 @@ const createDefaultColumn = (): FurnitureColumn => ({
 export const FurnitureWeightCalculator = () => {
   const [columns, setColumns] = useState<FurnitureColumn[]>([createDefaultColumn()]);
   const [customWoodTypes, setCustomWoodTypes] = useState<CustomWoodType[]>([]);
-  const [showWoodDialog, setShowWoodDialog] = useState(false);
+  const [customHardwareTypes, setCustomHardwareTypes] = useState<CustomHardwareType[]>([]);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"wood" | "hardware">("wood");
   const [newWoodName, setNewWoodName] = useState("");
   const [newWoodDensity, setNewWoodDensity] = useState(500);
+  const [newHardwareName, setNewHardwareName] = useState("");
+  const [newHardwareWeight, setNewHardwareWeight] = useState(100);
 
-  // Charger les essences personnalisées au démarrage
+  // Charger les données personnalisées au démarrage
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
+    const savedWood = localStorage.getItem(WOOD_STORAGE_KEY);
+    if (savedWood) {
       try {
-        setCustomWoodTypes(JSON.parse(saved));
+        setCustomWoodTypes(JSON.parse(savedWood));
       } catch (e) {
         console.error("Erreur chargement essences:", e);
+      }
+    }
+    const savedHardware = localStorage.getItem(HARDWARE_STORAGE_KEY);
+    if (savedHardware) {
+      try {
+        setCustomHardwareTypes(JSON.parse(savedHardware));
+      } catch (e) {
+        console.error("Erreur chargement quincaillerie:", e);
       }
     }
   }, []);
 
   // Sauvegarder les essences personnalisées
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(customWoodTypes));
+    localStorage.setItem(WOOD_STORAGE_KEY, JSON.stringify(customWoodTypes));
   }, [customWoodTypes]);
+
+  // Sauvegarder la quincaillerie personnalisée
+  useEffect(() => {
+    localStorage.setItem(HARDWARE_STORAGE_KEY, JSON.stringify(customHardwareTypes));
+  }, [customHardwareTypes]);
 
   // Liste complète des essences (défaut + personnalisées)
   const allWoodTypes = [
     ...defaultPlywoodTypes,
     ...customWoodTypes.map((c) => ({ id: `custom_${c.id}`, name: c.name, density: c.density })),
+  ];
+
+  // Liste complète de la quincaillerie (défaut + personnalisée)
+  const allHardwareTypes = [
+    ...defaultHardwareTypes,
+    ...customHardwareTypes.map((c) => ({ id: `custom_${c.id}`, name: c.name, weight: c.weight })),
   ];
 
   const addCustomWoodType = () => {
@@ -151,6 +181,33 @@ export const FurnitureWeightCalculator = () => {
     toast.success("Essence supprimée");
   };
 
+  const addCustomHardwareType = () => {
+    if (!newHardwareName.trim()) {
+      toast.error("Veuillez entrer un nom");
+      return;
+    }
+    if (newHardwareWeight <= 0) {
+      toast.error("Le poids doit être supérieur à 0");
+      return;
+    }
+
+    const newType: CustomHardwareType = {
+      id: Date.now().toString(),
+      name: newHardwareName.trim(),
+      weight: newHardwareWeight,
+    };
+
+    setCustomHardwareTypes([...customHardwareTypes, newType]);
+    setNewHardwareName("");
+    setNewHardwareWeight(100);
+    toast.success(`"${newType.name}" ajouté`);
+  };
+
+  const removeCustomHardwareType = (id: string) => {
+    setCustomHardwareTypes(customHardwareTypes.filter((c) => c.id !== id));
+    toast.success("Élément supprimé");
+  };
+
   const calculateWoodWeight = (entries: WoodEntry[]) => {
     return entries.reduce((total, entry) => {
       const selectedPlywood = allWoodTypes.find((p) => p.id === entry.plywoodType);
@@ -162,7 +219,7 @@ export const FurnitureWeightCalculator = () => {
 
   const calculateHardwareWeight = (hardware: HardwareEntry[]) => {
     return hardware.reduce((total, h) => {
-      const hwType = hardwareTypes.find((t) => t.id === h.type);
+      const hwType = allHardwareTypes.find((t) => t.id === h.type);
       return total + ((hwType?.weight || 0) * h.quantity) / 1000;
     }, 0);
   };
@@ -300,11 +357,11 @@ export const FurnitureWeightCalculator = () => {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowWoodDialog(true)}>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowSettingsDialog(true)}>
                     <Settings className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Gérer les essences de bois</TooltipContent>
+                <TooltipContent>Gérer bois et quincaillerie</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
@@ -470,7 +527,7 @@ export const FurnitureWeightCalculator = () => {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {hardwareTypes.map((t) => (
+                            {allHardwareTypes.map((t) => (
                               <SelectItem key={t.id} value={t.id} className="text-xs">
                                 {t.name} ({t.weight}g)
                               </SelectItem>
@@ -531,83 +588,184 @@ export const FurnitureWeightCalculator = () => {
         )}
       </CardContent>
 
-      {/* Dialog pour gérer les essences de bois */}
-      <Dialog open={showWoodDialog} onOpenChange={setShowWoodDialog}>
-        <DialogContent className="max-w-md">
+      {/* Dialog pour gérer bois et quincaillerie */}
+      <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Gérer les essences de bois</DialogTitle>
-            <DialogDescription>Ajoutez vos propres essences avec leur masse volumique</DialogDescription>
+            <DialogTitle>Paramètres du calculateur</DialogTitle>
+            <DialogDescription>Gérez vos essences de bois et quincaillerie personnalisées</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Liste des essences par défaut */}
-            <div>
-              <Label className="text-xs text-muted-foreground">Essences par défaut</Label>
-              <div className="mt-2 space-y-1">
-                {defaultPlywoodTypes.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between text-sm py-1 px-2 bg-muted/50 rounded">
-                    <span>{p.name}</span>
-                    <span className="text-muted-foreground">{p.density} kg/m³</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {/* Onglets */}
+          <div className="flex gap-2 border-b pb-2">
+            <Button
+              variant={settingsTab === "wood" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setSettingsTab("wood")}
+            >
+              🪵 Essences de bois
+            </Button>
+            <Button
+              variant={settingsTab === "hardware" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setSettingsTab("hardware")}
+            >
+              🔩 Quincaillerie
+            </Button>
+          </div>
 
-            {/* Liste des essences personnalisées */}
-            {customWoodTypes.length > 0 && (
-              <div>
-                <Label className="text-xs text-muted-foreground">Vos essences personnalisées</Label>
-                <div className="mt-2 space-y-1">
-                  {customWoodTypes.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex items-center justify-between text-sm py-1 px-2 bg-blue-50 dark:bg-blue-950 rounded"
-                    >
-                      <span>{p.name}</span>
-                      <div className="flex items-center gap-2">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+            {/* ONGLET BOIS */}
+            {settingsTab === "wood" && (
+              <>
+                {/* Liste des essences par défaut */}
+                <div>
+                  <Label className="text-xs text-muted-foreground">Essences par défaut</Label>
+                  <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                    {defaultPlywoodTypes.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between text-sm py-1 px-2 bg-muted/50 rounded"
+                      >
+                        <span>{p.name}</span>
                         <span className="text-muted-foreground">{p.density} kg/m³</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => removeCustomWoodType(p.id)}
-                        >
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+
+                {/* Liste des essences personnalisées */}
+                {customWoodTypes.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Vos essences personnalisées</Label>
+                    <div className="mt-2 space-y-1">
+                      {customWoodTypes.map((p) => (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-between text-sm py-1 px-2 bg-blue-50 dark:bg-blue-950 rounded"
+                        >
+                          <span>{p.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">{p.density} kg/m³</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => removeCustomWoodType(p.id)}
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Formulaire d'ajout bois */}
+                <div className="border-t pt-4">
+                  <Label className="text-sm font-medium">Ajouter une nouvelle essence</Label>
+                  <div className="mt-2 grid grid-cols-[1fr,100px,auto] gap-2">
+                    <Input
+                      value={newWoodName}
+                      onChange={(e) => setNewWoodName(e.target.value)}
+                      placeholder="Nom (ex: Chêne, MDF...)"
+                      className="h-9"
+                    />
+                    <Input
+                      type="number"
+                      value={newWoodDensity}
+                      onChange={(e) => setNewWoodDensity(Number(e.target.value))}
+                      placeholder="kg/m³"
+                      className="h-9"
+                    />
+                    <Button onClick={addCustomWoodType} size="sm" className="h-9">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Densité en kg/m³ (ex: MDF≈750, Chêne≈700, Frêne≈650)
+                  </p>
+                </div>
+              </>
             )}
 
-            {/* Formulaire d'ajout */}
-            <div className="border-t pt-4">
-              <Label className="text-sm font-medium">Ajouter une nouvelle essence</Label>
-              <div className="mt-2 grid grid-cols-[1fr,100px,auto] gap-2">
-                <Input
-                  value={newWoodName}
-                  onChange={(e) => setNewWoodName(e.target.value)}
-                  placeholder="Nom (ex: Chêne, MDF...)"
-                  className="h-9"
-                />
-                <Input
-                  type="number"
-                  value={newWoodDensity}
-                  onChange={(e) => setNewWoodDensity(Number(e.target.value))}
-                  placeholder="kg/m³"
-                  className="h-9"
-                />
-                <Button onClick={addCustomWoodType} size="sm" className="h-9">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">Densité en kg/m³ (ex: MDF≈750, Chêne≈700, Frêne≈650)</p>
-            </div>
+            {/* ONGLET QUINCAILLERIE */}
+            {settingsTab === "hardware" && (
+              <>
+                {/* Liste quincaillerie par défaut */}
+                <div>
+                  <Label className="text-xs text-muted-foreground">Quincaillerie par défaut</Label>
+                  <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                    {defaultHardwareTypes.map((h) => (
+                      <div
+                        key={h.id}
+                        className="flex items-center justify-between text-sm py-1 px-2 bg-muted/50 rounded"
+                      >
+                        <span>{h.name}</span>
+                        <span className="text-muted-foreground">{h.weight} g</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Liste quincaillerie personnalisée */}
+                {customHardwareTypes.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Votre quincaillerie personnalisée</Label>
+                    <div className="mt-2 space-y-1">
+                      {customHardwareTypes.map((h) => (
+                        <div
+                          key={h.id}
+                          className="flex items-center justify-between text-sm py-1 px-2 bg-orange-50 dark:bg-orange-950 rounded"
+                        >
+                          <span>{h.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-muted-foreground">{h.weight} g</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => removeCustomHardwareType(h.id)}
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Formulaire d'ajout quincaillerie */}
+                <div className="border-t pt-4">
+                  <Label className="text-sm font-medium">Ajouter une quincaillerie</Label>
+                  <div className="mt-2 grid grid-cols-[1fr,80px,auto] gap-2">
+                    <Input
+                      value={newHardwareName}
+                      onChange={(e) => setNewHardwareName(e.target.value)}
+                      placeholder="Nom (ex: Poignée inox...)"
+                      className="h-9"
+                    />
+                    <Input
+                      type="number"
+                      value={newHardwareWeight}
+                      onChange={(e) => setNewHardwareWeight(Number(e.target.value))}
+                      placeholder="g"
+                      className="h-9"
+                    />
+                    <Button onClick={addCustomHardwareType} size="sm" className="h-9">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Poids en grammes (ex: Poignée≈150g, Vis lot≈50g)</p>
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowWoodDialog(false)}>
+            <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>
               Fermer
             </Button>
           </DialogFooter>
