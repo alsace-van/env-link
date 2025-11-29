@@ -40,6 +40,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   const [receivedOrders, setReceivedOrders] = useState<OrderItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [hasValidScenarios, setHasValidScenarios] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
@@ -63,15 +64,40 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     const projectIds = projects?.map((p) => p.id) || [];
 
     if (projectIds.length === 0) {
+      setShoppingList([]);
+      setOrdersInProgress([]);
+      setReceivedOrders([]);
       setIsLoading(false);
       return;
     }
 
-    // Charger toutes les dépenses de tous les projets
+    // Charger les scénarios principaux ET verrouillés
+    const { data: validScenarios } = await supabase
+      .from("project_scenarios")
+      .select("id, project_id")
+      .in("project_id", projectIds)
+      .eq("is_principal", true)
+      .eq("is_locked", true);
+
+    const validScenarioIds = validScenarios?.map((s) => s.id) || [];
+
+    if (validScenarioIds.length === 0) {
+      // Aucun scénario principal verrouillé
+      setHasValidScenarios(false);
+      setShoppingList([]);
+      setOrdersInProgress([]);
+      setReceivedOrders([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setHasValidScenarios(true);
+
+    // Charger uniquement les dépenses des scénarios principaux verrouillés
     const { data: expenses, error } = await supabase
       .from("project_expenses")
       .select("*")
-      .in("project_id", projectIds)
+      .in("scenario_id", validScenarioIds)
       .order("date_achat", { ascending: false });
 
     if (error) {
@@ -246,6 +272,12 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             <ScrollArea className="h-[calc(100vh-200px)]">
               {isLoading ? (
                 <div className="p-4 text-center text-muted-foreground">Chargement...</div>
+              ) : !hasValidScenarios ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium mb-2">Aucun scénario validé</p>
+                  <p className="text-sm">Verrouillez un scénario principal pour voir les articles à commander</p>
+                </div>
               ) : shoppingList.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
                   <ShoppingCart className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -307,6 +339,12 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             <ScrollArea className="h-[calc(100vh-160px)]">
               {isLoading ? (
                 <div className="p-4 text-center text-muted-foreground">Chargement...</div>
+              ) : !hasValidScenarios ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Truck className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium mb-2">Aucun scénario validé</p>
+                  <p className="text-sm">Verrouillez un scénario principal pour voir les commandes</p>
+                </div>
               ) : ordersInProgress.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
                   <Truck className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -372,6 +410,12 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             <ScrollArea className="h-[calc(100vh-160px)]">
               {isLoading ? (
                 <div className="p-4 text-center text-muted-foreground">Chargement...</div>
+              ) : !hasValidScenarios ? (
+                <div className="p-8 text-center text-muted-foreground">
+                  <PackageCheck className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium mb-2">Aucun scénario validé</p>
+                  <p className="text-sm">Verrouillez un scénario principal pour voir les réceptions</p>
+                </div>
               ) : receivedOrders.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
                   <PackageCheck className="h-12 w-12 mx-auto mb-2 opacity-20" />
