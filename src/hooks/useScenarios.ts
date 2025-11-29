@@ -174,35 +174,99 @@ export const useScenarios = (projectId: string) => {
 
   // Déverrouiller un scénario (pour tests)
   const unlockScenario = async (scenarioId: string) => {
-    const { error } = await (supabase
+    console.log("🔓 Début déverrouillage - scenarioId:", scenarioId, "projectId:", projectId);
+
+    // 1. Remettre le statut du projet en brouillon (CRITIQUE)
+    console.log("📝 Reset statut projet...");
+    const { data: projectData, error: projectError } = await supabase
+      .from("projects")
+      .update({
+        statut_financier: "brouillon",
+        date_validation_devis: null,
+        date_encaissement_acompte: null,
+        montant_acompte: null,
+      } as any)
+      .eq("id", projectId)
+      .select();
+
+    if (projectError) {
+      console.error("❌ Erreur reset projet:", projectError);
+      toast.error("Erreur lors du déverrouillage du projet");
+      return false;
+    }
+    console.log("✅ Projet réinitialisé:", projectData);
+
+    // 2. Essayer de déverrouiller le scénario (is_locked)
+    console.log("📝 Reset is_locked scénario...");
+    const { error: lockError } = await (supabase
       .from("project_scenarios" as any)
       .update({ is_locked: false })
       .eq("id", scenarioId) as any);
 
-    if (error) {
-      toast.error("Erreur lors du déverrouillage");
-      console.error(error);
-      return false;
+    if (lockError) {
+      console.log("⚠️ Colonne is_locked peut-être inexistante:", lockError.message);
+    } else {
+      console.log("✅ Scénario déverrouillé");
     }
 
-    toast.success("Scénario déverrouillé");
+    // 3. Supprimer les paiements de ce projet
+    console.log("📝 Suppression paiements...");
+    const { error: paymentError } = await supabase
+      .from("project_payment_transactions")
+      .delete()
+      .eq("project_id", projectId);
+
+    if (paymentError) {
+      console.log("⚠️ Erreur suppression paiements:", paymentError.message);
+    } else {
+      console.log("✅ Paiements supprimés");
+    }
+
+    // 4. Remettre les dépenses en statut null (non commandé)
+    console.log("📝 Reset statut dépenses...");
+    const { error: expensesError } = await supabase
+      .from("project_expenses")
+      .update({ statut_livraison: null })
+      .eq("scenario_id", scenarioId);
+
+    if (expensesError) {
+      console.log("⚠️ Erreur reset dépenses:", expensesError.message);
+    } else {
+      console.log("✅ Dépenses réinitialisées");
+    }
+
+    toast.success("Scénario déverrouillé et projet réinitialisé");
     await loadScenarios();
     return true;
   };
 
   // Effacer l'historique des devis (pour tests)
   const clearDevisHistory = async () => {
-    // Supprimer tous les devis de ce projet
-    const { error } = await (supabase as any).from("devis").delete().eq("project_id", projectId);
+    try {
+      // Supprimer les snapshots de devis
+      const { error: snapshotError } = await supabase.from("devis_snapshots").delete().eq("project_id", projectId);
 
-    if (error) {
+      if (snapshotError) {
+        console.error("Erreur suppression snapshots:", snapshotError);
+      }
+
+      // Supprimer l'historique des modifications
+      const { error: historyError } = await supabase
+        .from("project_expenses_history")
+        .delete()
+        .eq("project_id", projectId);
+
+      if (historyError) {
+        console.error("Erreur suppression historique:", historyError);
+      }
+
+      toast.success("Historique des devis effacé");
+      return true;
+    } catch (error) {
       toast.error("Erreur lors de la suppression de l'historique");
       console.error(error);
       return false;
     }
-
-    toast.success("Historique des devis effacé");
-    return true;
   };
 
   return {
