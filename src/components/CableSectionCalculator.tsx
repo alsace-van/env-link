@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 
 type CalculationMode = "section" | "current" | "length";
+type LengthMode = "aller" | "total";
 
 interface CableCatalogItem {
   id: string;
@@ -22,6 +23,7 @@ interface CableCatalogItem {
 
 export const CableSectionCalculator = () => {
   const [calculationMode, setCalculationMode] = useState<CalculationMode>("section");
+  const [lengthMode, setLengthMode] = useState<LengthMode>("aller");
   const [current, setCurrent] = useState<number>(0);
   const [power, setPower] = useState<number>(0);
   const [length, setLength] = useState<number>(0);
@@ -133,8 +135,8 @@ export const CableSectionCalculator = () => {
   // Sections standards de câbles (mm²)
   const standardSections = [0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120];
 
-  // Calibres de fusibles standards (A)
-  const standardFuses = [1, 2, 3, 5, 7.5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 100];
+  // Calibres de fusibles standards (A) - inclut mini fuse, ATO, midi fuse, mega fuse
+  const standardFuses = [1, 2, 3, 5, 7.5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 100, 125, 150, 175, 200];
 
   // Intensités maximales admissibles pour câbles souples (A)
   const maxCurrentBySectionMap: { [key: number]: number } = {
@@ -154,6 +156,11 @@ export const CableSectionCalculator = () => {
     120: 207,
   };
 
+  // Calculer la longueur totale de câble selon le mode
+  const getTotalLength = () => {
+    return lengthMode === "aller" ? length * 2 : length;
+  };
+
   // Calculer le fusible recommandé
   const calculateRecommendedFuse = (intensite: number, section: number): number | null => {
     if (intensite <= 0 || section <= 0) return null;
@@ -161,15 +168,20 @@ export const CableSectionCalculator = () => {
     const maxCurrentForSection = maxCurrentBySectionMap[section] || 0;
 
     // Le fusible doit être :
-    // - Supérieur ou égal à l'intensité nominale (avec marge de 25%)
-    // - Inférieur à l'intensité max admissible du câble
-    const minFuse = intensite * 1.25;
-    const maxFuse = maxCurrentForSection;
+    // - Supérieur ou égal à l'intensité nominale + marge 10% (pour éviter les déclenchements intempestifs)
+    // - Inférieur ou égal à l'intensité max admissible du câble (pour protéger le câble)
+    const minFuseWithMargin = intensite * 1.1;
 
-    // Trouver le premier calibre standard qui convient
-    const recommendedFuse = standardFuses.find((f) => f >= minFuse && f <= maxFuse);
+    // Trouver le premier calibre standard ≥ intensité avec marge
+    const recommendedFuse = standardFuses.find((f) => f >= minFuseWithMargin);
 
-    return recommendedFuse || null;
+    // Vérifier que ce fusible ne dépasse pas la capacité du câble
+    if (recommendedFuse && recommendedFuse <= maxCurrentForSection) {
+      return recommendedFuse;
+    }
+
+    // Si le fusible avec marge dépasse la capacité du câble, c'est un problème de dimensionnement
+    return null;
   };
 
   // Trouver le câble du catalogue correspondant à une section
@@ -180,12 +192,11 @@ export const CableSectionCalculator = () => {
   // Calculer le prix estimé du câble
   const calculateCablePrice = (
     section: number,
-    longueur: number,
   ): { achat: number | null; vente: number | null; cable: CableCatalogItem | null } => {
     const cable = findCableInCatalog(section);
     if (!cable) return { achat: null, vente: null, cable: null };
 
-    const totalLength = longueur * 2; // Aller + retour
+    const totalLength = getTotalLength();
     return {
       achat: cable.prix_reference ? cable.prix_reference * totalLength : null,
       vente: cable.prix_vente_ttc ? cable.prix_vente_ttc * totalLength : null,
@@ -197,7 +208,8 @@ export const CableSectionCalculator = () => {
     if (selectedSection <= 0 || length <= 0) return null;
 
     const maxCurrentBySection = maxCurrentBySectionMap[selectedSection] || 0;
-    const resistance = (resistivity * length * 2) / selectedSection;
+    const totalLength = getTotalLength();
+    const resistance = (resistivity * totalLength) / selectedSection;
     const maxVoltageDropAllowed = voltage * 0.03; // 3% max
     const maxCurrentByVoltageDrop = maxVoltageDropAllowed / resistance;
 
@@ -212,16 +224,19 @@ export const CableSectionCalculator = () => {
 
     const maxVoltageDropAllowed = voltage * 0.03; // 3% max
     const resistance = maxVoltageDropAllowed / current;
-    const maxLength = (resistance * selectedSection) / (resistivity * 2);
+    // Longueur totale max du circuit
+    const maxTotalLength = (resistance * selectedSection) / resistivity;
 
-    return maxLength;
+    // Retourner selon le mode : si "aller" on divise par 2, si "total" on garde tel quel
+    return lengthMode === "aller" ? maxTotalLength / 2 : maxTotalLength;
   };
 
   const calculateResults = () => {
     if (current <= 0 || length <= 0) return [];
 
+    const totalLength = getTotalLength();
     return standardSections.map((section) => {
-      const resistance = (resistivity * length * 2) / section;
+      const resistance = (resistivity * totalLength) / section;
       const voltageDrop = current * resistance;
       const voltageDropPercent = (voltageDrop / voltage) * 100;
       const maxCurrent = maxCurrentBySectionMap[section] || 0;
@@ -255,9 +270,7 @@ export const CableSectionCalculator = () => {
     displaySection && displayCurrent ? calculateRecommendedFuse(displayCurrent, displaySection) : null;
 
   const priceInfo =
-    displaySection && length > 0
-      ? calculateCablePrice(displaySection, length)
-      : { achat: null, vente: null, cable: null };
+    displaySection && length > 0 ? calculateCablePrice(displaySection) : { achat: null, vente: null, cable: null };
 
   return (
     <Card>
@@ -330,7 +343,7 @@ export const CableSectionCalculator = () => {
           </div>
           <div className="space-y-2">
             <Label htmlFor="length" className="text-base font-semibold">
-              Longueur du câble (m) {calculationMode === "length" && "- Résultat"}
+              Longueur (m) {calculationMode === "length" && "- Résultat"}
             </Label>
             <Input
               id="length"
@@ -343,9 +356,26 @@ export const CableSectionCalculator = () => {
               className="h-12 text-lg"
               disabled={calculationMode === "length"}
             />
-            <p className="text-xs text-muted-foreground">
-              Distance simple. Ex: 2m = 2m aller + 2m retour = 4m de câble total
-            </p>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                variant={lengthMode === "aller" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 text-xs h-7"
+                onClick={() => setLengthMode("aller")}
+              >
+                Aller simple (×2 auto)
+              </Button>
+              <Button
+                type="button"
+                variant={lengthMode === "total" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 text-xs h-7"
+                onClick={() => setLengthMode("total")}
+              >
+                Longueur totale
+              </Button>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="voltage" className="text-base font-semibold">
@@ -393,7 +423,8 @@ export const CableSectionCalculator = () => {
               <span className="font-semibold text-xl">Intensité maximale : {maxCurrentResult.toFixed(1)} A</span>
               <br />
               <span className="text-sm">
-                Pour une section de {selectedSection} mm² sur {length} m avec une chute de tension max de 3%
+                Pour une section de {selectedSection} mm² sur {getTotalLength().toFixed(1)} m de câble total avec une
+                chute de tension max de 3%
               </span>
             </AlertDescription>
           </Alert>
@@ -421,15 +452,16 @@ export const CableSectionCalculator = () => {
             >
               <span className="font-semibold text-xl">
                 {maxLengthResult > 0
-                  ? `Longueur maximale : ${maxLengthResult.toFixed(1)} m (distance simple)`
+                  ? lengthMode === "aller"
+                    ? `Distance aller max : ${maxLengthResult.toFixed(1)} m (total: ${(maxLengthResult * 2).toFixed(1)} m)`
+                    : `Longueur totale max : ${maxLengthResult.toFixed(1)} m`
                   : "Section insuffisante"}
               </span>
               <br />
               <span className="text-sm">
                 {maxLengthResult > 0 ? (
                   <>
-                    Pour {current} A avec une section de {selectedSection} mm² et une chute de tension max de 3%. Câble
-                    total nécessaire : {(maxLengthResult * 2).toFixed(1)} m
+                    Pour {current} A avec une section de {selectedSection} mm² et une chute de tension max de 3%
                   </>
                 ) : (
                   <>
@@ -536,7 +568,7 @@ export const CableSectionCalculator = () => {
                         )}
                       </div>
                       <p className="text-xs text-green-700 dark:text-green-300">
-                        {priceInfo.cable.nom} × {(length * 2).toFixed(1)}m
+                        {priceInfo.cable.nom} × {getTotalLength().toFixed(1)}m
                       </p>
                     </>
                   ) : (
@@ -562,9 +594,8 @@ export const CableSectionCalculator = () => {
           <ul className="list-disc list-inside space-y-1 ml-2">
             <li>Chute de tension maximale : 3%</li>
             <li>Intensité ne doit pas dépasser l'intensité maximale admissible du câble</li>
-            <li>Fusible : calibre supérieur à I×1.25 et inférieur à I max câble</li>
+            <li>Fusible : premier calibre ≥ intensité × 1.10 et ≤ intensité max câble</li>
             <li>Calculs basés sur des câbles souples en cuivre à 20°C</li>
-            <li>Longueur : distance aller-retour automatiquement prise en compte</li>
           </ul>
         </div>
       </CardContent>
