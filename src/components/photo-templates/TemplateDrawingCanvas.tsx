@@ -1254,9 +1254,6 @@ export function TemplateDrawingCanvas({
 
     // 🎯 S'assurer que tous les objets existants sont sélectionnables
     fabricCanvas.getObjects().forEach((obj: any) => {
-      // Skip if obj is not a valid Fabric object
-      if (!obj || typeof obj.setCoords !== 'function') return;
-      
       // Ne pas modifier les objets qui ne doivent pas être sélectionnables (grille, règles, etc.)
       if (
         !obj.isRuler &&
@@ -1274,9 +1271,15 @@ export function TemplateDrawingCanvas({
           obj.hoverCursor = "move";
         }
       } else if (obj.isLineHandle || obj.isControlHandle) {
-        // Les poignées restent sélectionnables
-        obj.selectable = true;
-        obj.evented = true;
+        // Les poignées ne sont actives QUE en mode sélection
+        // En mode dessin, on doit pouvoir cliquer à travers elles
+        if (activeTool === "select") {
+          obj.selectable = true;
+          obj.evented = true;
+        } else {
+          obj.selectable = false;
+          obj.evented = false;
+        }
       } else {
         // Forcer les objets non sélectionnables à le rester
         obj.selectable = false;
