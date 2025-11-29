@@ -5,13 +5,14 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Settings, FileText } from "lucide-react";
+import { Plus, CreditCard, Package, ArrowRight, Truck, Edit, Minus, Settings, FileText, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import ExpenseFormDialog from "./ExpenseFormDialog";
 import { Input } from "@/components/ui/input";
 import CategoryManagementDialog from "./CategoryManagementDialog";
 import { NoticeSearchDialog } from "./NoticeSearchDialog";
+import OrderTrackingSidebar from "./OrderTrackingSidebar";
 
 interface Expense {
   id: string;
@@ -61,6 +62,7 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isNoticeDialogOpen, setIsNoticeDialogOpen] = useState(false);
   const [selectedExpenseForNotice, setSelectedExpenseForNotice] = useState<Expense | null>(null);
+  const [isOrderTrackingOpen, setIsOrderTrackingOpen] = useState(false);
 
   useEffect(() => {
     loadExpenses();
@@ -299,10 +301,16 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Liste des dépenses</h3>
-        <Button onClick={() => setIsDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Ajouter une dépense
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsOrderTrackingOpen(true)}>
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            Suivi commandes
+          </Button>
+          <Button onClick={() => setIsDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter une dépense
+          </Button>
+        </div>
       </div>
 
       {categories.length > 0 && (
@@ -797,6 +805,15 @@ const ExpensesList = ({ projectId, onExpenseChange, refreshTrigger, scenarioId, 
           }}
         />
       )}
+
+      <OrderTrackingSidebar
+        isOpen={isOrderTrackingOpen}
+        onClose={() => setIsOrderTrackingOpen(false)}
+        onOrderChange={() => {
+          loadExpenses();
+          onExpenseChange?.();
+        }}
+      />
     </div>
   );
 };
