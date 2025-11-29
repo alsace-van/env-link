@@ -827,8 +827,8 @@ export function TemplateDrawingCanvas({
 
     // 🔧 BUG FIX #8 : Définir les dimensions du canvas HTML avant d'initialiser Fabric.js
     // Cela évite l'erreur "Right side of assignment cannot be destructured"
-    canvasElement.width = 1000;
-    canvasElement.height = 700;
+    canvasElement.width = 1400;
+    canvasElement.height = 900;
 
     const canvas = new FabricCanvas(canvasElement, {
       backgroundColor: "#ffffff",
@@ -893,8 +893,8 @@ export function TemplateDrawingCanvas({
     img.onload = () => {
       imgRef.current = img;
 
-      const maxWidth = 1000;
-      const maxHeight = 700;
+      const maxWidth = 1400;
+      const maxHeight = 900;
       const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
 
       const finalWidth = img.width * scale;
@@ -939,7 +939,7 @@ export function TemplateDrawingCanvas({
   // Recréer la grille quand les paramètres changent
   useEffect(() => {
     if (!fabricCanvas || !imgRef.current) return;
-    createGrid(fabricCanvas, fabricCanvas.width || 1000, fabricCanvas.height || 700);
+    createGrid(fabricCanvas, fabricCanvas.width || 1400, fabricCanvas.height || 900);
 
     // Dessiner les règles graduées
     if (showRulers) {
@@ -951,8 +951,8 @@ export function TemplateDrawingCanvas({
         }
       });
 
-      const canvasWidth = fabricCanvas.width || 1000;
-      const canvasHeight = fabricCanvas.height || 700;
+      const canvasWidth = fabricCanvas.width || 1400;
+      const canvasHeight = fabricCanvas.height || 900;
       const rulerColor = "#000000";
       const textColor = "#000000";
       const rulerMargin = 30; // Marge pour dessiner les règles en dehors de l'image
@@ -1245,8 +1245,26 @@ export function TemplateDrawingCanvas({
       if (isPanningWithMiddleButton && lastPanPos && evt instanceof MouseEvent) {
         const vpt = fabricCanvas.viewportTransform;
         if (vpt) {
-          vpt[4] += evt.clientX - lastPanPos.x;
-          vpt[5] += evt.clientY - lastPanPos.y;
+          const currentZoom = fabricCanvas.getZoom();
+          const canvasWidth = fabricCanvas.getWidth();
+          const canvasHeight = fabricCanvas.getHeight();
+
+          // Calculer les nouvelles positions
+          let newX = vpt[4] + evt.clientX - lastPanPos.x;
+          let newY = vpt[5] + evt.clientY - lastPanPos.y;
+
+          // Limiter le pan pour garder au moins 20% de l'image visible
+          const minVisibleRatio = 0.2;
+          const maxPanX = canvasWidth * currentZoom * (1 - minVisibleRatio);
+          const maxPanY = canvasHeight * currentZoom * (1 - minVisibleRatio);
+          const minPanX = -canvasWidth * (1 - minVisibleRatio);
+          const minPanY = -canvasHeight * (1 - minVisibleRatio);
+
+          newX = Math.max(minPanX, Math.min(maxPanX, newX));
+          newY = Math.max(minPanY, Math.min(maxPanY, newY));
+
+          vpt[4] = newX;
+          vpt[5] = newY;
           fabricCanvas.requestRenderAll();
           lastPanPos = { x: evt.clientX, y: evt.clientY };
         }
@@ -1351,8 +1369,26 @@ export function TemplateDrawingCanvas({
           if (evt instanceof MouseEvent) {
             const vpt = fabricCanvas.viewportTransform;
             if (vpt) {
-              vpt[4] += evt.clientX - lastPosRef.current.x;
-              vpt[5] += evt.clientY - lastPosRef.current.y;
+              const currentZoom = fabricCanvas.getZoom();
+              const canvasWidth = fabricCanvas.getWidth();
+              const canvasHeight = fabricCanvas.getHeight();
+
+              // Calculer les nouvelles positions
+              let newX = vpt[4] + evt.clientX - lastPosRef.current.x;
+              let newY = vpt[5] + evt.clientY - lastPosRef.current.y;
+
+              // Limiter le pan pour garder au moins 20% de l'image visible
+              const minVisibleRatio = 0.2;
+              const maxPanX = canvasWidth * currentZoom * (1 - minVisibleRatio);
+              const maxPanY = canvasHeight * currentZoom * (1 - minVisibleRatio);
+              const minPanX = -canvasWidth * (1 - minVisibleRatio);
+              const minPanY = -canvasHeight * (1 - minVisibleRatio);
+
+              newX = Math.max(minPanX, Math.min(maxPanX, newX));
+              newY = Math.max(minPanY, Math.min(maxPanY, newY));
+
+              vpt[4] = newX;
+              vpt[5] = newY;
               fabricCanvas.requestRenderAll();
               lastPosRef.current = { x: evt.clientX, y: evt.clientY };
             }
@@ -2692,9 +2728,13 @@ export function TemplateDrawingCanvas({
         className={
           isFullscreen
             ? "h-screen w-screen flex items-center justify-center overflow-hidden"
-            : "border rounded-lg overflow-auto bg-white shadow-lg flex items-center justify-center"
+            : "border rounded-lg bg-white shadow-lg relative"
         }
-        style={isFullscreen ? {} : { maxHeight: "600px" }}
+        style={
+          isFullscreen
+            ? {}
+            : { height: "calc(100vh - 350px)", minHeight: "500px", maxHeight: "900px", overflow: "auto" }
+        }
       >
         <canvas ref={canvasRef} className={isFullscreen ? "max-w-full max-h-full" : ""} />
       </div>
