@@ -57,6 +57,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("real");
+  const [principalScenarioId, setPrincipalScenarioId] = useState<string | null>(null);
 
   // Dialog states
   const [addAccessoryDialogOpen, setAddAccessoryDialogOpen] = useState(false);
@@ -66,15 +67,59 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [selectedDraftItems, setSelectedDraftItems] = useState<Set<string>>(new Set());
-  
+
   // Debounce ref for time updates
   const timeUpdateTimeouts = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
+  // Charger le scénario principal d'abord
   useEffect(() => {
-    loadElectricalItems();
+    loadPrincipalScenario();
+  }, [projectId]);
+
+  // Charger les items quand le scénario principal est chargé
+  useEffect(() => {
+    if (principalScenarioId) {
+      loadElectricalItems();
+    }
     loadDraftItems();
     loadCategories();
-  }, [projectId, refreshTrigger]);
+  }, [projectId, principalScenarioId, refreshTrigger]);
+
+  const loadPrincipalScenario = async () => {
+    const result: any = await (supabase as any)
+      .from("project_scenarios")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("est_principal", true)
+      .single();
+
+    const { data, error } = result;
+
+    if (error) {
+      console.error("Erreur lors du chargement du scénario principal:", error);
+      // Fallback: charger toutes les dépenses du projet sans filtre scénario
+      setPrincipalScenarioId(null);
+      loadElectricalItemsWithoutScenario();
+    } else if (data) {
+      setPrincipalScenarioId(data.id);
+    }
+  };
+
+  const loadElectricalItemsWithoutScenario = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("project_expenses")
+      .select("*")
+      .eq("project_id", projectId)
+      .not("type_electrique", "is", null);
+
+    if (error) {
+      console.error("Erreur lors du chargement des équipements électriques:", error);
+    } else {
+      setItems(data || []);
+    }
+    setLoading(false);
+  };
 
   const loadCategories = async () => {
     const { data, error } = await supabase.from("categories").select("id, nom").order("nom");
@@ -101,12 +146,19 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const loadElectricalItems = async () => {
+    if (!principalScenarioId) {
+      loadElectricalItemsWithoutScenario();
+      return;
+    }
+
     setLoading(true);
-    const { data, error } = await supabase
+    const result: any = await (supabase as any)
       .from("project_expenses")
       .select("*")
-      .eq("project_id", projectId)
+      .eq("scenario_id", principalScenarioId)
       .not("type_electrique", "is", null);
+
+    const { data, error } = result;
 
     if (error) {
       console.error("Erreur lors du chargement des équipements électriques:", error);
@@ -173,11 +225,17 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
       return;
     }
 
+    if (!principalScenarioId) {
+      toast.error("Aucun scénario principal trouvé");
+      return;
+    }
+
     const itemsToTransfer = draftItems.filter((item) => selectedDraftItems.has(item.id));
 
-    // Insérer dans project_expenses
+    // Insérer dans project_expenses avec le scenario_id
     const expensesToInsert = itemsToTransfer.map((item) => ({
       project_id: projectId,
+      scenario_id: principalScenarioId,
       nom_accessoire: item.nom_accessoire,
       type_electrique: item.type_electrique,
       quantite: item.quantite,
@@ -286,9 +344,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     }
 
     // Mise à jour immédiate de l'état local pour un retour visuel rapide
-    setItems((prevItems) =>
-      prevItems.map((i) => (i.id === itemId ? { ...i, [field]: numValue } : i))
-    );
+    setItems((prevItems) => prevItems.map((i) => (i.id === itemId ? { ...i, [field]: numValue } : i)));
 
     // Annuler le timeout précédent s'il existe
     const timeoutKey = `${itemId}-${field}`;
@@ -309,7 +365,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
         // Recharger les données en cas d'erreur pour retrouver l'état correct
         loadElectricalItems();
       }
-      
+
       delete timeUpdateTimeouts.current[timeoutKey];
     }, 800);
   };
@@ -426,15 +482,13 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
               </div>
             </div>
           )}
-          
+
           {netConsumption <= 0 && producers.length > 0 && (
             <div className="pt-3 border-t">
               <div className="text-sm text-green-600 dark:text-green-400 mb-1">
                 ⚡ Production excédentaire: {Math.abs(netConsumption).toFixed(1)} Wh/jour
               </div>
-              <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                Autonomie infinie
-              </div>
+              <div className="text-3xl font-bold text-green-600 dark:text-green-400">Autonomie infinie</div>
             </div>
           )}
         </CardContent>
@@ -481,9 +535,13 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 <TableHead className="text-center w-40">Puissance unitaire</TableHead>
                 {showTimeField && <TableHead className="text-center w-48">{getTimeLabel()}</TableHead>}
                 <TableHead className="text-center w-44">
-                  {showTimeField === "production" ? "Production totale" : 
-                   showTimeField === "utilisation" ? "Consommation totale" : 
-                   showTimeField === "autonomie" ? "Capacité totale" : "Total"}
+                  {showTimeField === "production"
+                    ? "Production totale"
+                    : showTimeField === "utilisation"
+                      ? "Consommation totale"
+                      : showTimeField === "autonomie"
+                        ? "Capacité totale"
+                        : "Total"}
                 </TableHead>
                 {isDraft && <TableHead className="text-center w-24">Actions</TableHead>}
               </TableRow>
@@ -494,7 +552,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 const quantity = item.quantite || 1;
                 const usageTime = item.temps_utilisation_heures || 0;
                 const productionTime = item.temps_production_heures || 0;
-                
+
                 let totalValue = 0;
                 if (showTimeField === "production") {
                   totalValue = power * productionTime * quantity;
@@ -503,7 +561,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 } else if (showTimeField === "autonomie") {
                   totalValue = power * quantity; // Capacité totale
                 }
-                
+
                 return (
                   <TableRow key={item.id}>
                     {isDraft && (
@@ -531,67 +589,77 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                     <TableCell className="text-center text-muted-foreground">
                       {power > 0 ? `${power} W` : "-"}
                     </TableCell>
-                  {showTimeField && showTimeField !== "autonomie" && (
-                    <TableCell className="text-center">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="24"
-                        step="0.5"
-                        placeholder="0-24h"
-                        value={
-                          showTimeField === "utilisation"
-                            ? (item.temps_utilisation_heures ?? "")
-                            : (item.temps_production_heures ?? "")
-                        }
-                        onChange={(e) => {
-                          if (isDraft) {
-                            handleUpdateDraftItem(
-                              item.id,
-                              showTimeField === "utilisation" ? "temps_utilisation_heures" : "temps_production_heures",
-                              e.target.value === "" ? null : parseFloat(e.target.value),
-                            );
-                          } else {
-                            handleTimeUpdate(
-                              item.id,
-                              showTimeField === "utilisation" ? "temps_utilisation_heures" : "temps_production_heures",
-                              e.target.value,
-                            );
+                    {showTimeField && showTimeField !== "autonomie" && (
+                      <TableCell className="text-center">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="24"
+                          step="0.5"
+                          placeholder="0-24h"
+                          value={
+                            showTimeField === "utilisation"
+                              ? (item.temps_utilisation_heures ?? "")
+                              : (item.temps_production_heures ?? "")
                           }
-                        }}
-                        className="w-24 mx-auto"
-                      />
-                    </TableCell>
-                  )}
-                  {showTimeField === "autonomie" && (
-                    <TableCell className="text-center">
-                      <span className="text-muted-foreground">
-                        {item.puissance_watts ? `${item.puissance_watts} Wh` : "Non renseigné"}
-                      </span>
-                    </TableCell>
-                  )}
-                  <TableCell className="text-center font-semibold">
-                    {totalValue > 0 ? (
-                      <span className={
-                        showTimeField === "production" ? "text-green-600 dark:text-green-400" :
-                        showTimeField === "utilisation" ? "text-red-600 dark:text-red-400" :
-                        "text-blue-600 dark:text-blue-400"
-                      }>
-                        {showTimeField === "autonomie" ? `${totalValue.toFixed(0)} Wh` : `${totalValue.toFixed(1)} Wh/j`}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
+                          onChange={(e) => {
+                            if (isDraft) {
+                              handleUpdateDraftItem(
+                                item.id,
+                                showTimeField === "utilisation"
+                                  ? "temps_utilisation_heures"
+                                  : "temps_production_heures",
+                                e.target.value === "" ? null : parseFloat(e.target.value),
+                              );
+                            } else {
+                              handleTimeUpdate(
+                                item.id,
+                                showTimeField === "utilisation"
+                                  ? "temps_utilisation_heures"
+                                  : "temps_production_heures",
+                                e.target.value,
+                              );
+                            }
+                          }}
+                          className="w-24 mx-auto"
+                        />
+                      </TableCell>
                     )}
-                  </TableCell>
-                  {isDraft && (
-                    <TableCell className="text-center">
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteDraftItem(item.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    {showTimeField === "autonomie" && (
+                      <TableCell className="text-center">
+                        <span className="text-muted-foreground">
+                          {item.puissance_watts ? `${item.puissance_watts} Wh` : "Non renseigné"}
+                        </span>
+                      </TableCell>
+                    )}
+                    <TableCell className="text-center font-semibold">
+                      {totalValue > 0 ? (
+                        <span
+                          className={
+                            showTimeField === "production"
+                              ? "text-green-600 dark:text-green-400"
+                              : showTimeField === "utilisation"
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-blue-600 dark:text-blue-400"
+                          }
+                        >
+                          {showTimeField === "autonomie"
+                            ? `${totalValue.toFixed(0)} Wh`
+                            : `${totalValue.toFixed(1)} Wh/j`}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
-                  )}
-                </TableRow>
-              );
+                    {isDraft && (
+                      <TableCell className="text-center">
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteDraftItem(item.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
               })}
             </TableBody>
           </Table>
