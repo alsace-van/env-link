@@ -49,10 +49,12 @@ const ScenarioColumn = ({
 
   const loadExpenses = async () => {
     try {
-      const { data, error } = await supabase
+      const result: any = await (supabase as any)
         .from('project_expenses')
         .select('*')
         .eq('scenario_id', scenario.id);
+      
+      const { data, error } = result;
 
       if (error) {
         console.error('Erreur chargement dépenses:', error);
