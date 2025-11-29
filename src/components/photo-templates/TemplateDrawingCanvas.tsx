@@ -1037,7 +1037,7 @@ export function TemplateDrawingCanvas({
   useEffect(() => {
     if (!fabricCanvas) return;
 
-    // Fonction pour créer les poignées d'une ligne
+    // Fonction pour créer les poignées d'une ligne (3 poignées : start, center, end)
     const createLineHandles = (line: Line) => {
       removeLineHandles();
 
@@ -1046,7 +1046,11 @@ export function TemplateDrawingCanvas({
       const x2 = line.x2 ?? 0;
       const y2 = line.y2 ?? 0;
 
-      const handleProps = {
+      // Centre de la ligne
+      const cx = (x1 + x2) / 2;
+      const cy = (y1 + y2) / 2;
+
+      const endpointProps = {
         radius: 6,
         fill: "#3b82f6",
         stroke: "#ffffff",
@@ -1060,39 +1064,103 @@ export function TemplateDrawingCanvas({
         hoverCursor: "pointer",
       };
 
-      const handle1 = new Circle({ ...handleProps, left: x1, top: y1 });
-      const handle2 = new Circle({ ...handleProps, left: x2, top: y2 });
+      const centerProps = {
+        radius: 8,
+        fill: "#22c55e", // Vert pour la poignée de déplacement
+        stroke: "#ffffff",
+        strokeWidth: 2,
+        selectable: true,
+        evented: true,
+        hasControls: false,
+        hasBorders: false,
+        originX: "center" as const,
+        originY: "center" as const,
+        hoverCursor: "move",
+      };
+
+      const handle1 = new Circle({ ...endpointProps, left: x1, top: y1 });
+      const handleCenter = new Circle({ ...centerProps, left: cx, top: cy });
+      const handle2 = new Circle({ ...endpointProps, left: x2, top: y2 });
 
       (handle1 as any).isLineHandle = true;
       (handle1 as any).handleType = "start";
       (handle1 as any).parentLine = line;
 
+      (handleCenter as any).isLineHandle = true;
+      (handleCenter as any).handleType = "center";
+      (handleCenter as any).parentLine = line;
+
       (handle2 as any).isLineHandle = true;
       (handle2 as any).handleType = "end";
       (handle2 as any).parentLine = line;
 
-      // Gérer le déplacement des poignées avec magnétisme
+      // Variable pour suivre la position précédente du centre
+      let lastCenterPos = { x: cx, y: cy };
+
+      // Gérer le déplacement de la poignée start
       handle1.on("moving", () => {
         const pos = { x: handle1.left ?? 0, y: handle1.top ?? 0 };
         const snapped = snapPoint(pos, fabricCanvas);
         handle1.set({ left: snapped.x, top: snapped.y });
         line.set({ x1: snapped.x, y1: snapped.y });
         line.setCoords();
+        // Mettre à jour la poignée centrale
+        const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
+        const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
+        handleCenter.set({ left: newCx, top: newCy });
+        handleCenter.setCoords();
+        lastCenterPos = { x: newCx, y: newCy };
         fabricCanvas.requestRenderAll();
       });
 
+      // Gérer le déplacement de la poignée end
       handle2.on("moving", () => {
         const pos = { x: handle2.left ?? 0, y: handle2.top ?? 0 };
         const snapped = snapPoint(pos, fabricCanvas);
         handle2.set({ left: snapped.x, top: snapped.y });
         line.set({ x2: snapped.x, y2: snapped.y });
         line.setCoords();
+        // Mettre à jour la poignée centrale
+        const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
+        const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
+        handleCenter.set({ left: newCx, top: newCy });
+        handleCenter.setCoords();
+        lastCenterPos = { x: newCx, y: newCy };
+        fabricCanvas.requestRenderAll();
+      });
+
+      // Gérer le déplacement de la poignée centrale (déplace tout le trait)
+      handleCenter.on("moving", () => {
+        const newCenterX = handleCenter.left ?? 0;
+        const newCenterY = handleCenter.top ?? 0;
+
+        // Calculer le delta
+        const dx = newCenterX - lastCenterPos.x;
+        const dy = newCenterY - lastCenterPos.y;
+
+        // Déplacer les deux extrémités
+        const newX1 = (line.x1 ?? 0) + dx;
+        const newY1 = (line.y1 ?? 0) + dy;
+        const newX2 = (line.x2 ?? 0) + dx;
+        const newY2 = (line.y2 ?? 0) + dy;
+
+        line.set({ x1: newX1, y1: newY1, x2: newX2, y2: newY2 });
+        line.setCoords();
+
+        // Mettre à jour les poignées d'extrémité
+        handle1.set({ left: newX1, top: newY1 });
+        handle1.setCoords();
+        handle2.set({ left: newX2, top: newY2 });
+        handle2.setCoords();
+
+        lastCenterPos = { x: newCenterX, y: newCenterY };
         fabricCanvas.requestRenderAll();
       });
 
       fabricCanvas.add(handle1);
+      fabricCanvas.add(handleCenter);
       fabricCanvas.add(handle2);
-      lineHandlesRef.current = [handle1, handle2];
+      lineHandlesRef.current = [handle1, handleCenter, handle2];
     };
 
     // Fonction pour supprimer les poignées
@@ -1103,24 +1171,22 @@ export function TemplateDrawingCanvas({
       lineHandlesRef.current = [];
     };
 
-    // Synchroniser les poignées avec la position de la ligne (en tenant compte de la transformation)
+    // Synchroniser les poignées avec la position de la ligne (3 poignées)
     const syncLineHandles = (line: Line) => {
-      if (lineHandlesRef.current.length === 2 && activeLineRef.current === line) {
-        // Calculer les vraies coordonnées en tenant compte de left/top
-        const matrix = line.calcTransformMatrix();
+      if (lineHandlesRef.current.length === 3 && activeLineRef.current === line) {
         const x1 = line.x1 ?? 0;
         const y1 = line.y1 ?? 0;
         const x2 = line.x2 ?? 0;
         const y2 = line.y2 ?? 0;
+        const cx = (x1 + x2) / 2;
+        const cy = (y1 + y2) / 2;
 
-        // Appliquer la transformation
-        const point1 = new Point(x1, y1).transform(matrix);
-        const point2 = new Point(x2, y2).transform(matrix);
-
-        lineHandlesRef.current[0].set({ left: point1.x, top: point1.y });
+        lineHandlesRef.current[0].set({ left: x1, top: y1 });
         lineHandlesRef.current[0].setCoords();
-        lineHandlesRef.current[1].set({ left: point2.x, top: point2.y });
+        lineHandlesRef.current[1].set({ left: cx, top: cy });
         lineHandlesRef.current[1].setCoords();
+        lineHandlesRef.current[2].set({ left: x2, top: y2 });
+        lineHandlesRef.current[2].setCoords();
       }
     };
 
@@ -2094,6 +2160,8 @@ export function TemplateDrawingCanvas({
             objectCaching: false,
             hasControls: false, // Pas de bounding box
             hasBorders: false, // Pas de bordure
+            lockMovementX: true, // Verrouiller le déplacement (on utilise la poignée centrale)
+            lockMovementY: true,
             lockRotation: true,
             perPixelTargetFind: true, // Sélection précise sur le trait
           });
