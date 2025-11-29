@@ -197,11 +197,16 @@ class EditableCurve extends Path {
   }
 
   // Créer les poignées de contrôle visuelles
-  createHandles(canvas: FabricCanvas, color: string = "#3b82f6") {
+  createHandles(canvas: FabricCanvas, color: string = "#3b82f6", currentZoom: number = 1) {
     this.canvasRef = canvas;
 
     // Nettoyer les anciennes poignées (inclut le nettoyage des lignes orphelines)
     this.removeHandles(canvas);
+
+    // Tailles adaptées au zoom
+    const endpointRadius = 3 / currentZoom;
+    const centerRadius = 4 / currentZoom;
+    const strokeWidth = 1 / currentZoom;
 
     // Positions des points directement depuis controlPoints (coordonnées du path)
     const startPos = this.controlPoints.start;
@@ -211,8 +216,8 @@ class EditableCurve extends Path {
     // Créer les lignes de contrôle (traits en pointillés pour visualiser la relation)
     const line1 = new Line([startPos.x, startPos.y, controlPos.x, controlPos.y], {
       stroke: color,
-      strokeWidth: 1,
-      strokeDashArray: [4, 4],
+      strokeWidth: strokeWidth,
+      strokeDashArray: [4 / currentZoom, 4 / currentZoom],
       selectable: false,
       evented: false,
       opacity: 0.5,
@@ -221,8 +226,8 @@ class EditableCurve extends Path {
 
     const line2 = new Line([controlPos.x, controlPos.y, endPos.x, endPos.y], {
       stroke: color,
-      strokeWidth: 1,
-      strokeDashArray: [4, 4],
+      strokeWidth: strokeWidth,
+      strokeDashArray: [4 / currentZoom, 4 / currentZoom],
       selectable: false,
       evented: false,
       opacity: 0.5,
@@ -231,14 +236,14 @@ class EditableCurve extends Path {
 
     this.controlLines = [line1, line2];
 
-    // Poignées (cercles) - taille réduite
+    // Poignées (cercles) - taille adaptée au zoom
     const handleStart = new Circle({
       left: startPos.x,
       top: startPos.y,
-      radius: 3,
+      radius: endpointRadius,
       fill: "#3b82f6",
       stroke: "#ffffff",
-      strokeWidth: 1,
+      strokeWidth: strokeWidth,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -260,10 +265,10 @@ class EditableCurve extends Path {
     const handleControl = new Circle({
       left: controlPos.x,
       top: controlPos.y,
-      radius: 3,
+      radius: endpointRadius,
       fill: "#f97316", // Orange pour le point de contrôle
       stroke: "#ffffff",
-      strokeWidth: 1,
+      strokeWidth: strokeWidth,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -285,10 +290,10 @@ class EditableCurve extends Path {
     const handleEnd = new Circle({
       left: endPos.x,
       top: endPos.y,
-      radius: 3,
+      radius: endpointRadius,
       fill: "#3b82f6",
       stroke: "#ffffff",
-      strokeWidth: 1,
+      strokeWidth: strokeWidth,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -317,10 +322,10 @@ class EditableCurve extends Path {
     const handleMove = new Circle({
       left: centerX,
       top: centerY,
-      radius: 4,
+      radius: centerRadius,
       fill: "#22c55e", // Vert
       stroke: "#ffffff",
-      strokeWidth: 1,
+      strokeWidth: strokeWidth,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -1137,6 +1142,56 @@ export function TemplateDrawingCanvas({
   useEffect(() => {
     if (!fabricCanvas) return;
 
+    // Tailles de base des poignées (à zoom 1)
+    const BASE_ENDPOINT_RADIUS = 3;
+    const BASE_CENTER_RADIUS = 4;
+    const BASE_STROKE_WIDTH = 1;
+
+    // Fonction pour mettre à jour la taille des poignées selon le zoom
+    const updateHandleSizes = () => {
+      const currentZoom = fabricCanvas.getZoom();
+      const endpointRadius = BASE_ENDPOINT_RADIUS / currentZoom;
+      const centerRadius = BASE_CENTER_RADIUS / currentZoom;
+      const strokeWidth = BASE_STROKE_WIDTH / currentZoom;
+
+      // Mettre à jour les poignées de ligne
+      lineHandlesRef.current.forEach((handle, index) => {
+        const isCenter = index === 1; // La poignée centrale est à l'index 1
+        handle.set({
+          radius: isCenter ? centerRadius : endpointRadius,
+          strokeWidth: strokeWidth,
+        });
+        handle.setCoords();
+      });
+
+      // Mettre à jour les poignées de courbe
+      if (activeCurveRef.current) {
+        activeCurveRef.current.controlHandles.forEach((handle, index) => {
+          const isMove = index === 3; // La poignée de déplacement est à l'index 3
+          handle.set({
+            radius: isMove ? centerRadius : endpointRadius,
+            strokeWidth: strokeWidth,
+          });
+          handle.setCoords();
+        });
+        // Mettre à jour les lignes de contrôle (taille et pointillés)
+        activeCurveRef.current.controlLines.forEach((line) => {
+          line.set({
+            strokeWidth: strokeWidth,
+            strokeDashArray: [4 / currentZoom, 4 / currentZoom],
+          });
+        });
+      }
+
+      fabricCanvas.requestRenderAll();
+    };
+
+    // Écouter les changements de zoom
+    const handleZoom = () => {
+      updateHandleSizes();
+    };
+    fabricCanvas.on("mouse:wheel", handleZoom);
+
     // Fonction pour créer les poignées d'une ligne (3 poignées : start, center, end)
     const createLineHandles = (line: Line) => {
       removeLineHandles();
@@ -1150,11 +1205,17 @@ export function TemplateDrawingCanvas({
       const cx = (x1 + x2) / 2;
       const cy = (y1 + y2) / 2;
 
+      // Ajuster la taille selon le zoom actuel
+      const currentZoom = fabricCanvas.getZoom();
+      const endpointRadius = BASE_ENDPOINT_RADIUS / currentZoom;
+      const centerRadius = BASE_CENTER_RADIUS / currentZoom;
+      const strokeWidth = BASE_STROKE_WIDTH / currentZoom;
+
       const endpointProps = {
-        radius: 3,
+        radius: endpointRadius,
         fill: "#3b82f6",
         stroke: "#ffffff",
-        strokeWidth: 1,
+        strokeWidth: strokeWidth,
         selectable: true,
         evented: true,
         hasControls: false,
@@ -1165,10 +1226,10 @@ export function TemplateDrawingCanvas({
       };
 
       const centerProps = {
-        radius: 4,
+        radius: centerRadius,
         fill: "#22c55e", // Vert pour la poignée de déplacement
         stroke: "#ffffff",
-        strokeWidth: 1,
+        strokeWidth: strokeWidth,
         selectable: true,
         evented: true,
         hasControls: false,
@@ -1349,7 +1410,7 @@ export function TemplateDrawingCanvas({
       // Si c'est une courbe éditable, montrer les poignées
       if (selected && (selected as any).customType === "editableCurve") {
         const curve = selected as EditableCurve;
-        curve.createHandles(fabricCanvas, strokeColor);
+        curve.createHandles(fabricCanvas, strokeColor, fabricCanvas.getZoom());
         activeCurveRef.current = curve;
       }
       // Si c'est une ligne utilisateur, montrer les poignées aux extrémités
@@ -1438,6 +1499,7 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("selection:cleared", handleDeselection);
       fabricCanvas.off("object:moving", handleObjectMoving);
       fabricCanvas.off("object:modified", handleObjectModified);
+      fabricCanvas.off("mouse:wheel", handleZoom);
     };
   }, [fabricCanvas, strokeColor, snapPoint]);
 
