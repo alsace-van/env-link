@@ -65,6 +65,7 @@ import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleIns
 import { WorkTabMain } from "@/components/work/WorkTabMain";
 import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
 import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
+import ScenarioManager from "@/components/scenarios/ScenarioManager";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -127,6 +128,11 @@ interface Project {
   nombre_places?: number;
   marque_vehicule?: string;
   modele_vehicule?: string;
+  // Propriétés pour les scénarios
+  statut_financier?: string;
+  date_validation_devis?: string;
+  date_encaissement_acompte?: string;
+  montant_acompte?: number;
 }
 
 // Composant Widget Agenda Compact pour l'entête
@@ -1499,43 +1505,11 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
-                <div className="space-y-4">
-                  {/* Header avec bouton Statistiques */}
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold">Dépenses</h2>
-                    {!statsBtnPosition && (
-                      <Button 
-                        onClick={handleStatsBtnClick} 
-                        onMouseDown={handleStatsBtnMouseDown}
-                        className="gap-2 cursor-grab active:cursor-grabbing" 
-                        variant="default"
-                        title="Voir les statistiques - Glisser pour détacher"
-                      >
-                        <BarChart3 className="h-4 w-4" />
-                        📊 Voir les statistiques
-                      </Button>
-                    )}
-                  </div>
-
-                  {/* Sous-onglets : Liste et Bilan */}
-                  <Tabs defaultValue="liste" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="liste">Liste des dépenses</TabsTrigger>
-                      <TabsTrigger value="bilan">Bilan comptable</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="liste" className="mt-4">
-                      <ExpensesList projectId={project.id} refreshTrigger={expenseRefresh} />
-                    </TabsContent>
-
-                    <TabsContent value="bilan" className="mt-4">
-                      <BilanComptable
-                        projectId={project.id}
-                        projectName={project.nom_projet || project.nom_proprietaire}
-                      />
-                    </TabsContent>
-                  </Tabs>
-                </div>
+                <ScenarioManager 
+                  projectId={project.id} 
+                  project={project as any}
+                  onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
+                />
               </TabsContent>
 
               <TabsContent value="documents" className="mt-6">
