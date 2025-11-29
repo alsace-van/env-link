@@ -152,42 +152,43 @@ class EditableCurve extends Path {
     this.controlPoints.control = new Point(controlX, controlY);
     this.controlPoints.end = new Point(endX, endY);
 
-    // Appliquer la transformation pour obtenir les coordonnées absolues
-    const matrix = this.calcTransformMatrix();
-    const startAbs = new Point(startX, startY).transform(matrix);
-    const controlAbs = new Point(controlX, controlY).transform(matrix);
-    const endAbs = new Point(endX, endY).transform(matrix);
-
-    // Mettre à jour les poignées avec les coordonnées absolues
+    // Mettre à jour les poignées directement (pas de transformation)
     if (this.controlHandles[0]) {
-      this.controlHandles[0].set({ left: startAbs.x, top: startAbs.y });
+      this.controlHandles[0].set({ left: startX, top: startY });
       this.controlHandles[0].setCoords();
     }
     if (this.controlHandles[1]) {
-      this.controlHandles[1].set({ left: controlAbs.x, top: controlAbs.y });
+      this.controlHandles[1].set({ left: controlX, top: controlY });
       this.controlHandles[1].setCoords();
     }
     if (this.controlHandles[2]) {
-      this.controlHandles[2].set({ left: endAbs.x, top: endAbs.y });
+      this.controlHandles[2].set({ left: endX, top: endY });
       this.controlHandles[2].setCoords();
     }
+    // Poignée de déplacement (centre)
+    if (this.controlHandles[3]) {
+      const centerX = (startX + endX) / 2;
+      const centerY = (startY + endY) / 2;
+      this.controlHandles[3].set({ left: centerX, top: centerY });
+      this.controlHandles[3].setCoords();
+    }
 
-    // Mettre à jour les lignes de contrôle avec les coordonnées absolues
+    // Mettre à jour les lignes de contrôle
     if (this.controlLines[0]) {
       this.controlLines[0].set({
-        x1: startAbs.x,
-        y1: startAbs.y,
-        x2: controlAbs.x,
-        y2: controlAbs.y,
+        x1: startX,
+        y1: startY,
+        x2: controlX,
+        y2: controlY,
       });
       this.controlLines[0].setCoords();
     }
     if (this.controlLines[1]) {
       this.controlLines[1].set({
-        x1: controlAbs.x,
-        y1: controlAbs.y,
-        x2: endAbs.x,
-        y2: endAbs.y,
+        x1: controlX,
+        y1: controlY,
+        x2: endX,
+        y2: endY,
       });
       this.controlLines[1].setCoords();
     }
@@ -230,20 +231,20 @@ class EditableCurve extends Path {
 
     this.controlLines = [line1, line2];
 
-    // Poignées (cercles) - taille originale
+    // Poignées (cercles) - taille réduite
     const handleStart = new Circle({
       left: startPos.x,
       top: startPos.y,
-      radius: 2,
-      fill: "#ffffff",
-      stroke: color,
-      strokeWidth: 2,
+      radius: 4,
+      fill: "#3b82f6",
+      stroke: "#ffffff",
+      strokeWidth: 1.5,
       originX: "center",
       originY: "center",
       hasBorders: false,
       hasControls: false,
       selectable: true,
-      hoverCursor: "move",
+      hoverCursor: "pointer",
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
@@ -259,16 +260,16 @@ class EditableCurve extends Path {
     const handleControl = new Circle({
       left: controlPos.x,
       top: controlPos.y,
-      radius: 3,
-      fill: color,
+      radius: 4,
+      fill: "#f97316", // Orange pour le point de contrôle
       stroke: "#ffffff",
-      strokeWidth: 2,
+      strokeWidth: 1.5,
       originX: "center",
       originY: "center",
       hasBorders: false,
       hasControls: false,
       selectable: true,
-      hoverCursor: "move",
+      hoverCursor: "pointer",
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
@@ -284,16 +285,16 @@ class EditableCurve extends Path {
     const handleEnd = new Circle({
       left: endPos.x,
       top: endPos.y,
-      radius: 2,
-      fill: "#ffffff",
-      stroke: color,
-      strokeWidth: 2,
+      radius: 4,
+      fill: "#3b82f6",
+      stroke: "#ffffff",
+      strokeWidth: 1.5,
       originX: "center",
       originY: "center",
       hasBorders: false,
       hasControls: false,
       selectable: true,
-      hoverCursor: "move",
+      hoverCursor: "pointer",
       lockRotation: true,
       lockScalingX: true,
       lockScalingY: true,
@@ -308,14 +309,96 @@ class EditableCurve extends Path {
 
     this.controlHandles = [handleStart, handleControl, handleEnd];
 
+    // Calculer le centre de la courbe (entre start et end)
+    const centerX = (startPos.x + endPos.x) / 2;
+    const centerY = (startPos.y + endPos.y) / 2;
+
+    // Poignée de déplacement au centre (verte)
+    const handleMove = new Circle({
+      left: centerX,
+      top: centerY,
+      radius: 5,
+      fill: "#22c55e", // Vert
+      stroke: "#ffffff",
+      strokeWidth: 1.5,
+      originX: "center",
+      originY: "center",
+      hasBorders: false,
+      hasControls: false,
+      selectable: true,
+      hoverCursor: "move",
+      lockRotation: true,
+      lockScalingX: true,
+      lockScalingY: true,
+      objectCaching: false,
+    });
+    (handleMove as any).curvePointType = "move";
+    (handleMove as any).parentCurve = this;
+    (handleMove as any).isControlHandle = true;
+
+    // Stocker la dernière position pour calculer le delta
+    let lastMovePos = { x: centerX, y: centerY };
+
+    // Event handler pour déplacer toute la courbe
+    handleMove.on("moving", () => {
+      const newX = handleMove.left ?? 0;
+      const newY = handleMove.top ?? 0;
+      const dx = newX - lastMovePos.x;
+      const dy = newY - lastMovePos.y;
+
+      // Déplacer tous les points de contrôle
+      this.controlPoints.start = new Point(this.controlPoints.start.x + dx, this.controlPoints.start.y + dy);
+      this.controlPoints.control = new Point(this.controlPoints.control.x + dx, this.controlPoints.control.y + dy);
+      this.controlPoints.end = new Point(this.controlPoints.end.x + dx, this.controlPoints.end.y + dy);
+
+      // Recalculer le path
+      const newPathData = `M ${this.controlPoints.start.x} ${this.controlPoints.start.y} Q ${this.controlPoints.control.x} ${this.controlPoints.control.y} ${this.controlPoints.end.x} ${this.controlPoints.end.y}`;
+      this.set("path", (new Path(newPathData) as any).path);
+
+      // Mettre à jour les autres poignées
+      handleStart.set({ left: this.controlPoints.start.x, top: this.controlPoints.start.y });
+      handleStart.setCoords();
+      handleControl.set({ left: this.controlPoints.control.x, top: this.controlPoints.control.y });
+      handleControl.setCoords();
+      handleEnd.set({ left: this.controlPoints.end.x, top: this.controlPoints.end.y });
+      handleEnd.setCoords();
+
+      // Mettre à jour les lignes de contrôle
+      if (this.controlLines[0]) {
+        this.controlLines[0].set({
+          x1: this.controlPoints.start.x,
+          y1: this.controlPoints.start.y,
+          x2: this.controlPoints.control.x,
+          y2: this.controlPoints.control.y,
+        });
+        this.controlLines[0].setCoords();
+      }
+      if (this.controlLines[1]) {
+        this.controlLines[1].set({
+          x1: this.controlPoints.control.x,
+          y1: this.controlPoints.control.y,
+          x2: this.controlPoints.end.x,
+          y2: this.controlPoints.end.y,
+        });
+        this.controlLines[1].setCoords();
+      }
+
+      lastMovePos = { x: newX, y: newY };
+      canvas.requestRenderAll();
+    });
+
     // Ajouter au canvas
     this.controlLines.forEach((line) => canvas.add(line));
     this.controlHandles.forEach((handle) => {
       canvas.add(handle);
     });
+    canvas.add(handleMove);
 
-    // PERMETTRE le déplacement de la courbe (ne plus verrouiller)
-    this.set({ lockMovementX: false, lockMovementY: false });
+    // Ajouter la poignée de déplacement à la liste
+    this.controlHandles.push(handleMove);
+
+    // VERROUILLER le déplacement de la courbe (utiliser la poignée verte)
+    this.set({ lockMovementX: true, lockMovementY: true });
 
     // Event handlers pour déplacer les poignées
     this.controlHandles.forEach((handle) => {
@@ -351,6 +434,9 @@ class EditableCurve extends Path {
     const pointType = (handle as any).curvePointType;
     const newX = handle.left!;
     const newY = handle.top!;
+
+    // Ignorer la poignée de déplacement (gérée séparément)
+    if (pointType === "move") return;
 
     // Mettre à jour les points de contrôle directement en coordonnées du canevas
     if (pointType === "start") {
@@ -396,6 +482,14 @@ class EditableCurve extends Path {
         y2: endAbs.y,
       });
       this.controlLines[1].setCoords();
+    }
+
+    // Mettre à jour la poignée de déplacement (centre entre start et end)
+    if (this.controlHandles[3]) {
+      const centerX = (startAbs.x + endAbs.x) / 2;
+      const centerY = (startAbs.y + endAbs.y) / 2;
+      this.controlHandles[3].set({ left: centerX, top: centerY });
+      this.controlHandles[3].setCoords();
     }
 
     canvas.requestRenderAll();
@@ -864,15 +958,8 @@ export function TemplateDrawingCanvas({
       const finalWidth = img.width * scale;
       const finalHeight = img.height * scale;
 
-      // 🔧 BUG FIX: Vérifier que le canvas est initialisé avant de définir les dimensions
-      try {
-        if (canvas.lowerCanvasEl) {
-          canvas.setWidth(finalWidth);
-          canvas.setHeight(finalHeight);
-        }
-      } catch (e) {
-        console.warn('Canvas dimensions warning:', e);
-      }
+      canvas.setWidth(finalWidth);
+      canvas.setHeight(finalHeight);
 
       FabricImage.fromURL(imageUrl).then((fabricImg) => {
         // Centrer l'image sur le canvas
@@ -1058,10 +1145,10 @@ export function TemplateDrawingCanvas({
       const cy = (y1 + y2) / 2;
 
       const endpointProps = {
-        radius: 6,
+        radius: 4,
         fill: "#3b82f6",
         stroke: "#ffffff",
-        strokeWidth: 2,
+        strokeWidth: 1.5,
         selectable: true,
         evented: true,
         hasControls: false,
@@ -1072,10 +1159,10 @@ export function TemplateDrawingCanvas({
       };
 
       const centerProps = {
-        radius: 8,
+        radius: 5,
         fill: "#22c55e", // Vert pour la poignée de déplacement
         stroke: "#ffffff",
-        strokeWidth: 2,
+        strokeWidth: 1.5,
         selectable: true,
         evented: true,
         hasControls: false,
@@ -2387,16 +2474,8 @@ export function TemplateDrawingCanvas({
     const containerHeight = window.innerHeight;
 
     // Adapter la taille du canvas à la fenêtre
-    // 🔧 BUG FIX: Vérifier que le canvas est initialisé avant de définir les dimensions
-    try {
-      if (fabricCanvas.lowerCanvasEl) {
-        fabricCanvas.setWidth(containerWidth);
-        fabricCanvas.setHeight(containerHeight);
-      }
-    } catch (e) {
-      console.warn('Fullscreen canvas dimensions warning:', e);
-      return;
-    }
+    fabricCanvas.setWidth(containerWidth);
+    fabricCanvas.setHeight(containerHeight);
 
     const bg = fabricCanvas.backgroundImage as FabricImage | null;
     if (bg && bg.width && bg.height) {
