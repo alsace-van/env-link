@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { X, ShoppingCart, Truck, PackageCheck, Calendar, Building2, Package, ChevronRight } from "lucide-react";
+import { X, ShoppingCart, Truck, PackageCheck, Calendar, Building2, Package, ChevronRight, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -58,9 +58,15 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger tous les projets de l'utilisateur
-    const { data: projects } = await supabase.from("projects").select("id, name").eq("user_id", userData.user.id);
+    const { data: projects } = await supabase
+      .from("projects")
+      .select("id, nom_projet, nom_proprietaire")
+      .eq("user_id", userData.user.id);
 
-    const projectMap = new Map(projects?.map((p) => [p.id, p.name]) || []);
+    // Utiliser nom_projet ou nom_proprietaire comme fallback
+    const projectMap = new Map(
+      projects?.map((p) => [p.id, p.nom_projet || p.nom_proprietaire || "Projet sans nom"]) || [],
+    );
     const projectIds = projects?.map((p) => p.id) || [];
 
     if (projectIds.length === 0) {
@@ -72,7 +78,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger les scénarios principaux ET verrouillés
-    const { data: validScenarios } = await (supabase as any)
+    const { data: validScenarios } = await supabase
       .from("project_scenarios")
       .select("id, project_id")
       .in("project_id", projectIds)
@@ -94,7 +100,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setHasValidScenarios(true);
 
     // Charger uniquement les dépenses des scénarios principaux verrouillés
-    const { data: expenses, error } = await (supabase as any)
+    const { data: expenses, error } = await supabase
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
@@ -121,7 +127,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateOrderStatus = async (id: string, newStatus: "commande" | "en_livraison" | "livre") => {
-    const { error } = await (supabase as any).from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -134,7 +140,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await (supabase as any).from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
@@ -151,7 +157,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       return;
     }
 
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("project_expenses")
       .update({ statut_livraison: "en_livraison" })
       .in("id", Array.from(selectedItems));
@@ -385,15 +391,26 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                             </div>
                             <div className="flex flex-col items-end gap-2">
                               <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 text-xs"
-                                onClick={() => updateOrderStatus(item.id, "livre")}
-                              >
-                                <PackageCheck className="h-3 w-3 mr-1" />
-                                Réceptionner
-                              </Button>
+                              <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs text-muted-foreground"
+                                  onClick={() => updateOrderStatus(item.id, "commande")}
+                                  title="Remettre à commander"
+                                >
+                                  <Undo2 className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => updateOrderStatus(item.id, "livre")}
+                                >
+                                  <PackageCheck className="h-3 w-3 mr-1" />
+                                  Réceptionner
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         </Card>
@@ -451,8 +468,18 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                                 </span>
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="flex flex-col items-end gap-1">
                               <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-xs text-muted-foreground hover:text-orange-600"
+                                onClick={() => updateOrderStatus(item.id, "en_livraison")}
+                                title="Remettre en cours de livraison"
+                              >
+                                <Undo2 className="h-3 w-3 mr-1" />
+                                Annuler
+                              </Button>
                             </div>
                           </div>
                         </Card>
