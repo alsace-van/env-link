@@ -255,8 +255,8 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
           </TabsList>
 
           {/* Shopping List Tab */}
-          <TabsContent value="shopping" className="flex-1 p-0 m-0">
-            <div className="p-4 border-b bg-muted/30">
+          <TabsContent value="shopping" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
+            <div className="p-4 border-b bg-muted/30 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Checkbox
@@ -275,7 +275,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                 )}
               </div>
             </div>
-            <ScrollArea className="h-[calc(100vh-200px)]">
+            <ScrollArea className="flex-1">
               {isLoading ? (
                 <div className="p-4 text-center text-muted-foreground">Chargement...</div>
               ) : !hasValidScenarios ? (
@@ -329,7 +329,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
               )}
             </ScrollArea>
             {shoppingList.length > 0 && (
-              <div className="p-4 border-t bg-muted/30">
+              <div className="p-4 border-t bg-muted/30 flex-shrink-0">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Total à commander</span>
                   <span className="font-bold text-lg">
@@ -341,8 +341,8 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
           </TabsContent>
 
           {/* Orders In Progress Tab */}
-          <TabsContent value="inprogress" className="flex-1 p-0 m-0">
-            <ScrollArea className="h-[calc(100vh-160px)]">
+          <TabsContent value="inprogress" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
+            <ScrollArea className="flex-1">
               {isLoading ? (
                 <div className="p-4 text-center text-muted-foreground">Chargement...</div>
               ) : !hasValidScenarios ? (
@@ -420,11 +420,21 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                 </div>
               )}
             </ScrollArea>
+            {ordersInProgress.length > 0 && (
+              <div className="p-4 border-t bg-orange-50/50 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Total en cours</span>
+                  <span className="font-bold text-lg text-orange-600">
+                    {ordersInProgress.reduce((sum, item) => sum + item.prix * item.quantite, 0).toFixed(2)} €
+                  </span>
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           {/* Received Orders Tab */}
-          <TabsContent value="received" className="flex-1 p-0 m-0">
-            <ScrollArea className="h-[calc(100vh-160px)]">
+          <TabsContent value="received" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
+            <ScrollArea className="flex-1">
               {isLoading ? (
                 <div className="p-4 text-center text-muted-foreground">Chargement...</div>
               ) : !hasValidScenarios ? (
@@ -490,7 +500,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
               )}
             </ScrollArea>
             {receivedOrders.length > 0 && (
-              <div className="p-4 border-t bg-green-50/50">
+              <div className="p-4 border-t bg-green-50/50 flex-shrink-0">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Total réceptionné</span>
                   <span className="font-bold text-lg text-green-600">
