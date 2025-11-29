@@ -152,40 +152,42 @@ class EditableCurve extends Path {
     this.controlPoints.control = new Point(controlX, controlY);
     this.controlPoints.end = new Point(endX, endY);
 
-    const start = this.controlPoints.start;
-    const control = this.controlPoints.control;
-    const end = this.controlPoints.end;
+    // Appliquer la transformation pour obtenir les coordonnées absolues
+    const matrix = this.calcTransformMatrix();
+    const startAbs = new Point(startX, startY).transform(matrix);
+    const controlAbs = new Point(controlX, controlY).transform(matrix);
+    const endAbs = new Point(endX, endY).transform(matrix);
 
-    // Mettre à jour les poignées
+    // Mettre à jour les poignées avec les coordonnées absolues
     if (this.controlHandles[0]) {
-      this.controlHandles[0].set({ left: start.x, top: start.y });
+      this.controlHandles[0].set({ left: startAbs.x, top: startAbs.y });
       this.controlHandles[0].setCoords();
     }
     if (this.controlHandles[1]) {
-      this.controlHandles[1].set({ left: control.x, top: control.y });
+      this.controlHandles[1].set({ left: controlAbs.x, top: controlAbs.y });
       this.controlHandles[1].setCoords();
     }
     if (this.controlHandles[2]) {
-      this.controlHandles[2].set({ left: end.x, top: end.y });
+      this.controlHandles[2].set({ left: endAbs.x, top: endAbs.y });
       this.controlHandles[2].setCoords();
     }
 
-    // Mettre à jour les lignes de contrôle
+    // Mettre à jour les lignes de contrôle avec les coordonnées absolues
     if (this.controlLines[0]) {
       this.controlLines[0].set({
-        x1: start.x,
-        y1: start.y,
-        x2: control.x,
-        y2: control.y,
+        x1: startAbs.x,
+        y1: startAbs.y,
+        x2: controlAbs.x,
+        y2: controlAbs.y,
       });
       this.controlLines[0].setCoords();
     }
     if (this.controlLines[1]) {
       this.controlLines[1].set({
-        x1: control.x,
-        y1: control.y,
-        x2: end.x,
-        y2: end.y,
+        x1: controlAbs.x,
+        y1: controlAbs.y,
+        x2: endAbs.x,
+        y2: endAbs.y,
       });
       this.controlLines[1].setCoords();
     }
@@ -312,8 +314,8 @@ class EditableCurve extends Path {
       canvas.add(handle);
     });
 
-    // Rendre la courbe non-draggable quand les poignées sont visibles
-    this.set({ lockMovementX: true, lockMovementY: true });
+    // PERMETTRE le déplacement de la courbe (ne plus verrouiller)
+    this.set({ lockMovementX: false, lockMovementY: false });
 
     // Event handlers pour déplacer les poignées
     this.controlHandles.forEach((handle) => {
@@ -1101,12 +1103,23 @@ export function TemplateDrawingCanvas({
       lineHandlesRef.current = [];
     };
 
-    // Synchroniser les poignées avec la position de la ligne
+    // Synchroniser les poignées avec la position de la ligne (en tenant compte de la transformation)
     const syncLineHandles = (line: Line) => {
-      if (lineHandlesRef.current.length === 2) {
-        lineHandlesRef.current[0].set({ left: line.x1, top: line.y1 });
+      if (lineHandlesRef.current.length === 2 && activeLineRef.current === line) {
+        // Calculer les vraies coordonnées en tenant compte de left/top
+        const matrix = line.calcTransformMatrix();
+        const x1 = line.x1 ?? 0;
+        const y1 = line.y1 ?? 0;
+        const x2 = line.x2 ?? 0;
+        const y2 = line.y2 ?? 0;
+
+        // Appliquer la transformation
+        const point1 = new Point(x1, y1).transform(matrix);
+        const point2 = new Point(x2, y2).transform(matrix);
+
+        lineHandlesRef.current[0].set({ left: point1.x, top: point1.y });
         lineHandlesRef.current[0].setCoords();
-        lineHandlesRef.current[1].set({ left: line.x2, top: line.y2 });
+        lineHandlesRef.current[1].set({ left: point2.x, top: point2.y });
         lineHandlesRef.current[1].setCoords();
       }
     };
@@ -1158,10 +1171,15 @@ export function TemplateDrawingCanvas({
     // 🔧 BUG FIX : Mettre à jour les poignées quand la courbe ou ligne bouge
     const handleObjectMoving = (e: any) => {
       const obj = e.target;
+
+      // Synchroniser les poignées de courbe
       if (obj && (obj as any).customType === "editableCurve") {
+        const curve = obj as unknown as EditableCurve;
+        curve.syncHandlesOnMove();
         fabricCanvas.requestRenderAll();
       }
-      // Ne pas synchroniser si c'est une poignée qui bouge
+
+      // Synchroniser les poignées de ligne (ne pas si c'est une poignée qui bouge)
       if (obj && obj instanceof Line && (obj as any).isUserDrawn && !(obj as any).isLineHandle) {
         syncLineHandles(obj);
         fabricCanvas.requestRenderAll();
@@ -1171,6 +1189,8 @@ export function TemplateDrawingCanvas({
     // 🔧 BUG FIX : Mettre à jour les poignées après modification (scaling, rotation, etc.)
     const handleObjectModified = (e: any) => {
       const obj = e.target;
+
+      // Pour les courbes
       if (obj && (obj as any).customType === "editableCurve") {
         const curve = obj as unknown as EditableCurve;
 
@@ -1194,6 +1214,12 @@ export function TemplateDrawingCanvas({
           activeCurveRef.current = curve;
         }
 
+        fabricCanvas.requestRenderAll();
+      }
+
+      // Pour les lignes
+      if (obj && obj instanceof Line && (obj as any).isUserDrawn && !(obj as any).isLineHandle) {
+        syncLineHandles(obj);
         fabricCanvas.requestRenderAll();
       }
     };
