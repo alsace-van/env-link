@@ -790,6 +790,29 @@ const ProjectDetail = () => {
     fetchUser();
   }, [id]);
 
+  // Fonction pour recharger le projet (utilisée après déverrouillage)
+  const reloadProject = async () => {
+    if (!id) return;
+
+    const { data: projectData, error } = await supabase
+      .from("projects")
+      .select(
+        `
+        *,
+        vehicles_catalog (
+          marque,
+          modele
+        )
+      `,
+      )
+      .eq("id", id)
+      .single();
+
+    if (!error && projectData) {
+      setProject(projectData);
+    }
+  };
+
   const handlePhotoUploaded = () => {
     setPhotoRefresh((prev) => prev + 1);
   };
@@ -1623,10 +1646,11 @@ const ProjectDetail = () => {
                         projectId={project.id}
                         project={project as any}
                         onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                        onProjectChange={reloadProject}
                       />
                     </TabsContent>
                     <TabsContent value="bilan" className="mt-4">
-                      <BilanComptable projectId={project.id} projectName={project.nom_projet || ''} />
+                      <BilanComptable projectId={project.id} projectName={project.nom} />
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -1816,7 +1840,7 @@ const ProjectDetail = () => {
       <OrderTrackingSidebar
         isOpen={isOrderTrackingOpen}
         onClose={() => setIsOrderTrackingOpen(false)}
-        onOrderChange={() => setExpenseRefresh((prev) => prev + 1)}
+        onOrderChange={() => setExpensesRefreshTrigger((prev) => prev + 1)}
       />
     </div>
   );
