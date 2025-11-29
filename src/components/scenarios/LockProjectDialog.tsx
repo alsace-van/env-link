@@ -1,5 +1,5 @@
 // components/scenarios/LockProjectDialog.tsx
-// Dialog pour verrouiller un projet et créer un snapshot du devis
+// Dialog pour verrouiller un projet et créer un snapshot du devis validé
 
 import { useState } from "react";
 import {
