@@ -1,12 +1,12 @@
 // components/scenarios/ScenarioColumn.tsx
-// Une colonne représentant un scénario avec ses dépenses
+// Colonne de scénario avec liste compacte optimisée pour 450px
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import ScenarioHeader from './ScenarioHeader';
-import ExpensesList from '@/components/ExpensesList';
+import CompactExpensesList from './CompactExpensesList';
 import type { Scenario } from '@/types/scenarios';
 
 interface ScenarioColumnProps {
@@ -49,31 +49,16 @@ const ScenarioColumn = ({
 
   const loadExpenses = async () => {
     try {
-      // Essayer d'abord avec la fonction RPC si elle existe
-      let data: any[] | null = null;
-      let error: any = null;
-
-      const rpcResult = await (supabase.rpc as any)('get_scenario_expenses', { p_scenario_id: scenario.id });
-      
-      if (rpcResult.error) {
-        // Si la fonction RPC n'existe pas, utiliser une requête directe
-        const queryResult: any = await (supabase as any)
-          .from('project_expenses')
-          .select('*')
-          .eq('scenario_id', scenario.id);
-        
-        data = queryResult.data;
-        error = queryResult.error;
-      } else {
-        data = rpcResult.data;
-      }
+      const { data, error } = await supabase
+        .from('project_expenses')
+        .select('*')
+        .eq('scenario_id', scenario.id);
 
       if (error) {
         console.error('Erreur chargement dépenses:', error);
         return;
       }
 
-      // Filtrer les dépenses archivées si la colonne existe
       const filteredData = (data || []).filter((e: any) => e.est_archive !== true);
       setExpenses(filteredData);
       calculateTotaux(filteredData);
@@ -103,7 +88,6 @@ const ScenarioColumn = ({
                    e.categorie?.toLowerCase().includes('panneau') ||
                    e.nom_accessoire?.toLowerCase().includes('panneau'))
       .reduce((sum, e) => {
-        // Essayer d'extraire la puissance du nom (ex: "Panneau 150W")
         const match = e.nom_accessoire?.match(/(\d+)\s*w/i);
         if (match) {
           return sum + (parseInt(match[1]) * e.quantite);
@@ -122,9 +106,9 @@ const ScenarioColumn = ({
         return sum;
       }, 0);
 
-    const stockage_wh = stockage_ah * 12; // Approximation 12V
+    const stockage_wh = stockage_ah * 12;
     const autonomie_jours = production > 0 && stockage_wh > 0 
-      ? Math.round((stockage_wh / (production * 5)) * 10) / 10 // 5h d'ensoleillement moyen
+      ? Math.round((stockage_wh / (production * 5)) * 10) / 10
       : 0;
 
     if (production > 0 || stockage_ah > 0) {
@@ -160,29 +144,29 @@ const ScenarioColumn = ({
 
       {/* Corps avec scroll */}
       <ScrollArea className="flex-1" style={{ height: 'calc(100vh - 400px)' }}>
-        <div className="p-4 space-y-4">
-          {/* Liste des dépenses - Réutiliser le composant existant */}
-          <ExpensesList
+        <div className="p-3 space-y-3">
+          {/* ✅ NOUVEAU: Liste compacte au lieu de ExpensesList */}
+          <CompactExpensesList
             projectId={projectId}
+            scenarioId={scenario.id}
+            isLocked={isLocked}
             onExpenseChange={() => {
               loadExpenses();
               onExpenseChange();
             }}
-            scenarioId={scenario.id}
-            isLocked={isLocked}
           />
         </div>
       </ScrollArea>
 
       {/* Footer avec bilan et totaux */}
-      <div className="border-t p-4 space-y-3 bg-muted/30">
+      <div className="border-t p-3 space-y-2 bg-muted/30">
         {/* Bilan énergétique */}
         {bilanEnergie && (
-          <Card className="p-3 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
-            <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+          <Card className="p-2.5 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+            <h4 className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
               ⚡ Bilan Énergétique
             </h4>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
               <div>
                 <span className="text-muted-foreground">Production:</span>
                 <p className="font-semibold">{bilanEnergie.production_w}W</p>
@@ -192,7 +176,7 @@ const ScenarioColumn = ({
                 <p className="font-semibold">{bilanEnergie.stockage_ah}Ah</p>
               </div>
               <div className="col-span-2">
-                <span className="text-muted-foreground">Autonomie estimée:</span>
+                <span className="text-muted-foreground">Autonomie:</span>
                 <p className="font-semibold text-blue-600 dark:text-blue-400">
                   ~{bilanEnergie.autonomie_jours} jour(s)
                 </p>
@@ -202,11 +186,11 @@ const ScenarioColumn = ({
         )}
 
         {/* Totaux */}
-        <Card className="p-3 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800">
-          <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+        <Card className="p-2.5 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800">
+          <h4 className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
             💰 Totaux
           </h4>
-          <div className="space-y-1 text-xs">
+          <div className="space-y-0.5 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Articles:</span>
               <span className="font-semibold">{totaux.nombre_articles}</span>
@@ -219,7 +203,7 @@ const ScenarioColumn = ({
               <span className="text-muted-foreground">Vente TTC:</span>
               <span className="font-semibold">{totaux.total_vente.toFixed(2)} €</span>
             </div>
-            <div className="flex justify-between pt-1 border-t">
+            <div className="flex justify-between pt-0.5 border-t">
               <span className="text-muted-foreground">Marge:</span>
               <span className="font-semibold text-green-600 dark:text-green-400">
                 {totaux.marge_pourcent.toFixed(1)}%
