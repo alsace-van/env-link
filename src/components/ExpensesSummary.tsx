@@ -32,14 +32,37 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
   }, [projectId, refreshTrigger, paymentRefresh]);
 
   const loadExpensesData = async () => {
-    const { data, error } = await supabase.from("project_expenses").select("*").eq("project_id", projectId);
+    // D'abord, trouver le scénario principal du projet
+    const { data: scenarios } = await supabase
+      .from("project_scenarios")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("is_principal", true)
+      .single();
+
+    if (!scenarios) {
+      // Pas de scénario principal, charger toutes les dépenses du projet (fallback)
+      const { data, error } = await supabase.from("project_expenses").select("*").eq("project_id", projectId);
+      if (error) {
+        console.error(error);
+        return;
+      }
+      await processExpenses(data || []);
+      return;
+    }
+
+    // Charger uniquement les dépenses du scénario principal
+    const { data, error } = await supabase.from("project_expenses").select("*").eq("scenario_id", scenarios.id);
 
     if (error) {
       console.error(error);
       return;
     }
 
-    // Load selected options for each expense
+    await processExpenses(data || []);
+  };
+
+  const processExpenses = async (data: any[]) => {
     const expensesWithOptions = await Promise.all(
       (data || []).map(async (expense: any) => {
         const { data: selectedOptions } = await supabase
