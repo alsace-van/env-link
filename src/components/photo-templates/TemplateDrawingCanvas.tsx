@@ -620,7 +620,7 @@ export function TemplateDrawingCanvas({
       if (!showGrid) return;
 
       const gridColor = "#e0e0e0";
-      const gridStrokeWidth = 0.5;
+      const gridStrokeWidth = 1; // Augmenté pour meilleur rendu au zoom
 
       // Utiliser les dimensions de l'image background si disponible
       const bg = canvas.backgroundImage as FabricImage | null;
@@ -646,6 +646,8 @@ export function TemplateDrawingCanvas({
             lockMovementY: true,
             hasControls: false,
             hasBorders: false,
+            objectCaching: false, // Désactiver le cache pour éviter les problèmes de rendu au zoom
+            strokeUniform: true, // Épaisseur uniforme quel que soit le zoom
           });
           (line as any).isGridLine = true; // Marquer explicitement comme ligne de grille
           canvas.add(line);
@@ -667,6 +669,8 @@ export function TemplateDrawingCanvas({
             lockMovementY: true,
             hasControls: false,
             hasBorders: false,
+            objectCaching: false, // Désactiver le cache pour éviter les problèmes de rendu au zoom
+            strokeUniform: true, // Épaisseur uniforme quel que soit le zoom
           });
           (line as any).isGridLine = true; // Marquer explicitement comme ligne de grille
           canvas.add(line);
@@ -996,6 +1000,8 @@ export function TemplateDrawingCanvas({
           strokeWidth: 1,
           selectable: false,
           evented: false,
+          objectCaching: false,
+          strokeUniform: true,
         });
         (line as any).isRuler = true;
         fabricCanvas.add(line);
@@ -1030,6 +1036,8 @@ export function TemplateDrawingCanvas({
           strokeWidth: 1,
           selectable: false,
           evented: false,
+          objectCaching: false,
+          strokeUniform: true,
         });
         (line as any).isRuler = true;
         fabricCanvas.add(line);
@@ -1315,6 +1323,7 @@ export function TemplateDrawingCanvas({
 
       fabricCanvas.zoomToPoint(new Point(mouseX, mouseY), newZoom);
       setZoom(newZoom);
+      fabricCanvas.requestRenderAll(); // Forcer le rendu après zoom
     });
 
     // Gestion du pan (déplacement)
