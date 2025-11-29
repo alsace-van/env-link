@@ -1254,6 +1254,9 @@ export function TemplateDrawingCanvas({
 
     // 🎯 S'assurer que tous les objets existants sont sélectionnables
     fabricCanvas.getObjects().forEach((obj: any) => {
+      // Skip if obj is not a valid Fabric object
+      if (!obj || typeof obj.setCoords !== 'function') return;
+      
       // Ne pas modifier les objets qui ne doivent pas être sélectionnables (grille, règles, etc.)
       if (
         !obj.isRuler &&
