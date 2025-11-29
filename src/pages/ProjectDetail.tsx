@@ -1453,16 +1453,15 @@ const ProjectDetail = () => {
           <Button
             onClick={handleStatsBtnClick}
             onMouseDown={handleStatsBtnMouseDown}
-            className="fixed shadow-lg cursor-grab active:cursor-grabbing z-40 bg-background/95 backdrop-blur-sm border-2"
-            variant="default"
+            size="icon"
+            className="fixed h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing z-40 bg-green-600 hover:bg-green-700"
             title="Voir les statistiques - Glisser pour déplacer"
             style={{
               left: `${statsBtnPosition.x}px`,
               top: `${statsBtnPosition.y}px`,
             }}
           >
-            <BarChart3 className="h-4 w-4 mr-2" />
-            📊 Statistiques
+            <BarChart3 className="h-5 w-5" />
           </Button>
         )}
 
@@ -1526,12 +1525,11 @@ const ProjectDetail = () => {
                       <Button
                         onClick={handleStatsBtnClick}
                         onMouseDown={handleStatsBtnMouseDown}
-                        className="gap-2 cursor-grab active:cursor-grabbing"
-                        variant="default"
+                        size="icon"
+                        className="h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing bg-green-600 hover:bg-green-700"
                         title="Voir les statistiques - Glisser pour détacher"
                       >
-                        <BarChart3 className="h-4 w-4" />
-                        📊 Voir les statistiques
+                        <BarChart3 className="h-5 w-5" />
                       </Button>
                     )}
                   </div>
