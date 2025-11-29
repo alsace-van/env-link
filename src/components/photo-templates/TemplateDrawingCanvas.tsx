@@ -604,6 +604,7 @@ export function TemplateDrawingCanvas({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const gridLinesRef = useRef<any[]>([]);
+  const closedShapesRef = useRef<any[]>([]); // Polygones de surbrillance pour formes fermées
   const activeCurveRef = useRef<EditableCurve | null>(null);
   const activeLineRef = useRef<Line | null>(null);
   const lineHandlesRef = useRef<Circle[]>([]);
@@ -613,6 +614,143 @@ export function TemplateDrawingCanvas({
     height: number;
     viewportTransform: number[] | null;
   } | null>(null);
+
+  // 🔧 Fonction pour détecter et afficher les formes fermées (comme Fusion 360)
+  const detectClosedShapes = useCallback((canvas: FabricCanvas) => {
+    if (!canvas) return;
+
+    // Supprimer les anciennes surbrillances
+    closedShapesRef.current.forEach((shape) => canvas.remove(shape));
+    closedShapesRef.current = [];
+
+    // Collecter tous les segments (lignes et courbes) avec leurs extrémités
+    const segments: Array<{
+      obj: any;
+      start: { x: number; y: number };
+      end: { x: number; y: number };
+    }> = [];
+
+    canvas.getObjects().forEach((obj: any) => {
+      if (!obj.isUserDrawn) return;
+
+      if (obj instanceof Line) {
+        segments.push({
+          obj,
+          start: { x: obj.x1 ?? 0, y: obj.y1 ?? 0 },
+          end: { x: obj.x2 ?? 0, y: obj.y2 ?? 0 },
+        });
+      } else if (obj.customType === "editableCurve") {
+        const curve = obj as EditableCurve;
+        segments.push({
+          obj,
+          start: { x: curve.controlPoints.start.x, y: curve.controlPoints.start.y },
+          end: { x: curve.controlPoints.end.x, y: curve.controlPoints.end.y },
+        });
+      }
+    });
+
+    if (segments.length < 3) return; // Il faut au moins 3 segments pour une forme fermée
+
+    const CONNECTION_THRESHOLD = 8; // Distance max pour considérer deux points comme connectés
+
+    // Fonction pour vérifier si deux points sont connectés
+    const areConnected = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+      const dist = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+      return dist < CONNECTION_THRESHOLD;
+    };
+
+    // Construire le graphe de connexions entre segments
+    const findConnectedSegment = (
+      point: { x: number; y: number },
+      excludeSegments: Set<number>,
+    ): { segmentIndex: number; isStart: boolean } | null => {
+      for (let i = 0; i < segments.length; i++) {
+        if (excludeSegments.has(i)) continue;
+        if (areConnected(point, segments[i].start)) {
+          return { segmentIndex: i, isStart: true };
+        }
+        if (areConnected(point, segments[i].end)) {
+          return { segmentIndex: i, isStart: false };
+        }
+      }
+      return null;
+    };
+
+    // Chercher des formes fermées en partant de chaque segment
+    const usedInClosedShape = new Set<number>();
+
+    for (let startIdx = 0; startIdx < segments.length; startIdx++) {
+      if (usedInClosedShape.has(startIdx)) continue;
+
+      // Essayer de construire une forme fermée en partant de ce segment
+      const path: Array<{ x: number; y: number }> = [];
+      const usedSegments = new Set<number>([startIdx]);
+
+      const startSegment = segments[startIdx];
+      path.push(startSegment.start);
+      path.push(startSegment.end);
+
+      let currentPoint = startSegment.end;
+      let foundClosure = false;
+      let iterations = 0;
+      const maxIterations = segments.length + 1;
+
+      while (iterations < maxIterations) {
+        iterations++;
+
+        // Chercher le prochain segment connecté
+        const next = findConnectedSegment(currentPoint, usedSegments);
+
+        if (!next) break; // Pas de segment suivant, forme ouverte
+
+        usedSegments.add(next.segmentIndex);
+        const nextSegment = segments[next.segmentIndex];
+
+        // Déterminer le prochain point
+        const nextPoint = next.isStart ? nextSegment.end : nextSegment.start;
+        path.push(nextPoint);
+
+        // Vérifier si on a bouclé (retour au point de départ)
+        if (areConnected(nextPoint, startSegment.start) && usedSegments.size >= 3) {
+          foundClosure = true;
+          break;
+        }
+
+        currentPoint = nextPoint;
+      }
+
+      // Si on a trouvé une forme fermée, créer la surbrillance
+      if (foundClosure && path.length >= 3) {
+        usedSegments.forEach((idx) => usedInClosedShape.add(idx));
+
+        const polygonPoints = path.map((p) => ({ x: p.x, y: p.y }));
+
+        const highlightPolygon = new Polygon(polygonPoints, {
+          fill: "rgba(59, 130, 246, 0.15)", // Bleu semi-transparent
+          stroke: "rgba(59, 130, 246, 0.4)",
+          strokeWidth: 1,
+          selectable: false,
+          evented: false,
+          objectCaching: false,
+        });
+        (highlightPolygon as any).isClosedShapeHighlight = true;
+
+        // Ajouter en dessous des autres objets (mais au-dessus de la grille)
+        canvas.add(highlightPolygon);
+        highlightPolygon.sendToBack();
+
+        // Remettre la grille tout en dessous
+        gridLinesRef.current.forEach((gridLine) => {
+          gridLine.sendToBack();
+        });
+
+        closedShapesRef.current.push(highlightPolygon);
+      }
+    }
+
+    canvas.requestRenderAll();
+  }, []);
+
   // Fonction pour obtenir les coordonnées correctes du canvas en tenant compte du zoom/pan
   const getCanvasPoint = useCallback((canvas: FabricCanvas, e: any): { x: number; y: number } => {
     if (!canvas) return { x: 0, y: 0 };
@@ -986,6 +1124,7 @@ export function TemplateDrawingCanvas({
           top: top,
           selectable: false,
           evented: false,
+          objectCaching: false, // 🔧 Désactiver le cache pour éviter les bugs d'affichage au zoom
         });
         canvas.backgroundImage = fabricImg;
         canvas.renderAll();
@@ -1288,8 +1427,10 @@ export function TemplateDrawingCanvas({
           handleCenter.set({ left: newCx, top: newCy });
           handleCenter.setCoords();
           lastCenterPos = { x: newCx, y: newCy };
-          fabricCanvas.requestRenderAll();
         }
+        // Toujours déclencher pour détecter les formes fermées
+        fabricCanvas.fire("object:modified", { target: line });
+        fabricCanvas.requestRenderAll();
       });
 
       // Gérer le déplacement de la poignée end (fluide, sans snap pendant le mouvement)
@@ -1322,8 +1463,10 @@ export function TemplateDrawingCanvas({
           handleCenter.set({ left: newCx, top: newCy });
           handleCenter.setCoords();
           lastCenterPos = { x: newCx, y: newCy };
-          fabricCanvas.requestRenderAll();
         }
+        // Toujours déclencher pour détecter les formes fermées
+        fabricCanvas.fire("object:modified", { target: line });
+        fabricCanvas.requestRenderAll();
       });
 
       // Gérer le déplacement de la poignée centrale (déplace tout le trait)
@@ -1502,6 +1645,31 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("mouse:wheel", handleZoom);
     };
   }, [fabricCanvas, strokeColor, snapPoint]);
+
+  // 🔧 Détecter les formes fermées après chaque modification
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    const handleObjectChange = (e: any) => {
+      // Ignorer les polygones de surbrillance pour éviter les boucles infinies
+      if (e?.target?.isClosedShapeHighlight) return;
+
+      // Délai court pour s'assurer que les coordonnées sont à jour
+      setTimeout(() => {
+        detectClosedShapes(fabricCanvas);
+      }, 50);
+    };
+
+    fabricCanvas.on("object:modified", handleObjectChange);
+    fabricCanvas.on("object:added", handleObjectChange);
+    fabricCanvas.on("object:removed", handleObjectChange);
+
+    return () => {
+      fabricCanvas.off("object:modified", handleObjectChange);
+      fabricCanvas.off("object:added", handleObjectChange);
+      fabricCanvas.off("object:removed", handleObjectChange);
+    };
+  }, [fabricCanvas, detectClosedShapes]);
 
   // Gérer les outils
   useEffect(() => {
@@ -1698,9 +1866,9 @@ export function TemplateDrawingCanvas({
       evt.stopPropagation();
 
       let newZoom = fabricCanvas.getZoom();
-      newZoom *= 0.999 ** delta;
+      newZoom *= 0.9995 ** delta; // Plus lent pour éviter les sauts brusques
       if (newZoom > 5) newZoom = 5;
-      if (newZoom < 0.1) newZoom = 0.1;
+      if (newZoom < 0.3) newZoom = 0.3; // Minimum pour éviter que l'image disparaisse
 
       // Utiliser le centre du canvas si on ne peut pas obtenir la position de la souris
       const canvasEl = fabricCanvas.getElement();
@@ -1709,8 +1877,32 @@ export function TemplateDrawingCanvas({
       const mouseY = evt.clientY - rect.top;
 
       fabricCanvas.zoomToPoint(new Point(mouseX, mouseY), newZoom);
+
+      // Limiter le pan pour garder l'image visible après le zoom
+      const vpt = fabricCanvas.viewportTransform;
+      if (vpt) {
+        const canvasWidth = fabricCanvas.getWidth();
+        const canvasHeight = fabricCanvas.getHeight();
+
+        // Limites plus strictes au dézoom
+        const minPanX = canvasWidth * 0.2 - canvasWidth * newZoom;
+        const maxPanX = canvasWidth * 0.8;
+        const minPanY = canvasHeight * 0.2 - canvasHeight * newZoom;
+        const maxPanY = canvasHeight * 0.8;
+
+        vpt[4] = Math.max(minPanX, Math.min(maxPanX, vpt[4]));
+        vpt[5] = Math.max(minPanY, Math.min(maxPanY, vpt[5]));
+
+        fabricCanvas.setViewportTransform(vpt);
+      }
+
       setZoom(newZoom);
-      fabricCanvas.requestRenderAll(); // Forcer le rendu après zoom
+
+      // 🔧 FIX : Forcer le re-rendu complet de l'image de fond
+      if (fabricCanvas.backgroundImage) {
+        (fabricCanvas.backgroundImage as any).dirty = true;
+      }
+      fabricCanvas.renderAll();
     });
 
     // Gestion du pan (déplacement)
