@@ -55,10 +55,13 @@ const LockProjectDialog = ({
       if (projectError) throw projectError;
 
       // 2. Récupérer toutes les dépenses du scénario
-      const { data: expenses, error: expensesError } = await supabase
+      const expensesResult: any = await (supabase as any)
         .from('project_expenses')
         .select('*')
         .eq('scenario_id', scenarioId);
+      
+      const expenses = expensesResult.data;
+      const expensesError = expensesResult.error;
 
       if (expensesError) throw expensesError;
 

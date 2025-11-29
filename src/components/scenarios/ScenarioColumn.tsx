@@ -48,19 +48,39 @@ const ScenarioColumn = ({
   });
 
   const loadExpenses = async () => {
-    const { data, error } = await supabase.rpc('get_scenario_expenses' as any, { p_scenario_id: scenario.id }).catch(() => ({ data: null, error: null })) || 
-      await supabase.from('project_expenses').select('*').eq('project_id', projectId) as any;
+    try {
+      // Essayer d'abord avec la fonction RPC si elle existe
+      let data: any[] | null = null;
+      let error: any = null;
 
-    if (error) {
-      console.error('Erreur chargement dépenses:', error);
-      return;
+      const rpcResult = await (supabase.rpc as any)('get_scenario_expenses', { p_scenario_id: scenario.id });
+      
+      if (rpcResult.error) {
+        // Si la fonction RPC n'existe pas, utiliser une requête directe
+        const queryResult: any = await (supabase as any)
+          .from('project_expenses')
+          .select('*')
+          .eq('scenario_id', scenario.id);
+        
+        data = queryResult.data;
+        error = queryResult.error;
+      } else {
+        data = rpcResult.data;
+      }
+
+      if (error) {
+        console.error('Erreur chargement dépenses:', error);
+        return;
+      }
+
+      // Filtrer les dépenses archivées si la colonne existe
+      const filteredData = (data || []).filter((e: any) => e.est_archive !== true);
+      setExpenses(filteredData);
+      calculateTotaux(filteredData);
+      calculateBilanEnergie(filteredData);
+    } catch (err) {
+      console.error('Erreur chargement dépenses:', err);
     }
-
-    // Filtrer les dépenses archivées si la colonne existe
-    const filteredData = (data || []).filter((e: any) => e.est_archive !== true);
-    setExpenses(filteredData);
-    calculateTotaux(filteredData);
-    calculateBilanEnergie(filteredData);
   };
 
   const calculateTotaux = (expenses: any[]) => {
