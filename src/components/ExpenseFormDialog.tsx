@@ -17,6 +17,8 @@ interface ExpenseFormDialogProps {
   projectId: string;
   existingCategories: string[];
   onSuccess: () => void;
+  scenarioId?: string; // ✅ AJOUTÉ pour les scénarios
+  isLocked?: boolean; // ✅ AJOUTÉ pour le mode verrouillé
   expense?: {
     id: string;
     nom_accessoire: string;
@@ -47,6 +49,8 @@ const ExpenseFormDialog = ({
   existingCategories,
   onSuccess,
   expense,
+  scenarioId, // ✅ AJOUTÉ
+  isLocked = false, // ✅ AJOUTÉ
 }: ExpenseFormDialogProps) => {
   const [formData, setFormData] = useState({
     nom_accessoire: "",
@@ -176,7 +180,10 @@ const ExpenseFormDialog = ({
   }, [formData.nom_accessoire, catalogAccessories]);
 
   const loadExistingMarques = async () => {
-    const { data: expensesData } = await supabase.from("project_expenses").select("marque").not("marque", "is", null) as any;
+    const { data: expensesData } = (await supabase
+      .from("project_expenses")
+      .select("marque")
+      .not("marque", "is", null)) as any;
 
     const { data: catalogData } = await supabase.from("accessories_catalog").select("nom").not("nom", "is", null);
 
@@ -485,7 +492,9 @@ const ExpenseFormDialog = ({
         }
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Vous devez être connecté");
         return;
@@ -496,6 +505,7 @@ const ExpenseFormDialog = ({
         .insert({
           project_id: projectId,
           user_id: user.id,
+          scenario_id: scenarioId || null, // ✅ AJOUTÉ pour les scénarios
           nom_accessoire: formData.nom_accessoire,
           marque: formData.marque || null,
           prix: parseFloat(formData.prix_achat),
