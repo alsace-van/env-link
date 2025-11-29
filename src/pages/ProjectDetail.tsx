@@ -1548,7 +1548,7 @@ const ProjectDetail = () => {
                       />
                     </TabsContent>
                     <TabsContent value="bilan" className="mt-4">
-                      <BilanComptable projectId={project.id} projectName={project.nom_projet || ''} />
+                      <BilanComptable projectId={project.id} projectName={project.nom} />
                     </TabsContent>
                   </Tabs>
                 </div>
