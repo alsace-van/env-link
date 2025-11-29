@@ -38,14 +38,14 @@ const CompactExpensesList = ({
     // Charger les icônes des catégories
     const { data: userData } = await supabase.auth.getUser();
     if (userData.user) {
-      const { data: categoriesData } = await supabase
+      const categoriesResult: any = await (supabase as any)
         .from('categories')
         .select('id, nom, icon, parent_id, user_id')
         .eq('user_id', userData.user.id);
 
-      if (categoriesData) {
+      if (categoriesResult.data) {
         const iconsMap: Record<string, string> = {};
-        categoriesData.forEach((cat: any) => {
+        categoriesResult.data.forEach((cat: any) => {
           iconsMap[cat.nom] = cat.icon || '📦';
         });
         setCategoryIcons(iconsMap);
@@ -53,11 +53,13 @@ const CompactExpensesList = ({
     }
 
     // Charger les dépenses du scénario
-    const { data, error } = await supabase
+    const expensesResult: any = await (supabase as any)
       .from('project_expenses')
       .select('*')
       .eq('scenario_id', scenarioId)
       .order('date_achat', { ascending: false });
+
+    const { data, error } = expensesResult;
 
     if (error) {
       console.error('Erreur chargement dépenses:', error);
@@ -236,28 +238,33 @@ const CompactExpensesList = ({
         </Accordion>
       )}
 
-      {/* Dialogs */}
-      <ExpenseFormDialog
-        projectId={projectId}
-        isOpen={isDialogOpen || editingExpense !== null}
-        onClose={() => {
-          setIsDialogOpen(false);
-          setEditingExpense(null);
-        }}
-        onSuccess={() => {
-          loadExpenses();
-          onExpenseChange?.();
-        }}
-        expense={editingExpense}
-        scenarioId={scenarioId}
-        isLocked={isLocked}
-      />
+      {/* Dialog pour ajouter/éditer une dépense - utilise le composant existant avec les bonnes props */}
+      {(isDialogOpen || editingExpense !== null) && (
+        <ExpenseFormDialog
+          projectId={projectId}
+          isOpen={isDialogOpen || editingExpense !== null}
+          onClose={() => {
+            setIsDialogOpen(false);
+            setEditingExpense(null);
+          }}
+          onSuccess={() => {
+            loadExpenses();
+            onExpenseChange?.();
+          }}
+          expense={editingExpense}
+          existingCategories={Object.keys(categoryIcons)}
+        />
+      )}
 
-      <CategoryManagementDialog
-        isOpen={isCategoryDialogOpen}
-        onClose={() => setIsCategoryDialogOpen(false)}
-        onCategoryChange={loadExpenses}
-      />
+      {/* Dialog gestion catégories - passe les props attendues */}
+      {isCategoryDialogOpen && (
+        <CategoryManagementDialog
+          isOpen={isCategoryDialogOpen}
+          onClose={() => setIsCategoryDialogOpen(false)}
+          onSuccess={loadExpenses}
+          categories={[]}
+        />
+      )}
     </div>
   );
 };
