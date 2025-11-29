@@ -1254,11 +1254,13 @@ export function TemplateDrawingCanvas({
           let newY = vpt[5] + evt.clientY - lastPanPos.y;
 
           // Limiter le pan pour garder au moins 20% de l'image visible
-          const minVisibleRatio = 0.2;
-          const maxPanX = canvasWidth * currentZoom * (1 - minVisibleRatio);
-          const maxPanY = canvasHeight * currentZoom * (1 - minVisibleRatio);
-          const minPanX = -canvasWidth * (1 - minVisibleRatio);
-          const minPanY = -canvasHeight * (1 - minVisibleRatio);
+          // minPan : l'image peut sortir vers la gauche/haut jusqu'à ce que 20% reste visible à droite/bas
+          // maxPan : l'image peut sortir vers la droite/bas jusqu'à ce que 20% reste visible à gauche/haut
+          const visibleRatio = 0.2;
+          const minPanX = canvasWidth * visibleRatio - canvasWidth * currentZoom;
+          const maxPanX = canvasWidth * (1 - visibleRatio);
+          const minPanY = canvasHeight * visibleRatio - canvasHeight * currentZoom;
+          const maxPanY = canvasHeight * (1 - visibleRatio);
 
           newX = Math.max(minPanX, Math.min(maxPanX, newX));
           newY = Math.max(minPanY, Math.min(maxPanY, newY));
@@ -1378,11 +1380,11 @@ export function TemplateDrawingCanvas({
               let newY = vpt[5] + evt.clientY - lastPosRef.current.y;
 
               // Limiter le pan pour garder au moins 20% de l'image visible
-              const minVisibleRatio = 0.2;
-              const maxPanX = canvasWidth * currentZoom * (1 - minVisibleRatio);
-              const maxPanY = canvasHeight * currentZoom * (1 - minVisibleRatio);
-              const minPanX = -canvasWidth * (1 - minVisibleRatio);
-              const minPanY = -canvasHeight * (1 - minVisibleRatio);
+              const visibleRatio = 0.2;
+              const minPanX = canvasWidth * visibleRatio - canvasWidth * currentZoom;
+              const maxPanX = canvasWidth * (1 - visibleRatio);
+              const minPanY = canvasHeight * visibleRatio - canvasHeight * currentZoom;
+              const maxPanY = canvasHeight * (1 - visibleRatio);
 
               newX = Math.max(minPanX, Math.min(maxPanX, newX));
               newY = Math.max(minPanY, Math.min(maxPanY, newY));
@@ -2728,13 +2730,9 @@ export function TemplateDrawingCanvas({
         className={
           isFullscreen
             ? "h-screen w-screen flex items-center justify-center overflow-hidden"
-            : "border rounded-lg bg-white shadow-lg relative"
+            : "border rounded-lg bg-white shadow-lg flex items-center justify-center overflow-auto"
         }
-        style={
-          isFullscreen
-            ? {}
-            : { height: "calc(100vh - 350px)", minHeight: "500px", maxHeight: "900px", overflow: "auto" }
-        }
+        style={isFullscreen ? {} : { height: "calc(100vh - 350px)", minHeight: "500px", maxHeight: "900px" }}
       >
         <canvas ref={canvasRef} className={isFullscreen ? "max-w-full max-h-full" : ""} />
       </div>
