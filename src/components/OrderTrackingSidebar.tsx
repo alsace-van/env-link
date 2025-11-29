@@ -72,14 +72,14 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger les scénarios principaux ET verrouillés
-    const { data: validScenarios } = await (supabase as any)
+    const { data: validScenarios } = await supabase
       .from("project_scenarios")
       .select("id, project_id")
       .in("project_id", projectIds)
-      .eq("is_principal", true)
+      .eq("est_principal", true)
       .eq("is_locked", true);
 
-    const validScenarioIds = validScenarios?.map((s: any) => s.id) || [];
+    const validScenarioIds = validScenarios?.map((s) => s.id) || [];
 
     if (validScenarioIds.length === 0) {
       // Aucun scénario principal verrouillé
@@ -94,7 +94,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setHasValidScenarios(true);
 
     // Charger uniquement les dépenses des scénarios principaux verrouillés
-    const { data: expenses, error } = await (supabase as any)
+    const { data: expenses, error } = await supabase
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
@@ -134,7 +134,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await (supabase as any).from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
