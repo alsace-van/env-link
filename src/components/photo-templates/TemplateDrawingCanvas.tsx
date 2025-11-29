@@ -1191,12 +1191,11 @@ export function TemplateDrawingCanvas({
       // Variable pour suivre la position précédente du centre
       let lastCenterPos = { x: cx, y: cy };
 
-      // Gérer le déplacement de la poignée start
+      // Gérer le déplacement de la poignée start (fluide, sans snap pendant le mouvement)
       handle1.on("moving", () => {
-        const pos = { x: handle1.left ?? 0, y: handle1.top ?? 0 };
-        const snapped = snapPoint(pos, fabricCanvas);
-        handle1.set({ left: snapped.x, top: snapped.y });
-        line.set({ x1: snapped.x, y1: snapped.y });
+        const posX = handle1.left ?? 0;
+        const posY = handle1.top ?? 0;
+        line.set({ x1: posX, y1: posY });
         line.setCoords();
         // Mettre à jour la poignée centrale
         const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
@@ -1207,12 +1206,30 @@ export function TemplateDrawingCanvas({
         fabricCanvas.requestRenderAll();
       });
 
-      // Gérer le déplacement de la poignée end
+      // Snap au relâchement
+      handle1.on("mouseup", () => {
+        if (snapToGrid) {
+          const pos = { x: handle1.left ?? 0, y: handle1.top ?? 0 };
+          const snapped = snapPoint(pos, fabricCanvas);
+          handle1.set({ left: snapped.x, top: snapped.y });
+          handle1.setCoords();
+          line.set({ x1: snapped.x, y1: snapped.y });
+          line.setCoords();
+          // Mettre à jour la poignée centrale
+          const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
+          const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
+          handleCenter.set({ left: newCx, top: newCy });
+          handleCenter.setCoords();
+          lastCenterPos = { x: newCx, y: newCy };
+          fabricCanvas.requestRenderAll();
+        }
+      });
+
+      // Gérer le déplacement de la poignée end (fluide, sans snap pendant le mouvement)
       handle2.on("moving", () => {
-        const pos = { x: handle2.left ?? 0, y: handle2.top ?? 0 };
-        const snapped = snapPoint(pos, fabricCanvas);
-        handle2.set({ left: snapped.x, top: snapped.y });
-        line.set({ x2: snapped.x, y2: snapped.y });
+        const posX = handle2.left ?? 0;
+        const posY = handle2.top ?? 0;
+        line.set({ x2: posX, y2: posY });
         line.setCoords();
         // Mettre à jour la poignée centrale
         const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
@@ -1221,6 +1238,25 @@ export function TemplateDrawingCanvas({
         handleCenter.setCoords();
         lastCenterPos = { x: newCx, y: newCy };
         fabricCanvas.requestRenderAll();
+      });
+
+      // Snap au relâchement
+      handle2.on("mouseup", () => {
+        if (snapToGrid) {
+          const pos = { x: handle2.left ?? 0, y: handle2.top ?? 0 };
+          const snapped = snapPoint(pos, fabricCanvas);
+          handle2.set({ left: snapped.x, top: snapped.y });
+          handle2.setCoords();
+          line.set({ x2: snapped.x, y2: snapped.y });
+          line.setCoords();
+          // Mettre à jour la poignée centrale
+          const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
+          const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
+          handleCenter.set({ left: newCx, top: newCy });
+          handleCenter.setCoords();
+          lastCenterPos = { x: newCx, y: newCy };
+          fabricCanvas.requestRenderAll();
+        }
       });
 
       // Gérer le déplacement de la poignée centrale (déplace tout le trait)
@@ -1397,7 +1433,7 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("object:moving", handleObjectMoving);
       fabricCanvas.off("object:modified", handleObjectModified);
     };
-  }, [fabricCanvas, strokeColor, snapPoint]);
+  }, [fabricCanvas, strokeColor, snapPoint, snapToGrid]);
 
   // Gérer les outils
   useEffect(() => {
