@@ -98,12 +98,19 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked }: ScenarioHeader
   };
 
   const handleUnlock = async () => {
-    if (!confirm(`Déverrouiller le scénario "${scenario.nom}" ? Cela permettra de le modifier à nouveau.`)) {
+    if (
+      !confirm(
+        `Déverrouiller le scénario "${scenario.nom}" ? Cela va:\n- Remettre le projet en brouillon\n- Supprimer les paiements\n- Réinitialiser les statuts de commande`,
+      )
+    ) {
       return;
     }
 
+    console.log("🔓 handleUnlock appelé pour scenario:", scenario.id);
     const success = await unlockScenario(scenario.id);
+    console.log("🔓 Résultat unlockScenario:", success);
     if (success) {
+      console.log("🔓 Appel onScenarioChange...");
       onScenarioChange();
     }
   };
