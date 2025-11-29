@@ -40,6 +40,7 @@ import {
   ClipboardList,
   Camera,
   Ruler,
+  ShoppingCart,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -66,6 +67,7 @@ import { WorkTabMain } from "@/components/work/WorkTabMain";
 import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
 import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
 import ScenarioManager from "@/components/scenarios/ScenarioManager";
+import OrderTrackingSidebar from "@/components/OrderTrackingSidebar";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -705,10 +707,20 @@ const ProjectDetail = () => {
   const [isStatsBtnDragging, setIsStatsBtnDragging] = useState(false);
   const [statsBtnDragStart, setStatsBtnDragStart] = useState({ x: 0, y: 0 });
 
+  // Position draggable du bouton Suivi Commandes
+  const [ordersBtnPosition, setOrdersBtnPosition] = useState(() => {
+    const saved = localStorage.getItem("ordersBtnPosition");
+    return saved ? JSON.parse(saved) : { x: window.innerWidth - 120, y: 200 };
+  });
+  const [isOrdersBtnDragging, setIsOrdersBtnDragging] = useState(false);
+  const [ordersBtnDragStart, setOrdersBtnDragStart] = useState({ x: 0, y: 0 });
+  const [isOrderTrackingOpen, setIsOrderTrackingOpen] = useState(false);
+
   // Refs pour détecter si un drag a vraiment eu lieu
   const hasDraggedSidebarBtn = useRef(false);
   const hasDraggedProjectInfoBtn = useRef(false);
   const hasDraggedStatsBtn = useRef(false);
+  const hasDraggedOrdersBtn = useRef(false);
 
   const [editFormData, setEditFormData] = useState({
     nom_projet: "",
@@ -941,6 +953,57 @@ const ProjectDetail = () => {
       };
     }
   }, [isStatsBtnDragging, statsBtnDragStart]);
+
+  // Gestionnaires pour le bouton Suivi Commandes draggable
+  const handleOrdersBtnMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    hasDraggedOrdersBtn.current = false;
+    setIsOrdersBtnDragging(true);
+    setOrdersBtnDragStart({
+      x: e.clientX - ordersBtnPosition.x,
+      y: e.clientY - ordersBtnPosition.y,
+    });
+  };
+
+  const handleOrdersBtnMouseMove = (e: MouseEvent) => {
+    if (!isOrdersBtnDragging) return;
+    hasDraggedOrdersBtn.current = true;
+
+    const newX = Math.max(0, Math.min(e.clientX - ordersBtnDragStart.x, window.innerWidth - 60));
+    const newY = Math.max(0, Math.min(e.clientY - ordersBtnDragStart.y, window.innerHeight - 60));
+
+    const newPosition = { x: newX, y: newY };
+    setOrdersBtnPosition(newPosition);
+    localStorage.setItem("ordersBtnPosition", JSON.stringify(newPosition));
+  };
+
+  const handleOrdersBtnMouseUp = () => {
+    setIsOrdersBtnDragging(false);
+  };
+
+  const handleOrdersBtnClick = () => {
+    if (hasDraggedOrdersBtn.current) {
+      hasDraggedOrdersBtn.current = false;
+      return;
+    }
+    setIsOrderTrackingOpen(true);
+  };
+
+  useEffect(() => {
+    if (isOrdersBtnDragging) {
+      window.addEventListener("mousemove", handleOrdersBtnMouseMove);
+      window.addEventListener("mouseup", handleOrdersBtnMouseUp);
+      document.body.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+
+      return () => {
+        window.removeEventListener("mousemove", handleOrdersBtnMouseMove);
+        window.removeEventListener("mouseup", handleOrdersBtnMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+    }
+  }, [isOrdersBtnDragging, ordersBtnDragStart]);
 
   // Fonction pour fermer la sidebar avec animation
   const handleCloseProjectInfoSidebar = () => {
@@ -1465,6 +1528,21 @@ const ProjectDetail = () => {
           </Button>
         )}
 
+        {/* Bouton Suivi Commandes draggable flottant */}
+        <Button
+          onClick={handleOrdersBtnClick}
+          onMouseDown={handleOrdersBtnMouseDown}
+          size="icon"
+          className="fixed h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing z-40 bg-orange-500 hover:bg-orange-600"
+          title="Suivi des commandes - Glisser pour déplacer"
+          style={{
+            left: `${ordersBtnPosition.x}px`,
+            top: `${ordersBtnPosition.y}px`,
+          }}
+        >
+          <ShoppingCart className="h-5 w-5" />
+        </Button>
+
         <div className="flex gap-6">
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
@@ -1548,7 +1626,7 @@ const ProjectDetail = () => {
                       />
                     </TabsContent>
                     <TabsContent value="bilan" className="mt-4">
-                      <BilanComptable projectId={project.id} projectName={project.nom_projet || ''} />
+                      <BilanComptable projectId={project.id} projectName={project.nom} />
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -1733,6 +1811,13 @@ const ProjectDetail = () => {
           <SimpleMonthView projectId={project?.id || null} />
         </DialogContent>
       </Dialog>
+
+      {/* Sidebar Suivi des Commandes */}
+      <OrderTrackingSidebar
+        isOpen={isOrderTrackingOpen}
+        onClose={() => setIsOrderTrackingOpen(false)}
+        onOrderChange={() => setExpensesRefreshTrigger((prev) => prev + 1)}
+      />
     </div>
   );
 };
