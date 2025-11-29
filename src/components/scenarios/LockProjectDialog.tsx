@@ -1,7 +1,7 @@
 // components/scenarios/LockProjectDialog.tsx
 // Dialog pour verrouiller un projet et créer un snapshot du devis
 
-import { useState } from 'react';
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,15 +9,15 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Lock, AlertTriangle } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import type { SnapshotContent } from '@/types/scenarios';
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Lock, AlertTriangle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import type { SnapshotContent } from "@/types/scenarios";
 
 interface LockProjectDialogProps {
   projectId: string;
@@ -26,19 +26,14 @@ interface LockProjectDialogProps {
   onLocked: () => void;
 }
 
-const LockProjectDialog = ({
-  projectId,
-  scenarioId,
-  onClose,
-  onLocked
-}: LockProjectDialogProps) => {
-  const [montantAcompte, setMontantAcompte] = useState('');
-  const [notes, setNotes] = useState('');
+const LockProjectDialog = ({ projectId, scenarioId, onClose, onLocked }: LockProjectDialogProps) => {
+  const [montantAcompte, setMontantAcompte] = useState("");
+  const [notes, setNotes] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLock = async () => {
     if (!montantAcompte || parseFloat(montantAcompte) <= 0) {
-      toast.error('Veuillez saisir un montant d\'acompte valide');
+      toast.error("Veuillez saisir un montant d'acompte valide");
       return;
     }
 
@@ -47,19 +42,19 @@ const LockProjectDialog = ({
     try {
       // 1. Récupérer les données du projet
       const { data: project, error: projectError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', projectId)
+        .from("projects")
+        .select("*")
+        .eq("id", projectId)
         .single();
 
       if (projectError) throw projectError;
 
       // 2. Récupérer toutes les dépenses du scénario
       const expensesResult: any = await (supabase as any)
-        .from('project_expenses')
-        .select('*')
-        .eq('scenario_id', scenarioId);
-      
+        .from("project_expenses")
+        .select("*")
+        .eq("scenario_id", scenarioId);
+
       const expenses = expensesResult.data;
       const expensesError = expensesResult.error;
 
@@ -69,95 +64,132 @@ const LockProjectDialog = ({
       const activeExpenses = (expenses || []).filter((e: any) => e.est_archive !== true);
 
       // 3. Calculer les totaux
-      const total_achat = activeExpenses.reduce((sum: number, e: any) => sum + (e.prix * e.quantite), 0);
-      const total_vente = activeExpenses.reduce((sum: number, e: any) => sum + ((e.prix_vente_ttc || 0) * e.quantite), 0);
-      const marge = total_achat > 0 ? ((total_vente - total_achat) / total_achat * 100) : 0;
+      const total_achat = activeExpenses.reduce((sum: number, e: any) => sum + e.prix * e.quantite, 0);
+      const total_vente = activeExpenses.reduce((sum: number, e: any) => sum + (e.prix_vente_ttc || 0) * e.quantite, 0);
+      const marge = total_achat > 0 ? ((total_vente - total_achat) / total_achat) * 100 : 0;
 
       // 4. Calculer le bilan énergétique
       const production = activeExpenses
-        .filter((e: any) => e.nom_accessoire?.toLowerCase().includes('panneau'))
+        .filter((e: any) => e.nom_accessoire?.toLowerCase().includes("panneau"))
         .reduce((sum: number, e: any) => {
           const match = e.nom_accessoire?.match(/(\d+)\s*w/i);
-          return match ? sum + (parseInt(match[1]) * e.quantite) : sum;
+          return match ? sum + parseInt(match[1]) * e.quantite : sum;
         }, 0);
 
       const stockage_ah = activeExpenses
-        .filter((e: any) => e.nom_accessoire?.toLowerCase().includes('batterie'))
+        .filter((e: any) => e.nom_accessoire?.toLowerCase().includes("batterie"))
         .reduce((sum: number, e: any) => {
           const match = e.nom_accessoire?.match(/(\d+)\s*ah/i);
-          return match ? sum + (parseInt(match[1]) * e.quantite) : sum;
+          return match ? sum + parseInt(match[1]) * e.quantite : sum;
         }, 0);
 
       // 5. Créer le contenu du snapshot
       const vehicule = [
-        (project as any).marque_officielle || (project as any).marque_vehicule || (project as any).marque_custom || '',
-        (project as any).modele_officiel || (project as any).modele_vehicule || (project as any).modele_custom || ''
-      ].filter(Boolean).join(' ');
+        (project as any).marque_officielle || (project as any).marque_vehicule || (project as any).marque_custom || "",
+        (project as any).modele_officiel || (project as any).modele_vehicule || (project as any).modele_custom || "",
+      ]
+        .filter(Boolean)
+        .join(" ");
 
       const snapshotContent: SnapshotContent = {
         version: 1,
         date: new Date().toISOString(),
-        nom: 'Devis validé',
+        nom: "Devis validé",
         projet: {
           nom_proprietaire: project.nom_proprietaire,
           vehicule: vehicule,
-          ...project
+          ...project,
         },
         depenses: activeExpenses,
         totaux: {
           total_achat_ht: total_achat,
           total_vente_ttc: total_vente,
           marge_totale: total_vente - total_achat,
-          marge_pourcentage: marge
+          marge_pourcentage: marge,
         },
-        bilan_energie: production > 0 || stockage_ah > 0 ? {
-          production_w: production,
-          stockage_ah: stockage_ah,
-          stockage_wh: stockage_ah * 12,
-          autonomie_jours: production > 0 && stockage_ah > 0 
-            ? Math.round((stockage_ah * 12 / (production * 5)) * 10) / 10 
-            : 0
-        } : undefined,
+        bilan_energie:
+          production > 0 || stockage_ah > 0
+            ? {
+                production_w: production,
+                stockage_ah: stockage_ah,
+                stockage_wh: stockage_ah * 12,
+                autonomie_jours:
+                  production > 0 && stockage_ah > 0 ? Math.round(((stockage_ah * 12) / (production * 5)) * 10) / 10 : 0,
+              }
+            : undefined,
         metadata: {
           nombre_articles: activeExpenses.length,
           categories_utilisees: [...new Set(activeExpenses.map((e: any) => e.categorie).filter(Boolean))] as string[],
           date_validation: new Date().toISOString(),
-          montant_acompte: parseFloat(montantAcompte)
-        }
+          montant_acompte: parseFloat(montantAcompte),
+        },
       };
 
       // 6. Créer le snapshot
-      const { error: snapshotError } = await supabase
-        .from('devis_snapshots' as any)
-        .insert({
-          project_id: projectId,
-          scenario_id: scenarioId,
-          version_numero: 1,
-          nom_snapshot: 'Devis validé',
-          contenu_complet: snapshotContent,
-          notes
-        });
+      const { error: snapshotError } = await supabase.from("devis_snapshots" as any).insert({
+        project_id: projectId,
+        scenario_id: scenarioId,
+        version_numero: 1,
+        nom_snapshot: "Devis validé",
+        contenu_complet: snapshotContent,
+        notes,
+      });
 
       if (snapshotError) throw snapshotError;
 
       // 7. Mettre à jour le projet
       const { error: updateError } = await supabase
-        .from('projects')
+        .from("projects")
         .update({
-          statut_financier: 'devis_accepte',
+          statut_financier: "devis_accepte",
           date_validation_devis: new Date().toISOString(),
           date_encaissement_acompte: new Date().toISOString(),
-          montant_acompte: parseFloat(montantAcompte)
+          montant_acompte: parseFloat(montantAcompte),
         } as any)
-        .eq('id', projectId);
+        .eq("id", projectId);
 
       if (updateError) throw updateError;
 
-      toast.success('Devis verrouillé avec succès !');
+      // 8. Verrouiller le scénario
+      const { error: lockError } = await (supabase
+        .from("project_scenarios" as any)
+        .update({ is_locked: true })
+        .eq("id", scenarioId) as any);
+
+      if (lockError) throw lockError;
+
+      // 9. Ajouter l'acompte comme paiement
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData.user) {
+        const { error: paymentError } = await supabase.from("project_payment_transactions").insert({
+          project_id: projectId,
+          user_id: userData.user.id,
+          type_paiement: "acompte",
+          montant: parseFloat(montantAcompte),
+          date_paiement: new Date().toISOString().split("T")[0],
+          notes: "Acompte à la signature du devis",
+        } as any);
+
+        if (paymentError) {
+          console.error("Erreur ajout paiement:", paymentError);
+        }
+      }
+
+      // 10. Mettre toutes les dépenses du scénario en statut "commande" (shopping list)
+      const { error: expensesUpdateError } = await supabase
+        .from("project_expenses")
+        .update({ statut_livraison: "commande" })
+        .eq("scenario_id", scenarioId);
+
+      if (expensesUpdateError) {
+        console.error("Erreur mise à jour statut dépenses:", expensesUpdateError);
+      }
+
+      toast.success("Devis verrouillé avec succès !");
       onLocked();
     } catch (error) {
-      console.error('Erreur verrouillage:', error);
-      toast.error('Erreur lors du verrouillage');
+      console.error("Erreur verrouillage:", error);
+      toast.error("Erreur lors du verrouillage");
     } finally {
       setIsLoading(false);
     }
@@ -181,9 +213,7 @@ const LockProjectDialog = ({
           <div className="flex gap-3 p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg">
             <AlertTriangle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm space-y-1">
-              <p className="font-semibold text-orange-900 dark:text-orange-100">
-                Après verrouillage :
-              </p>
+              <p className="font-semibold text-orange-900 dark:text-orange-100">Après verrouillage :</p>
               <ul className="list-disc list-inside text-orange-800 dark:text-orange-200 space-y-1">
                 <li>Toute modification sera tracée dans l'historique</li>
                 <li>Un snapshot du devis sera créé</li>
@@ -204,9 +234,7 @@ const LockProjectDialog = ({
               placeholder="Ex: 3000.00"
               required
             />
-            <p className="text-xs text-muted-foreground">
-              Montant encaissé à la signature du devis
-            </p>
+            <p className="text-xs text-muted-foreground">Montant encaissé à la signature du devis</p>
           </div>
 
           {/* Notes optionnelles */}
@@ -227,7 +255,7 @@ const LockProjectDialog = ({
             Annuler
           </Button>
           <Button onClick={handleLock} disabled={isLoading}>
-            {isLoading ? 'Verrouillage...' : 'Verrouiller le devis'}
+            {isLoading ? "Verrouillage..." : "Verrouiller le devis"}
           </Button>
         </DialogFooter>
       </DialogContent>
