@@ -1,26 +1,22 @@
 // components/scenarios/ScenarioManager.tsx
 // Gestionnaire principal de la vue en colonnes avec scénarios
 // ✅ AMÉLIORATIONS: Colonnes plus larges + Carrousel + Checkboxes visibilité
+// ✅ FIX: Correction de l'erreur useState ligne 66
 
-import { useState, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { Plus, Table2, History, Lock, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import { useScenarios } from '@/hooks/useScenarios';
-import ScenarioColumn from './ScenarioColumn';
-import CreateScenarioDialog from './CreateScenarioDialog';
-import ComparisonTable from './ComparisonTable';
-import ExpensesHistory from './ExpensesHistory';
-import LockProjectDialog from './LockProjectDialog';
-import type { ProjectWithStatus } from '@/types/scenarios';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Plus, Table2, History, Lock, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { useScenarios } from "@/hooks/useScenarios";
+import ScenarioColumn from "./ScenarioColumn";
+import CreateScenarioDialog from "./CreateScenarioDialog";
+import ComparisonTable from "./ComparisonTable";
+import ExpensesHistory from "./ExpensesHistory";
+import LockProjectDialog from "./LockProjectDialog";
+import type { ProjectWithStatus } from "@/types/scenarios";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface ScenarioManagerProps {
   projectId: string;
@@ -35,63 +31,56 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isLockDialogOpen, setIsLockDialogOpen] = useState(false);
   const [modificationsCount, setModificationsCount] = useState(0);
-  
-  // ✅ NOUVEAU: Gestion de la visibilité des scénarios
-  const [visibleScenarios, setVisibleScenarios] = useState<Record<string, boolean>>(() => {
-    // Par défaut, tous les scénarios sont visibles
-    const initial: Record<string, boolean> = {};
-    scenarios.forEach(s => initial[s.id] = true);
-    return initial;
-  });
 
-  // ✅ NOUVEAU: Référence pour le carrousel
+  // ✅ Gestion de la visibilité des scénarios
+  const [visibleScenarios, setVisibleScenarios] = useState<Record<string, boolean>>({});
+
+  // ✅ Référence pour le carrousel
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const isLocked = project?.statut_financier === 'devis_accepte' || 
-                   project?.statut_financier === 'en_cours' || 
-                   project?.statut_financier === 'termine';
+  const isLocked =
+    project?.statut_financier === "devis_accepte" ||
+    project?.statut_financier === "en_cours" ||
+    project?.statut_financier === "termine";
 
-  // ✅ NOUVEAU: Initialiser la visibilité pour les nouveaux scénarios
-  const updateVisibility = (scenarios: any[]) => {
-    const newVisibility = { ...visibleScenarios };
-    scenarios.forEach(s => {
-      if (!(s.id in newVisibility)) {
-        newVisibility[s.id] = true;
-      }
-    });
-    setVisibleScenarios(newVisibility);
-  };
-
-  // Mettre à jour la visibilité quand les scénarios changent
-  useState(() => {
+  // ✅ FIX: Utiliser useEffect au lieu de useState pour mettre à jour la visibilité
+  useEffect(() => {
     if (scenarios.length > 0) {
-      updateVisibility(scenarios);
+      setVisibleScenarios((prev) => {
+        const newVisibility = { ...prev };
+        scenarios.forEach((s) => {
+          if (!(s.id in newVisibility)) {
+            newVisibility[s.id] = true;
+          }
+        });
+        return newVisibility;
+      });
     }
-  });
+  }, [scenarios]);
 
-  // ✅ NOUVEAU: Fonctions de navigation du carrousel
+  // ✅ Fonctions de navigation du carrousel
   const scrollLeft = () => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: -470, behavior: 'smooth' });
+      scrollContainerRef.current.scrollBy({ left: -470, behavior: "smooth" });
     }
   };
 
   const scrollRight = () => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: 470, behavior: 'smooth' });
+      scrollContainerRef.current.scrollBy({ left: 470, behavior: "smooth" });
     }
   };
 
-  // ✅ NOUVEAU: Toggle visibilité d'un scénario
+  // ✅ Toggle visibilité d'un scénario
   const toggleVisibility = (scenarioId: string) => {
-    setVisibleScenarios(prev => ({
+    setVisibleScenarios((prev) => ({
       ...prev,
-      [scenarioId]: !prev[scenarioId]
+      [scenarioId]: !prev[scenarioId],
     }));
   };
 
   // Filtrer les scénarios visibles
-  const displayedScenarios = scenarios.filter(s => visibleScenarios[s.id] !== false);
+  const displayedScenarios = scenarios.filter((s) => visibleScenarios[s.id] !== false);
 
   if (isLoading) {
     return <div className="text-center py-8">Chargement des scénarios...</div>;
@@ -103,22 +92,23 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
       <div className="flex justify-between items-start gap-4 p-4 bg-muted/50 rounded-lg">
         <div className="flex-1">
           <h3 className="text-lg font-semibold mb-2">Gestion des dépenses</h3>
-          
+
           {isLocked && (
             <div className="space-y-2">
               <Badge variant="secondary" className="gap-2">
                 <Lock className="h-3 w-3" />
-                Devis validé le {project.date_validation_devis ? 
-                  new Date(project.date_validation_devis).toLocaleDateString('fr-FR') : 
-                  'N/A'}
+                Devis validé le{" "}
+                {project.date_validation_devis
+                  ? new Date(project.date_validation_devis).toLocaleDateString("fr-FR")
+                  : "N/A"}
               </Badge>
-              
+
               {project.montant_acompte && (
                 <p className="text-sm text-muted-foreground">
                   Acompte: {project.montant_acompte.toFixed(2)} € encaissé
                 </p>
               )}
-              
+
               {modificationsCount > 0 && (
                 <Badge variant="destructive" className="gap-2">
                   ⚠️ {modificationsCount} modification(s) depuis validation
@@ -129,7 +119,7 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {/* ✅ NOUVEAU: Bouton visibilité des scénarios */}
+          {/* ✅ Bouton visibilité des scénarios */}
           {scenarios.length > 1 && (
             <Popover>
               <PopoverTrigger asChild>
@@ -157,7 +147,9 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
                           <span className="text-lg">{scenario.icone}</span>
                           <span className="flex-1">{scenario.nom}</span>
                           {scenario.est_principal && (
-                            <Badge variant="outline" className="text-xs">Principal</Badge>
+                            <Badge variant="outline" className="text-xs">
+                              Principal
+                            </Badge>
                           )}
                         </Label>
                       </div>
@@ -169,24 +161,14 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
           )}
 
           {!isLocked && principalScenario && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsLockDialogOpen(true)}
-              className="gap-2"
-            >
+            <Button variant="outline" size="sm" onClick={() => setIsLockDialogOpen(true)} className="gap-2">
               <Lock className="h-4 w-4" />
               Verrouiller le devis
             </Button>
           )}
 
           {isLocked && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsHistoryOpen(true)}
-              className="gap-2"
-            >
+            <Button variant="outline" size="sm" onClick={() => setIsHistoryOpen(true)} className="gap-2">
               <History className="h-4 w-4" />
               Historique
               {modificationsCount > 0 && (
@@ -208,18 +190,14 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
             Tableau comparatif
           </Button>
 
-          <Button
-            size="sm"
-            onClick={() => setIsCreateDialogOpen(true)}
-            className="gap-2"
-          >
+          <Button size="sm" onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" />
             Nouveau scénario
           </Button>
         </div>
       </div>
 
-      {/* ✅ AMÉLIORATION: Vue en carrousel avec navigation */}
+      {/* ✅ Vue en carrousel avec navigation */}
       <div className="relative">
         {/* Boutons de navigation */}
         {displayedScenarios.length > 2 && (
@@ -244,15 +222,10 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
         )}
 
         {/* Conteneur scrollable */}
-        <div 
-          ref={scrollContainerRef}
-          className="overflow-x-auto pb-4 scroll-smooth"
-          style={{ scrollbarWidth: 'thin' }}
-        >
-          <div className="flex gap-4" style={{ minWidth: 'min-content' }}>
+        <div ref={scrollContainerRef} className="overflow-x-auto pb-4 scroll-smooth" style={{ scrollbarWidth: "thin" }}>
+          <div className="flex gap-4" style={{ minWidth: "min-content" }}>
             {displayedScenarios.map((scenario) => (
-              // ✅ AMÉLIORATION: Colonnes plus larges (450px au lieu de 380px)
-              <div key={scenario.id} style={{ minWidth: '450px', maxWidth: '450px' }}>
+              <div key={scenario.id} style={{ minWidth: "450px", maxWidth: "450px" }}>
                 <ScenarioColumn
                   scenario={scenario}
                   projectId={projectId}
@@ -282,11 +255,7 @@ const ScenarioManager = ({ projectId, project, onExpenseChange }: ScenarioManage
         scenarios={scenarios}
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
-        onCreated={() => {
-          reloadScenarios();
-          // Rendre visible le nouveau scénario
-          setTimeout(() => updateVisibility(scenarios), 100);
-        }}
+        onCreated={reloadScenarios}
       />
 
       {isComparisonOpen && (
