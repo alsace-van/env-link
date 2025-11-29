@@ -24,6 +24,8 @@ import {
   BarChart3,
   TrendingUp,
   Trophy,
+  Euro,
+  TrendingDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
@@ -35,6 +37,7 @@ interface OrderItem {
   nom_accessoire: string;
   marque?: string;
   prix: number;
+  prix_vente_ttc?: number;
   quantite: number;
   categorie: string;
   fournisseur?: string;
@@ -48,7 +51,9 @@ interface OrderItem {
 interface MonthlyStats {
   month: string;
   monthLabel: string;
-  total: number;
+  totalAchats: number;
+  totalVentes: number;
+  margeNette: number;
 }
 
 interface TopAccessory {
@@ -186,17 +191,31 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       const monthStart = startOfMonth(monthDate);
       const monthEnd = endOfMonth(monthDate);
 
-      const monthTotal = expenses
-        .filter((e) => {
-          const date = new Date(e.date_achat);
-          return date >= monthStart && date <= monthEnd;
-        })
-        .reduce((sum, e) => sum + e.prix * e.quantite, 0);
+      const monthExpenses = expenses.filter((e) => {
+        const date = new Date(e.date_achat);
+        return date >= monthStart && date <= monthEnd;
+      });
+
+      // Total achats HT
+      const totalAchats = monthExpenses.reduce((sum, e) => sum + e.prix * e.quantite, 0);
+
+      // Total ventes TTC
+      const totalVentes = monthExpenses.reduce((sum, e) => {
+        const venteTTC = e.prix_vente_ttc || e.prix * 1.5; // Fallback si pas de prix vente
+        return sum + venteTTC * e.quantite;
+      }, 0);
+
+      // Marge nette = Ventes HT - Achats HT
+      // Ventes HT = Ventes TTC / 1.2 (TVA 20%)
+      const ventesHT = totalVentes / 1.2;
+      const margeNette = ventesHT - totalAchats;
 
       months.push({
         month: monthKey,
         monthLabel: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
-        total: monthTotal,
+        totalAchats,
+        totalVentes,
+        margeNette,
       });
     }
 
@@ -349,41 +368,132 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             </div>
 
             <ScrollArea className="flex-1 p-4">
-              {/* Graphique des montants par mois */}
+              {/* Graphique des achats HT par mois */}
               <div className="mb-6">
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4" />
-                  Montant total par mois
+                  <ShoppingCart className="h-4 w-4 text-red-500" />
+                  Achats HT par mois
                 </h4>
-                <div className="h-[200px] bg-background rounded-lg p-2 border">
+                <div className="h-[160px] bg-background rounded-lg p-2 border">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={monthlyStats}>
-                      <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} tickLine={false} />
+                      <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} tickLine={false} />
                       <YAxis
-                        tick={{ fontSize: 11 }}
+                        tick={{ fontSize: 10 }}
                         tickLine={false}
-                        tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                        width={45}
+                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value)}
                       />
                       <Tooltip
-                        formatter={(value: number) => [`${value.toFixed(2)} €`, "Montant"]}
+                        formatter={(value: number) => [`${value.toFixed(2)} €`, "Achats HT"]}
                         labelStyle={{ fontWeight: "bold" }}
                       />
-                      <Bar dataKey="total" radius={[4, 4, 0, 0]}>
+                      <Bar dataKey="totalAchats" radius={[4, 4, 0, 0]}>
                         {monthlyStats.map((entry, index) => (
                           <Cell
-                            key={`cell-${index}`}
-                            fill={index === monthlyStats.length - 1 ? "#3b82f6" : "#94a3b8"}
+                            key={`cell-achats-${index}`}
+                            fill={index === monthlyStats.length - 1 ? "#ef4444" : "#fca5a5"}
                           />
                         ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="mt-2 text-center">
+                <div className="mt-1 text-center">
                   <span className="text-xs text-muted-foreground">
-                    Total 6 mois:{" "}
-                    <span className="font-semibold text-foreground">
-                      {monthlyStats.reduce((sum, m) => sum + m.total, 0).toFixed(2)} €
+                    Total:{" "}
+                    <span className="font-semibold text-red-600">
+                      {monthlyStats.reduce((sum, m) => sum + m.totalAchats, 0).toFixed(2)} €
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Graphique des ventes TTC par mois */}
+              <div className="mb-6">
+                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <Euro className="h-4 w-4 text-blue-500" />
+                  Ventes TTC par mois
+                </h4>
+                <div className="h-[160px] bg-background rounded-lg p-2 border">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlyStats}>
+                      <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} tickLine={false} />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                        width={45}
+                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value)}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => [`${value.toFixed(2)} €`, "Ventes TTC"]}
+                        labelStyle={{ fontWeight: "bold" }}
+                      />
+                      <Bar dataKey="totalVentes" radius={[4, 4, 0, 0]}>
+                        {monthlyStats.map((entry, index) => (
+                          <Cell
+                            key={`cell-ventes-${index}`}
+                            fill={index === monthlyStats.length - 1 ? "#3b82f6" : "#93c5fd"}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-1 text-center">
+                  <span className="text-xs text-muted-foreground">
+                    Total:{" "}
+                    <span className="font-semibold text-blue-600">
+                      {monthlyStats.reduce((sum, m) => sum + m.totalVentes, 0).toFixed(2)} €
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Graphique de la marge nette par mois */}
+              <div className="mb-6">
+                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-green-500" />
+                  Marge nette par mois (TVA déduite)
+                </h4>
+                <div className="h-[160px] bg-background rounded-lg p-2 border">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={monthlyStats}>
+                      <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} tickLine={false} />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                        width={45}
+                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value)}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => [`${value.toFixed(2)} €`, "Marge nette"]}
+                        labelStyle={{ fontWeight: "bold" }}
+                      />
+                      <Bar dataKey="margeNette" radius={[4, 4, 0, 0]}>
+                        {monthlyStats.map((entry, index) => (
+                          <Cell
+                            key={`cell-marge-${index}`}
+                            fill={
+                              entry.margeNette >= 0
+                                ? index === monthlyStats.length - 1
+                                  ? "#22c55e"
+                                  : "#86efac"
+                                : "#ef4444"
+                            }
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-1 text-center">
+                  <span className="text-xs text-muted-foreground">
+                    Total:{" "}
+                    <span
+                      className={`font-semibold ${monthlyStats.reduce((sum, m) => sum + m.margeNette, 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                    >
+                      {monthlyStats.reduce((sum, m) => sum + m.margeNette, 0).toFixed(2)} €
                     </span>
                   </span>
                 </div>
