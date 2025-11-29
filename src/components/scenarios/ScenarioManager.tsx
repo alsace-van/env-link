@@ -285,7 +285,9 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
           onClose={() => setIsLockDialogOpen(false)}
           onLocked={() => {
             setIsLockDialogOpen(false);
-            window.location.reload();
+            reloadScenarios();
+            onExpenseChange?.();
+            onProjectChange?.();
           }}
         />
       )}
