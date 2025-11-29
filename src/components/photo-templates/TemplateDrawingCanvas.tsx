@@ -49,6 +49,7 @@ import {
   Maximize,
   Minimize,
   RefreshCw,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -725,15 +726,32 @@ export function TemplateDrawingCanvas({
 
         const polygonPoints = path.map((p) => ({ x: p.x, y: p.y }));
 
+        // Créer le polygone PUREMENT VISUEL - aucune interaction possible
         const highlightPolygon = new Polygon(polygonPoints, {
           fill: "rgba(59, 130, 246, 0.15)", // Bleu semi-transparent
-          stroke: "rgba(59, 130, 246, 0.4)",
-          strokeWidth: 1,
+          stroke: "transparent",
+          strokeWidth: 0,
+          // Désactiver TOUTES les interactions
           selectable: false,
           evented: false,
+          hasControls: false,
+          hasBorders: false,
+          lockMovementX: true,
+          lockMovementY: true,
+          lockRotation: true,
+          lockScalingX: true,
+          lockScalingY: true,
+          // Exclure des sélections rectangulaires
+          activeOn: "up" as const,
           objectCaching: false,
+          // Ne pas apparaître dans les exports JSON
+          excludeFromExport: true,
         });
+
+        // Marquer comme surbrillance pour l'exclure partout
         (highlightPolygon as any).isClosedShapeHighlight = true;
+        // Forcer à ne jamais être ciblé
+        highlightPolygon.set("hoverCursor", "default");
 
         // Ajouter en dessous des autres objets (mais au-dessus de la grille)
         canvas.add(highlightPolygon);
@@ -1057,11 +1075,13 @@ export function TemplateDrawingCanvas({
 
       // Si c'est un seul objet
       if (activeObject.type !== "activeSelection") {
-        // Si c'est une ligne de grille, une règle ou dans gridLinesRef, désélectionner
+        // Si c'est une ligne de grille, une règle, une surbrillance ou dans gridLinesRef, désélectionner
         if (
           (activeObject as any).isGridLine ||
           (activeObject as any).isRuler ||
-          gridLinesRef.current.includes(activeObject)
+          (activeObject as any).isClosedShapeHighlight ||
+          gridLinesRef.current.includes(activeObject) ||
+          closedShapesRef.current.includes(activeObject)
         ) {
           canvas.discardActiveObject();
           canvas.renderAll();
@@ -1071,7 +1091,13 @@ export function TemplateDrawingCanvas({
       else {
         const objects = (activeObject as any)._objects || [];
         const filtered = objects.filter((obj: any) => {
-          return !((obj as any).isGridLine || (obj as any).isRuler || gridLinesRef.current.includes(obj));
+          return !(
+            (obj as any).isGridLine ||
+            (obj as any).isRuler ||
+            (obj as any).isClosedShapeHighlight ||
+            gridLinesRef.current.includes(obj) ||
+            closedShapesRef.current.includes(obj)
+          );
         });
 
         if (filtered.length === 0) {
@@ -1497,6 +1523,12 @@ export function TemplateDrawingCanvas({
         fabricCanvas.requestRenderAll();
       });
 
+      // Déclencher la détection des formes fermées après déplacement du trait entier
+      handleCenter.on("mouseup", () => {
+        fabricCanvas.fire("object:modified", { target: line });
+        fabricCanvas.requestRenderAll();
+      });
+
       fabricCanvas.add(handle1);
       fabricCanvas.add(handleCenter);
       fabricCanvas.add(handle2);
@@ -1712,14 +1744,16 @@ export function TemplateDrawingCanvas({
 
     // 🎯 S'assurer que tous les objets existants sont sélectionnables
     fabricCanvas.getObjects().forEach((obj: any) => {
-      // Ne pas modifier les objets qui ne doivent pas être sélectionnables (grille, règles, etc.)
+      // Ne pas modifier les objets qui ne doivent pas être sélectionnables (grille, règles, surbrillance, etc.)
       if (
         !obj.isRuler &&
         !obj.isGridLine &&
         !obj.isControlHandle &&
         !obj.isControlLine &&
         !obj.isLineHandle &&
-        !gridLinesRef.current.includes(obj)
+        !obj.isClosedShapeHighlight &&
+        !gridLinesRef.current.includes(obj) &&
+        !closedShapesRef.current.includes(obj)
       ) {
         obj.selectable = true;
         obj.evented = true;
@@ -1739,7 +1773,7 @@ export function TemplateDrawingCanvas({
           obj.evented = false;
         }
       } else {
-        // Forcer les objets non sélectionnables à le rester
+        // Forcer les objets non sélectionnables à le rester (grille, surbrillance, etc.)
         obj.selectable = false;
         obj.evented = false;
       }
@@ -2718,10 +2752,45 @@ export function TemplateDrawingCanvas({
     previewCurve,
   ]);
 
+  // 🔧 Raccourci clavier Ctrl+S pour enregistrer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        saveDrawings();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fabricCanvas, onDrawingsChanged]);
+
   const saveDrawings = () => {
     if (!fabricCanvas) return;
-    const json = fabricCanvas.toJSON();
+
+    // Filtrer les objets à sauvegarder (exclure grille, poignées, surbrillance)
+    const objectsToSave = fabricCanvas.getObjects().filter((obj: any) => {
+      return (
+        obj.isUserDrawn &&
+        !obj.isGridLine &&
+        !obj.isRuler &&
+        !obj.isLineHandle &&
+        !obj.isControlHandle &&
+        !obj.isControlLine &&
+        !obj.isClosedShapeHighlight &&
+        !gridLinesRef.current.includes(obj) &&
+        !closedShapesRef.current.includes(obj)
+      );
+    });
+
+    // Créer un JSON personnalisé avec uniquement les objets utilisateur
+    const json = {
+      version: fabricCanvas.toJSON().version,
+      objects: objectsToSave.map((obj: any) => obj.toObject()),
+    };
+
     onDrawingsChanged?.(json);
+    toast.success("Tracé enregistré !");
   };
 
   const handleClear = () => {
@@ -3108,6 +3177,15 @@ export function TemplateDrawingCanvas({
               <Separator />
 
               <div className="flex flex-col gap-1">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={saveDrawings}
+                  className="h-8 bg-green-600 hover:bg-green-700"
+                >
+                  <Save className="h-3 w-3 mr-1" />
+                  Enregistrer
+                </Button>
                 <Button variant="outline" size="sm" onClick={handleDeleteSelected} className="h-8">
                   <Trash2 className="h-3 w-3 mr-1" />
                   Supprimer
@@ -3279,6 +3357,16 @@ export function TemplateDrawingCanvas({
           <Separator orientation="vertical" className="h-8" />
 
           <div className="flex gap-1">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={saveDrawings}
+              className="bg-green-600 hover:bg-green-700"
+              title="Enregistrer (Ctrl+S)"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Enregistrer
+            </Button>
             <Button variant="outline" size="sm" onClick={handleDeleteSelected} title="Supprimer (Suppr)">
               <Trash2 className="h-4 w-4 mr-2" />
               Supprimer
