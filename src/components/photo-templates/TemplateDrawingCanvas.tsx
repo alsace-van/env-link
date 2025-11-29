@@ -527,7 +527,13 @@ export function TemplateDrawingCanvas({
 
         objects.forEach((obj) => {
           // Ignorer les objets non sélectionnables (grille, règles, poignées)
-          if ((obj as any).isRuler || (obj as any).isControlHandle || (obj as any).isControlLine || !obj.selectable) {
+          if (
+            (obj as any).isRuler ||
+            (obj as any).isControlHandle ||
+            (obj as any).isControlLine ||
+            (obj as any).isGridLine ||
+            !obj.selectable
+          ) {
             return;
           }
 
@@ -608,7 +614,7 @@ export function TemplateDrawingCanvas({
       // Pas de snap vers la grille - retourner le point original
       return point;
     },
-    [snapToGrid, gridSize],
+    [snapToGrid],
   );
 
   // Créer la grille limitée à l'image
@@ -620,7 +626,7 @@ export function TemplateDrawingCanvas({
       if (!showGrid) return;
 
       const gridColor = "#e0e0e0";
-      const gridStrokeWidth = 1; // Augmenté pour meilleur rendu au zoom
+      const gridStrokeWidth = 0.5; // Trait fin pour la grille
 
       // Utiliser les dimensions de l'image background si disponible
       const bg = canvas.backgroundImage as FabricImage | null;
@@ -844,13 +850,11 @@ export function TemplateDrawingCanvas({
 
       // Si c'est un seul objet
       if (activeObject.type !== "activeSelection") {
-        // Si c'est une ligne de grille ou un trait de construction, désélectionner
+        // Si c'est une ligne de grille, une règle ou dans gridLinesRef, désélectionner
         if (
           (activeObject as any).isGridLine ||
           (activeObject as any).isRuler ||
-          (activeObject instanceof Line &&
-            (activeObject as any).strokeDashArray &&
-            !(activeObject as any).isControlLine)
+          gridLinesRef.current.includes(activeObject)
         ) {
           canvas.discardActiveObject();
           canvas.renderAll();
@@ -860,11 +864,7 @@ export function TemplateDrawingCanvas({
       else {
         const objects = (activeObject as any)._objects || [];
         const filtered = objects.filter((obj: any) => {
-          return !(
-            (obj as any).isGridLine ||
-            (obj as any).isRuler ||
-            (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isControlLine)
-          );
+          return !((obj as any).isGridLine || (obj as any).isRuler || gridLinesRef.current.includes(obj));
         });
 
         if (filtered.length === 0) {
@@ -1197,10 +1197,11 @@ export function TemplateDrawingCanvas({
         !obj.isGridLine &&
         !obj.isControlHandle &&
         !obj.isControlLine &&
-        !(obj instanceof Line && obj.strokeDashArray && gridLinesRef.current.includes(obj))
+        !gridLinesRef.current.includes(obj)
       ) {
         obj.selectable = true;
         obj.evented = true;
+        obj.setCoords(); // Mettre à jour les coordonnées pour la sélection
         // Définir le curseur de survol pour chaque objet
         if (activeTool === "select") {
           obj.hoverCursor = "move";
@@ -1211,6 +1212,8 @@ export function TemplateDrawingCanvas({
         obj.evented = false;
       }
     });
+
+    fabricCanvas.renderAll();
 
     if (activeTool === "pencil" && fabricCanvas.freeDrawingBrush) {
       fabricCanvas.freeDrawingBrush.color = strokeColor;
@@ -1983,6 +1986,7 @@ export function TemplateDrawingCanvas({
             strokeLineCap: "round",
             selectable: true,
             evented: true,
+            objectCaching: false,
           });
         } else if (activeTool === "rectangle") {
           activeObject = new Rect({
@@ -1995,6 +1999,7 @@ export function TemplateDrawingCanvas({
             fill: "transparent",
             selectable: true,
             evented: true,
+            objectCaching: false,
           });
         } else if (activeTool === "circle") {
           activeObject = new Circle({
@@ -2008,6 +2013,7 @@ export function TemplateDrawingCanvas({
             originY: "center",
             selectable: true,
             evented: true,
+            objectCaching: false,
           });
         } else if (activeTool === "ellipse") {
           activeObject = new Ellipse({
@@ -2020,6 +2026,7 @@ export function TemplateDrawingCanvas({
             fill: "transparent",
             selectable: true,
             evented: true,
+            objectCaching: false,
           });
         }
 
@@ -2066,12 +2073,19 @@ export function TemplateDrawingCanvas({
       });
 
       fabricCanvas.on("mouse:up", () => {
-        if (isDrawing) {
-          isDrawing = false;
-          startPoint = null;
-          activeObject = null;
+        if (isDrawing && activeObject) {
+          // S'assurer que l'objet est bien sélectionnable
+          activeObject.setCoords();
+          activeObject.set({
+            selectable: true,
+            evented: true,
+          });
+          fabricCanvas.renderAll();
           saveState(fabricCanvas);
         }
+        isDrawing = false;
+        startPoint = null;
+        activeObject = null;
       });
     }
 
@@ -2419,7 +2433,7 @@ export function TemplateDrawingCanvas({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Magnet className="h-3 w-3 text-muted-foreground" />
-                    <Label className="text-xs">Magnétisme</Label>
+                    <Label className="text-xs">Aimanter</Label>
                   </div>
                   <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
                 </div>
@@ -2559,7 +2573,7 @@ export function TemplateDrawingCanvas({
 
           <div className="flex items-center gap-2">
             <Magnet className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm">Magnétisme:</Label>
+            <Label className="text-sm">Aimanter:</Label>
             <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
           </div>
 
