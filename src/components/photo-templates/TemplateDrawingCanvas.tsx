@@ -753,11 +753,11 @@ export function TemplateDrawingCanvas({
 
         // Ajouter en dessous des autres objets (mais au-dessus de la grille)
         canvas.add(highlightPolygon);
-        highlightPolygon.sendToBack();
+        canvas.sendObjectToBack(highlightPolygon);
 
         // Remettre la grille tout en dessous
         gridLinesRef.current.forEach((gridLine) => {
-          gridLine.sendToBack();
+          canvas.sendObjectToBack(gridLine);
         });
 
         closedShapesRef.current.push(highlightPolygon);
