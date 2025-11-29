@@ -8,9 +8,10 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Edit, Trash2, Package, Truck, ArrowRight } from "lucide-react";
+import { Plus, Edit, Trash2, Package, Truck, ArrowRight, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import ExpenseFormDialog from "@/components/ExpenseFormDialog";
+import OrderTrackingSidebar from "@/components/OrderTrackingSidebar";
 
 interface CompactExpensesListProps {
   projectId: string;
@@ -43,7 +44,7 @@ interface Expense {
   intensite_amperes?: number;
 }
 
-const CompactExpensesList: React.FC<CompactExpensesListProps> = ({ projectId, scenarioId, isLocked, onExpenseChange }) => {
+const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange }: CompactExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -51,6 +52,7 @@ const CompactExpensesList: React.FC<CompactExpensesListProps> = ({ projectId, sc
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
+  const [isOrderTrackingOpen, setIsOrderTrackingOpen] = useState(false);
 
   useEffect(() => {
     loadExpenses();
@@ -221,13 +223,18 @@ const CompactExpensesList: React.FC<CompactExpensesListProps> = ({ projectId, sc
 
   return (
     <div className="space-y-3">
-      {/* Bouton ajouter */}
-      {!isLocked && (
-        <Button size="sm" className="w-full" onClick={() => setIsDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Ajouter un article
+      {/* Boutons d'action */}
+      <div className="flex gap-2">
+        {!isLocked && (
+          <Button size="sm" className="flex-1" onClick={() => setIsDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter un article
+          </Button>
+        )}
+        <Button size="sm" variant="outline" onClick={() => setIsOrderTrackingOpen(true)}>
+          <ShoppingCart className="h-4 w-4" />
         </Button>
-      )}
+      </div>
 
       {/* Filtres par catégorie */}
       {categories.length > 1 && (
@@ -375,6 +382,16 @@ const CompactExpensesList: React.FC<CompactExpensesListProps> = ({ projectId, sc
           onExpenseChange();
           setIsDialogOpen(false);
           setEditingExpense(null);
+        }}
+      />
+
+      {/* Sidebar suivi des commandes */}
+      <OrderTrackingSidebar
+        isOpen={isOrderTrackingOpen}
+        onClose={() => setIsOrderTrackingOpen(false)}
+        onOrderChange={() => {
+          loadExpenses();
+          onExpenseChange();
         }}
       />
     </div>
