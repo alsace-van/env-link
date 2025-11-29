@@ -42,7 +42,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
     if (!scenarios) {
       // Pas de scénario principal, charger toutes les dépenses du projet (fallback)
-      const { data, error } = await supabase.from("project_expenses").select("*").eq("project_id", projectId);
+      const { data, error } = await (supabase as any).from("project_expenses").select("*").eq("project_id", projectId);
       if (error) {
         console.error(error);
         return;
