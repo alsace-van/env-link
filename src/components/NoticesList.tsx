@@ -2,11 +2,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, Download, Eye, Pencil, Shield, Sparkles, Search, Filter, X } from "lucide-react";
+import { Trash2, Download, Eye, Pencil, Shield, Sparkles, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PdfViewerModal } from "./PdfViewerModalWithAI"; // ✅ MODIFIÉ
+import { PdfViewerModal } from "./PdfViewerModalWithAI";
 import { NoticeEditDialog } from "./NoticeEditDialog";
 import {
   AlertDialog,
@@ -19,10 +18,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-// ✅ MODIFIÉ - Utilisation des champs ai_summary (partagés entre tous)
 interface Notice {
   id: string;
   titre: string;
@@ -47,42 +44,39 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
-  // ✅ MODIFIÉ - selectedNotice inclut maintenant id et ai_summary (partagé)
-  const [selectedNotice, setSelectedNotice] = useState<{ 
-    url: string; 
-    title: string; 
-    id: string; 
-    summary?: string | null 
+  const [selectedNotice, setSelectedNotice] = useState<{
+    url: string;
+    title: string;
+    id: string;
+    summary?: string | null;
   } | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [noticeToEdit, setNoticeToEdit] = useState<Notice | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  
-  // Filtres
+
+  // Onglet actif (marque)
+  const [activeBrandTab, setActiveBrandTab] = useState<string>("__all__");
+
+  // Recherche
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedType, setSelectedType] = useState<string>("all");
-  const [showWithSummary, setShowWithSummary] = useState<boolean | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     checkAdminRole();
     loadNotices();
-    
-    // Set up real-time subscription
+
     const channel = supabase
-      .channel('notices-changes')
+      .channel("notices-changes")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: '*',
-          schema: 'public',
-          table: 'notices_database'
+          event: "*",
+          schema: "public",
+          table: "notices_database",
         },
         () => {
           loadNotices();
-        }
+        },
       )
       .subscribe();
 
@@ -92,17 +86,19 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   }, [refreshTrigger]);
 
   const checkAdminRole = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     setCurrentUserId(user.id);
 
-    const { data: roleData } = await supabase
+    const { data: roleData } = (await supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
       .eq("role", "admin")
-      .maybeSingle() as any;
+      .maybeSingle()) as any;
 
     setIsAdmin(!!roleData);
   };
@@ -110,10 +106,11 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   const loadNotices = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = (await supabase
         .from("notices_database")
         .select("*")
-        .order("created_at", { ascending: false }) as any;
+        .order("marque", { ascending: true })
+        .order("titre", { ascending: true })) as any;
 
       if (error) {
         console.error("Error loading notices:", error);
@@ -132,12 +129,12 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
   const handleDelete = async (id: string) => {
     try {
-      // First, unlink any accessories
-      // @ts-expect-error - Supabase type issue with update
-      const result1: any = supabase.from("accessories_catalog").update({ notice_id: null } as any).eq("notice_id", id);
+      const result1: any = supabase
+        .from("accessories_catalog")
+        .update({ notice_id: null } as any)
+        .eq("notice_id", id);
       await result1;
 
-      // Then delete the notice
       const result2: any = await supabase.from("notices_database").delete().eq("id", id);
       const { error } = result2;
 
@@ -156,45 +153,35 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
   };
 
   const getPublicUrl = async (filePath: string): Promise<string | null> => {
-    // Check if it's already a full URL (for backwards compatibility)
     if (filePath.startsWith("http")) {
       return filePath;
     }
 
-    console.log("Getting URL for file:", filePath);
-
-    // Generate a signed URL (works for both public and private buckets)
-    const { data, error } = await supabase.storage
-      .from("notice-files")
-      .createSignedUrl(filePath, 3600); // 1 hour expiration
+    const { data, error } = await supabase.storage.from("notice-files").createSignedUrl(filePath, 3600);
 
     if (error) {
       console.error("Error creating signed URL:", error);
       return null;
     }
 
-    console.log("Generated signed URL:", data.signedUrl);
     return data.signedUrl;
   };
 
   const handleDownload = async (filePath: string, titre: string) => {
     try {
-      console.log("Download - File path:", filePath);
       const url = await getPublicUrl(filePath);
-      console.log("Download - Generated URL:", url);
-      
+
       if (!url) {
         toast.error("Fichier non trouvé dans le stockage");
         return;
       }
 
       const response = await fetch(url);
-      console.log("Download - Response status:", response.status);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -211,24 +198,20 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     }
   };
 
-  // ✅ MODIFIÉ - Fonction handleOpenNotice prend maintenant l'objet notice complet
   const handleOpenNotice = async (notice: Notice) => {
     try {
-      console.log("Open - File path:", notice.notice_url);
       const url = await getPublicUrl(notice.notice_url);
-      console.log("Open - Generated URL:", url);
-      
+
       if (!url) {
-        console.error("Failed to generate URL");
         toast.error("Fichier non trouvé dans le stockage");
         return;
       }
-      
-      setSelectedNotice({ 
-        url, 
+
+      setSelectedNotice({
+        url,
         title: notice.titre,
         id: notice.id,
-        summary: notice.ai_summary
+        summary: notice.ai_summary,
       });
       setViewerOpen(true);
     } catch (error) {
@@ -256,51 +239,155 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     loadNotices();
   };
 
-  // Filtrer les notices
-  const filteredNotices = notices.filter((notice) => {
-    // Recherche textuelle
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const matchesSearch = 
+  // Grouper les notices par marque
+  const groupedByBrand = () => {
+    const groups = new Map<string, Notice[]>();
+
+    notices.forEach((notice) => {
+      const brand = notice.marque || "Sans marque";
+      if (!groups.has(brand)) {
+        groups.set(brand, []);
+      }
+      groups.get(brand)!.push(notice);
+    });
+
+    // Trier les marques alphabétiquement, mais "Sans marque" à la fin
+    const sortedEntries = Array.from(groups.entries()).sort((a, b) => {
+      if (a[0] === "Sans marque") return 1;
+      if (b[0] === "Sans marque") return -1;
+      return a[0].localeCompare(b[0]);
+    });
+
+    return new Map(sortedEntries);
+  };
+
+  // Filtrer les notices par recherche
+  const filterNotices = (noticesList: Notice[]) => {
+    if (!searchQuery) return noticesList;
+
+    const query = searchQuery.toLowerCase();
+    return noticesList.filter(
+      (notice) =>
         notice.titre.toLowerCase().includes(query) ||
         notice.marque?.toLowerCase().includes(query) ||
         notice.modele?.toLowerCase().includes(query) ||
         notice.description?.toLowerCase().includes(query) ||
-        notice.categorie?.toLowerCase().includes(query);
-      if (!matchesSearch) return false;
-    }
-
-    // Filtre par catégorie
-    if (selectedCategory !== "all" && notice.categorie !== selectedCategory) {
-      return false;
-    }
-
-    // Filtre par type (admin/utilisateur)
-    if (selectedType !== "all") {
-      if (selectedType === "admin" && !notice.is_admin_notice) return false;
-      if (selectedType === "user" && notice.is_admin_notice) return false;
-    }
-
-    // Filtre par résumé IA
-    if (showWithSummary !== null) {
-      if (showWithSummary && !notice.ai_summary) return false;
-      if (!showWithSummary && notice.ai_summary) return false;
-    }
-
-    return true;
-  });
-
-  // Obtenir les catégories uniques
-  const categories = Array.from(new Set(notices.map(n => n.categorie).filter(Boolean)));
-
-  const resetFilters = () => {
-    setSearchQuery("");
-    setSelectedCategory("all");
-    setSelectedType("all");
-    setShowWithSummary(null);
+        notice.categorie?.toLowerCase().includes(query),
+    );
   };
 
-  const hasActiveFilters = searchQuery || selectedCategory !== "all" || selectedType !== "all" || showWithSummary !== null;
+  // Obtenir les notices à afficher selon l'onglet actif
+  const getDisplayedNotices = () => {
+    const grouped = groupedByBrand();
+
+    if (activeBrandTab === "__all__") {
+      return filterNotices(notices);
+    }
+
+    const brandNotices = grouped.get(activeBrandTab) || [];
+    return filterNotices(brandNotices);
+  };
+
+  const displayedNotices = getDisplayedNotices();
+
+  // Rendu d'une carte notice
+  const renderNoticeCard = (notice: Notice) => {
+    const canModify = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
+    const canDelete = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
+
+    return (
+      <div key={notice.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h4 className="font-medium truncate">{notice.titre}</h4>
+              {notice.is_admin_notice && (
+                <Badge className="bg-primary flex-shrink-0">
+                  <Shield className="h-3 w-3 mr-1" />
+                  Admin
+                </Badge>
+              )}
+              {notice.ai_summary && (
+                <Badge
+                  variant="secondary"
+                  className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100 flex-shrink-0"
+                >
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  IA
+                </Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+              {notice.modele && <span>Modèle: {notice.modele}</span>}
+              {notice.categorie && (
+                <Badge variant="outline" className="text-xs">
+                  {notice.categorie}
+                </Badge>
+              )}
+            </div>
+            {notice.description && (
+              <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{notice.description}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              Ajouté le {new Date(notice.created_at).toLocaleDateString("fr-FR")}
+            </p>
+          </div>
+          <div className="flex gap-1 flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleOpenNotice(notice)}
+              title="Voir la notice"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            {canModify && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => handleEdit(notice)}
+                title="Modifier"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleDownload(notice.notice_url, notice.titre)}
+              title="Télécharger"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            {canDelete && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Cette action est irréversible. La notice sera dissociée des accessoires liés.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Annuler</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleDelete(notice.id)}>Supprimer</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (isLoading) {
     return <div className="text-center py-8">Chargement...</div>;
@@ -316,9 +403,10 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
     );
   }
 
+  const grouped = groupedByBrand();
+
   return (
     <>
-      {/* ✅ MODIFIÉ - Ajout des props noticeId et existingSummary */}
       <PdfViewerModal
         isOpen={viewerOpen}
         onClose={handleCloseViewer}
@@ -335,229 +423,109 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
         onSuccess={handleEditSuccess}
       />
 
-      {/* Barre de recherche et filtres */}
-      <Card className="mb-4">
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            {/* Barre de recherche */}
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher par titre, marque, modèle, description..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Button
-                variant={showFilters ? "default" : "outline"}
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Filtres avancés
-              </Button>
-              {hasActiveFilters && (
-                <Button variant="outline" onClick={resetFilters}>
-                  <X className="h-4 w-4 mr-2" />
-                  Réinitialiser
-                </Button>
+      {/* Barre de recherche */}
+      <div className="mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher par titre, marque, modèle, description..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+
+      {/* Conteneur avec onglets style Excel */}
+      <div className="border rounded-lg overflow-hidden">
+        {/* Barre d'onglets */}
+        <div className="bg-gray-100 dark:bg-gray-800 border-b overflow-x-auto">
+          <div className="flex items-stretch min-w-max">
+            {/* Onglet Toutes */}
+            <button
+              onClick={() => setActiveBrandTab("__all__")}
+              className={`
+                px-4 py-2.5 text-sm font-medium border-r transition-all flex items-center gap-2
+                ${
+                  activeBrandTab === "__all__"
+                    ? "bg-white dark:bg-gray-900 text-primary border-b-2 border-b-primary"
+                    : "hover:bg-gray-200 dark:hover:bg-gray-700 text-muted-foreground"
+                }
+              `}
+            >
+              📋 Toutes
+              <Badge variant="secondary" className="text-xs">
+                {notices.length}
+              </Badge>
+            </button>
+
+            {/* Onglets par marque */}
+            {Array.from(grouped.entries()).map(([brand, brandNotices]) => {
+              const isActive = activeBrandTab === brand;
+
+              return (
+                <button
+                  key={brand}
+                  onClick={() => setActiveBrandTab(brand)}
+                  className={`
+                    px-4 py-2.5 text-sm font-medium border-r transition-all whitespace-nowrap flex items-center gap-2
+                    ${
+                      isActive
+                        ? "bg-white dark:bg-gray-900 text-primary border-b-2 border-b-primary"
+                        : "hover:bg-gray-200 dark:hover:bg-gray-700 text-muted-foreground"
+                    }
+                  `}
+                >
+                  {brand}
+                  <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
+                    {brandNotices.length}
+                  </Badge>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Contenu de l'onglet */}
+        <div className="p-4 bg-white dark:bg-gray-900 min-h-[300px]">
+          {displayedNotices.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {searchQuery ? "Aucune notice ne correspond à la recherche." : "Aucune notice dans cette catégorie."}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activeBrandTab === "__all__" ? (
+                // Afficher groupé par marque
+                Array.from(grouped.entries()).map(([brand, brandNotices]) => {
+                  const filteredBrandNotices = filterNotices(brandNotices);
+                  if (filteredBrandNotices.length === 0) return null;
+
+                  return (
+                    <div key={brand} className="mb-6">
+                      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-primary/30">
+                        <h3 className="text-lg font-semibold text-primary">{brand}</h3>
+                        <Badge variant="outline">{filteredBrandNotices.length} notice(s)</Badge>
+                      </div>
+                      <div className="space-y-2">{filteredBrandNotices.map((notice) => renderNoticeCard(notice))}</div>
+                    </div>
+                  );
+                })
+              ) : (
+                // Afficher seulement la marque sélectionnée
+                <div className="space-y-2">{displayedNotices.map((notice) => renderNoticeCard(notice))}</div>
               )}
             </div>
-
-            {/* Filtres avancés */}
-            {showFilters && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Catégorie</label>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Toutes les catégories" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Toutes les catégories</SelectItem>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat} value={cat!}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Type</label>
-                  <Select value={selectedType} onValueChange={setSelectedType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Tous les types" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tous les types</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="user">Utilisateur</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Résumé IA</label>
-                  <Select 
-                    value={showWithSummary === null ? "all" : showWithSummary ? "with" : "without"} 
-                    onValueChange={(v) => setShowWithSummary(v === "all" ? null : v === "with")}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Tous" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tous</SelectItem>
-                      <SelectItem value="with">Avec résumé IA</SelectItem>
-                      <SelectItem value="without">Sans résumé IA</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-
-            {/* Compteur de résultats */}
-            <div className="text-sm text-muted-foreground">
-              {filteredNotices.length} notice{filteredNotices.length > 1 ? "s" : ""} trouvée{filteredNotices.length > 1 ? "s" : ""}
-              {hasActiveFilters && ` sur ${notices.length}`}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {filteredNotices.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Aucune notice ne correspond aux critères de recherche.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="border rounded-lg">
-          <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="min-w-[200px]">Titre</TableHead>
-            <TableHead className="min-w-[150px]">Marque / Modèle</TableHead>
-            <TableHead className="min-w-[120px]">Catégorie</TableHead>
-            <TableHead className="min-w-[100px]">Type</TableHead>
-            {/* ✅ AJOUTÉ - Colonne Résumé IA */}
-            <TableHead className="min-w-[100px]">Résumé</TableHead>
-            <TableHead className="min-w-[200px]">Description</TableHead>
-            <TableHead className="min-w-[150px]">Date d'ajout</TableHead>
-            <TableHead className="w-[230px] text-center">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredNotices.map((notice) => {
-            const canModify = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
-            const canDelete = isAdmin || (!notice.is_admin_notice && notice.user_id === currentUserId);
-            
-            return (
-            <TableRow key={notice.id}>
-              <TableCell className="font-medium">{notice.titre}</TableCell>
-              <TableCell>
-                {notice.marque || notice.modele ? (
-                  <div className="text-sm">
-                    {notice.marque && <div>{notice.marque}</div>}
-                    {notice.modele && <div className="text-muted-foreground">{notice.modele}</div>}
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground text-xs">-</span>
-                )}
-              </TableCell>
-              <TableCell>{notice.categorie || <span className="text-muted-foreground text-xs">-</span>}</TableCell>
-              <TableCell>
-                {notice.is_admin_notice ? (
-                  <Badge className="bg-primary">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Admin
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary">Utilisateur</Badge>
-                )}
-              </TableCell>
-              {/* ✅ AJOUTÉ - Badge Résumé IA */}
-              <TableCell>
-                {notice.ai_summary ? (
-                  <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100">
-                    <Sparkles className="h-3 w-3 mr-1" />
-                    IA
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground text-xs">-</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {notice.description ? (
-                  <span className="text-sm line-clamp-2">{notice.description}</span>
-                ) : (
-                  <span className="text-muted-foreground text-xs">-</span>
-                )}
-              </TableCell>
-              <TableCell>
-                <span className="text-sm text-muted-foreground">
-                  {new Date(notice.created_at).toLocaleDateString("fr-FR")}
-                </span>
-              </TableCell>
-              <TableCell>
-                <div className="flex gap-2 justify-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleOpenNotice(notice)} // ✅ MODIFIÉ
-                    title="Voir la notice"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  {canModify && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEdit(notice)}
-                      title="Modifier"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDownload(notice.notice_url, notice.titre)}
-                    title="Télécharger"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  {canDelete && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer la notice ?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Cette action est irréversible. La notice sera dissociée des accessoires liés.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDelete(notice.id)}>Supprimer</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          )})}
-        </TableBody>
-          </Table>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* Compteur */}
+      <div className="mt-2 text-sm text-muted-foreground">
+        {displayedNotices.length} notice{displayedNotices.length > 1 ? "s" : ""} affichée
+        {displayedNotices.length > 1 ? "s" : ""}
+        {searchQuery &&
+          ` sur ${activeBrandTab === "__all__" ? notices.length : grouped.get(activeBrandTab)?.length || 0}`}
+      </div>
     </>
   );
 };
