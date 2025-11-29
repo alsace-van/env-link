@@ -1,14 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle, Calculator, Zap, Ruler } from "lucide-react";
+import { AlertCircle, CheckCircle, Calculator, Zap, Ruler, Shield, Euro } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { Badge } from "@/components/ui/badge";
 
 type CalculationMode = "section" | "current" | "length";
+
+interface CableCatalogItem {
+  id: string;
+  nom: string;
+  section: number;
+  prix_reference?: number;
+  prix_vente_ttc?: number;
+}
 
 export const CableSectionCalculator = () => {
   const [calculationMode, setCalculationMode] = useState<CalculationMode>("section");
@@ -17,6 +27,81 @@ export const CableSectionCalculator = () => {
   const [length, setLength] = useState<number>(0);
   const [voltage, setVoltage] = useState<number>(12);
   const [selectedSection, setSelectedSection] = useState<number>(0);
+  const [cableCatalog, setCableCatalog] = useState<CableCatalogItem[]>([]);
+
+  // Charger les câbles du catalogue
+  useEffect(() => {
+    loadCableCatalog();
+  }, []);
+
+  const loadCableCatalog = async () => {
+    try {
+      // Chercher les catégories "cable" ou "câble"
+      const { data: categories } = (await supabase
+        .from("categories")
+        .select("id, nom, parent_id")
+        .or("nom.ilike.%cable%,nom.ilike.%câble%")) as any;
+
+      if (!categories || categories.length === 0) return;
+
+      // Récupérer les IDs des catégories (incluant les sous-catégories)
+      const categoryIds = categories.map((c: any) => c.id);
+
+      // Chercher aussi les catégories dont le parent est une catégorie cable
+      const { data: subCategories } = (await supabase
+        .from("categories")
+        .select("id")
+        .in("parent_id", categoryIds)) as any;
+
+      if (subCategories) {
+        categoryIds.push(...subCategories.map((c: any) => c.id));
+      }
+
+      // Charger les accessoires de ces catégories
+      const { data: accessories } = (await supabase
+        .from("accessories_catalog")
+        .select("id, nom, prix_reference, prix_vente_ttc")
+        .in("category_id", categoryIds)) as any;
+
+      if (!accessories) return;
+
+      // Extraire la section du nom (cherche un pattern comme "2.5mm²", "2,5 mm²", "2.5", etc.)
+      const cablesWithSection: CableCatalogItem[] = [];
+
+      for (const acc of accessories) {
+        // Patterns pour trouver la section dans le nom
+        const patterns = [
+          /(\d+[.,]?\d*)\s*mm²/i,
+          /(\d+[.,]?\d*)\s*mm2/i,
+          /section\s*(\d+[.,]?\d*)/i,
+          /^(\d+[.,]?\d*)\s*-/,
+        ];
+
+        let section: number | null = null;
+        for (const pattern of patterns) {
+          const match = acc.nom.match(pattern);
+          if (match) {
+            section = parseFloat(match[1].replace(",", "."));
+            break;
+          }
+        }
+
+        if (section && section > 0) {
+          cablesWithSection.push({
+            id: acc.id,
+            nom: acc.nom,
+            section,
+            prix_reference: acc.prix_reference,
+            prix_vente_ttc: acc.prix_vente_ttc,
+          });
+        }
+      }
+
+      setCableCatalog(cablesWithSection);
+    } catch (error) {
+      console.error("Erreur lors du chargement des câbles:", error);
+    }
+  };
 
   // Gestionnaire pour le changement de puissance
   const handlePowerChange = (value: number) => {
@@ -48,6 +133,9 @@ export const CableSectionCalculator = () => {
   // Sections standards de câbles (mm²)
   const standardSections = [0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120];
 
+  // Calibres de fusibles standards (A)
+  const standardFuses = [1, 2, 3, 5, 7.5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 100];
+
   // Intensités maximales admissibles pour câbles souples (A)
   const maxCurrentBySectionMap: { [key: number]: number } = {
     0.75: 6,
@@ -64,6 +152,45 @@ export const CableSectionCalculator = () => {
     70: 140,
     95: 175,
     120: 207,
+  };
+
+  // Calculer le fusible recommandé
+  const calculateRecommendedFuse = (intensite: number, section: number): number | null => {
+    if (intensite <= 0 || section <= 0) return null;
+
+    const maxCurrentForSection = maxCurrentBySectionMap[section] || 0;
+
+    // Le fusible doit être :
+    // - Supérieur ou égal à l'intensité nominale (avec marge de 25%)
+    // - Inférieur à l'intensité max admissible du câble
+    const minFuse = intensite * 1.25;
+    const maxFuse = maxCurrentForSection;
+
+    // Trouver le premier calibre standard qui convient
+    const recommendedFuse = standardFuses.find((f) => f >= minFuse && f <= maxFuse);
+
+    return recommendedFuse || null;
+  };
+
+  // Trouver le câble du catalogue correspondant à une section
+  const findCableInCatalog = (section: number): CableCatalogItem | undefined => {
+    return cableCatalog.find((c) => c.section === section);
+  };
+
+  // Calculer le prix estimé du câble
+  const calculateCablePrice = (
+    section: number,
+    longueur: number,
+  ): { achat: number | null; vente: number | null; cable: CableCatalogItem | null } => {
+    const cable = findCableInCatalog(section);
+    if (!cable) return { achat: null, vente: null, cable: null };
+
+    const totalLength = longueur * 2; // Aller + retour
+    return {
+      achat: cable.prix_reference ? cable.prix_reference * totalLength : null,
+      vente: cable.prix_vente_ttc ? cable.prix_vente_ttc * totalLength : null,
+      cable,
+    };
   };
 
   const calculateMaxCurrent = () => {
@@ -118,6 +245,19 @@ export const CableSectionCalculator = () => {
   const recommendedSection = results.find((r) => r.recommended);
   const maxCurrentResult = calculationMode === "current" ? calculateMaxCurrent() : null;
   const maxLengthResult = calculationMode === "length" ? calculateMaxLength() : null;
+
+  // Calculs pour l'affichage
+  const displaySection = calculationMode === "section" ? recommendedSection?.section : selectedSection;
+
+  const displayCurrent = calculationMode === "current" && maxCurrentResult ? maxCurrentResult : current;
+
+  const recommendedFuse =
+    displaySection && displayCurrent ? calculateRecommendedFuse(displayCurrent, displaySection) : null;
+
+  const priceInfo =
+    displaySection && length > 0
+      ? calculateCablePrice(displaySection, length)
+      : { achat: null, vente: null, cable: null };
 
   return (
     <Card>
@@ -237,7 +377,7 @@ export const CableSectionCalculator = () => {
                 <SelectContent>
                   {standardSections.map((s) => (
                     <SelectItem key={s} value={s.toString()}>
-                      {s} mm²
+                      {s} mm² {findCableInCatalog(s) && "💰"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -342,6 +482,79 @@ export const CableSectionCalculator = () => {
           </>
         )}
 
+        {/* Fusible et Prix */}
+        {displaySection && displaySection > 0 && displayCurrent > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Fusible recommandé */}
+            <div className="p-4 rounded-lg border bg-orange-50 dark:bg-orange-950 border-orange-300 dark:border-orange-700">
+              <div className="flex items-center gap-3">
+                <Shield className="h-6 w-6 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-orange-800 dark:text-orange-200">Fusible recommandé</h3>
+                  {recommendedFuse ? (
+                    <>
+                      <div className="text-2xl font-bold text-orange-600 dark:text-orange-400 my-1">
+                        {recommendedFuse} A
+                      </div>
+                      <p className="text-xs text-orange-700 dark:text-orange-300">
+                        Protège le câble {displaySection} mm² (max {maxCurrentBySectionMap[displaySection]}A)
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                      Aucun calibre standard adapté. Vérifiez la section ou l'intensité.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Prix estimé */}
+            <div className="p-4 rounded-lg border bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700">
+              <div className="flex items-center gap-3">
+                <Euro className="h-6 w-6 text-green-600 dark:text-green-400 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-green-800 dark:text-green-200">Prix estimé du câble</h3>
+                  {priceInfo.cable ? (
+                    <>
+                      <div className="flex flex-wrap gap-3 my-1">
+                        {priceInfo.achat !== null && (
+                          <div>
+                            <span className="text-xs text-green-700 dark:text-green-300">Achat:</span>{" "}
+                            <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                              {priceInfo.achat.toFixed(2)} €
+                            </span>
+                          </div>
+                        )}
+                        {priceInfo.vente !== null && (
+                          <div>
+                            <span className="text-xs text-green-700 dark:text-green-300">Vente:</span>{" "}
+                            <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                              {priceInfo.vente.toFixed(2)} €
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-green-700 dark:text-green-300">
+                        {priceInfo.cable.nom} × {(length * 2).toFixed(1)}m
+                      </p>
+                    </>
+                  ) : (
+                    <div className="mt-1">
+                      <Badge variant="outline" className="text-orange-600 border-orange-400">
+                        Câble {displaySection} mm² non trouvé dans le catalogue
+                      </Badge>
+                      <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                        Ajoutez une catégorie "Câble" avec des articles pour activer le calcul de prix
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="text-sm text-muted-foreground space-y-1">
           <p>
             <strong>Critères de sélection :</strong>
@@ -349,6 +562,7 @@ export const CableSectionCalculator = () => {
           <ul className="list-disc list-inside space-y-1 ml-2">
             <li>Chute de tension maximale : 3%</li>
             <li>Intensité ne doit pas dépasser l'intensité maximale admissible du câble</li>
+            <li>Fusible : calibre supérieur à I×1.25 et inférieur à I max câble</li>
             <li>Calculs basés sur des câbles souples en cuivre à 20°C</li>
             <li>Longueur : distance aller-retour automatiquement prise en compte</li>
           </ul>
