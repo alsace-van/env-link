@@ -102,27 +102,21 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `${user.id}/${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("administrative-documents")
-          .upload(filePath, file);
+        const { error: uploadError } = await supabase.storage.from("administrative-documents").upload(filePath, file);
 
         if (uploadError) throw uploadError;
 
         // Obtenir l'URL publique
-        const { data: urlData } = supabase.storage
-          .from("administrative-documents")
-          .getPublicUrl(filePath);
+        const { data: urlData } = supabase.storage.from("administrative-documents").getPublicUrl(filePath);
 
         // Enregistrer dans la base de données
-        const { error: dbError } = await supabase
-          .from("administrative_documents")
-          .insert({
-            project_id: projectId,
-            file_name: file.name,
-            file_url: urlData.publicUrl,
-            file_size: file.size,
-            mime_type: file.type || "application/octet-stream",
-          });
+        const { error: dbError } = await supabase.from("administrative_documents").insert({
+          project_id: projectId,
+          file_name: file.name,
+          file_url: urlData.publicUrl,
+          file_size: file.size,
+          mime_type: file.type || "application/octet-stream",
+        });
 
         if (dbError) throw dbError;
 
@@ -151,17 +145,12 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
       const filePath = pathParts.slice(pathParts.indexOf("administrative-documents") + 1).join("/");
 
       // Supprimer du storage
-      const { error: storageError } = await supabase.storage
-        .from("administrative-documents")
-        .remove([filePath]);
+      const { error: storageError } = await supabase.storage.from("administrative-documents").remove([filePath]);
 
       if (storageError) throw storageError;
 
       // Supprimer de la base de données
-      const { error: dbError } = await supabase
-        .from("administrative_documents")
-        .delete()
-        .eq("id", doc.id);
+      const { error: dbError } = await supabase.from("administrative_documents").delete().eq("id", doc.id);
 
       if (dbError) throw dbError;
 
@@ -214,62 +203,47 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Zone de drop */}
-      <Card>
-        <CardContent className="p-0">
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-              isDragging
-                ? "border-primary bg-primary/5"
-                : "border-muted-foreground/25 hover:border-primary/50"
-            }`}
-          >
-            <Upload className={`h-12 w-12 mx-auto mb-4 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
-            <p className="text-lg font-medium mb-2">
-              Glissez-déposez vos documents ici
-            </p>
-            <p className="text-sm text-muted-foreground mb-4">
-              ou cliquez pour sélectionner des fichiers (max 10MB par fichier)
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <Button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              variant="outline"
-            >
+    <Card>
+      <CardContent className="p-4 space-y-4">
+        <h3 className="font-semibold text-lg">Documents uploadés</h3>
+
+        {/* Zone de drop compacte */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+            isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+          }`}
+        >
+          <div className="flex items-center justify-center gap-4">
+            <Upload className={`h-8 w-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+            <div className="text-left">
+              <p className="font-medium text-sm">Glissez-déposez vos documents ici</p>
+              <p className="text-xs text-muted-foreground">ou cliquez pour sélectionner (max 10MB)</p>
+            </div>
+            <input ref={fileInputRef} type="file" multiple onChange={handleFileSelect} className="hidden" />
+            <Button onClick={() => fileInputRef.current?.click()} disabled={isUploading} variant="outline" size="sm">
               {isUploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Upload en cours...
+                  Upload...
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Sélectionner des fichiers
+                  Sélectionner
                 </>
               )}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Liste des documents */}
-      {documents.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="font-semibold">Documents uploadés</h3>
-          {documents.map((doc) => (
-            <Card key={doc.id}>
-              <CardContent className="p-4">
+        {/* Liste des documents */}
+        {documents.length > 0 && (
+          <div className="space-y-2">
+            {documents.map((doc) => (
+              <div key={doc.id} className="border rounded-lg p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -286,30 +260,26 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
                           }}
                         />
                       ) : (
-                        <p className="font-medium truncate">{doc.file_name}</p>
+                        <p className="font-medium truncate text-sm">{doc.file_name}</p>
                       )}
                       <p className="text-xs text-muted-foreground">
                         {formatFileSize(doc.file_size)} • {new Date(doc.uploaded_at).toLocaleDateString("fr-FR")}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     {editingId === doc.id ? (
                       <>
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8"
                           onClick={() => saveEdit(doc.id)}
                           title="Enregistrer"
                         >
                           <Check className="h-4 w-4 text-green-600" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={cancelEdit}
-                          title="Annuler"
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={cancelEdit} title="Annuler">
                           <X className="h-4 w-4" />
                         </Button>
                       </>
@@ -319,6 +289,7 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-8 w-8"
                             onClick={() => {
                               setPreviewPdfUrl(doc.file_url);
                               setPreviewPdfTitle(doc.file_name);
@@ -331,6 +302,7 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8"
                           onClick={() => startEdit(doc)}
                           title="Modifier le nom"
                         >
@@ -339,6 +311,7 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8"
                           onClick={() => window.open(doc.file_url, "_blank")}
                           title="Télécharger"
                         >
@@ -347,6 +320,7 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
                         <Button
                           variant="ghost"
                           size="icon"
+                          className="h-8 w-8"
                           onClick={() => handleDelete(doc)}
                           title="Supprimer"
                         >
@@ -356,11 +330,15 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
                     )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {documents.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">Aucun document uploadé</p>
+        )}
+      </CardContent>
 
       {previewPdfUrl && (
         <PdfViewerModal
@@ -373,6 +351,6 @@ export const DocumentsUpload = ({ projectId }: DocumentsUploadProps) => {
           title={previewPdfTitle}
         />
       )}
-    </div>
+    </Card>
   );
 };
