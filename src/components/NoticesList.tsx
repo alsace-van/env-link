@@ -129,11 +129,10 @@ export const NoticesList = ({ refreshTrigger }: NoticesListProps) => {
 
   const handleDelete = async (id: string) => {
     try {
-      const result1: any = supabase
+      const result1: any = await (supabase as any)
         .from("accessories_catalog")
-        .update({ notice_id: null } as any)
+        .update({ notice_id: null })
         .eq("notice_id", id);
-      await result1;
 
       const result2: any = await supabase.from("notices_database").delete().eq("id", id);
       const { error } = result2;
