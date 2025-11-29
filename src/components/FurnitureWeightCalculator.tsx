@@ -30,7 +30,12 @@ const plywoodTypes = [
   { id: "okoume", name: "Okoumé", density: 500, description: "Bon compromis poids/résistance, idéal pour vans" },
   { id: "pin", name: "Pin Maritime", density: 600, description: "Résistant, utilisé en construction" },
   { id: "bouleau", name: "Bouleau", density: 680, description: "Très résistant, finition qualitative, plus lourd" },
-  { id: "eucalyptus", name: "Eucalyptus filmé", density: 700, description: "Très dur, résistant à l'humidité, coffrage" },
+  {
+    id: "eucalyptus",
+    name: "Eucalyptus filmé",
+    density: 700,
+    description: "Très dur, résistant à l'humidité, coffrage",
+  },
   { id: "custom", name: "🔧 Personnalisé...", density: 0, description: "Définir manuellement" },
 ];
 
@@ -60,14 +65,22 @@ const hardwareTypes = [
 
 export const FurnitureWeightCalculator = () => {
   const [woodEntries, setWoodEntries] = useState<WoodEntry[]>([
-    { id: "1", plywoodType: "okoume", customName: "", customDensity: 500, thickness: 15, customThickness: 15, surfaceM2: 0 }
+    {
+      id: "1",
+      plywoodType: "okoume",
+      customName: "",
+      customDensity: 500,
+      thickness: 15,
+      customThickness: 15,
+      surfaceM2: 0,
+    },
   ]);
   const [hardware, setHardware] = useState<Hardware[]>([]);
 
   // Calculer le poids pour une entrée de bois
   const calculateWoodEntryWeight = (entry: WoodEntry) => {
-    const selectedPlywood = plywoodTypes.find(p => p.id === entry.plywoodType);
-    const density = entry.plywoodType === "custom" ? entry.customDensity : (selectedPlywood?.density || 500);
+    const selectedPlywood = plywoodTypes.find((p) => p.id === entry.plywoodType);
+    const density = entry.plywoodType === "custom" ? entry.customDensity : selectedPlywood?.density || 500;
     const thickness = entry.thickness === -1 ? entry.customThickness : entry.thickness;
     return entry.surfaceM2 * (thickness / 1000) * density;
   };
@@ -77,35 +90,36 @@ export const FurnitureWeightCalculator = () => {
 
   // Calcul du poids de la quincaillerie en kg
   const hardwareWeight = hardware.reduce((total, h) => {
-    const hwType = hardwareTypes.find(t => t.id === h.type);
-    return total + (hwType?.weight || 0) * h.quantity / 1000;
+    const hwType = hardwareTypes.find((t) => t.id === h.type);
+    return total + ((hwType?.weight || 0) * h.quantity) / 1000;
   }, 0);
 
   // Poids total
   const totalWeight = woodWeight + hardwareWeight;
 
   const addWoodEntry = () => {
-    setWoodEntries([...woodEntries, { 
-      id: Date.now().toString(), 
-      plywoodType: "okoume", 
-      customName: "", 
-      customDensity: 500, 
-      thickness: 15, 
-      customThickness: 15, 
-      surfaceM2: 0 
-    }]);
+    setWoodEntries([
+      ...woodEntries,
+      {
+        id: Date.now().toString(),
+        plywoodType: "okoume",
+        customName: "",
+        customDensity: 500,
+        thickness: 15,
+        customThickness: 15,
+        surfaceM2: 0,
+      },
+    ]);
   };
 
   const removeWoodEntry = (id: string) => {
     if (woodEntries.length > 1) {
-      setWoodEntries(woodEntries.filter(w => w.id !== id));
+      setWoodEntries(woodEntries.filter((w) => w.id !== id));
     }
   };
 
   const updateWoodEntry = (id: string, field: keyof WoodEntry, value: string | number) => {
-    setWoodEntries(woodEntries.map(w => 
-      w.id === id ? { ...w, [field]: value } : w
-    ));
+    setWoodEntries(woodEntries.map((w) => (w.id === id ? { ...w, [field]: value } : w)));
   };
 
   const addHardware = () => {
@@ -113,13 +127,11 @@ export const FurnitureWeightCalculator = () => {
   };
 
   const removeHardware = (id: string) => {
-    setHardware(hardware.filter(h => h.id !== id));
+    setHardware(hardware.filter((h) => h.id !== id));
   };
 
   const updateHardware = (id: string, field: "type" | "quantity", value: string | number) => {
-    setHardware(hardware.map(h => 
-      h.id === id ? { ...h, [field]: value } : h
-    ));
+    setHardware(hardware.map((h) => (h.id === id ? { ...h, [field]: value } : h)));
   };
 
   return (
@@ -146,9 +158,13 @@ export const FurnitureWeightCalculator = () => {
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <div className="space-y-1 text-xs">
-                      {plywoodTypes.filter(p => p.id !== "custom").map(p => (
-                        <p key={p.id}><strong>{p.name}</strong> ({p.density} kg/m³): {p.description}</p>
-                      ))}
+                      {plywoodTypes
+                        .filter((p) => p.id !== "custom")
+                        .map((p) => (
+                          <p key={p.id}>
+                            <strong>{p.name}</strong> ({p.density} kg/m³): {p.description}
+                          </p>
+                        ))}
                     </div>
                   </TooltipContent>
                 </Tooltip>
@@ -162,40 +178,43 @@ export const FurnitureWeightCalculator = () => {
 
           <div className="space-y-3">
             {woodEntries.map((entry, index) => {
-              const selectedPlywood = plywoodTypes.find(p => p.id === entry.plywoodType);
-              const density = entry.plywoodType === "custom" ? entry.customDensity : (selectedPlywood?.density || 500);
+              const selectedPlywood = plywoodTypes.find((p) => p.id === entry.plywoodType);
+              const density = entry.plywoodType === "custom" ? entry.customDensity : selectedPlywood?.density || 500;
               const thickness = entry.thickness === -1 ? entry.customThickness : entry.thickness;
               const entryWeight = calculateWoodEntryWeight(entry);
-              
+
               return (
                 <div key={entry.id} className="p-3 bg-muted/50 rounded-lg space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Panneau {index + 1}</span>
                     <div className="flex items-center gap-2">
-                      {entry.surfaceM2 > 0 && (
-                        <Badge variant="secondary">{entryWeight.toFixed(2)} kg</Badge>
-                      )}
+                      {entry.surfaceM2 > 0 && <Badge variant="secondary">{entryWeight.toFixed(2)} kg</Badge>}
                       {woodEntries.length > 1 && (
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeWoodEntry(entry.id)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => removeWoodEntry(entry.id)}
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       )}
                     </div>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     {/* Type de bois */}
                     <div className="space-y-1">
                       <Label className="text-xs">Essence</Label>
-                      <Select 
-                        value={entry.plywoodType} 
+                      <Select
+                        value={entry.plywoodType}
                         onValueChange={(v) => updateWoodEntry(entry.id, "plywoodType", v)}
                       >
                         <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {plywoodTypes.map(p => (
+                          {plywoodTypes.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
                               {p.name} {p.density > 0 && `(${p.density} kg/m³)`}
                             </SelectItem>
@@ -233,15 +252,15 @@ export const FurnitureWeightCalculator = () => {
                     {/* Épaisseur */}
                     <div className="space-y-1">
                       <Label className="text-xs">Épaisseur (mm)</Label>
-                      <Select 
-                        value={entry.thickness.toString()} 
+                      <Select
+                        value={entry.thickness.toString()}
                         onValueChange={(v) => updateWoodEntry(entry.id, "thickness", Number(v))}
                       >
                         <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {standardThicknesses.map(t => (
+                          {standardThicknesses.map((t) => (
                             <SelectItem key={t} value={t.toString()}>
                               {t} mm
                             </SelectItem>
@@ -284,7 +303,8 @@ export const FurnitureWeightCalculator = () => {
                   {/* Détail du calcul */}
                   {entry.surfaceM2 > 0 && (
                     <div className="text-xs text-muted-foreground">
-                      {entry.surfaceM2} m² × {thickness} mm × {density} kg/m³ = <strong>{entryWeight.toFixed(2)} kg</strong>
+                      {entry.surfaceM2} m² × {thickness} mm × {density} kg/m³ ={" "}
+                      <strong>{entryWeight.toFixed(2)} kg</strong>
                     </div>
                   )}
                 </div>
@@ -316,15 +336,13 @@ export const FurnitureWeightCalculator = () => {
           </div>
 
           {hardware.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Aucune quincaillerie ajoutée
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-4">Aucune quincaillerie ajoutée</p>
           ) : (
             <div className="space-y-2">
               {hardware.map((h) => {
-                const hwType = hardwareTypes.find(t => t.id === h.type);
-                const itemWeight = (hwType?.weight || 0) * h.quantity / 1000;
-                
+                const hwType = hardwareTypes.find((t) => t.id === h.type);
+                const itemWeight = ((hwType?.weight || 0) * h.quantity) / 1000;
+
                 return (
                   <div key={h.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
                     <Select value={h.type} onValueChange={(v) => updateHardware(h.id, "type", v)}>
@@ -332,7 +350,7 @@ export const FurnitureWeightCalculator = () => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {hardwareTypes.map(t => (
+                        {hardwareTypes.map((t) => (
                           <SelectItem key={t.id} value={t.id}>
                             {t.name} ({t.weight}g)
                           </SelectItem>
@@ -393,12 +411,14 @@ export const FurnitureWeightCalculator = () => {
         <div className="text-xs text-muted-foreground border-t pt-4">
           <p className="font-semibold mb-2">Masses volumiques des contreplaqués :</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            {plywoodTypes.filter(p => p.id !== "custom").map(p => (
-              <div key={p.id} className="flex justify-between">
-                <span>{p.name}:</span>
-                <span className="font-mono">{p.density} kg/m³</span>
-              </div>
-            ))}
+            {plywoodTypes
+              .filter((p) => p.id !== "custom")
+              .map((p) => (
+                <div key={p.id} className="flex justify-between">
+                  <span>{p.name}:</span>
+                  <span className="font-mono">{p.density} kg/m³</span>
+                </div>
+              ))}
           </div>
         </div>
       </CardContent>
