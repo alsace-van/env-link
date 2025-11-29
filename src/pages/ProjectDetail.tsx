@@ -1518,22 +1518,42 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
-                <Tabs defaultValue="scenarios" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="scenarios">Scénarios & Dépenses</TabsTrigger>
-                    <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="scenarios" className="mt-4">
-                    <ScenarioManager
-                      projectId={project.id}
-                      project={project as any}
-                      onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
-                    />
-                  </TabsContent>
-                  <TabsContent value="bilan" className="mt-4">
-                    <BilanComptable projectId={project.id} projectName={project.nom} />
-                  </TabsContent>
-                </Tabs>
+                <div className="space-y-4">
+                  {/* Header avec bouton Statistiques */}
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Dépenses</h2>
+                    {!statsBtnPosition && (
+                      <Button
+                        onClick={handleStatsBtnClick}
+                        onMouseDown={handleStatsBtnMouseDown}
+                        className="gap-2 cursor-grab active:cursor-grabbing"
+                        variant="default"
+                        title="Voir les statistiques - Glisser pour détacher"
+                      >
+                        <BarChart3 className="h-4 w-4" />
+                        📊 Voir les statistiques
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Sous-onglets : Scénarios et Bilan */}
+                  <Tabs defaultValue="scenarios" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="scenarios">Scénarios & Dépenses</TabsTrigger>
+                      <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="scenarios" className="mt-4">
+                      <ScenarioManager
+                        projectId={project.id}
+                        project={project as any}
+                        onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                      />
+                    </TabsContent>
+                    <TabsContent value="bilan" className="mt-4">
+                      <BilanComptable projectId={project.id} projectName={project.nom} />
+                    </TabsContent>
+                  </Tabs>
+                </div>
               </TabsContent>
 
               <TabsContent value="documents" className="mt-6">
