@@ -484,7 +484,7 @@ export function TemplateDrawingCanvas({
     if (realValue <= 100) return 100;
     return Math.round(realValue / 50) * 50;
   });
-  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [snapToGrid, setSnapToGrid] = useState(false); // Désactivé par défaut - snap uniquement vers objets utilisateur
   const [showRulers, setShowRulers] = useState(true);
 
   // L'échelle effective : combien de mm représente 1 pixel
@@ -519,21 +519,16 @@ export function TemplateDrawingCanvas({
     (point: { x: number; y: number }, canvas?: FabricCanvas) => {
       const SNAP_DISTANCE = 20; // Distance de détection en pixels
 
-      // Snapping uniquement vers les points d'extrémité des objets si magnétisme activé
+      // Snapping uniquement vers les points d'extrémité des objets UTILISATEUR si magnétisme activé
       if (snapToGrid && canvas) {
         const objects = canvas.getObjects();
         let minDistance = SNAP_DISTANCE;
         let targetPoint: { x: number; y: number } | null = null;
 
         objects.forEach((obj) => {
-          // Ignorer les objets non sélectionnables (grille, règles, poignées)
-          if (
-            (obj as any).isRuler ||
-            (obj as any).isControlHandle ||
-            (obj as any).isControlLine ||
-            (obj as any).isGridLine ||
-            !obj.selectable
-          ) {
+          // SEULEMENT snapper vers les objets créés par l'utilisateur (marqués isUserDrawn)
+          // Ignorer TOUT le reste (grille, règles, poignées, etc.)
+          if (!(obj as any).isUserDrawn) {
             return;
           }
 
@@ -1156,6 +1151,7 @@ export function TemplateDrawingCanvas({
     if (!fabricCanvas) return;
 
     fabricCanvas.isDrawingMode = activeTool === "pencil";
+    // Activer la sélection rectangulaire uniquement en mode select
     fabricCanvas.selection = activeTool === "select";
 
     // 🎯 Gestion du curseur selon l'outil actif
@@ -1569,6 +1565,7 @@ export function TemplateDrawingCanvas({
               strokeLineJoin: "round",
             },
           );
+          (finalCurve as any).isUserDrawn = true;
 
           fabricCanvas.add(finalCurve);
           // Sélectionner automatiquement la courbe pour afficher ses poignées
@@ -1726,6 +1723,7 @@ export function TemplateDrawingCanvas({
                 selectable: true,
                 evented: true,
               });
+              (polygon as any).isUserDrawn = true;
               fabricCanvas.add(polygon);
               toast.success("Polygone créé");
             } else if (activeTool === "spline") {
@@ -1755,6 +1753,7 @@ export function TemplateDrawingCanvas({
                 selectable: true,
                 evented: true,
               });
+              (splinePath as any).isUserDrawn = true;
               fabricCanvas.add(splinePath);
               toast.success("Spline créée");
             }
@@ -1801,6 +1800,7 @@ export function TemplateDrawingCanvas({
               selectable: true,
               evented: true,
             });
+            (bezierPath as any).isUserDrawn = true;
             fabricCanvas.add(bezierPath);
             toast.success("Courbe de Bézier créée");
           }
@@ -1932,6 +1932,7 @@ export function TemplateDrawingCanvas({
             selectable: true,
             evented: true,
           });
+          (dimensionGroup as any).isUserDrawn = true;
           fabricCanvas.add(dimensionGroup);
 
           cleanTempObjects();
@@ -1988,6 +1989,7 @@ export function TemplateDrawingCanvas({
             evented: true,
             objectCaching: false,
           });
+          (activeObject as any).isUserDrawn = true;
         } else if (activeTool === "rectangle") {
           activeObject = new Rect({
             left: startPoint.x,
@@ -2001,6 +2003,7 @@ export function TemplateDrawingCanvas({
             evented: true,
             objectCaching: false,
           });
+          (activeObject as any).isUserDrawn = true;
         } else if (activeTool === "circle") {
           activeObject = new Circle({
             left: startPoint.x,
@@ -2015,6 +2018,7 @@ export function TemplateDrawingCanvas({
             evented: true,
             objectCaching: false,
           });
+          (activeObject as any).isUserDrawn = true;
         } else if (activeTool === "ellipse") {
           activeObject = new Ellipse({
             left: startPoint.x,
@@ -2028,6 +2032,7 @@ export function TemplateDrawingCanvas({
             evented: true,
             objectCaching: false,
           });
+          (activeObject as any).isUserDrawn = true;
         }
 
         fabricCanvas.add(activeObject);
@@ -2108,6 +2113,7 @@ export function TemplateDrawingCanvas({
           selectable: true,
           evented: true,
         });
+        (text as any).isUserDrawn = true;
         fabricCanvas.add(text);
         fabricCanvas.setActiveObject(text);
         text.enterEditing();
@@ -2253,8 +2259,8 @@ export function TemplateDrawingCanvas({
     style?: React.CSSProperties;
     highlight?: boolean;
   }> = [
-    { id: "select", icon: Hand, label: "Sélection (V)" },
-    { id: "pan", icon: Move, label: "Déplacer la vue (H)" },
+    { id: "pan", icon: Hand, label: "Déplacer la vue (H)" },
+    { id: "select", icon: Move, label: "Sélection (V)" },
     { id: "line", icon: Minus, label: "Ligne (L)" },
     { id: "rectangle", icon: Square, label: "Rectangle (R)" },
     { id: "circle", icon: CircleIcon, label: "Cercle (C)" },
