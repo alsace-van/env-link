@@ -530,14 +530,6 @@ const AccessoriesCatalogView = () => {
             <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
               Import/Export
             </Button>
-            <Button
-              onClick={() => setIsCategoryManagementOpen(true)}
-              variant="outline"
-              size="icon"
-              title="Gérer les catégories"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
             <Button onClick={handleAdd}>
               <Plus className="h-4 w-4 mr-2" />
               Ajouter un accessoire
@@ -592,6 +584,15 @@ const AccessoriesCatalogView = () => {
                     </button>
                   );
                 })}
+
+                {/* Bouton pour gérer les catégories */}
+                <button
+                  onClick={() => setIsCategoryManagementOpen(true)}
+                  className="px-3 py-2.5 text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700 transition-all flex items-center gap-1"
+                  title="Gérer les catégories"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
               </div>
             </div>
 
