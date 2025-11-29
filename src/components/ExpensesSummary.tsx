@@ -33,16 +33,19 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
   const loadExpensesData = async () => {
     // D'abord, trouver le scénario principal du projet
-    const { data: scenarios } = await (supabase as any)
+    const { data: scenarios, error: scenarioError } = await supabase
       .from("project_scenarios")
       .select("id")
       .eq("project_id", projectId)
-      .eq("is_principal", true)
+      .eq("est_principal", true)
       .single();
+
+    console.log("📊 Scénario principal trouvé:", scenarios, "Erreur:", scenarioError);
 
     if (!scenarios) {
       // Pas de scénario principal, charger toutes les dépenses du projet (fallback)
-      const { data, error } = await (supabase as any).from("project_expenses").select("*").eq("project_id", projectId);
+      console.log("⚠️ Pas de scénario principal, fallback sur project_id");
+      const { data, error } = await supabase.from("project_expenses").select("*").eq("project_id", projectId);
       if (error) {
         console.error(error);
         return;
@@ -52,13 +55,15 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
     }
 
     // Charger uniquement les dépenses du scénario principal
-    const { data, error } = await (supabase as any).from("project_expenses").select("*").eq("scenario_id", scenarios.id);
+    console.log("✅ Chargement dépenses du scénario:", scenarios.id);
+    const { data, error } = await supabase.from("project_expenses").select("*").eq("scenario_id", scenarios.id);
 
     if (error) {
       console.error(error);
       return;
     }
 
+    console.log("📊 Dépenses chargées:", data?.length, "articles");
     await processExpenses(data || []);
   };
 
