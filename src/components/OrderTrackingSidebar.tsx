@@ -72,7 +72,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger les scénarios principaux ET verrouillés
-    const { data: validScenarios } = await supabase
+    const { data: validScenarios } = await (supabase as any)
       .from("project_scenarios")
       .select("id, project_id")
       .in("project_id", projectIds)
@@ -94,7 +94,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setHasValidScenarios(true);
 
     // Charger uniquement les dépenses des scénarios principaux verrouillés
-    const { data: expenses, error } = await supabase
+    const { data: expenses, error } = await (supabase as any)
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
@@ -121,7 +121,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateOrderStatus = async (id: string, newStatus: "commande" | "en_livraison" | "livre") => {
-    const { error } = await supabase.from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
+    const { error } = await (supabase as any).from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -134,7 +134,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await supabase.from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
+    const { error } = await (supabase as any).from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
@@ -151,7 +151,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       return;
     }
 
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("project_expenses")
       .update({ statut_livraison: "en_livraison" })
       .in("id", Array.from(selectedItems));
