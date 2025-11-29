@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import AccessoryCategorySidebar from "@/components/AccessoryCategorySidebar";
 import StockStatusManager from "@/components/StockStatusManager";
 import { useProjectData } from "@/contexts/ProjectDataContext";
 import {
@@ -99,8 +98,6 @@ const AccessoriesCatalogView = () => {
   const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null);
   const [isCategoryManagementOpen, setIsCategoryManagementOpen] = useState(false);
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
     const saved = localStorage.getItem("accessories-view-mode");
     return (saved as "list" | "grid") || "list";
@@ -143,13 +140,8 @@ const AccessoriesCatalogView = () => {
       );
     }
 
-    // Filtrer par catégories sélectionnées
-    if (selectedCategories.length > 0) {
-      filtered = filtered.filter((acc) => acc.category_id && selectedCategories.includes(acc.category_id));
-    }
-
     setFilteredAccessories(filtered);
-  }, [searchTerm, accessories, selectedCategories]);
+  }, [searchTerm, accessories]);
 
   // Grouper les accessoires par catégorie principale
   const groupedAccessories = () => {
@@ -510,31 +502,6 @@ const AccessoriesCatalogView = () => {
 
   return (
     <div className="relative">
-      {/* Bouton flottant pour ouvrir la sidebar des catégories */}
-      <Button
-        onClick={() => setIsSidebarOpen(true)}
-        size="icon"
-        className="fixed left-4 top-1/2 -translate-y-1/2 z-40 rounded-full h-12 w-12 shadow-lg"
-        title="Ouvrir les catégories"
-      >
-        <ChevronRight className="h-5 w-5" />
-        {selectedCategories.length > 0 && (
-          <Badge
-            variant="destructive"
-            className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-          >
-            {selectedCategories.length}
-          </Badge>
-        )}
-      </Button>
-
-      <AccessoryCategorySidebar
-        selectedCategories={selectedCategories}
-        onCategoryChange={setSelectedCategories}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-      />
-
       <Card>
         <CardHeader>
           <CardTitle>Catalogue d'Accessoires</CardTitle>
