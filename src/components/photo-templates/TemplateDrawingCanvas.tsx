@@ -43,7 +43,6 @@ import {
   Pentagon,
   Grid3x3,
   Magnet,
-  Info,
   Sparkles,
   Move,
   Maximize,
@@ -52,7 +51,6 @@ import {
   Save,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface TemplateDrawingCanvasProps {
   imageUrl: string;
@@ -2921,36 +2919,8 @@ export function TemplateDrawingCanvas({
     { id: "text", icon: Type, label: "Texte (T)" },
   ];
 
-  const getToolInstructions = () => {
-    switch (activeTool) {
-      case "editableCurve":
-        return "⭐ NOUVEAU : Cliquez 3 fois (1ère extrémité → 2ème extrémité → courbure). La courbe s'ajuste en temps réel ! Sélectionnez-la après pour modifier les poignées.";
-      case "bezier":
-        return "Cliquez 4 points : début → contrôle 1 → contrôle 2 → fin";
-      case "spline":
-        return "Cliquez pour ajouter des points (min 3). Double-cliquez pour terminer";
-      case "polygon":
-        return "Cliquez pour ajouter des sommets (min 3). Double-cliquez pour fermer";
-      case "dimension":
-        return "Cliquez 2 points pour créer une cote avec la distance réelle";
-      case "text":
-        return "Cliquez pour placer du texte";
-      default:
-        return null;
-    }
-  };
-
-  const instructions = getToolInstructions();
-
   return (
     <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-background" : "space-y-4"}`}>
-      {!isFullscreen && instructions && (
-        <Alert className={activeTool === "editableCurve" ? "border-blue-500 bg-blue-50" : ""}>
-          <Info className="h-4 w-4" />
-          <AlertDescription className="font-medium">{instructions}</AlertDescription>
-        </Alert>
-      )}
-
       {tempPoints.length > 0 && (
         <div className={`flex items-center gap-2 ${isFullscreen ? "fixed top-4 left-4 z-[60]" : ""}`}>
           <Badge variant="secondary" className="animate-pulse">
