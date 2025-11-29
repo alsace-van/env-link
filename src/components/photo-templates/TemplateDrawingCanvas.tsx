@@ -468,12 +468,31 @@ export function TemplateDrawingCanvas({
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
-  const [scaleIntervalCm, setScaleIntervalCm] = useState(10); // Intervalle de l'échelle en cm (valeur ronde)
+  // Nouvelle logique d'échelle :
+  // - gridSizePx = taille FIXE de la grille en pixels (visuellement constant)
+  // - scaleValuePerCell = ce que représente chaque case en mm (ajustable par l'utilisateur)
+  const [gridSizePx, setGridSizePx] = useState(35); // Taille fixe de la grille en pixels
+  const [scaleValuePerCell, setScaleValuePerCell] = useState(() => {
+    // Initialiser avec la valeur réelle basée sur scaleFactor
+    // scaleFactor = pixels par mm, donc 35px / scaleFactor = mm par case
+    const realValue = 35 / scaleFactor;
+    // Arrondir à une valeur pratique (10, 20, 50, 100mm...)
+    if (realValue <= 5) return 5;
+    if (realValue <= 10) return 10;
+    if (realValue <= 20) return 20;
+    if (realValue <= 50) return 50;
+    if (realValue <= 100) return 100;
+    return Math.round(realValue / 50) * 50;
+  });
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
 
-  // Calculer la taille de la grille en pixels en fonction de l'échelle en cm
-  const gridSize = scaleIntervalCm * scaleFactor;
+  // L'échelle effective : combien de mm représente 1 pixel
+  // Si scaleValuePerCell = 10mm et gridSizePx = 35px, alors 1px = 10/35 = 0.286mm
+  const effectiveScale = scaleValuePerCell / gridSizePx; // mm par pixel
+
+  // Pour compatibilité avec le reste du code, on garde gridSize comme alias
+  const gridSize = gridSizePx;
   const [history, setHistory] = useState<HistoryState[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -825,7 +844,9 @@ export function TemplateDrawingCanvas({
         if (
           (activeObject as any).isGridLine ||
           (activeObject as any).isRuler ||
-          (activeObject instanceof Line && (activeObject as any).strokeDashArray && !(activeObject as any).isControlLine)
+          (activeObject instanceof Line &&
+            (activeObject as any).strokeDashArray &&
+            !(activeObject as any).isControlLine)
         ) {
           canvas.discardActiveObject();
           canvas.renderAll();
@@ -957,14 +978,17 @@ export function TemplateDrawingCanvas({
       (leftRulerBg as any).isRuler = true;
       fabricCanvas.add(leftRulerBg);
 
-      // Règle horizontale (axe X) - chiffres ronds tous les scaleIntervalCm
+      // Règle horizontale (axe X) - chiffres basés sur scaleValuePerCell
       const numTicksX = Math.ceil(canvasWidth / gridSize);
       for (let i = 0; i <= numTicksX; i++) {
         const x = i * gridSize;
         if (x > canvasWidth) break;
 
-        // Afficher des valeurs rondes (multiple de scaleIntervalCm)
-        const cm = i * scaleIntervalCm;
+        // Calculer la valeur réelle : position * mm par pixel
+        const realMm = i * scaleValuePerCell;
+        // Afficher en cm si >= 10mm
+        const displayValue = realMm >= 10 ? (realMm / 10).toFixed(realMm % 10 === 0 ? 0 : 1) : realMm.toFixed(0);
+        const unit = realMm >= 10 ? "" : ""; // On affiche juste le nombre
 
         // Trait vertical petit (en dehors de l'image)
         const line = new Line([x, canvasHeight, x, canvasHeight + 8], {
@@ -977,7 +1001,7 @@ export function TemplateDrawingCanvas({
         fabricCanvas.add(line);
 
         // Texte en bas (à chaque trait)
-        const text = new FabricText(`${cm}`, {
+        const text = new FabricText(`${displayValue}`, {
           left: x - 8,
           top: canvasHeight + 12,
           fontSize: 12,
@@ -990,14 +1014,15 @@ export function TemplateDrawingCanvas({
         fabricCanvas.add(text);
       }
 
-      // Règle verticale (axe Y) - à gauche, 0 en bas, chiffres ronds
+      // Règle verticale (axe Y) - à gauche, 0 en bas
       const numTicksY = Math.ceil(canvasHeight / gridSize);
       for (let i = 0; i <= numTicksY; i++) {
         const y = canvasHeight - i * gridSize; // Inverser l'axe Y
         if (y < 0) break;
 
-        // Afficher des valeurs rondes (multiple de scaleIntervalCm)
-        const cm = i * scaleIntervalCm;
+        // Calculer la valeur réelle
+        const realMm = i * scaleValuePerCell;
+        const displayValue = realMm >= 10 ? (realMm / 10).toFixed(realMm % 10 === 0 ? 0 : 1) : realMm.toFixed(0);
 
         // Trait horizontal petit (en dehors de l'image)
         const line = new Line([-8, y, 0, y], {
@@ -1010,7 +1035,7 @@ export function TemplateDrawingCanvas({
         fabricCanvas.add(line);
 
         // Texte à gauche (à chaque trait)
-        const text = new FabricText(`${cm}`, {
+        const text = new FabricText(`${displayValue}`, {
           left: -28,
           top: y - 6,
           fontSize: 12,
@@ -1034,7 +1059,7 @@ export function TemplateDrawingCanvas({
       });
       fabricCanvas.renderAll();
     }
-  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, scaleIntervalCm, scaleFactor]);
+  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, scaleValuePerCell, effectiveScale]);
 
   // 🔧 BUG FIX #6 : Gérer la sélection et le déplacement des courbes éditables
   useEffect(() => {
@@ -1803,7 +1828,8 @@ export function TemplateDrawingCanvas({
           const dx = p2.x - p1.x;
           const dy = p2.y - p1.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          const realDistance = (distance / scaleFactor).toFixed(1);
+          // Utiliser l'échelle effective (mm par pixel)
+          const realDistance = (distance * effectiveScale).toFixed(1);
 
           const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
             stroke: "#3b82f6",
@@ -2360,19 +2386,54 @@ export function TemplateDrawingCanvas({
                 </div>
 
                 {showRulers && (
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Échelle:</Label>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={scaleIntervalCm}
-                        onChange={(e) => setScaleIntervalCm(parseInt(e.target.value) || 10)}
-                        className="w-16 h-7 text-xs"
-                      />
-                      <span className="text-xs text-muted-foreground">cm</span>
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Case =</Label>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="500"
+                          value={scaleValuePerCell}
+                          onChange={(e) => setScaleValuePerCell(parseInt(e.target.value) || 10)}
+                          className="w-14 h-7 text-xs"
+                        />
+                        <span className="text-xs text-muted-foreground">mm</span>
+                      </div>
                     </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Grille:</Label>
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          min="10"
+                          max="100"
+                          value={gridSizePx}
+                          onChange={(e) => setGridSizePx(parseInt(e.target.value) || 35)}
+                          className="w-14 h-7 text-xs"
+                        />
+                        <span className="text-xs text-muted-foreground">px</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={() => {
+                        // Réinitialiser à l'échelle calibrée
+                        const realValue = gridSizePx / scaleFactor;
+                        if (realValue <= 5) setScaleValuePerCell(5);
+                        else if (realValue <= 10) setScaleValuePerCell(10);
+                        else if (realValue <= 20) setScaleValuePerCell(20);
+                        else if (realValue <= 50) setScaleValuePerCell(50);
+                        else if (realValue <= 100) setScaleValuePerCell(100);
+                        else setScaleValuePerCell(Math.round(realValue / 50) * 50);
+                        toast.success("Échelle recalibrée");
+                      }}
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Recalibrer
+                    </Button>
                   </div>
                 )}
               </div>
@@ -2464,18 +2525,49 @@ export function TemplateDrawingCanvas({
           </div>
 
           {showRulers && (
-            <div className="flex items-center gap-2">
-              <Label className="text-sm">Échelle:</Label>
-              <Input
-                type="number"
-                min="1"
-                max="100"
-                value={scaleIntervalCm}
-                onChange={(e) => setScaleIntervalCm(parseInt(e.target.value) || 10)}
-                className="w-20 h-8"
-              />
-              <span className="text-sm text-muted-foreground">cm</span>
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Case =</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={scaleValuePerCell}
+                  onChange={(e) => setScaleValuePerCell(parseInt(e.target.value) || 10)}
+                  className="w-16 h-8"
+                />
+                <span className="text-sm text-muted-foreground">mm</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Grille:</Label>
+                <Input
+                  type="number"
+                  min="10"
+                  max="100"
+                  value={gridSizePx}
+                  onChange={(e) => setGridSizePx(parseInt(e.target.value) || 35)}
+                  className="w-16 h-8"
+                />
+                <span className="text-sm text-muted-foreground">px</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const realValue = gridSizePx / scaleFactor;
+                  if (realValue <= 5) setScaleValuePerCell(5);
+                  else if (realValue <= 10) setScaleValuePerCell(10);
+                  else if (realValue <= 20) setScaleValuePerCell(20);
+                  else if (realValue <= 50) setScaleValuePerCell(50);
+                  else if (realValue <= 100) setScaleValuePerCell(100);
+                  else setScaleValuePerCell(Math.round(realValue / 50) * 50);
+                  toast.success("Échelle recalibrée");
+                }}
+                title="Recalibrer à l'échelle de l'image"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </>
           )}
 
           <Separator orientation="vertical" className="h-8" />
@@ -2601,8 +2693,8 @@ export function TemplateDrawingCanvas({
       {!isFullscreen && (
         <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
           <p>
-            <strong>Échelle:</strong> 1 pixel = {(1 / scaleFactor).toFixed(3)} mm •{" "}
-            <strong className="ml-2">Résolution:</strong> {scaleFactor.toFixed(2)} pixels/mm •
+            <strong>Échelle:</strong> 1 pixel = {effectiveScale.toFixed(3)} mm •{" "}
+            <strong className="ml-2">Résolution:</strong> {(1 / effectiveScale).toFixed(2)} pixels/mm •
             <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
           </p>
           <p className="mt-1 text-blue-600 font-medium">
