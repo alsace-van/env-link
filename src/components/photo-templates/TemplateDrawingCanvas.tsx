@@ -927,7 +927,14 @@ export function TemplateDrawingCanvas({
     toast.success("Canevas de traçage prêt !");
 
     return () => {
-      canvas.dispose();
+      try {
+        if (canvas && canvas.lowerCanvasEl) {
+          canvas.dispose();
+        }
+      } catch (e) {
+        // Canvas may already be disposed, ignore cleanup errors
+        console.warn('Canvas cleanup warning:', e);
+      }
     };
   }, [imageUrl]);
 
