@@ -235,10 +235,10 @@ class EditableCurve extends Path {
     const handleStart = new Circle({
       left: startPos.x,
       top: startPos.y,
-      radius: 4,
+      radius: 3,
       fill: "#3b82f6",
       stroke: "#ffffff",
-      strokeWidth: 1.5,
+      strokeWidth: 1,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -260,10 +260,10 @@ class EditableCurve extends Path {
     const handleControl = new Circle({
       left: controlPos.x,
       top: controlPos.y,
-      radius: 4,
+      radius: 3,
       fill: "#f97316", // Orange pour le point de contrôle
       stroke: "#ffffff",
-      strokeWidth: 1.5,
+      strokeWidth: 1,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -285,10 +285,10 @@ class EditableCurve extends Path {
     const handleEnd = new Circle({
       left: endPos.x,
       top: endPos.y,
-      radius: 4,
+      radius: 3,
       fill: "#3b82f6",
       stroke: "#ffffff",
-      strokeWidth: 1.5,
+      strokeWidth: 1,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -317,10 +317,10 @@ class EditableCurve extends Path {
     const handleMove = new Circle({
       left: centerX,
       top: centerY,
-      radius: 5,
+      radius: 4,
       fill: "#22c55e", // Vert
       stroke: "#ffffff",
-      strokeWidth: 1.5,
+      strokeWidth: 1,
       originX: "center",
       originY: "center",
       hasBorders: false,
@@ -581,6 +581,11 @@ export function TemplateDrawingCanvas({
     return Math.round(realValue / 50) * 50;
   });
   const [snapToGrid, setSnapToGrid] = useState(false); // Désactivé par défaut - snap uniquement vers objets utilisateur
+  const snapToGridRef = useRef(snapToGrid);
+  // Garder la ref synchronisée
+  useEffect(() => {
+    snapToGridRef.current = snapToGrid;
+  }, [snapToGrid]);
   const [showRulers, setShowRulers] = useState(true);
 
   // L'échelle effective : combien de mm représente 1 pixel
@@ -616,11 +621,12 @@ export function TemplateDrawingCanvas({
   const snapPoint = useCallback(
     (point: { x: number; y: number }, canvas?: FabricCanvas) => {
       // Si magnétisme désactivé, retourner le point tel quel
-      if (!snapToGrid || !canvas) {
+      // Utiliser la ref pour avoir toujours la valeur actuelle
+      if (!snapToGridRef.current || !canvas) {
         return point;
       }
 
-      const SNAP_DISTANCE = 15; // Distance de détection en pixels
+      const SNAP_DISTANCE = 25; // Distance de détection en pixels (augmentée)
       let minDistance = SNAP_DISTANCE;
       let targetPoint: { x: number; y: number } | null = null;
 
@@ -637,13 +643,13 @@ export function TemplateDrawingCanvas({
           const line = obj as Line;
           endpoints.push({ x: line.x1 ?? 0, y: line.y1 ?? 0 }, { x: line.x2 ?? 0, y: line.y2 ?? 0 });
         }
-        // Courbes éditables : extrémités
+        // Courbes éditables : extrémités (directement depuis controlPoints)
         else if ((obj as any).customType === "editableCurve") {
           const curve = obj as unknown as EditableCurve;
-          const matrix = curve.calcTransformMatrix();
-          const startAbs = new Point(curve.controlPoints.start.x, curve.controlPoints.start.y).transform(matrix);
-          const endAbs = new Point(curve.controlPoints.end.x, curve.controlPoints.end.y).transform(matrix);
-          endpoints.push({ x: startAbs.x, y: startAbs.y }, { x: endAbs.x, y: endAbs.y });
+          endpoints.push(
+            { x: curve.controlPoints.start.x, y: curve.controlPoints.start.y },
+            { x: curve.controlPoints.end.x, y: curve.controlPoints.end.y },
+          );
         }
         // Rectangles : coins
         else if (obj instanceof Rect) {
@@ -672,7 +678,7 @@ export function TemplateDrawingCanvas({
 
       return targetPoint || point;
     },
-    [snapToGrid],
+    [], // Pas de dépendances car on utilise snapToGridRef
   );
 
   // Créer la grille limitée à l'image
@@ -1145,10 +1151,10 @@ export function TemplateDrawingCanvas({
       const cy = (y1 + y2) / 2;
 
       const endpointProps = {
-        radius: 4,
+        radius: 3,
         fill: "#3b82f6",
         stroke: "#ffffff",
-        strokeWidth: 1.5,
+        strokeWidth: 1,
         selectable: true,
         evented: true,
         hasControls: false,
@@ -1159,10 +1165,10 @@ export function TemplateDrawingCanvas({
       };
 
       const centerProps = {
-        radius: 5,
+        radius: 4,
         fill: "#22c55e", // Vert pour la poignée de déplacement
         stroke: "#ffffff",
-        strokeWidth: 1.5,
+        strokeWidth: 1,
         selectable: true,
         evented: true,
         hasControls: false,
@@ -1206,11 +1212,11 @@ export function TemplateDrawingCanvas({
         fabricCanvas.requestRenderAll();
       });
 
-      // Snap au relâchement
+      // Snap au relâchement (snapPoint gère déjà snapToGrid en interne)
       handle1.on("mouseup", () => {
-        if (snapToGrid) {
-          const pos = { x: handle1.left ?? 0, y: handle1.top ?? 0 };
-          const snapped = snapPoint(pos, fabricCanvas);
+        const pos = { x: handle1.left ?? 0, y: handle1.top ?? 0 };
+        const snapped = snapPoint(pos, fabricCanvas);
+        if (snapped.x !== pos.x || snapped.y !== pos.y) {
           handle1.set({ left: snapped.x, top: snapped.y });
           handle1.setCoords();
           line.set({ x1: snapped.x, y1: snapped.y });
@@ -1240,11 +1246,11 @@ export function TemplateDrawingCanvas({
         fabricCanvas.requestRenderAll();
       });
 
-      // Snap au relâchement
+      // Snap au relâchement (snapPoint gère déjà snapToGrid en interne)
       handle2.on("mouseup", () => {
-        if (snapToGrid) {
-          const pos = { x: handle2.left ?? 0, y: handle2.top ?? 0 };
-          const snapped = snapPoint(pos, fabricCanvas);
+        const pos = { x: handle2.left ?? 0, y: handle2.top ?? 0 };
+        const snapped = snapPoint(pos, fabricCanvas);
+        if (snapped.x !== pos.x || snapped.y !== pos.y) {
           handle2.set({ left: snapped.x, top: snapped.y });
           handle2.setCoords();
           line.set({ x2: snapped.x, y2: snapped.y });
@@ -1433,7 +1439,7 @@ export function TemplateDrawingCanvas({
       fabricCanvas.off("object:moving", handleObjectMoving);
       fabricCanvas.off("object:modified", handleObjectModified);
     };
-  }, [fabricCanvas, strokeColor, snapPoint, snapToGrid]);
+  }, [fabricCanvas, strokeColor, snapPoint]);
 
   // Gérer les outils
   useEffect(() => {
