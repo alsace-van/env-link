@@ -224,7 +224,7 @@ export const useScenarios = (projectId: string) => {
 
     // 4. Remettre les dépenses en statut null (non commandé)
     console.log("📝 Reset statut dépenses...");
-    const { error: expensesError } = await supabase
+    const { error: expensesError } = await (supabase as any)
       .from("project_expenses")
       .update({ statut_livraison: null })
       .eq("scenario_id", scenarioId);
@@ -244,14 +244,14 @@ export const useScenarios = (projectId: string) => {
   const clearDevisHistory = async () => {
     try {
       // Supprimer les snapshots de devis
-      const { error: snapshotError } = await supabase.from("devis_snapshots").delete().eq("project_id", projectId);
+      const { error: snapshotError } = await (supabase as any).from("devis_snapshots").delete().eq("project_id", projectId);
 
       if (snapshotError) {
         console.error("Erreur suppression snapshots:", snapshotError);
       }
 
       // Supprimer l'historique des modifications
-      const { error: historyError } = await supabase
+      const { error: historyError } = await (supabase as any)
         .from("project_expenses_history")
         .delete()
         .eq("project_id", projectId);

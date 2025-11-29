@@ -173,7 +173,7 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     }
   };
 
-  const getDeliveryInfo = (status: Expense["statut_livraison"]) => {
+  const getDeliveryInfo = (status: Expense["statut_livraison"] | null | undefined) => {
     switch (status) {
       case "commande":
         return {
@@ -192,6 +192,12 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
           color: "border-green-500 text-green-500 bg-green-50",
           label: "Livré",
           icon: <Truck className="h-3 w-3" />,
+        };
+      default:
+        return {
+          color: "border-gray-300 text-gray-500 bg-gray-50",
+          label: "Non défini",
+          icon: <Package className="h-3 w-3" />,
         };
     }
   };

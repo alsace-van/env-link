@@ -178,7 +178,7 @@ const LockProjectDialog = ({ projectId, scenarioId, onClose, onLocked }: LockPro
       }
 
       // 10. Mettre toutes les dépenses du scénario en statut "commande" (shopping list)
-      const { error: expensesUpdateError } = await supabase
+      const { error: expensesUpdateError } = await (supabase as any)
         .from("project_expenses")
         .update({ statut_livraison: "commande" })
         .eq("scenario_id", scenarioId);
