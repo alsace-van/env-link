@@ -138,6 +138,9 @@ export const CableSectionCalculator = () => {
   // Calibres de fusibles standards (A) - inclut mini fuse, ATO, midi fuse, mega fuse
   const standardFuses = [1, 2, 3, 5, 7.5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 100, 125, 150, 175, 200];
 
+  // Calibres de fusibles courants (disponibles dans tous les formats)
+  const commonFuses = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100];
+
   // Intensités maximales admissibles pour câbles souples (A)
   const maxCurrentBySectionMap: { [key: number]: number } = {
     0.75: 6,
@@ -161,27 +164,61 @@ export const CableSectionCalculator = () => {
     return lengthMode === "aller" ? length * 2 : length;
   };
 
-  // Calculer le fusible recommandé
-  const calculateRecommendedFuse = (intensite: number, section: number): number | null => {
-    if (intensite <= 0 || section <= 0) return null;
+  // Calculer le fusible recommandé et suggestion de section
+  const calculateRecommendedFuse = (
+    intensite: number,
+    section: number,
+  ): {
+    fuse: number | null;
+    isCommon: boolean;
+    suggestedSection: number | null;
+    suggestedFuse: number | null;
+  } => {
+    if (intensite <= 0 || section <= 0)
+      return { fuse: null, isCommon: false, suggestedSection: null, suggestedFuse: null };
 
     const maxCurrentForSection = maxCurrentBySectionMap[section] || 0;
 
     // Le fusible doit être :
-    // - Supérieur ou égal à l'intensité nominale + marge 10% (pour éviter les déclenchements intempestifs)
-    // - Inférieur ou égal à l'intensité max admissible du câble (pour protéger le câble)
+    // - Supérieur ou égal à l'intensité nominale + marge 10%
+    // - Inférieur ou égal à l'intensité max admissible du câble
     const minFuseWithMargin = intensite * 1.1;
 
     // Trouver le premier calibre standard ≥ intensité avec marge
     const recommendedFuse = standardFuses.find((f) => f >= minFuseWithMargin);
 
     // Vérifier que ce fusible ne dépasse pas la capacité du câble
+    let fuse: number | null = null;
     if (recommendedFuse && recommendedFuse <= maxCurrentForSection) {
-      return recommendedFuse;
+      fuse = recommendedFuse;
     }
 
-    // Si le fusible avec marge dépasse la capacité du câble, c'est un problème de dimensionnement
-    return null;
+    // Vérifier si c'est un fusible courant
+    const isCommon = fuse ? commonFuses.includes(fuse) : false;
+
+    // Si le fusible n'est pas courant ou n'existe pas, chercher une section supérieure
+    let suggestedSection: number | null = null;
+    let suggestedFuse: number | null = null;
+
+    if (!isCommon || !fuse) {
+      // Trouver le prochain fusible courant ≥ intensité avec marge
+      const nextCommonFuse = commonFuses.find((f) => f >= minFuseWithMargin);
+
+      if (nextCommonFuse) {
+        // Trouver la section minimale qui supporte ce fusible
+        const sectionForFuse = standardSections.find((s) => {
+          const maxI = maxCurrentBySectionMap[s] || 0;
+          return maxI >= nextCommonFuse && s > section;
+        });
+
+        if (sectionForFuse) {
+          suggestedSection = sectionForFuse;
+          suggestedFuse = nextCommonFuse;
+        }
+      }
+    }
+
+    return { fuse, isCommon, suggestedSection, suggestedFuse };
   };
 
   // Trouver le câble du catalogue correspondant à une section
@@ -266,8 +303,10 @@ export const CableSectionCalculator = () => {
 
   const displayCurrent = calculationMode === "current" && maxCurrentResult ? maxCurrentResult : current;
 
-  const recommendedFuse =
-    displaySection && displayCurrent ? calculateRecommendedFuse(displayCurrent, displaySection) : null;
+  const fuseInfo =
+    displaySection && displayCurrent
+      ? calculateRecommendedFuse(displayCurrent, displaySection)
+      : { fuse: null, isCommon: false, suggestedSection: null, suggestedFuse: null };
 
   const priceInfo =
     displaySection && length > 0 ? calculateCablePrice(displaySection) : { achat: null, vente: null, cable: null };
@@ -523,19 +562,45 @@ export const CableSectionCalculator = () => {
                 <Shield className="h-6 w-6 text-orange-600 dark:text-orange-400 flex-shrink-0" />
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-orange-800 dark:text-orange-200">Fusible recommandé</h3>
-                  {recommendedFuse ? (
+                  {fuseInfo.fuse ? (
                     <>
-                      <div className="text-2xl font-bold text-orange-600 dark:text-orange-400 my-1">
-                        {recommendedFuse} A
+                      <div className="flex items-center gap-2 my-1">
+                        <span className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                          {fuseInfo.fuse} A
+                        </span>
+                        {!fuseInfo.isCommon && (
+                          <Badge variant="outline" className="text-orange-600 border-orange-400 text-xs">
+                            Calibre peu courant
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-xs text-orange-700 dark:text-orange-300">
                         Protège le câble {displaySection} mm² (max {maxCurrentBySectionMap[displaySection]}A)
                       </p>
+                      {!fuseInfo.isCommon && fuseInfo.suggestedSection && fuseInfo.suggestedFuse && (
+                        <div className="mt-2 p-2 bg-orange-100 dark:bg-orange-900 rounded text-xs">
+                          <p className="font-medium text-orange-800 dark:text-orange-200">
+                            💡 Alternative : câble {fuseInfo.suggestedSection} mm² → fusible {fuseInfo.suggestedFuse} A
+                          </p>
+                          <p className="text-orange-700 dark:text-orange-300">
+                            Calibre plus courant, disponible dans tous les formats
+                          </p>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
-                      Aucun calibre standard adapté. Vérifiez la section ou l'intensité.
-                    </p>
+                    <>
+                      <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                        Aucun calibre adapté pour cette section.
+                      </p>
+                      {fuseInfo.suggestedSection && fuseInfo.suggestedFuse && (
+                        <div className="mt-2 p-2 bg-orange-100 dark:bg-orange-900 rounded text-xs">
+                          <p className="font-medium text-orange-800 dark:text-orange-200">
+                            💡 Solution : passer à {fuseInfo.suggestedSection} mm² → fusible {fuseInfo.suggestedFuse} A
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
