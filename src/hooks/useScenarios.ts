@@ -68,7 +68,7 @@ export const useScenarios = (projectId: string) => {
 
   const duplicateScenario = async (scenarioId: string, nouveauNom: string) => {
     // ✅ CORRECTION : Filtrer par scenario_id au lieu de project_id
-    const result: any = await supabase.from("project_expenses").select("*").eq("scenario_id", scenarioId); // ✅ FIX: Filtrer par le bon scénario
+    const result: any = await (supabase as any).from("project_expenses").select("*").eq("scenario_id", scenarioId);
 
     const { data: expenses, error: expensesError } = result;
 
