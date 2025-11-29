@@ -1626,7 +1626,7 @@ const ProjectDetail = () => {
                       />
                     </TabsContent>
                     <TabsContent value="bilan" className="mt-4">
-                      <BilanComptable projectId={project.id} projectName={project.nom} />
+                      <BilanComptable projectId={project.id} projectName={project.nom_projet || ''} />
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -1816,7 +1816,7 @@ const ProjectDetail = () => {
       <OrderTrackingSidebar
         isOpen={isOrderTrackingOpen}
         onClose={() => setIsOrderTrackingOpen(false)}
-        onOrderChange={() => setExpensesRefreshTrigger((prev) => prev + 1)}
+        onOrderChange={() => setExpenseRefresh((prev) => prev + 1)}
       />
     </div>
   );

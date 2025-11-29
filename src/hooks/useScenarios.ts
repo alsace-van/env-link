@@ -193,7 +193,7 @@ export const useScenarios = (projectId: string) => {
   // Effacer l'historique des devis (pour tests)
   const clearDevisHistory = async () => {
     // Supprimer tous les devis de ce projet
-    const { error } = await supabase.from("devis").delete().eq("project_id", projectId);
+    const { error } = await (supabase as any).from("devis").delete().eq("project_id", projectId);
 
     if (error) {
       toast.error("Erreur lors de la suppression de l'historique");
