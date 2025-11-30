@@ -17,6 +17,8 @@ import {
   Package,
   FileText,
   Settings,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -84,6 +86,8 @@ interface Accessory {
   stock_notes?: string | null;
   supplier_order_ref?: string | null;
   last_stock_update?: string | null;
+  needs_completion?: boolean;
+  imported_at?: string | null;
 }
 
 const AccessoriesCatalogView = () => {
@@ -107,6 +111,10 @@ const AccessoriesCatalogView = () => {
   const [isNoticeDialogOpen, setIsNoticeDialogOpen] = useState(false);
   const [selectedAccessoryForNotice, setSelectedAccessoryForNotice] = useState<Accessory | null>(null);
   const [activeTab, setActiveTab] = useState<string>("__all__");
+  const [showNeedsCompletion, setShowNeedsCompletion] = useState(false);
+
+  // Compter les articles à compléter
+  const needsCompletionCount = accessories.filter((a) => a.needs_completion).length;
 
   const handleStatusChange = () => {
     loadAccessories();
@@ -130,6 +138,11 @@ const AccessoriesCatalogView = () => {
   useEffect(() => {
     let filtered = accessories;
 
+    // Filtre "À compléter"
+    if (showNeedsCompletion) {
+      filtered = filtered.filter((acc) => acc.needs_completion === true);
+    }
+
     if (searchTerm) {
       filtered = filtered.filter(
         (acc) =>
@@ -141,7 +154,7 @@ const AccessoriesCatalogView = () => {
     }
 
     setFilteredAccessories(filtered);
-  }, [searchTerm, accessories]);
+  }, [searchTerm, accessories, showNeedsCompletion]);
 
   // Grouper les accessoires par catégorie principale
   const groupedAccessories = () => {
@@ -272,6 +285,19 @@ const AccessoriesCatalogView = () => {
     handleFormClose();
   };
 
+  // Marquer un article comme complété
+  const handleMarkAsCompleted = async (id: string) => {
+    const { error } = await supabase.from("accessories_catalog").update({ needs_completion: false }).eq("id", id);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+      console.error(error);
+    } else {
+      toast.success("Article marqué comme complété !");
+      loadAccessories();
+    }
+  };
+
   const handleAccessoryDrop = async (accessoryId: string, categoryId: string | null) => {
     const { error } = await supabase
       .from("accessories_catalog")
@@ -289,10 +315,36 @@ const AccessoriesCatalogView = () => {
 
   // Fonction pour rendre une carte accessoire
   const renderAccessoryCard = (accessory: Accessory) => (
-    <Card key={accessory.id}>
+    <Card
+      key={accessory.id}
+      className={accessory.needs_completion ? "border-orange-300 bg-orange-50/50 dark:bg-orange-950/20" : ""}
+    >
       <CardContent className="p-4">
         {viewMode === "list" ? (
           <>
+            {/* Bandeau "À compléter" */}
+            {accessory.needs_completion && (
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-orange-200 bg-orange-100 dark:bg-orange-900/30 -mx-4 -mt-4 px-4 py-2 rounded-t-lg">
+                <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">Article importé - À compléter</span>
+                  {accessory.imported_at && (
+                    <span className="text-xs text-orange-500">
+                      (importé le {new Date(accessory.imported_at).toLocaleDateString("fr-FR")})
+                    </span>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-green-500 text-green-600 hover:bg-green-50"
+                  onClick={() => handleMarkAsCompleted(accessory.id)}
+                >
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Marquer complété
+                </Button>
+              </div>
+            )}
             <div className="flex items-start gap-4">
               <div className="grid grid-cols-1 md:grid-cols-6 gap-4 flex-1">
                 <div className="md:col-span-2">
@@ -433,6 +485,22 @@ const AccessoriesCatalogView = () => {
         ) : (
           // Mode Grid
           <>
+            {/* Badge "À compléter" en mode Grid */}
+            {accessory.needs_completion && (
+              <div className="flex items-center justify-between mb-2 p-2 bg-orange-100 dark:bg-orange-900/30 rounded-md -mx-1 -mt-1">
+                <div className="flex items-center gap-1 text-orange-700 dark:text-orange-400">
+                  <AlertCircle className="h-3 w-3" />
+                  <span className="text-xs font-medium">À compléter</span>
+                </div>
+                <button
+                  className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1"
+                  onClick={() => handleMarkAsCompleted(accessory.id)}
+                >
+                  <CheckCircle2 className="h-3 w-3" />
+                  OK
+                </button>
+              </div>
+            )}
             <CardHeader className="p-0 mb-3">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -527,6 +595,23 @@ const AccessoriesCatalogView = () => {
                 <LayoutGrid className="h-4 w-4" />
               </Button>
             </div>
+            {/* Bouton filtre "À compléter" */}
+            {needsCompletionCount > 0 && (
+              <Button
+                onClick={() => setShowNeedsCompletion(!showNeedsCompletion)}
+                variant={showNeedsCompletion ? "default" : "outline"}
+                className={
+                  showNeedsCompletion
+                    ? "bg-orange-500 hover:bg-orange-600"
+                    : "border-orange-400 text-orange-600 hover:bg-orange-50"
+                }
+              >
+                <AlertCircle className="h-4 w-4 mr-2" />À compléter
+                <Badge variant="secondary" className="ml-2 bg-orange-100 text-orange-700">
+                  {needsCompletionCount}
+                </Badge>
+              </Button>
+            )}
             <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
               Import/Export
             </Button>
