@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   X,
   ShoppingCart,
@@ -26,9 +27,10 @@ import {
   Trophy,
   Euro,
   TrendingDown,
+  Maximize2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, subMonths, startOfMonth, endOfMonth, parseISO } from "date-fns";
 import { fr } from "date-fns/locale";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -84,6 +86,13 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   const [topAccessories, setTopAccessories] = useState<TopAccessory[]>([]);
   const [allExpenses, setAllExpenses] = useState<OrderItem[]>([]);
 
+  // Mode plein écran du graphique
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenPeriod, setFullscreenPeriod] = useState<"6" | "12" | "24" | "custom">("12");
+  const [fullscreenStats, setFullscreenStats] = useState<MonthlyStats[]>([]);
+  const [customDateStart, setCustomDateStart] = useState<string>("");
+  const [customDateEnd, setCustomDateEnd] = useState<string>("");
+
   useEffect(() => {
     if (isOpen) {
       loadAllOrders();
@@ -120,14 +129,14 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger les scénarios principaux ET verrouillés
-    const { data: validScenarios } = await (supabase as any)
+    const { data: validScenarios } = await supabase
       .from("project_scenarios")
       .select("id, project_id")
       .in("project_id", projectIds)
       .eq("est_principal", true)
       .eq("is_locked", true);
 
-    const validScenarioIds = validScenarios?.map((s: any) => s.id) || [];
+    const validScenarioIds = validScenarios?.map((s) => s.id) || [];
 
     if (validScenarioIds.length === 0) {
       // Aucun scénario principal verrouillé
@@ -142,7 +151,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setHasValidScenarios(true);
 
     // Charger uniquement les dépenses des scénarios principaux verrouillés
-    const { data: expenses, error } = await (supabase as any)
+    const { data: expenses, error } = await supabase
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
@@ -177,49 +186,114 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setIsLoading(false);
   };
 
-  // Calculer les statistiques mensuelles
-  const calculateMonthlyStats = (expenses: OrderItem[]) => {
+  // Calculer les statistiques mensuelles (paramétrable)
+  const calculateMonthlyStatsForPeriod = (
+    expenses: OrderItem[],
+    numMonths: number,
+    startDate?: Date,
+    endDate?: Date,
+  ): MonthlyStats[] => {
     const months: MonthlyStats[] = [];
     const now = new Date();
 
-    // 6 derniers mois
-    for (let i = 5; i >= 0; i--) {
-      const monthDate = subMonths(now, i);
-      const monthKey = format(monthDate, "yyyy-MM");
-      const monthLabel = format(monthDate, "MMM yy", { locale: fr });
+    if (startDate && endDate) {
+      // Mode personnalisé : calculer mois par mois entre les deux dates
+      let currentDate = startOfMonth(startDate);
+      const end = endOfMonth(endDate);
 
-      const monthStart = startOfMonth(monthDate);
-      const monthEnd = endOfMonth(monthDate);
+      while (currentDate <= end) {
+        const monthKey = format(currentDate, "yyyy-MM");
+        const monthLabel = format(currentDate, "MMM yy", { locale: fr });
+        const monthStart = startOfMonth(currentDate);
+        const monthEnd = endOfMonth(currentDate);
 
-      const monthExpenses = expenses.filter((e) => {
-        const date = new Date(e.date_achat);
-        return date >= monthStart && date <= monthEnd;
-      });
+        const monthExpenses = expenses.filter((e) => {
+          const date = new Date(e.date_achat);
+          return date >= monthStart && date <= monthEnd;
+        });
 
-      // Total achats HT
-      const totalAchats = monthExpenses.reduce((sum, e) => sum + e.prix * e.quantite, 0);
+        const totalAchats = monthExpenses.reduce((sum, e) => sum + e.prix * e.quantite, 0);
+        const totalVentes = monthExpenses.reduce((sum, e) => {
+          const venteTTC = e.prix_vente_ttc || e.prix * 1.5;
+          return sum + venteTTC * e.quantite;
+        }, 0);
+        const ventesHT = totalVentes / 1.2;
+        const margeNette = ventesHT - totalAchats;
 
-      // Total ventes TTC
-      const totalVentes = monthExpenses.reduce((sum, e) => {
-        const venteTTC = e.prix_vente_ttc || e.prix * 1.5; // Fallback si pas de prix vente
-        return sum + venteTTC * e.quantite;
-      }, 0);
+        months.push({
+          month: monthKey,
+          monthLabel: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
+          totalAchats,
+          totalVentes,
+          margeNette,
+        });
 
-      // Marge nette = Ventes HT - Achats HT
-      // Ventes HT = Ventes TTC / 1.2 (TVA 20%)
-      const ventesHT = totalVentes / 1.2;
-      const margeNette = ventesHT - totalAchats;
+        currentDate = subMonths(currentDate, -1); // Avancer d'un mois
+      }
+    } else {
+      // Mode standard : X derniers mois
+      for (let i = numMonths - 1; i >= 0; i--) {
+        const monthDate = subMonths(now, i);
+        const monthKey = format(monthDate, "yyyy-MM");
+        const monthLabel = format(monthDate, "MMM yy", { locale: fr });
 
-      months.push({
-        month: monthKey,
-        monthLabel: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
-        totalAchats,
-        totalVentes,
-        margeNette,
-      });
+        const monthStart = startOfMonth(monthDate);
+        const monthEnd = endOfMonth(monthDate);
+
+        const monthExpenses = expenses.filter((e) => {
+          const date = new Date(e.date_achat);
+          return date >= monthStart && date <= monthEnd;
+        });
+
+        const totalAchats = monthExpenses.reduce((sum, e) => sum + e.prix * e.quantite, 0);
+        const totalVentes = monthExpenses.reduce((sum, e) => {
+          const venteTTC = e.prix_vente_ttc || e.prix * 1.5;
+          return sum + venteTTC * e.quantite;
+        }, 0);
+        const ventesHT = totalVentes / 1.2;
+        const margeNette = ventesHT - totalAchats;
+
+        months.push({
+          month: monthKey,
+          monthLabel: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
+          totalAchats,
+          totalVentes,
+          margeNette,
+        });
+      }
     }
 
-    setMonthlyStats(months);
+    return months;
+  };
+
+  // Calculer les statistiques mensuelles (6 mois pour sidebar)
+  const calculateMonthlyStats = (expenses: OrderItem[]) => {
+    const stats = calculateMonthlyStatsForPeriod(expenses, 6);
+    setMonthlyStats(stats);
+  };
+
+  // Mettre à jour les stats plein écran quand la période change
+  useEffect(() => {
+    if (isFullscreen && allExpenses.length > 0) {
+      let stats: MonthlyStats[];
+
+      if (fullscreenPeriod === "custom" && customDateStart && customDateEnd) {
+        stats = calculateMonthlyStatsForPeriod(allExpenses, 0, new Date(customDateStart), new Date(customDateEnd));
+      } else {
+        const numMonths = fullscreenPeriod === "6" ? 6 : fullscreenPeriod === "12" ? 12 : 24;
+        stats = calculateMonthlyStatsForPeriod(allExpenses, numMonths);
+      }
+
+      setFullscreenStats(stats);
+    }
+  }, [isFullscreen, fullscreenPeriod, customDateStart, customDateEnd, allExpenses]);
+
+  // Ouvrir le mode plein écran
+  const openFullscreen = () => {
+    setFullscreenPeriod("12");
+    const stats = calculateMonthlyStatsForPeriod(allExpenses, 12);
+    setFullscreenStats(stats);
+    setIsFullscreen(true);
   };
 
   // Calculer le top des accessoires
@@ -267,7 +341,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateOrderStatus = async (id: string, newStatus: "commande" | "en_livraison" | "livre") => {
-    const { error } = await (supabase as any).from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -280,7 +354,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await (supabase as any).from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
@@ -297,7 +371,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       return;
     }
 
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("project_expenses")
       .update({ statut_livraison: "en_livraison" })
       .in("id", Array.from(selectedItems));
@@ -370,10 +444,21 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             <ScrollArea className="flex-1 p-4">
               {/* Graphique combiné en barres empilées */}
               <div className="mb-6">
-                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4" />
-                  Synthèse financière par mois
-                </h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    Synthèse financière (6 mois)
+                  </h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={openFullscreen}
+                    title="Voir en plein écran"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
+                </div>
                 <div className="h-[220px] bg-background rounded-lg p-2 border">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={monthlyStats} barCategoryGap="15%">
@@ -835,6 +920,161 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
           </Tabs>
         </div>
       </div>
+
+      {/* Dialog plein écran pour le graphique */}
+      <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+        <DialogContent className="max-w-[95vw] w-[1400px] h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Synthèse financière détaillée
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Sélecteur de période */}
+          <div className="flex items-center gap-4 py-4 border-b">
+            <span className="text-sm font-medium">Période :</span>
+            <div className="flex gap-2">
+              <Button
+                variant={fullscreenPeriod === "6" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFullscreenPeriod("6")}
+              >
+                6 mois
+              </Button>
+              <Button
+                variant={fullscreenPeriod === "12" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFullscreenPeriod("12")}
+              >
+                12 mois
+              </Button>
+              <Button
+                variant={fullscreenPeriod === "24" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFullscreenPeriod("24")}
+              >
+                24 mois
+              </Button>
+              <Button
+                variant={fullscreenPeriod === "custom" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setFullscreenPeriod("custom")}
+              >
+                Personnalisé
+              </Button>
+            </div>
+
+            {fullscreenPeriod === "custom" && (
+              <div className="flex items-center gap-2 ml-4">
+                <Label className="text-sm">Du</Label>
+                <Input
+                  type="month"
+                  className="w-36 h-8"
+                  value={customDateStart}
+                  onChange={(e) => setCustomDateStart(e.target.value)}
+                />
+                <Label className="text-sm">au</Label>
+                <Input
+                  type="month"
+                  className="w-36 h-8"
+                  value={customDateEnd}
+                  onChange={(e) => setCustomDateEnd(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Graphique en plein écran */}
+          <div className="flex-1 min-h-0">
+            <div className="h-full bg-muted/20 rounded-lg p-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={fullscreenStats} barCategoryGap="8%">
+                  <XAxis
+                    dataKey="monthLabel"
+                    tick={{ fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={fullscreenStats.length > 12 ? 1 : 0}
+                    angle={fullscreenStats.length > 12 ? -45 : 0}
+                    textAnchor={fullscreenStats.length > 12 ? "end" : "middle"}
+                    height={fullscreenStats.length > 12 ? 60 : 30}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={70}
+                    tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(1)}k €` : `${value} €`)}
+                  />
+                  <Tooltip
+                    formatter={(value: number, name: string) => {
+                      const labels: Record<string, string> = {
+                        totalAchats: "Achats HT",
+                        margeNette: "Marge nette",
+                      };
+                      return [`${value.toFixed(2)} €`, labels[name] || name];
+                    }}
+                    labelStyle={{ fontWeight: "bold", fontSize: 14 }}
+                    contentStyle={{ borderRadius: "8px", fontSize: 13 }}
+                  />
+                  <Bar dataKey="totalAchats" name="Achats HT" stackId="stack" fill="#ef4444" />
+                  <Bar dataKey="margeNette" name="Marge nette" stackId="stack" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Légende et totaux */}
+          <div className="flex items-center justify-center gap-8 py-4 border-t">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200">
+              <div className="w-4 h-4 rounded bg-red-500"></div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total Achats HT</div>
+                <div className="font-bold text-lg text-red-600">
+                  {fullscreenStats.reduce((sum, m) => sum + m.totalAchats, 0).toFixed(2)} €
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200">
+              <div className="w-4 h-4 rounded bg-green-500"></div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total Marge nette</div>
+                <div
+                  className={`font-bold text-lg ${fullscreenStats.reduce((sum, m) => sum + m.margeNette, 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                >
+                  {fullscreenStats.reduce((sum, m) => sum + m.margeNette, 0).toFixed(2)} €
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="w-4 h-4 rounded bg-blue-500"></div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total Ventes TTC</div>
+                <div className="font-bold text-lg text-blue-600">
+                  {fullscreenStats.reduce((sum, m) => sum + m.totalVentes, 0).toFixed(2)} €
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-purple-50 border border-purple-200">
+              <div className="w-4 h-4 rounded bg-purple-500"></div>
+              <div>
+                <div className="text-sm text-muted-foreground">Marge moyenne</div>
+                <div className="font-bold text-lg text-purple-600">
+                  {fullscreenStats.length > 0
+                    ? (
+                        (fullscreenStats.reduce((sum, m) => sum + m.margeNette, 0) /
+                          fullscreenStats.reduce((sum, m) => sum + (m.totalAchats + m.margeNette), 0)) *
+                        100
+                      ).toFixed(1)
+                    : 0}
+                  %
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
