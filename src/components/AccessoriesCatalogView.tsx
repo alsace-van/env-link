@@ -19,6 +19,10 @@ import {
   Settings,
   AlertCircle,
   CheckCircle2,
+  RefreshCcw,
+  ExternalLink,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -88,6 +92,8 @@ interface Accessory {
   last_stock_update?: string | null;
   needs_completion?: boolean;
   imported_at?: string | null;
+  last_price_check?: string | null;
+  prix_public_ttc?: number;
 }
 
 const AccessoriesCatalogView = () => {
@@ -124,6 +130,16 @@ const AccessoriesCatalogView = () => {
   const handleLinkNotice = (accessory: Accessory) => {
     setSelectedAccessoryForNotice(accessory);
     setIsNoticeDialogOpen(true);
+  };
+
+  // Ouvrir l'URL du produit pour mise à jour du prix via l'extension
+  const handleUpdatePrice = (accessory: Accessory) => {
+    if (accessory.url_produit) {
+      window.open(accessory.url_produit, "_blank");
+      toast.info("Ouvrez l'extension Van Price pour mettre à jour le prix", { duration: 5000 });
+    } else {
+      toast.error("Pas d'URL produit enregistrée pour cet article");
+    }
   };
 
   useEffect(() => {
@@ -285,9 +301,9 @@ const AccessoriesCatalogView = () => {
     handleFormClose();
   };
 
-  // Marquer un article comme complété (bypass TS type check)
+  // Marquer un article comme complété
   const handleMarkAsCompleted = async (id: string) => {
-    const { error } = await (supabase as any).from("accessories_catalog").update({ needs_completion: false } as any).eq("id", id);
+    const { error } = await supabase.from("accessories_catalog").update({ needs_completion: false }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -391,6 +407,18 @@ const AccessoriesCatalogView = () => {
                 </div>
               </div>
               <div className="flex gap-1 flex-shrink-0">
+                {/* Bouton mise à jour prix */}
+                {accessory.url_produit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleUpdatePrice(accessory)}
+                    title={`Actualiser le prix${accessory.last_price_check ? ` (vérifié le ${new Date(accessory.last_price_check).toLocaleDateString("fr-FR")})` : ""}`}
+                    className="text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </Button>
+                )}
                 <div
                   className="flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-500/10 cursor-pointer"
                   title={accessory.available_in_shop ? "Retirer de la boutique" : "Ajouter à la boutique"}
