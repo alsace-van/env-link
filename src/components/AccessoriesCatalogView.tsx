@@ -303,7 +303,8 @@ const AccessoriesCatalogView = () => {
 
   // Marquer un article comme complété (bypass TS - column may not be in generated types)
   const handleMarkAsCompleted = async (id: string) => {
-    const { error } = await (supabase as any).from("accessories_catalog").update({ needs_completion: false }).eq("id", id);
+    const updatePayload = { needs_completion: false };
+    const { error } = await (supabase as any).from("accessories_catalog").update(updatePayload).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
