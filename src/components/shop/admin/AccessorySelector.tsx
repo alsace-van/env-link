@@ -38,132 +38,59 @@ interface Accessory {
   intensite_amperes?: number;
   image_url?: string | null;
   url_produit?: string | null;
-  last_price_check?: string | null;
 }
 
 interface AccessorySelectorProps {
-  projectId: string;
-  onSelectAccessory: (accessory: Accessory, source: "expense" | "catalog") => void;
-  onAddToCatalog?: (accessory: Accessory) => void;
+  selectedAccessories: any[];
+  onChange: (accessories: any[]) => void;
+  productType: string;
 }
 
-export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog }: AccessorySelectorProps) => {
-  const [expenses, setExpenses] = useState<Accessory[]>([]);
+export const AccessorySelector = ({ selectedAccessories, onChange, productType }: AccessorySelectorProps) => {
   const [catalog, setCatalog] = useState<Accessory[]>([]);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      loadData();
-    }
-  }, [open, projectId]);
+    loadCatalog();
+  }, []);
 
-  const loadData = async () => {
+  const loadCatalog = async () => {
     setLoading(true);
-
-    const { data: expensesData, error: expensesError } = await supabase
-      .from("project_expenses")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("nom_accessoire");
-
-    if (expensesError) {
-      console.error("Erreur lors du chargement des dépenses:", expensesError);
-    } else {
-      setExpenses(expensesData || []);
-    }
-
-    const { data: catalogData, error: catalogError } = await supabase
+    const { data, error } = await (supabase as any)
       .from("accessories_catalog")
-      .select("*, categories!category_id(nom), url_produit, last_price_check")
+      .select("*, categories!category_id(nom)")
       .order("nom");
 
-    if (catalogError) {
-      console.error("Erreur lors du chargement du catalogue:", catalogError);
+    if (error) {
+      console.error("Erreur lors du chargement du catalogue:", error);
     } else {
-      setCatalog(catalogData || []);
+      setCatalog(data || []);
     }
-
     setLoading(false);
   };
 
-  // Vérifier si le prix doit être mis à jour (>7 jours ou jamais vérifié)
-  const shouldUpdatePrice = (lastCheck: string | null | undefined): boolean => {
-    if (!lastCheck) return true;
-    const daysSinceCheck = (Date.now() - new Date(lastCheck).getTime()) / (1000 * 60 * 60 * 24);
-    return daysSinceCheck > 7;
-  };
-
-  const handleAddToExpenses = async (accessory: Accessory) => {
-    const { data: fullAccessory } = await supabase
-      .from("accessories_catalog")
-      .select("*")
-      .eq("id", accessory.id)
-      .single();
-
-    const accessoryToAdd = fullAccessory || accessory;
-
-    // Vérifier si le prix doit être mis à jour
-    if (accessoryToAdd.url_produit && shouldUpdatePrice(accessoryToAdd.last_price_check)) {
-      const daysSinceCheck = accessoryToAdd.last_price_check
-        ? Math.floor((Date.now() - new Date(accessoryToAdd.last_price_check).getTime()) / (1000 * 60 * 60 * 24))
-        : null;
-
-      const message = daysSinceCheck
-        ? `Le prix n'a pas été vérifié depuis ${daysSinceCheck} jours`
-        : "Le prix n'a jamais été vérifié";
-
-      toast.info(`${message}. Voulez-vous vérifier le prix actuel ?`, {
-        duration: 8000,
-        action: {
-          label: "Vérifier le prix",
-          onClick: () => {
-            window.open(accessoryToAdd.url_produit!, "_blank");
-            toast.info("Utilisez l'extension Van Price pour mettre à jour le prix", { duration: 5000 });
-          },
-        },
-      });
-    }
-
-    const { error } = await supabase.from("project_expenses").insert({
-      project_id: projectId,
-      nom_accessoire: accessoryToAdd.nom || "Accessoire",
-      marque: accessoryToAdd.marque,
-      prix: accessoryToAdd.prix_reference || 0,
-      quantite: 1,
-      fournisseur: accessoryToAdd.fournisseur,
-      categorie: accessory.categories?.nom || accessory.category_id || "",
-      type_electrique: accessoryToAdd.type_electrique,
-      accessory_id: accessoryToAdd.id,
-      prix_vente_ttc: accessoryToAdd.prix_vente_ttc,
-      poids_kg: accessoryToAdd.poids_kg,
-      puissance_watts: accessoryToAdd.puissance_watts,
-      intensite_amperes: accessoryToAdd.intensite_amperes,
-    });
-
-    if (error) {
-      toast.error("Erreur lors de l'ajout aux dépenses");
-      console.error(error);
+  const handleToggleAccessory = (accessory: Accessory) => {
+    const isSelected = selectedAccessories.some((a) => a.id === accessory.id);
+    if (isSelected) {
+      onChange(selectedAccessories.filter((a) => a.id !== accessory.id));
     } else {
-      toast.success("Accessoire ajouté aux dépenses");
-
-      loadData();
-      if (onAddToCatalog) {
-        onAddToCatalog(accessoryToAdd);
-      }
+      onChange([...selectedAccessories, accessory]);
     }
   };
 
-  const renderAccessoryCard = (accessory: Accessory, source: "expense" | "catalog") => {
+  const renderAccessoryCard = (accessory: Accessory) => {
     const name = accessory.nom_accessoire || accessory.nom || "Sans nom";
     const categoryName = accessory.categories?.nom || accessory.categorie;
     const price = accessory.prix || accessory.prix_reference;
+    const isSelected = selectedAccessories.some((a) => a.id === accessory.id);
 
     return (
       <div
         key={accessory.id}
-        className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+        className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+          isSelected ? "bg-primary/10 border-primary" : "hover:bg-muted/50"
+        }`}
+        onClick={() => handleToggleAccessory(accessory)}
       >
         {accessory.image_url && (
           <img src={accessory.image_url} alt={name} className="w-12 h-12 object-contain rounded border flex-shrink-0" />
@@ -181,91 +108,39 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
                 {categoryName}
               </Badge>
             )}
-            {accessory.type_electrique && (
-              <Badge variant="outline" className="text-xs">
-                {accessory.type_electrique}
-              </Badge>
-            )}
           </div>
           {price && (
             <div className="text-sm text-muted-foreground mt-1">
-              {price.toFixed(2)} €{accessory.quantite && source === "expense" && ` × ${accessory.quantite}`}
+              {price.toFixed(2)} €
             </div>
           )}
         </div>
-        <div className="flex gap-2 flex-shrink-0">
-          {source === "catalog" && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleAddToExpenses(accessory)}
-              title="Ajouter aux dépenses"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() => {
-              onSelectAccessory(accessory, source);
-              setOpen(false);
-            }}
-          >
-            <Check className="h-4 w-4 mr-1" />
-            Ajouter
-          </Button>
+        <div className="flex-shrink-0">
+          {isSelected && <Check className="h-5 w-5 text-primary" />}
         </div>
       </div>
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Package className="h-4 w-4 mr-2" />
-          Accessoires
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Ajouter un Accessoire au Schéma</DialogTitle>
-          <DialogDescription>Sélectionnez un accessoire depuis vos dépenses ou votre catalogue</DialogDescription>
-        </DialogHeader>
-
-        <Tabs defaultValue="expenses" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="expenses">Dépenses ({expenses.length})</TabsTrigger>
-            <TabsTrigger value="catalog">Catalogue ({catalog.length})</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="expenses" className="mt-4">
-            <ScrollArea className="h-[400px] pr-4">
-              {loading ? (
-                <p className="text-center text-muted-foreground py-8">Chargement...</p>
-              ) : expenses.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Aucun accessoire dans les dépenses</p>
-              ) : (
-                <div className="space-y-2">
-                  {expenses.map((accessory) => renderAccessoryCard(accessory, "expense"))}
-                </div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-
-          <TabsContent value="catalog" className="mt-4">
-            <ScrollArea className="h-[400px] pr-4">
-              {loading ? (
-                <p className="text-center text-muted-foreground py-8">Chargement...</p>
-              ) : catalog.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Aucun accessoire dans le catalogue</p>
-              ) : (
-                <div className="space-y-2">{catalog.map((accessory) => renderAccessoryCard(accessory, "catalog"))}</div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+    <div className="space-y-4">
+      <div className="text-sm text-muted-foreground">
+        Sélectionnez les accessoires inclus dans ce {productType === "kit" ? "kit" : "produit"}
+      </div>
+      <ScrollArea className="h-[300px] pr-4">
+        {loading ? (
+          <p className="text-center text-muted-foreground py-8">Chargement...</p>
+        ) : catalog.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">Aucun accessoire dans le catalogue</p>
+        ) : (
+          <div className="space-y-2">{catalog.map((accessory) => renderAccessoryCard(accessory))}</div>
+        )}
+      </ScrollArea>
+      {selectedAccessories.length > 0 && (
+        <div className="text-sm text-muted-foreground">
+          {selectedAccessories.length} accessoire(s) sélectionné(s)
+        </div>
+      )}
+    </div>
   );
 };
