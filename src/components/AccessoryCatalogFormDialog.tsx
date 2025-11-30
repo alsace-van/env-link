@@ -74,16 +74,18 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   const [parentCategoryId, setParentCategoryId] = useState<string>("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  
+
   // Options payantes
-  const [options, setOptions] = useState<Array<{ 
-    id?: string; 
-    nom: string; 
-    prix_reference: string;
-    prix_vente_ttc: string;
-    marge_pourcent: string;
-    marge_nette: string;
-  }>>([]);
+  const [options, setOptions] = useState<
+    Array<{
+      id?: string;
+      nom: string;
+      prix_reference: string;
+      prix_vente_ttc: string;
+      marge_pourcent: string;
+      marge_nette: string;
+    }>
+  >([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   // Charger les catégories et options quand le dialogue s'ouvre
@@ -123,13 +125,12 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           puissance_watts: accessory.puissance_watts?.toString() ?? "",
           intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
         });
-        
+
         // Charger les couleurs depuis le JSON
         if (accessory.couleur) {
           try {
-            const parsedCouleurs = typeof accessory.couleur === 'string' 
-              ? JSON.parse(accessory.couleur)
-              : accessory.couleur;
+            const parsedCouleurs =
+              typeof accessory.couleur === "string" ? JSON.parse(accessory.couleur) : accessory.couleur;
             setCouleurs(Array.isArray(parsedCouleurs) ? parsedCouleurs : [accessory.couleur]);
           } catch {
             // Si ce n'est pas du JSON, c'est une ancienne valeur simple
@@ -138,10 +139,10 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         } else {
           setCouleurs([]);
         }
-        
+
         // Initialiser la catégorie parente si l'accessoire a une catégorie
         if (accessory.category_id) {
-          const selectedCategory = categories.find(c => c.id === accessory.category_id);
+          const selectedCategory = categories.find((c) => c.id === accessory.category_id);
           if (selectedCategory?.parent_id) {
             // C'est une sous-catégorie
             setParentCategoryId(selectedCategory.parent_id);
@@ -176,7 +177,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         setImagePreview(null);
         setImageFile(null);
       }
-      
+
       // Charger l'image si elle existe
       if (accessory?.image_url) {
         setImagePreview(accessory.image_url);
@@ -204,42 +205,55 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       .order("created_at");
 
     if (!error && data) {
-      setOptions(data.map(opt => ({ 
-        id: opt.id, 
-        nom: opt.nom, 
-        prix_reference: opt.prix_reference?.toString() ?? "",
-        prix_vente_ttc: opt.prix_vente_ttc?.toString() ?? "",
-        marge_pourcent: opt.marge_pourcent?.toString() ?? "",
-        marge_nette: opt.marge_nette?.toString() ?? "",
-      })));
+      setOptions(
+        data.map((opt) => ({
+          id: opt.id,
+          nom: opt.nom,
+          prix_reference: opt.prix_reference?.toString() ?? "",
+          prix_vente_ttc: opt.prix_vente_ttc?.toString() ?? "",
+          marge_pourcent: opt.marge_pourcent?.toString() ?? "",
+          marge_nette: opt.marge_nette?.toString() ?? "",
+        })),
+      );
     }
     setLoadingOptions(false);
   };
 
   const handleAddOption = () => {
-    setOptions([...options, { 
-      nom: "", 
-      prix_reference: "",
-      prix_vente_ttc: "",
-      marge_pourcent: "",
-      marge_nette: "",
-    }]);
+    setOptions([
+      ...options,
+      {
+        nom: "",
+        prix_reference: "",
+        prix_vente_ttc: "",
+        marge_pourcent: "",
+        marge_nette: "",
+      },
+    ]);
   };
 
   const handleRemoveOption = (index: number) => {
     setOptions(options.filter((_, i) => i !== index));
   };
 
-  const handleOptionChange = (index: number, field: "nom" | "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
+  const handleOptionChange = (
+    index: number,
+    field: "nom" | "prix_reference" | "prix_vente_ttc" | "marge_pourcent",
+    value: string,
+  ) => {
     const newOptions = [...options];
     newOptions[index] = { ...newOptions[index], [field]: value };
     setOptions(newOptions);
   };
 
-  const handleOptionPricingChange = (index: number, field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
+  const handleOptionPricingChange = (
+    index: number,
+    field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent",
+    value: string,
+  ) => {
     const newOptions = [...options];
     const option = { ...newOptions[index], [field]: value };
-    const TVA = 1.20; // 20% TVA
+    const TVA = 1.2; // 20% TVA
 
     // Calcul bidirectionnel basé sur le champ modifié
     if (field === "prix_reference") {
@@ -377,7 +391,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
 
   const handlePricingChange = (field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
     const newFormData = { ...formData, [field]: value };
-    const TVA = 1.20; // 20% TVA
+    const TVA = 1.2; // 20% TVA
 
     // Calcul bidirectionnel basé sur le champ modifié
     if (field === "prix_reference") {
@@ -482,9 +496,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       const fileExt = imageFile.name.split(".").pop();
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("accessory-images")
-        .upload(fileName, imageFile);
+      const { error: uploadError } = await supabase.storage.from("accessory-images").upload(fileName, imageFile);
 
       if (uploadError) {
         toast.error("Erreur lors de l'upload de l'image");
@@ -493,9 +505,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         return;
       }
 
-      const { data: urlData } = supabase.storage
-        .from("accessory-images")
-        .getPublicUrl(fileName);
+      const { data: urlData } = supabase.storage.from("accessory-images").getPublicUrl(fileName);
 
       imageUrl = urlData.publicUrl;
     } else if (imagePreview === null && accessory?.image_url) {
@@ -508,7 +518,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     }
 
     if (accessory) {
-      // Mode édition
+      // Mode édition - Marquer comme complété automatiquement
       const { error } = await supabase
         .from("accessories_catalog")
         .update({
@@ -528,8 +538,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter(c => c.trim())) : null,
+          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
           image_url: imageUrl,
+          needs_completion: false, // Marquer comme complété après édition
         })
         .eq("id", accessory.id);
 
@@ -560,7 +571,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter(c => c.trim())) : null,
+          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
           image_url: imageUrl,
           user_id: user.id,
         })
@@ -573,14 +584,14 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
         setIsSubmitting(false);
         return;
       }
-      
+
       savedAccessoryId = newAccessory.id;
     }
 
     // Gérer les options
     if (savedAccessoryId) {
       // Supprimer les options existantes qui ne sont plus dans la liste
-      const existingOptionIds = options.filter(opt => opt.id).map(opt => opt.id!);
+      const existingOptionIds = options.filter((opt) => opt.id).map((opt) => opt.id!);
       if (accessory) {
         const { error: deleteError } = await supabase
           .from("accessory_options")
@@ -614,16 +625,14 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             }
           } else {
             // Créer une nouvelle option
-            const { error: insertError } = await supabase
-              .from("accessory_options")
-              .insert({
-                accessory_id: savedAccessoryId,
-                nom: option.nom,
-                prix_reference: option.prix_reference ? parseFloat(option.prix_reference) : 0,
-                prix_vente_ttc: parseFloat(option.prix_vente_ttc),
-                marge_pourcent: option.marge_pourcent ? parseFloat(option.marge_pourcent) : 0,
-                marge_nette: option.marge_nette ? parseFloat(option.marge_nette) : 0,
-              });
+            const { error: insertError } = await supabase.from("accessory_options").insert({
+              accessory_id: savedAccessoryId,
+              nom: option.nom,
+              prix_reference: option.prix_reference ? parseFloat(option.prix_reference) : 0,
+              prix_vente_ttc: parseFloat(option.prix_vente_ttc),
+              marge_pourcent: option.marge_pourcent ? parseFloat(option.marge_pourcent) : 0,
+              marge_nette: option.marge_nette ? parseFloat(option.marge_nette) : 0,
+            });
 
             if (insertError) {
               console.error("Erreur lors de l'ajout d'une option:", insertError);
@@ -766,7 +775,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                         const newParentId = value === "none" ? "" : value;
                         setParentCategoryId(newParentId);
                         // Si la catégorie n'a pas de sous-catégories, on l'assigne directement
-                        const hasSubcategories = newParentId && categories.some(cat => cat.parent_id === newParentId);
+                        const hasSubcategories = newParentId && categories.some((cat) => cat.parent_id === newParentId);
                         if (newParentId && !hasSubcategories) {
                           setFormData({ ...formData, category_id: newParentId });
                         } else {
@@ -792,7 +801,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   </Select>
                 </div>
 
-                {parentCategoryId && categories.some(cat => cat.parent_id === parentCategoryId) && (
+                {parentCategoryId && categories.some((cat) => cat.parent_id === parentCategoryId) && (
                   <div className="space-y-2">
                     <Label htmlFor="subcategory_id">Sous-catégorie</Label>
                     <Select
@@ -825,11 +834,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             <Label>Image de l'accessoire (optionnelle)</Label>
             {imagePreview ? (
               <div className="relative">
-                <img
-                  src={imagePreview}
-                  alt="Aperçu"
-                  className="w-full h-48 object-contain rounded-lg border"
-                />
+                <img src={imagePreview} alt="Aperçu" className="w-full h-48 object-contain rounded-lg border" />
                 <Button
                   type="button"
                   variant="destructive"
@@ -842,18 +847,10 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               </div>
             ) : (
               <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="hidden"
-                  id="image-upload"
-                />
+                <Input type="file" accept="image/*" onChange={handleImageChange} className="hidden" id="image-upload" />
                 <Label htmlFor="image-upload" className="cursor-pointer">
                   <ImagePlus className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
-                    Cliquez pour ajouter une image (max 5 MB)
-                  </p>
+                  <p className="text-sm text-muted-foreground">Cliquez pour ajouter une image (max 5 MB)</p>
                 </Label>
               </div>
             )}
@@ -1066,12 +1063,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                         <SelectItem value="Violet">Violet</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleRemoveCouleur(index)}
-                    >
+                    <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCouleur(index)}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1124,7 +1116,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
-                    
+
                     <div className="grid grid-cols-4 gap-2">
                       <div className="space-y-1">
                         <Label htmlFor={`option-prix-ref-${index}`} className="text-xs">
