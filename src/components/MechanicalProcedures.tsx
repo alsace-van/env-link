@@ -759,15 +759,15 @@ const MechanicalProcedures = () => {
               <div>
                 <Label>Modèle</Label>
                 <Select
-                  value={newProcedure.vehicle_model}
-                  onValueChange={(v) => setNewProcedure({ ...newProcedure, vehicle_model: v })}
+                  value={newProcedure.vehicle_model || "__all__"}
+                  onValueChange={(v) => setNewProcedure({ ...newProcedure, vehicle_model: v === "__all__" ? "" : v })}
                   disabled={!newProcedure.vehicle_brand}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionner" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tous modèles</SelectItem>
+                    <SelectItem value="__all__">Tous modèles</SelectItem>
                     {newProcedure.vehicle_brand && getModelsForBrand(newProcedure.vehicle_brand).map(model => (
                       <SelectItem key={model} value={model}>{model}</SelectItem>
                     ))}
