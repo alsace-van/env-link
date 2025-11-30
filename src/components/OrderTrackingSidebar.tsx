@@ -120,7 +120,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger les scénarios principaux ET verrouillés
-    const { data: validScenarios } = await (supabase as any)
+    const { data: validScenarios } = await supabase
       .from("project_scenarios")
       .select("id, project_id")
       .in("project_id", projectIds)
@@ -142,7 +142,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setHasValidScenarios(true);
 
     // Charger uniquement les dépenses des scénarios principaux verrouillés
-    const { data: expenses, error } = await (supabase as any)
+    const { data: expenses, error } = await supabase
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
@@ -267,7 +267,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateOrderStatus = async (id: string, newStatus: "commande" | "en_livraison" | "livre") => {
-    const { error } = await (supabase as any).from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -280,7 +280,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await (supabase as any).from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
@@ -297,7 +297,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       return;
     }
 
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("project_expenses")
       .update({ statut_livraison: "en_livraison" })
       .in("id", Array.from(selectedItems));
@@ -368,135 +368,84 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             </div>
 
             <ScrollArea className="flex-1 p-4">
-              {/* Graphique des achats HT par mois */}
+              {/* Graphique combiné en barres empilées */}
               <div className="mb-6">
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <ShoppingCart className="h-4 w-4 text-red-500" />
-                  Achats HT par mois
+                  <BarChart3 className="h-4 w-4" />
+                  Synthèse financière par mois
                 </h4>
-                <div className="h-[160px] bg-background rounded-lg p-2 border">
+                <div className="h-[220px] bg-background rounded-lg p-2 border">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyStats}>
-                      <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} tickLine={false} />
+                    <BarChart data={monthlyStats} barCategoryGap="15%">
+                      <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                       <YAxis
                         tick={{ fontSize: 10 }}
                         tickLine={false}
-                        width={45}
-                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value)}
+                        axisLine={false}
+                        width={50}
+                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k€` : `${value}€`)}
                       />
                       <Tooltip
-                        formatter={(value: number) => [`${value.toFixed(2)} €`, "Achats HT"]}
+                        formatter={(value: number, name: string) => {
+                          const labels: Record<string, string> = {
+                            totalAchats: "Achats HT",
+                            margeNette: "Marge nette",
+                          };
+                          return [`${value.toFixed(2)} €`, labels[name] || name];
+                        }}
                         labelStyle={{ fontWeight: "bold" }}
+                        contentStyle={{ borderRadius: "8px" }}
                       />
-                      <Bar dataKey="totalAchats" radius={[4, 4, 0, 0]}>
-                        {monthlyStats.map((entry, index) => (
-                          <Cell
-                            key={`cell-achats-${index}`}
-                            fill={index === monthlyStats.length - 1 ? "#ef4444" : "#fca5a5"}
-                          />
-                        ))}
-                      </Bar>
+                      {/* Barres empilées : Achats + Marge = ~Ventes HT */}
+                      <Bar dataKey="totalAchats" name="Achats HT" stackId="stack" fill="#ef4444" />
+                      <Bar
+                        dataKey="margeNette"
+                        name="Marge nette"
+                        stackId="stack"
+                        fill="#22c55e"
+                        radius={[4, 4, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="mt-1 text-center">
-                  <span className="text-xs text-muted-foreground">
-                    Total:{" "}
-                    <span className="font-semibold text-red-600">
-                      {monthlyStats.reduce((sum, m) => sum + m.totalAchats, 0).toFixed(2)} €
-                    </span>
-                  </span>
-                </div>
-              </div>
 
-              {/* Graphique des ventes TTC par mois */}
-              <div className="mb-6">
-                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <Euro className="h-4 w-4 text-blue-500" />
-                  Ventes TTC par mois
-                </h4>
-                <div className="h-[160px] bg-background rounded-lg p-2 border">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyStats}>
-                      <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} tickLine={false} />
-                      <YAxis
-                        tick={{ fontSize: 10 }}
-                        tickLine={false}
-                        width={45}
-                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value)}
-                      />
-                      <Tooltip
-                        formatter={(value: number) => [`${value.toFixed(2)} €`, "Ventes TTC"]}
-                        labelStyle={{ fontWeight: "bold" }}
-                      />
-                      <Bar dataKey="totalVentes" radius={[4, 4, 0, 0]}>
-                        {monthlyStats.map((entry, index) => (
-                          <Cell
-                            key={`cell-ventes-${index}`}
-                            fill={index === monthlyStats.length - 1 ? "#3b82f6" : "#93c5fd"}
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                {/* Légende et totaux */}
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                  <div className="flex items-center gap-2 p-2 rounded bg-red-50 border border-red-200">
+                    <div className="w-3 h-3 rounded bg-red-500"></div>
+                    <div>
+                      <div className="text-muted-foreground">Achats HT</div>
+                      <div className="font-semibold text-red-600">
+                        {monthlyStats.reduce((sum, m) => sum + m.totalAchats, 0).toFixed(0)} €
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 rounded bg-green-50 border border-green-200">
+                    <div className="w-3 h-3 rounded bg-green-500"></div>
+                    <div>
+                      <div className="text-muted-foreground">Marge nette</div>
+                      <div
+                        className={`font-semibold ${monthlyStats.reduce((sum, m) => sum + m.margeNette, 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                      >
+                        {monthlyStats.reduce((sum, m) => sum + m.margeNette, 0).toFixed(0)} €
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 rounded bg-blue-50 border border-blue-200">
+                    <div className="w-3 h-3 rounded bg-blue-500"></div>
+                    <div>
+                      <div className="text-muted-foreground">Ventes TTC</div>
+                      <div className="font-semibold text-blue-600">
+                        {monthlyStats.reduce((sum, m) => sum + m.totalVentes, 0).toFixed(0)} €
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-1 text-center">
-                  <span className="text-xs text-muted-foreground">
-                    Total:{" "}
-                    <span className="font-semibold text-blue-600">
-                      {monthlyStats.reduce((sum, m) => sum + m.totalVentes, 0).toFixed(2)} €
-                    </span>
-                  </span>
-                </div>
-              </div>
 
-              {/* Graphique de la marge nette par mois */}
-              <div className="mb-6">
-                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                  Marge nette par mois (TVA déduite)
-                </h4>
-                <div className="h-[160px] bg-background rounded-lg p-2 border">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyStats}>
-                      <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} tickLine={false} />
-                      <YAxis
-                        tick={{ fontSize: 10 }}
-                        tickLine={false}
-                        width={45}
-                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value)}
-                      />
-                      <Tooltip
-                        formatter={(value: number) => [`${value.toFixed(2)} €`, "Marge nette"]}
-                        labelStyle={{ fontWeight: "bold" }}
-                      />
-                      <Bar dataKey="margeNette" radius={[4, 4, 0, 0]}>
-                        {monthlyStats.map((entry, index) => (
-                          <Cell
-                            key={`cell-marge-${index}`}
-                            fill={
-                              entry.margeNette >= 0
-                                ? index === monthlyStats.length - 1
-                                  ? "#22c55e"
-                                  : "#86efac"
-                                : "#ef4444"
-                            }
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="mt-1 text-center">
-                  <span className="text-xs text-muted-foreground">
-                    Total:{" "}
-                    <span
-                      className={`font-semibold ${monthlyStats.reduce((sum, m) => sum + m.margeNette, 0) >= 0 ? "text-green-600" : "text-red-600"}`}
-                    >
-                      {monthlyStats.reduce((sum, m) => sum + m.margeNette, 0).toFixed(2)} €
-                    </span>
-                  </span>
-                </div>
+                {/* Info sur le graphique */}
+                <p className="text-xs text-muted-foreground mt-2 text-center">
+                  Hauteur totale = Ventes HT (Achats + Marge)
+                </p>
               </div>
 
               {/* Top accessoires */}
