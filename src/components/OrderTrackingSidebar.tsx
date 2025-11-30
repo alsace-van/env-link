@@ -129,14 +129,14 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
 
     // Charger les scénarios principaux ET verrouillés
-    const { data: validScenarios } = await (supabase as any)
+    const { data: validScenarios } = await supabase
       .from("project_scenarios")
       .select("id, project_id")
       .in("project_id", projectIds)
       .eq("est_principal", true)
       .eq("is_locked", true);
 
-    const validScenarioIds = validScenarios?.map((s: any) => s.id) || [];
+    const validScenarioIds = validScenarios?.map((s) => s.id) || [];
 
     if (validScenarioIds.length === 0) {
       // Aucun scénario principal verrouillé
@@ -151,7 +151,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setHasValidScenarios(true);
 
     // Charger uniquement les dépenses des scénarios principaux verrouillés
-    const { data: expenses, error } = await (supabase as any)
+    const { data: expenses, error } = await supabase
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
@@ -341,7 +341,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateOrderStatus = async (id: string, newStatus: "commande" | "en_livraison" | "livre") => {
-    const { error } = await (supabase as any).from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -354,7 +354,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await (supabase as any).from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
+    const { error } = await supabase.from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
@@ -371,7 +371,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       return;
     }
 
-    const { error } = await (supabase as any)
+    const { error } = await supabase
       .from("project_expenses")
       .update({ statut_livraison: "en_livraison" })
       .in("id", Array.from(selectedItems));
@@ -424,506 +424,512 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   const monthLabels = monthlyStats.map((m) => m.monthLabel);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose}>
-      <div
-        className={`fixed right-0 top-0 h-full bg-background shadow-xl animate-in slide-in-from-right duration-300 transition-all flex ${
-          isExpanded ? "w-[950px]" : "w-[500px]"
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Panneau étendu - Statistiques */}
-        {isExpanded && (
-          <div className="w-[450px] border-r flex flex-col bg-muted/20">
-            <div className="p-4 border-b">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                <h3 className="font-semibold">Statistiques Commandes</h3>
+    <>
+      <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose}>
+        <div
+          className={`fixed right-0 top-0 h-full bg-background shadow-xl animate-in slide-in-from-right duration-300 transition-all flex ${
+            isExpanded ? "w-[950px]" : "w-[500px]"
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Panneau étendu - Statistiques */}
+          {isExpanded && (
+            <div className="w-[450px] border-r flex flex-col bg-muted/20">
+              <div className="p-4 border-b">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Statistiques Commandes</h3>
+                </div>
               </div>
-            </div>
 
-            <ScrollArea className="flex-1 p-4">
-              {/* Graphique combiné en barres empilées */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-medium flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    Synthèse financière (6 mois)
+              <ScrollArea className="flex-1 p-4">
+                {/* Graphique combiné en barres empilées */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4" />
+                      Synthèse financière (6 mois)
+                    </h4>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2"
+                      onClick={openFullscreen}
+                      title="Voir en plein écran"
+                    >
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="h-[220px] bg-background rounded-lg p-2 border">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlyStats} barCategoryGap="15%">
+                        <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                        <YAxis
+                          tick={{ fontSize: 10 }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={50}
+                          tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k€` : `${value}€`)}
+                        />
+                        <Tooltip
+                          formatter={(value: number, name: string) => {
+                            const labels: Record<string, string> = {
+                              totalAchats: "Achats HT",
+                              margeNette: "Marge nette",
+                            };
+                            return [`${value.toFixed(2)} €`, labels[name] || name];
+                          }}
+                          labelStyle={{ fontWeight: "bold" }}
+                          contentStyle={{ borderRadius: "8px" }}
+                        />
+                        {/* Barres empilées : Achats + Marge = ~Ventes HT */}
+                        <Bar dataKey="totalAchats" name="Achats HT" stackId="stack" fill="#ef4444" />
+                        <Bar
+                          dataKey="margeNette"
+                          name="Marge nette"
+                          stackId="stack"
+                          fill="#22c55e"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Légende et totaux */}
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                    <div className="flex items-center gap-2 p-2 rounded bg-red-50 border border-red-200">
+                      <div className="w-3 h-3 rounded bg-red-500"></div>
+                      <div>
+                        <div className="text-muted-foreground">Achats HT</div>
+                        <div className="font-semibold text-red-600">
+                          {monthlyStats.reduce((sum, m) => sum + m.totalAchats, 0).toFixed(0)} €
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded bg-green-50 border border-green-200">
+                      <div className="w-3 h-3 rounded bg-green-500"></div>
+                      <div>
+                        <div className="text-muted-foreground">Marge nette</div>
+                        <div
+                          className={`font-semibold ${monthlyStats.reduce((sum, m) => sum + m.margeNette, 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                        >
+                          {monthlyStats.reduce((sum, m) => sum + m.margeNette, 0).toFixed(0)} €
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 rounded bg-blue-50 border border-blue-200">
+                      <div className="w-3 h-3 rounded bg-blue-500"></div>
+                      <div>
+                        <div className="text-muted-foreground">Ventes TTC</div>
+                        <div className="font-semibold text-blue-600">
+                          {monthlyStats.reduce((sum, m) => sum + m.totalVentes, 0).toFixed(0)} €
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Info sur le graphique */}
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    Hauteur totale = Ventes HT (Achats + Marge)
+                  </p>
+                </div>
+
+                {/* Top accessoires */}
+                <div>
+                  <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                    <Trophy className="h-4 w-4 text-yellow-500" />
+                    Top 10 Accessoires commandés
                   </h4>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
-                    onClick={openFullscreen}
-                    title="Voir en plein écran"
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="h-[220px] bg-background rounded-lg p-2 border">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyStats} barCategoryGap="15%">
-                      <XAxis dataKey="monthLabel" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                      <YAxis
-                        tick={{ fontSize: 10 }}
-                        tickLine={false}
-                        axisLine={false}
-                        width={50}
-                        tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k€` : `${value}€`)}
-                      />
-                      <Tooltip
-                        formatter={(value: number, name: string) => {
-                          const labels: Record<string, string> = {
-                            totalAchats: "Achats HT",
-                            margeNette: "Marge nette",
-                          };
-                          return [`${value.toFixed(2)} €`, labels[name] || name];
-                        }}
-                        labelStyle={{ fontWeight: "bold" }}
-                        contentStyle={{ borderRadius: "8px" }}
-                      />
-                      {/* Barres empilées : Achats + Marge = ~Ventes HT */}
-                      <Bar dataKey="totalAchats" name="Achats HT" stackId="stack" fill="#ef4444" />
-                      <Bar
-                        dataKey="margeNette"
-                        name="Marge nette"
-                        stackId="stack"
-                        fill="#22c55e"
-                        radius={[4, 4, 0, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
 
-                {/* Légende et totaux */}
-                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                  <div className="flex items-center gap-2 p-2 rounded bg-red-50 border border-red-200">
-                    <div className="w-3 h-3 rounded bg-red-500"></div>
-                    <div>
-                      <div className="text-muted-foreground">Achats HT</div>
-                      <div className="font-semibold text-red-600">
-                        {monthlyStats.reduce((sum, m) => sum + m.totalAchats, 0).toFixed(0)} €
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 rounded bg-green-50 border border-green-200">
-                    <div className="w-3 h-3 rounded bg-green-500"></div>
-                    <div>
-                      <div className="text-muted-foreground">Marge nette</div>
-                      <div
-                        className={`font-semibold ${monthlyStats.reduce((sum, m) => sum + m.margeNette, 0) >= 0 ? "text-green-600" : "text-red-600"}`}
-                      >
-                        {monthlyStats.reduce((sum, m) => sum + m.margeNette, 0).toFixed(0)} €
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 rounded bg-blue-50 border border-blue-200">
-                    <div className="w-3 h-3 rounded bg-blue-500"></div>
-                    <div>
-                      <div className="text-muted-foreground">Ventes TTC</div>
-                      <div className="font-semibold text-blue-600">
-                        {monthlyStats.reduce((sum, m) => sum + m.totalVentes, 0).toFixed(0)} €
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info sur le graphique */}
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  Hauteur totale = Ventes HT (Achats + Marge)
-                </p>
-              </div>
-
-              {/* Top accessoires */}
-              <div>
-                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-yellow-500" />
-                  Top 10 Accessoires commandés
-                </h4>
-
-                {topAccessories.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">Aucune donnée disponible</p>
-                ) : (
-                  <div className="bg-background rounded-lg border overflow-hidden">
-                    {/* Header du tableau */}
-                    <div className="grid grid-cols-[1fr_repeat(6,40px)_50px] gap-1 p-2 bg-muted/50 text-xs font-medium border-b">
-                      <div>Accessoire</div>
-                      {monthLabels.map((label) => (
-                        <div key={label} className="text-center">
-                          {label.slice(0, 3)}
-                        </div>
-                      ))}
-                      <div className="text-center">Total</div>
-                    </div>
-
-                    {/* Lignes du tableau */}
-                    {topAccessories.map((acc, index) => (
-                      <div
-                        key={acc.nom}
-                        className={`grid grid-cols-[1fr_repeat(6,40px)_50px] gap-1 p-2 text-xs items-center ${
-                          index % 2 === 0 ? "bg-background" : "bg-muted/20"
-                        }`}
-                      >
-                        <div className="truncate">
-                          <span className="font-medium">{index + 1}. </span>
-                          <span title={acc.nom}>{acc.nom}</span>
-                          {acc.marque && <span className="text-muted-foreground ml-1">({acc.marque})</span>}
-                        </div>
-                        {monthlyStats.map((m) => (
-                          <div
-                            key={m.month}
-                            className={`text-center ${
-                              acc.monthlyData[m.month] > 0 ? "font-medium" : "text-muted-foreground"
-                            }`}
-                          >
-                            {acc.monthlyData[m.month] || "-"}
+                  {topAccessories.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Aucune donnée disponible</p>
+                  ) : (
+                    <div className="bg-background rounded-lg border overflow-hidden">
+                      {/* Header du tableau */}
+                      <div className="grid grid-cols-[1fr_repeat(6,40px)_50px] gap-1 p-2 bg-muted/50 text-xs font-medium border-b">
+                        <div>Accessoire</div>
+                        {monthLabels.map((label) => (
+                          <div key={label} className="text-center">
+                            {label.slice(0, 3)}
                           </div>
                         ))}
-                        <div className="text-center font-bold text-primary">{acc.totalQuantity}</div>
+                        <div className="text-center">Total</div>
                       </div>
-                    ))}
 
-                    {/* Footer avec totaux */}
-                    <div className="grid grid-cols-[1fr_repeat(6,40px)_50px] gap-1 p-2 bg-muted/50 text-xs font-medium border-t">
-                      <div>Total mensuel</div>
-                      {monthlyStats.map((m) => {
-                        const monthTotal = topAccessories.reduce(
-                          (sum, acc) => sum + (acc.monthlyData[m.month] || 0),
-                          0,
-                        );
-                        return (
-                          <div key={m.month} className="text-center">
-                            {monthTotal || "-"}
+                      {/* Lignes du tableau */}
+                      {topAccessories.map((acc, index) => (
+                        <div
+                          key={acc.nom}
+                          className={`grid grid-cols-[1fr_repeat(6,40px)_50px] gap-1 p-2 text-xs items-center ${
+                            index % 2 === 0 ? "bg-background" : "bg-muted/20"
+                          }`}
+                        >
+                          <div className="truncate">
+                            <span className="font-medium">{index + 1}. </span>
+                            <span title={acc.nom}>{acc.nom}</span>
+                            {acc.marque && <span className="text-muted-foreground ml-1">({acc.marque})</span>}
                           </div>
-                        );
-                      })}
-                      <div className="text-center text-primary">
-                        {topAccessories.reduce((sum, acc) => sum + acc.totalQuantity, 0)}
+                          {monthlyStats.map((m) => (
+                            <div
+                              key={m.month}
+                              className={`text-center ${
+                                acc.monthlyData[m.month] > 0 ? "font-medium" : "text-muted-foreground"
+                              }`}
+                            >
+                              {acc.monthlyData[m.month] || "-"}
+                            </div>
+                          ))}
+                          <div className="text-center font-bold text-primary">{acc.totalQuantity}</div>
+                        </div>
+                      ))}
+
+                      {/* Footer avec totaux */}
+                      <div className="grid grid-cols-[1fr_repeat(6,40px)_50px] gap-1 p-2 bg-muted/50 text-xs font-medium border-t">
+                        <div>Total mensuel</div>
+                        {monthlyStats.map((m) => {
+                          const monthTotal = topAccessories.reduce(
+                            (sum, acc) => sum + (acc.monthlyData[m.month] || 0),
+                            0,
+                          );
+                          return (
+                            <div key={m.month} className="text-center">
+                              {monthTotal || "-"}
+                            </div>
+                          );
+                        })}
+                        <div className="text-center text-primary">
+                          {topAccessories.reduce((sum, acc) => sum + acc.totalQuantity, 0)}
+                        </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* Panneau principal - Liste des commandes */}
+          <div className="flex-1 flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5" />
+                <h2 className="text-lg font-semibold">Suivi des Commandes</h2>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  title={isExpanded ? "Réduire" : "Voir les statistiques"}
+                >
+                  {isExpanded ? <ChevronsRight className="h-5 w-5" /> : <BarChart3 className="h-5 w-5" />}
+                </Button>
+                <Button variant="ghost" size="icon" onClick={onClose}>
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <Tabs defaultValue="shopping" className="flex-1">
+              <TabsList className="w-full justify-start px-4 pt-2">
+                <TabsTrigger value="shopping" className="flex items-center gap-1">
+                  <ShoppingCart className="h-4 w-4" />À commander
+                  {shoppingList.length > 0 && (
+                    <Badge variant="secondary" className="ml-1">
+                      {shoppingList.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="inprogress" className="flex items-center gap-1">
+                  <Truck className="h-4 w-4" />
+                  En cours
+                  {ordersInProgress.length > 0 && (
+                    <Badge variant="secondary" className="ml-1">
+                      {ordersInProgress.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="received" className="flex items-center gap-1">
+                  <PackageCheck className="h-4 w-4" />
+                  Réceptionnées
+                  {receivedOrders.length > 0 && (
+                    <Badge variant="secondary" className="ml-1">
+                      {receivedOrders.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Shopping List Tab */}
+              <TabsContent value="shopping" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
+                <div className="p-4 border-b bg-muted/30 flex-shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={selectedItems.size === shoppingList.length && shoppingList.length > 0}
+                        onCheckedChange={selectAllShoppingList}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        {selectedItems.size > 0 ? `${selectedItems.size} sélectionné(s)` : "Tout sélectionner"}
+                      </span>
+                    </div>
+                    {selectedItems.size > 0 && (
+                      <Button size="sm" onClick={moveSelectedToInProgress}>
+                        <Truck className="h-4 w-4 mr-1" />
+                        Passer en commande
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <ScrollArea className="flex-1">
+                  {isLoading ? (
+                    <div className="p-4 text-center text-muted-foreground">Chargement...</div>
+                  ) : !hasValidScenarios ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p className="font-medium mb-2">Aucun scénario validé</p>
+                      <p className="text-sm">Verrouillez un scénario principal pour voir les articles à commander</p>
+                    </div>
+                  ) : shoppingList.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      <ShoppingCart className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>Aucun article à commander</p>
+                    </div>
+                  ) : (
+                    <div className="p-4 space-y-2">
+                      {shoppingList.map((item) => (
+                        <Card key={item.id} className="p-3">
+                          <div className="flex items-start gap-3">
+                            <Checkbox
+                              checked={selectedItems.has(item.id)}
+                              onCheckedChange={() => toggleSelectItem(item.id)}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium truncate">{item.nom_accessoire}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  x{item.quantite}
+                                </Badge>
+                              </div>
+                              {item.marque && <p className="text-xs text-muted-foreground">{item.marque}</p>}
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="secondary" className="text-xs">
+                                  {item.project_name}
+                                </Badge>
+                                {item.fournisseur && (
+                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Building2 className="h-3 w-3" />
+                                    {item.fournisseur}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
+                              <p className="text-xs text-muted-foreground">{item.prix.toFixed(2)} €/u</p>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                {shoppingList.length > 0 && (
+                  <div className="p-4 border-t bg-muted/30 flex-shrink-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Total à commander</span>
+                      <span className="font-bold text-lg">
+                        {shoppingList.reduce((sum, item) => sum + item.prix * item.quantite, 0).toFixed(2)} €
+                      </span>
                     </div>
                   </div>
                 )}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
+              </TabsContent>
 
-        {/* Panneau principal - Liste des commandes */}
-        <div className="flex-1 flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b">
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
-              <h2 className="text-lg font-semibold">Suivi des Commandes</h2>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsExpanded(!isExpanded)}
-                title={isExpanded ? "Réduire" : "Voir les statistiques"}
-              >
-                {isExpanded ? <ChevronsRight className="h-5 w-5" /> : <BarChart3 className="h-5 w-5" />}
-              </Button>
-              <Button variant="ghost" size="icon" onClick={onClose}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <Tabs defaultValue="shopping" className="flex-1">
-            <TabsList className="w-full justify-start px-4 pt-2">
-              <TabsTrigger value="shopping" className="flex items-center gap-1">
-                <ShoppingCart className="h-4 w-4" />À commander
-                {shoppingList.length > 0 && (
-                  <Badge variant="secondary" className="ml-1">
-                    {shoppingList.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="inprogress" className="flex items-center gap-1">
-                <Truck className="h-4 w-4" />
-                En cours
-                {ordersInProgress.length > 0 && (
-                  <Badge variant="secondary" className="ml-1">
-                    {ordersInProgress.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="received" className="flex items-center gap-1">
-                <PackageCheck className="h-4 w-4" />
-                Réceptionnées
-                {receivedOrders.length > 0 && (
-                  <Badge variant="secondary" className="ml-1">
-                    {receivedOrders.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Shopping List Tab */}
-            <TabsContent value="shopping" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
-              <div className="p-4 border-b bg-muted/30 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      checked={selectedItems.size === shoppingList.length && shoppingList.length > 0}
-                      onCheckedChange={selectAllShoppingList}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {selectedItems.size > 0 ? `${selectedItems.size} sélectionné(s)` : "Tout sélectionner"}
-                    </span>
-                  </div>
-                  {selectedItems.size > 0 && (
-                    <Button size="sm" onClick={moveSelectedToInProgress}>
-                      <Truck className="h-4 w-4 mr-1" />
-                      Passer en commande
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <ScrollArea className="flex-1">
-                {isLoading ? (
-                  <div className="p-4 text-center text-muted-foreground">Chargement...</div>
-                ) : !hasValidScenarios ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p className="font-medium mb-2">Aucun scénario validé</p>
-                    <p className="text-sm">Verrouillez un scénario principal pour voir les articles à commander</p>
-                  </div>
-                ) : shoppingList.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <ShoppingCart className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                    <p>Aucun article à commander</p>
-                  </div>
-                ) : (
-                  <div className="p-4 space-y-2">
-                    {shoppingList.map((item) => (
-                      <Card key={item.id} className="p-3">
-                        <div className="flex items-start gap-3">
-                          <Checkbox
-                            checked={selectedItems.has(item.id)}
-                            onCheckedChange={() => toggleSelectItem(item.id)}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium truncate">{item.nom_accessoire}</span>
-                              <Badge variant="outline" className="text-xs">
-                                x{item.quantite}
-                              </Badge>
-                            </div>
-                            {item.marque && <p className="text-xs text-muted-foreground">{item.marque}</p>}
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="secondary" className="text-xs">
-                                {item.project_name}
-                              </Badge>
-                              {item.fournisseur && (
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Building2 className="h-3 w-3" />
-                                  {item.fournisseur}
-                                </span>
-                              )}
-                            </div>
+              {/* Orders In Progress Tab */}
+              <TabsContent value="inprogress" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
+                <ScrollArea className="flex-1">
+                  {isLoading ? (
+                    <div className="p-4 text-center text-muted-foreground">Chargement...</div>
+                  ) : !hasValidScenarios ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      <Truck className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p className="font-medium mb-2">Aucun scénario validé</p>
+                      <p className="text-sm">Verrouillez un scénario principal pour voir les commandes</p>
+                    </div>
+                  ) : ordersInProgress.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      <Truck className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>Aucune commande en cours</p>
+                    </div>
+                  ) : (
+                    <div className="p-4 space-y-4">
+                      {Object.entries(groupBySupplier(ordersInProgress)).map(([supplier, items]) => (
+                        <div key={supplier} className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                            <Building2 className="h-4 w-4" />
+                            {supplier}
+                            <Badge variant="outline">{items.length}</Badge>
                           </div>
-                          <div className="text-right">
-                            <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
-                            <p className="text-xs text-muted-foreground">{item.prix.toFixed(2)} €/u</p>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-              {shoppingList.length > 0 && (
-                <div className="p-4 border-t bg-muted/30 flex-shrink-0">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total à commander</span>
-                    <span className="font-bold text-lg">
-                      {shoppingList.reduce((sum, item) => sum + item.prix * item.quantite, 0).toFixed(2)} €
-                    </span>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Orders In Progress Tab */}
-            <TabsContent value="inprogress" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
-              <ScrollArea className="flex-1">
-                {isLoading ? (
-                  <div className="p-4 text-center text-muted-foreground">Chargement...</div>
-                ) : !hasValidScenarios ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <Truck className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p className="font-medium mb-2">Aucun scénario validé</p>
-                    <p className="text-sm">Verrouillez un scénario principal pour voir les commandes</p>
-                  </div>
-                ) : ordersInProgress.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <Truck className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                    <p>Aucune commande en cours</p>
-                  </div>
-                ) : (
-                  <div className="p-4 space-y-4">
-                    {Object.entries(groupBySupplier(ordersInProgress)).map(([supplier, items]) => (
-                      <div key={supplier} className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                          <Building2 className="h-4 w-4" />
-                          {supplier}
-                          <Badge variant="outline">{items.length}</Badge>
-                        </div>
-                        {items.map((item) => (
-                          <Card key={item.id} className="p-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium truncate">{item.nom_accessoire}</span>
-                                  <Badge variant="outline" className="text-xs">
-                                    x{item.quantite}
+                          {items.map((item) => (
+                            <Card key={item.id} className="p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium truncate">{item.nom_accessoire}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      x{item.quantite}
+                                    </Badge>
+                                  </div>
+                                  {item.marque && <p className="text-xs text-muted-foreground">{item.marque}</p>}
+                                  <Badge variant="secondary" className="text-xs mt-1">
+                                    {item.project_name}
                                   </Badge>
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Calendar className="h-3 w-3 text-muted-foreground" />
+                                    <Input
+                                      type="date"
+                                      className="h-7 text-xs w-36"
+                                      value={item.expected_delivery_date || ""}
+                                      onChange={(e) => updateDeliveryDate(item.id, e.target.value)}
+                                    />
+                                  </div>
                                 </div>
-                                {item.marque && <p className="text-xs text-muted-foreground">{item.marque}</p>}
-                                <Badge variant="secondary" className="text-xs mt-1">
-                                  {item.project_name}
-                                </Badge>
-                                <div className="flex items-center gap-2 mt-2">
-                                  <Calendar className="h-3 w-3 text-muted-foreground" />
-                                  <Input
-                                    type="date"
-                                    className="h-7 text-xs w-36"
-                                    value={item.expected_delivery_date || ""}
-                                    onChange={(e) => updateDeliveryDate(item.id, e.target.value)}
-                                  />
+                                <div className="flex flex-col items-end gap-2">
+                                  <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 text-xs text-muted-foreground"
+                                      onClick={() => updateOrderStatus(item.id, "commande")}
+                                      title="Remettre à commander"
+                                    >
+                                      <Undo2 className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs"
+                                      onClick={() => updateOrderStatus(item.id, "livre")}
+                                    >
+                                      <PackageCheck className="h-3 w-3 mr-1" />
+                                      Réceptionner
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
-                              <div className="flex flex-col items-end gap-2">
-                                <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
-                                <div className="flex gap-1">
+                            </Card>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                {ordersInProgress.length > 0 && (
+                  <div className="p-4 border-t bg-orange-50/50 flex-shrink-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Total en cours</span>
+                      <span className="font-bold text-lg text-orange-600">
+                        {ordersInProgress.reduce((sum, item) => sum + item.prix * item.quantite, 0).toFixed(2)} €
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Received Orders Tab */}
+              <TabsContent value="received" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
+                <ScrollArea className="flex-1">
+                  {isLoading ? (
+                    <div className="p-4 text-center text-muted-foreground">Chargement...</div>
+                  ) : !hasValidScenarios ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      <PackageCheck className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p className="font-medium mb-2">Aucun scénario validé</p>
+                      <p className="text-sm">Verrouillez un scénario principal pour voir les réceptions</p>
+                    </div>
+                  ) : receivedOrders.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      <PackageCheck className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>Aucune commande réceptionnée</p>
+                    </div>
+                  ) : (
+                    <div className="p-4 space-y-4">
+                      {Object.entries(groupBySupplier(receivedOrders)).map(([supplier, items]) => (
+                        <div key={supplier} className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                            <Building2 className="h-4 w-4" />
+                            {supplier}
+                            <Badge variant="outline">{items.length}</Badge>
+                          </div>
+                          {items.map((item) => (
+                            <Card key={item.id} className="p-3 bg-green-50/50 border-green-200">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <PackageCheck className="h-4 w-4 text-green-600" />
+                                    <span className="font-medium truncate">{item.nom_accessoire}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      x{item.quantite}
+                                    </Badge>
+                                  </div>
+                                  {item.marque && <p className="text-xs text-muted-foreground ml-6">{item.marque}</p>}
+                                  <div className="flex items-center gap-2 ml-6 mt-1">
+                                    <Badge variant="secondary" className="text-xs">
+                                      {item.project_name}
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                      {format(new Date(item.date_achat), "dd MMM yyyy", { locale: fr })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                  <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    className="h-7 text-xs text-muted-foreground"
-                                    onClick={() => updateOrderStatus(item.id, "commande")}
-                                    title="Remettre à commander"
+                                    className="h-6 text-xs text-muted-foreground hover:text-orange-600"
+                                    onClick={() => updateOrderStatus(item.id, "en_livraison")}
+                                    title="Remettre en cours de livraison"
                                   >
-                                    <Undo2 className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs"
-                                    onClick={() => updateOrderStatus(item.id, "livre")}
-                                  >
-                                    <PackageCheck className="h-3 w-3 mr-1" />
-                                    Réceptionner
+                                    <Undo2 className="h-3 w-3 mr-1" />
+                                    Annuler
                                   </Button>
                                 </div>
                               </div>
-                            </div>
-                          </Card>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-              {ordersInProgress.length > 0 && (
-                <div className="p-4 border-t bg-orange-50/50 flex-shrink-0">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total en cours</span>
-                    <span className="font-bold text-lg text-orange-600">
-                      {ordersInProgress.reduce((sum, item) => sum + item.prix * item.quantite, 0).toFixed(2)} €
-                    </span>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Received Orders Tab */}
-            <TabsContent value="received" className="flex-1 p-0 m-0 flex flex-col h-[calc(100vh-140px)]">
-              <ScrollArea className="flex-1">
-                {isLoading ? (
-                  <div className="p-4 text-center text-muted-foreground">Chargement...</div>
-                ) : !hasValidScenarios ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <PackageCheck className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                    <p className="font-medium mb-2">Aucun scénario validé</p>
-                    <p className="text-sm">Verrouillez un scénario principal pour voir les réceptions</p>
-                  </div>
-                ) : receivedOrders.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <PackageCheck className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                    <p>Aucune commande réceptionnée</p>
-                  </div>
-                ) : (
-                  <div className="p-4 space-y-4">
-                    {Object.entries(groupBySupplier(receivedOrders)).map(([supplier, items]) => (
-                      <div key={supplier} className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                          <Building2 className="h-4 w-4" />
-                          {supplier}
-                          <Badge variant="outline">{items.length}</Badge>
+                            </Card>
+                          ))}
                         </div>
-                        {items.map((item) => (
-                          <Card key={item.id} className="p-3 bg-green-50/50 border-green-200">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <PackageCheck className="h-4 w-4 text-green-600" />
-                                  <span className="font-medium truncate">{item.nom_accessoire}</span>
-                                  <Badge variant="outline" className="text-xs">
-                                    x{item.quantite}
-                                  </Badge>
-                                </div>
-                                {item.marque && <p className="text-xs text-muted-foreground ml-6">{item.marque}</p>}
-                                <div className="flex items-center gap-2 ml-6 mt-1">
-                                  <Badge variant="secondary" className="text-xs">
-                                    {item.project_name}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {format(new Date(item.date_achat), "dd MMM yyyy", { locale: fr })}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-1">
-                                <p className="font-medium">{(item.prix * item.quantite).toFixed(2)} €</p>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 text-xs text-muted-foreground hover:text-orange-600"
-                                  onClick={() => updateOrderStatus(item.id, "en_livraison")}
-                                  title="Remettre en cours de livraison"
-                                >
-                                  <Undo2 className="h-3 w-3 mr-1" />
-                                  Annuler
-                                </Button>
-                              </div>
-                            </div>
-                          </Card>
-                        ))}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                {receivedOrders.length > 0 && (
+                  <div className="p-4 border-t bg-green-50/50 flex-shrink-0">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Total réceptionné</span>
+                      <span className="font-bold text-lg text-green-600">
+                        {receivedOrders.reduce((sum, item) => sum + item.prix * item.quantite, 0).toFixed(2)} €
+                      </span>
+                    </div>
                   </div>
                 )}
-              </ScrollArea>
-              {receivedOrders.length > 0 && (
-                <div className="p-4 border-t bg-green-50/50 flex-shrink-0">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total réceptionné</span>
-                    <span className="font-bold text-lg text-green-600">
-                      {receivedOrders.reduce((sum, item) => sum + item.prix * item.quantite, 0).toFixed(2)} €
-                    </span>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
+              </TabsContent>
+            </Tabs>
+          </div>
         </div>
       </div>
 
       {/* Dialog plein écran pour le graphique */}
       <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-        <DialogContent className="max-w-[95vw] w-[1400px] h-[90vh] flex flex-col">
+        <DialogContent
+          className="max-w-[95vw] w-[1400px] h-[90vh] flex flex-col"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5" />
@@ -938,28 +944,40 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
               <Button
                 variant={fullscreenPeriod === "6" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFullscreenPeriod("6")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenPeriod("6");
+                }}
               >
                 6 mois
               </Button>
               <Button
                 variant={fullscreenPeriod === "12" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFullscreenPeriod("12")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenPeriod("12");
+                }}
               >
                 12 mois
               </Button>
               <Button
                 variant={fullscreenPeriod === "24" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFullscreenPeriod("24")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenPeriod("24");
+                }}
               >
                 24 mois
               </Button>
               <Button
                 variant={fullscreenPeriod === "custom" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setFullscreenPeriod("custom")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenPeriod("custom");
+                }}
               >
                 Personnalisé
               </Button>
@@ -972,6 +990,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                   type="month"
                   className="w-36 h-8"
                   value={customDateStart}
+                  onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setCustomDateStart(e.target.value)}
                 />
                 <Label className="text-sm">au</Label>
@@ -979,6 +998,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                   type="month"
                   className="w-36 h-8"
                   value={customDateEnd}
+                  onClick={(e) => e.stopPropagation()}
                   onChange={(e) => setCustomDateEnd(e.target.value)}
                 />
               </div>
@@ -1075,7 +1095,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 };
 
