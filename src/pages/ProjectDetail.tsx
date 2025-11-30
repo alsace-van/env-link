@@ -68,6 +68,7 @@ import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSideb
 import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
 import ScenarioManager from "@/components/scenarios/ScenarioManager";
 import OrderTrackingSidebar from "@/components/OrderTrackingSidebar";
+import MechanicalProcedures from "@/components/MechanicalProcedures";
 import logo from "@/assets/logo.png";
 import {
   format,
@@ -682,46 +683,46 @@ const ProjectDetail = () => {
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false); // État pour la vue mensuelle directe
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
-
+  
   // Position draggable du bouton sidebar Notes
   const [sidebarBtnPosition, setSidebarBtnPosition] = useState(() => {
-    const saved = localStorage.getItem("projectSidebarBtnPosition");
+    const saved = localStorage.getItem('projectSidebarBtnPosition');
     return saved ? JSON.parse(saved) : null; // null = dans le header, sinon position fixe
   });
   const [isSidebarBtnDragging, setIsSidebarBtnDragging] = useState(false);
   const [sidebarBtnDragStart, setSidebarBtnDragStart] = useState({ x: 0, y: 0 });
-
+  
   // Position draggable du bouton Informations Projet
   const [projectInfoBtnPosition, setProjectInfoBtnPosition] = useState(() => {
-    const saved = localStorage.getItem("projectInfoBtnPosition");
+    const saved = localStorage.getItem('projectInfoBtnPosition');
     return saved ? JSON.parse(saved) : { x: 16, y: 16 };
   });
   const [isProjectInfoBtnDragging, setIsProjectInfoBtnDragging] = useState(false);
   const [projectInfoBtnDragStart, setProjectInfoBtnDragStart] = useState({ x: 0, y: 0 });
-
+  
   // Position draggable du bouton Statistiques
   const [statsBtnPosition, setStatsBtnPosition] = useState(() => {
-    const saved = localStorage.getItem("statsBtnPosition");
+    const saved = localStorage.getItem('statsBtnPosition');
     return saved ? JSON.parse(saved) : null; // null = dans l'interface normale
   });
   const [isStatsBtnDragging, setIsStatsBtnDragging] = useState(false);
   const [statsBtnDragStart, setStatsBtnDragStart] = useState({ x: 0, y: 0 });
-
+  
   // Position draggable du bouton Suivi Commandes
   const [ordersBtnPosition, setOrdersBtnPosition] = useState(() => {
-    const saved = localStorage.getItem("ordersBtnPosition");
+    const saved = localStorage.getItem('ordersBtnPosition');
     return saved ? JSON.parse(saved) : { x: window.innerWidth - 120, y: 200 };
   });
   const [isOrdersBtnDragging, setIsOrdersBtnDragging] = useState(false);
   const [ordersBtnDragStart, setOrdersBtnDragStart] = useState({ x: 0, y: 0 });
   const [isOrderTrackingOpen, setIsOrderTrackingOpen] = useState(false);
-
+  
   // Refs pour détecter si un drag a vraiment eu lieu
   const hasDraggedSidebarBtn = useRef(false);
   const hasDraggedProjectInfoBtn = useRef(false);
   const hasDraggedStatsBtn = useRef(false);
   const hasDraggedOrdersBtn = useRef(false);
-
+  
   const [editFormData, setEditFormData] = useState({
     nom_projet: "",
     numero_chassis: "",
@@ -793,7 +794,7 @@ const ProjectDetail = () => {
   // Fonction pour recharger le projet (utilisée après déverrouillage)
   const reloadProject = async () => {
     if (!id) return;
-
+    
     const { data: projectData, error } = await supabase
       .from("projects")
       .select(
@@ -836,19 +837,19 @@ const ProjectDetail = () => {
   const handleSidebarBtnMouseMove = (e: MouseEvent) => {
     if (!isSidebarBtnDragging) return;
     hasDraggedSidebarBtn.current = true; // Un mouvement a eu lieu
-
+    
     const newX = Math.max(0, Math.min(e.clientX - sidebarBtnDragStart.x, window.innerWidth - 60));
     const newY = Math.max(0, Math.min(e.clientY - sidebarBtnDragStart.y, window.innerHeight - 60));
-
+    
     const newPosition = { x: newX, y: newY };
     setSidebarBtnPosition(newPosition);
-    localStorage.setItem("projectSidebarBtnPosition", JSON.stringify(newPosition));
+    localStorage.setItem('projectSidebarBtnPosition', JSON.stringify(newPosition));
   };
 
   const handleSidebarBtnMouseUp = () => {
     setIsSidebarBtnDragging(false);
   };
-
+  
   const handleSidebarBtnClick = () => {
     if (hasDraggedSidebarBtn.current) {
       hasDraggedSidebarBtn.current = false;
@@ -859,16 +860,16 @@ const ProjectDetail = () => {
 
   useEffect(() => {
     if (isSidebarBtnDragging) {
-      window.addEventListener("mousemove", handleSidebarBtnMouseMove);
-      window.addEventListener("mouseup", handleSidebarBtnMouseUp);
-      document.body.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-
+      window.addEventListener('mousemove', handleSidebarBtnMouseMove);
+      window.addEventListener('mouseup', handleSidebarBtnMouseUp);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
       return () => {
-        window.removeEventListener("mousemove", handleSidebarBtnMouseMove);
-        window.removeEventListener("mouseup", handleSidebarBtnMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        window.removeEventListener('mousemove', handleSidebarBtnMouseMove);
+        window.removeEventListener('mouseup', handleSidebarBtnMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
       };
     }
   }, [isSidebarBtnDragging, sidebarBtnDragStart]);
@@ -888,19 +889,19 @@ const ProjectDetail = () => {
   const handleProjectInfoBtnMouseMove = (e: MouseEvent) => {
     if (!isProjectInfoBtnDragging) return;
     hasDraggedProjectInfoBtn.current = true; // Un mouvement a eu lieu
-
+    
     const newX = Math.max(0, Math.min(e.clientX - projectInfoBtnDragStart.x, window.innerWidth - 60));
     const newY = Math.max(0, Math.min(e.clientY - projectInfoBtnDragStart.y, window.innerHeight - 60));
-
+    
     const newPosition = { x: newX, y: newY };
     setProjectInfoBtnPosition(newPosition);
-    localStorage.setItem("projectInfoBtnPosition", JSON.stringify(newPosition));
+    localStorage.setItem('projectInfoBtnPosition', JSON.stringify(newPosition));
   };
 
   const handleProjectInfoBtnMouseUp = () => {
     setIsProjectInfoBtnDragging(false);
   };
-
+  
   const handleProjectInfoBtnClick = () => {
     if (hasDraggedProjectInfoBtn.current) {
       hasDraggedProjectInfoBtn.current = false;
@@ -911,16 +912,16 @@ const ProjectDetail = () => {
 
   useEffect(() => {
     if (isProjectInfoBtnDragging) {
-      window.addEventListener("mousemove", handleProjectInfoBtnMouseMove);
-      window.addEventListener("mouseup", handleProjectInfoBtnMouseUp);
-      document.body.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-
+      window.addEventListener('mousemove', handleProjectInfoBtnMouseMove);
+      window.addEventListener('mouseup', handleProjectInfoBtnMouseUp);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
       return () => {
-        window.removeEventListener("mousemove", handleProjectInfoBtnMouseMove);
-        window.removeEventListener("mouseup", handleProjectInfoBtnMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        window.removeEventListener('mousemove', handleProjectInfoBtnMouseMove);
+        window.removeEventListener('mouseup', handleProjectInfoBtnMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
       };
     }
   }, [isProjectInfoBtnDragging, projectInfoBtnDragStart]);
@@ -940,19 +941,19 @@ const ProjectDetail = () => {
   const handleStatsBtnMouseMove = (e: MouseEvent) => {
     if (!isStatsBtnDragging) return;
     hasDraggedStatsBtn.current = true; // Un mouvement a eu lieu
-
+    
     const newX = Math.max(0, Math.min(e.clientX - statsBtnDragStart.x, window.innerWidth - 200));
     const newY = Math.max(0, Math.min(e.clientY - statsBtnDragStart.y, window.innerHeight - 60));
-
+    
     const newPosition = { x: newX, y: newY };
     setStatsBtnPosition(newPosition);
-    localStorage.setItem("statsBtnPosition", JSON.stringify(newPosition));
+    localStorage.setItem('statsBtnPosition', JSON.stringify(newPosition));
   };
 
   const handleStatsBtnMouseUp = () => {
     setIsStatsBtnDragging(false);
   };
-
+  
   const handleStatsBtnClick = () => {
     if (hasDraggedStatsBtn.current) {
       hasDraggedStatsBtn.current = false;
@@ -963,16 +964,16 @@ const ProjectDetail = () => {
 
   useEffect(() => {
     if (isStatsBtnDragging) {
-      window.addEventListener("mousemove", handleStatsBtnMouseMove);
-      window.addEventListener("mouseup", handleStatsBtnMouseUp);
-      document.body.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-
+      window.addEventListener('mousemove', handleStatsBtnMouseMove);
+      window.addEventListener('mouseup', handleStatsBtnMouseUp);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
       return () => {
-        window.removeEventListener("mousemove", handleStatsBtnMouseMove);
-        window.removeEventListener("mouseup", handleStatsBtnMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        window.removeEventListener('mousemove', handleStatsBtnMouseMove);
+        window.removeEventListener('mouseup', handleStatsBtnMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
       };
     }
   }, [isStatsBtnDragging, statsBtnDragStart]);
@@ -991,19 +992,19 @@ const ProjectDetail = () => {
   const handleOrdersBtnMouseMove = (e: MouseEvent) => {
     if (!isOrdersBtnDragging) return;
     hasDraggedOrdersBtn.current = true;
-
+    
     const newX = Math.max(0, Math.min(e.clientX - ordersBtnDragStart.x, window.innerWidth - 60));
     const newY = Math.max(0, Math.min(e.clientY - ordersBtnDragStart.y, window.innerHeight - 60));
-
+    
     const newPosition = { x: newX, y: newY };
     setOrdersBtnPosition(newPosition);
-    localStorage.setItem("ordersBtnPosition", JSON.stringify(newPosition));
+    localStorage.setItem('ordersBtnPosition', JSON.stringify(newPosition));
   };
 
   const handleOrdersBtnMouseUp = () => {
     setIsOrdersBtnDragging(false);
   };
-
+  
   const handleOrdersBtnClick = () => {
     if (hasDraggedOrdersBtn.current) {
       hasDraggedOrdersBtn.current = false;
@@ -1014,16 +1015,16 @@ const ProjectDetail = () => {
 
   useEffect(() => {
     if (isOrdersBtnDragging) {
-      window.addEventListener("mousemove", handleOrdersBtnMouseMove);
-      window.addEventListener("mouseup", handleOrdersBtnMouseUp);
-      document.body.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-
+      window.addEventListener('mousemove', handleOrdersBtnMouseMove);
+      window.addEventListener('mouseup', handleOrdersBtnMouseUp);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      
       return () => {
-        window.removeEventListener("mousemove", handleOrdersBtnMouseMove);
-        window.removeEventListener("mouseup", handleOrdersBtnMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        window.removeEventListener('mousemove', handleOrdersBtnMouseMove);
+        window.removeEventListener('mouseup', handleOrdersBtnMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
       };
     }
   }, [isOrdersBtnDragging, ordersBtnDragStart]);
@@ -1241,7 +1242,10 @@ const ProjectDetail = () => {
       {isProjectInfoSidebarOpen && (
         <>
           {/* Overlay transparent */}
-          <div className="fixed inset-0 z-40 transition-opacity" onClick={handleCloseProjectInfoSidebar} />
+          <div 
+            className="fixed inset-0 z-40 transition-opacity"
+            onClick={handleCloseProjectInfoSidebar}
+          />
 
           {/* Sidebar à GAUCHE avec hauteur limitée - Animation horizontale pure */}
           <div
@@ -1282,9 +1286,7 @@ const ProjectDetail = () => {
                   {(project.vin || project.numero_chassis_vin || project.numero_chassis) && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">N° de châssis (VIN) :</span>
-                      <p className="font-medium">
-                        {project.vin || project.numero_chassis_vin || project.numero_chassis}
-                      </p>
+                      <p className="font-medium">{project.vin || project.numero_chassis_vin || project.numero_chassis}</p>
                     </div>
                   )}
                   {project.type_mine && (
@@ -1296,17 +1298,13 @@ const ProjectDetail = () => {
                   {(project.marque_officielle || project.marque_vehicule || project.marque_custom) && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Marque :</span>
-                      <p className="font-medium">
-                        {project.marque_officielle || project.marque_vehicule || project.marque_custom}
-                      </p>
+                      <p className="font-medium">{project.marque_officielle || project.marque_vehicule || project.marque_custom}</p>
                     </div>
                   )}
                   {(project.modele_officiel || project.modele_vehicule || project.modele_custom) && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Modèle :</span>
-                      <p className="font-medium">
-                        {project.modele_officiel || project.modele_vehicule || project.modele_custom}
-                      </p>
+                      <p className="font-medium">{project.modele_officiel || project.modele_vehicule || project.modele_custom}</p>
                     </div>
                   )}
                   {project.denomination_commerciale && (
@@ -1375,9 +1373,7 @@ const ProjectDetail = () => {
                   {(project.prenom_proprietaire || project.nom_proprietaire) && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Nom :</span>
-                      <p className="font-medium">
-                        {project.prenom_proprietaire} {project.nom_proprietaire}
-                      </p>
+                      <p className="font-medium">{project.prenom_proprietaire} {project.nom_proprietaire}</p>
                     </div>
                   )}
                   {project.adresse_proprietaire && (
@@ -1389,9 +1385,7 @@ const ProjectDetail = () => {
                   {(project.code_postal_proprietaire || project.ville_proprietaire) && (
                     <div className="flex gap-2 text-xs">
                       <span className="text-muted-foreground shrink-0">Ville :</span>
-                      <p className="font-medium">
-                        {project.code_postal_proprietaire} {project.ville_proprietaire}
-                      </p>
+                      <p className="font-medium">{project.code_postal_proprietaire} {project.ville_proprietaire}</p>
                     </div>
                   )}
                   {project.telephone_proprietaire && (
@@ -1463,13 +1457,7 @@ const ProjectDetail = () => {
                     )}
 
                     {/* Poids */}
-                    {(project.poids_vide_kg ||
-                      project.masse_vide ||
-                      project.masse_ordre_marche_kg ||
-                      project.charge_utile_kg ||
-                      project.ptac_kg ||
-                      project.masse_en_charge_max ||
-                      project.ptra) && (
+                    {(project.poids_vide_kg || project.masse_vide || project.masse_ordre_marche_kg || project.charge_utile_kg || project.ptac_kg || project.masse_en_charge_max || project.ptra) && (
                       <div className="space-y-2 border-l-4 border-green-200 dark:border-green-800 pl-3">
                         <h4 className="text-xs font-semibold text-green-700 dark:text-green-400">Poids</h4>
                         {(project.poids_vide_kg || project.masse_vide) && (
@@ -1515,7 +1503,7 @@ const ProjectDetail = () => {
       <main className="container mx-auto px-4 py-4">
         {/* Sidebar pour toutes les tâches */}
         <AllProjectsTasksSidebar />
-
+        
         {/* Bouton sidebar Notes draggable flottant */}
         {sidebarBtnPosition && (
           <Button
@@ -1533,7 +1521,7 @@ const ProjectDetail = () => {
             <PanelRightOpen className={`h-5 w-5 transition-transform ${isSidebarOpen ? "rotate-180" : ""}`} />
           </Button>
         )}
-
+        
         {/* Bouton Statistiques draggable flottant */}
         {statsBtnPosition && (
           <Button
@@ -1550,7 +1538,7 @@ const ProjectDetail = () => {
             <BarChart3 className="h-5 w-5" />
           </Button>
         )}
-
+        
         {/* Bouton Suivi Commandes draggable flottant */}
         <Button
           onClick={handleOrdersBtnClick}
@@ -1565,7 +1553,7 @@ const ProjectDetail = () => {
         >
           <ShoppingCart className="h-5 w-5" />
         </Button>
-
+        
         <div className="flex gap-6">
           {/* Contenu principal */}
           <div className="flex-1 min-w-0">
@@ -1623,11 +1611,11 @@ const ProjectDetail = () => {
                   <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold">Dépenses</h2>
                     {!statsBtnPosition && (
-                      <Button
-                        onClick={handleStatsBtnClick}
+                      <Button 
+                        onClick={handleStatsBtnClick} 
                         onMouseDown={handleStatsBtnMouseDown}
                         size="icon"
-                        className="h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing bg-green-600 hover:bg-green-700"
+                        className="h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing bg-green-600 hover:bg-green-700" 
                         title="Voir les statistiques - Glisser pour détacher"
                       >
                         <BarChart3 className="h-5 w-5" />
@@ -1642,15 +1630,15 @@ const ProjectDetail = () => {
                       <TabsTrigger value="bilan">Bilan Comptable</TabsTrigger>
                     </TabsList>
                     <TabsContent value="scenarios" className="mt-4">
-                      <ScenarioManager
-                        projectId={project.id}
+                      <ScenarioManager 
+                        projectId={project.id} 
                         project={project as any}
-                        onExpenseChange={() => setExpenseRefresh((prev) => prev + 1)}
+                        onExpenseChange={() => setExpenseRefresh(prev => prev + 1)}
                         onProjectChange={reloadProject}
                       />
                     </TabsContent>
                     <TabsContent value="bilan" className="mt-4">
-                      <BilanComptable projectId={project.id} projectName={project.nom_projet || 'Projet'} />
+                      <BilanComptable projectId={project.id} projectName={project.nom} />
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -1674,13 +1662,32 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="notices" className="mt-6">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold">Notices techniques</h2>
-                    <NoticeUploadDialog onSuccess={() => setNoticesRefresh((prev) => prev + 1)} />
-                  </div>
-                  <NoticesList refreshTrigger={noticesRefresh} />
-                </div>
+                <Tabs defaultValue="notices-list" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="notices-list" className="gap-2">
+                      <FileText className="h-4 w-4" />
+                      Notices techniques
+                    </TabsTrigger>
+                    <TabsTrigger value="mechanical" className="gap-2">
+                      <Wrench className="h-4 w-4" />
+                      Mécanique
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="notices-list" className="mt-4">
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold">Notices techniques</h2>
+                        <NoticeUploadDialog onSuccess={() => setNoticesRefresh(prev => prev + 1)} />
+                      </div>
+                      <NoticesList refreshTrigger={noticesRefresh} />
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="mechanical" className="mt-4">
+                    <MechanicalProcedures />
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
 
               <TabsContent value="technical" className="mt-6">
@@ -1721,16 +1728,9 @@ const ProjectDetail = () => {
                           projectId={project.id}
                           vehicleLength={project.longueur_mm || project.longueur_chargement_mm || 3000}
                           vehicleWidth={project.largeur_mm || project.largeur_chargement_mm || 1800}
-                          loadAreaLength={
-                            project.longueur_chargement_mm || Math.round((project.longueur_mm || 3000) * 0.7)
-                          }
-                          loadAreaWidth={
-                            project.largeur_chargement_mm || Math.round((project.largeur_mm || 1800) * 0.9)
-                          }
-                          maxLoad={
-                            project.charge_utile_kg ||
-                            (project.ptac_kg && project.poids_vide_kg ? project.ptac_kg - project.poids_vide_kg : 500)
-                          }
+                          loadAreaLength={project.longueur_chargement_mm || Math.round((project.longueur_mm || 3000) * 0.7)}
+                          loadAreaWidth={project.largeur_chargement_mm || Math.round((project.largeur_mm || 1800) * 0.9)}
+                          maxLoad={project.charge_utile_kg || (project.ptac_kg && project.poids_vide_kg ? project.ptac_kg - project.poids_vide_kg : 500)}
                         />
                       </TabsContent>
 
@@ -1763,7 +1763,10 @@ const ProjectDetail = () => {
       {isExpensesSidebarOpen && (
         <>
           {/* Overlay transparent */}
-          <div className="fixed inset-0 z-40 transition-opacity" onClick={handleCloseExpensesSidebar} />
+          <div
+            className="fixed inset-0 z-40 transition-opacity"
+            onClick={handleCloseExpensesSidebar}
+          />
 
           {/* Sidebar à DROITE avec hauteur limitée - Animation horizontale pure */}
           <div
@@ -1797,7 +1800,7 @@ const ProjectDetail = () => {
               Modifiez toutes les informations du projet, scannez une nouvelle carte grise si nécessaire
             </DialogDescription>
           </DialogHeader>
-          <ProjectForm
+          <ProjectForm 
             existingProject={project}
             isEditMode={true}
             onProjectCreated={async () => {
@@ -1805,18 +1808,16 @@ const ProjectDetail = () => {
               // Recharger le projet
               const { data: updatedProject } = await supabase
                 .from("projects")
-                .select(
-                  `
+                .select(`
                   *,
                   vehicles_catalog (
                     marque,
                     modele
                   )
-                `,
-                )
+                `)
                 .eq("id", id)
                 .single();
-
+              
               if (updatedProject) {
                 setProject(updatedProject);
               }
@@ -1840,7 +1841,7 @@ const ProjectDetail = () => {
       <OrderTrackingSidebar
         isOpen={isOrderTrackingOpen}
         onClose={() => setIsOrderTrackingOpen(false)}
-        onOrderChange={() => setExpenseRefresh((prev) => prev + 1)}
+        onOrderChange={() => setExpensesRefreshTrigger(prev => prev + 1)}
       />
     </div>
   );
