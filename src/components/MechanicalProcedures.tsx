@@ -150,7 +150,7 @@ const MechanicalProcedures = () => {
       if (!userData.user) return;
 
       // Charger les gammes depuis Supabase
-      const { data: proceduresData, error: proceduresError } = await supabase
+      const { data: proceduresData, error: proceduresError } = await (supabase as any)
         .from("mechanical_procedures")
         .select("*")
         .eq("user_id", userData.user.id)
@@ -164,8 +164,8 @@ const MechanicalProcedures = () => {
 
       // Charger les étapes pour chaque gamme
       if (proceduresData && proceduresData.length > 0) {
-        const procedureIds = proceduresData.map(p => p.id);
-        const { data: stepsData, error: stepsError } = await supabase
+        const procedureIds = proceduresData.map((p: any) => p.id);
+        const { data: stepsData, error: stepsError } = await (supabase as any)
           .from("mechanical_procedure_steps")
           .select("*")
           .in("procedure_id", procedureIds)
@@ -176,9 +176,9 @@ const MechanicalProcedures = () => {
         }
 
         // Associer les étapes aux gammes
-        const proceduresWithSteps = proceduresData.map(proc => ({
+        const proceduresWithSteps = proceduresData.map((proc: any) => ({
           ...proc,
-          steps: stepsData?.filter(s => s.procedure_id === proc.id) || [],
+          steps: stepsData?.filter((s: any) => s.procedure_id === proc.id) || [],
         }));
 
         setProcedures(proceduresWithSteps);
@@ -195,7 +195,7 @@ const MechanicalProcedures = () => {
 
   const loadVehicles = async () => {
     try {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("vehicles_catalog")
         .select("id, marque, modele")
         .order("marque");
@@ -219,7 +219,7 @@ const MechanicalProcedures = () => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mechanical_procedures")
         .insert({
           user_id: userData.user.id,
@@ -264,7 +264,7 @@ const MechanicalProcedures = () => {
     if (!selectedProcedure) return;
     
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("mechanical_procedures")
         .delete()
         .eq("id", selectedProcedure.id);
@@ -295,7 +295,7 @@ const MechanicalProcedures = () => {
     try {
       const stepNumber = (selectedProcedure.steps?.length || 0) + 1;
       
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mechanical_procedure_steps")
         .insert({
           procedure_id: selectedProcedure.id,
@@ -351,7 +351,7 @@ const MechanicalProcedures = () => {
     if (!selectedProcedure) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("mechanical_procedure_steps")
         .delete()
         .eq("id", stepId);
@@ -368,7 +368,7 @@ const MechanicalProcedures = () => {
       // Mettre à jour les numéros d'étapes dans Supabase
       for (let i = 0; i < remainingSteps.length; i++) {
         if (remainingSteps[i].step_number !== i + 1) {
-          await supabase
+          await (supabase as any)
             .from("mechanical_procedure_steps")
             .update({ step_number: i + 1 })
             .eq("id", remainingSteps[i].id);
@@ -442,7 +442,7 @@ const MechanicalProcedures = () => {
   const updateStepImage = async (stepId: string, imageUrl: string) => {
     if (!selectedProcedure) return;
 
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("mechanical_procedure_steps")
       .update({ image_url: imageUrl })
       .eq("id", stepId);
