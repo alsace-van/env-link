@@ -18,7 +18,7 @@ interface PdfViewerModalProps {
 export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title, noticeId, existingSummary }: PdfViewerModalProps) => {
   const handleDownload = async () => {
     if (!pdfUrl) return;
-    
+
     try {
       const response = await fetch(pdfUrl);
       const blob = await response.blob();
@@ -68,15 +68,11 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title, noticeId, exist
               <TabsTrigger value="pdf">PDF</TabsTrigger>
               <TabsTrigger value="summary">Résumé IA</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="pdf" className="flex-1 px-6 pb-6 mt-4 overflow-hidden">
               <div className="pdf-viewer-container h-full">
                 {pdfUrl ? (
-                  <iframe
-                    src={`${pdfUrl}#view=FitH`}
-                    className="w-full h-full border-0 rounded-lg"
-                    title={title}
-                  />
+                  <iframe src={`${pdfUrl}#view=FitH`} className="w-full h-full border-0 rounded-lg" title={title} />
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground">
                     Aucun PDF à afficher
@@ -84,23 +80,16 @@ export const PdfViewerModal = ({ isOpen, onClose, pdfUrl, title, noticeId, exist
                 )}
               </div>
             </TabsContent>
-            
+
             <TabsContent value="summary" className="flex-1 px-6 pb-6 mt-4 overflow-y-auto min-h-0">
-              <NoticeSummary 
-                noticeId={noticeId} 
-                existingSummary={existingSummary}
-              />
+              <NoticeSummary noticeId={noticeId} pdfUrl={pdfUrl} existingSummary={existingSummary} />
             </TabsContent>
           </Tabs>
         ) : (
           <div className="flex-1 px-6 pb-6">
             <div className="pdf-viewer-container h-full">
               {pdfUrl ? (
-                <iframe
-                  src={`${pdfUrl}#view=FitH`}
-                  className="w-full h-full border-0 rounded-lg"
-                  title={title}
-                />
+                <iframe src={`${pdfUrl}#view=FitH`} className="w-full h-full border-0 rounded-lg" title={title} />
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
                   Aucun PDF à afficher
