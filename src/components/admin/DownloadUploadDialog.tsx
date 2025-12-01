@@ -204,13 +204,13 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
 
       if (editingItem) {
         // Mise à jour
-        const { error } = await supabase.from("downloads").update(downloadData).eq("id", editingItem.id);
+        const { error } = await (supabase as any).from("downloads").update(downloadData).eq("id", editingItem.id);
 
         if (error) throw error;
         toast.success("Téléchargement mis à jour");
       } else {
         // Création
-        const { error } = await supabase.from("downloads").insert(downloadData);
+        const { error } = await (supabase as any).from("downloads").insert(downloadData);
 
         if (error) throw error;
         toast.success("Téléchargement ajouté");
