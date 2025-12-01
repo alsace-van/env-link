@@ -33,7 +33,7 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
   };
 
   // Calcul du pourcentage pour la jauge (seulement si l'utilisateur a configuré une limite)
-  const percentUsed = dailyLimit ? Math.min((stats.todayTokens / dailyLimit) * 100, 100) : null;
+  const percentUsed = dailyLimit ? Math.min((stats.tokensUsed / dailyLimit) * 100, 100) : null;
 
   const getBarColor = (percent: number | null): string => {
     if (percent === null) return "bg-purple-500";
@@ -79,7 +79,7 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
                   className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-purple-50 dark:bg-purple-950/30 text-xs hover:bg-purple-100 dark:hover:bg-purple-950/50 transition-colors"
                 >
                   <Sparkles className="h-3 w-3 text-purple-600" />
-                  <span className="font-medium">{formatTokens(stats.todayTokens)}</span>
+                  <span className="font-medium">{formatTokens(stats.tokensUsed)}</span>
                   {percentUsed !== null && (
                     <div className="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div
@@ -134,7 +134,7 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
               <div className="flex justify-between text-xs text-muted-foreground mb-1">
                 <span>Aujourd'hui</span>
                 <span>
-                  {formatTokens(stats.todayTokens)}
+                  {formatTokens(stats.tokensUsed)}
                   {dailyLimit && ` / ${formatTokens(dailyLimit)}`}
                 </span>
               </div>
@@ -151,11 +151,11 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
             <div className="grid grid-cols-2 gap-2 text-xs mb-3">
               <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
                 <div className="text-muted-foreground">Requêtes</div>
-                <div className="font-medium">{stats.todayRequests}</div>
+                <div className="font-medium">{stats.requestCount}</div>
               </div>
               <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
                 <div className="text-muted-foreground">Total</div>
-                <div className="font-medium">{formatTokens(stats.totalTokens)}</div>
+                <div className="font-medium">{formatTokens(stats.tokensUsed)}</div>
               </div>
             </div>
 
