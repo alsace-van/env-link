@@ -278,6 +278,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         text: string;
         x: number;
         y: number;
+        width: number;
         page: number;
       }
 
@@ -294,6 +295,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
               text: item.str,
               x: Math.round(item.transform[4]),
               y: Math.round(viewport.height - item.transform[5]), // Inverser Y pour avoir haut->bas
+              width: item.width || 0,
               page: i,
             });
           }
@@ -307,6 +309,26 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         return a.x - b.x;
       });
 
+      // === NOUVEAU : Essayer d'abord le parsing de tableau ===
+      const tableProducts = parseTableFromPdfItems(allItems);
+
+      if (tableProducts.length > 0) {
+        console.log("✅ Parsing tableau réussi:", tableProducts.length, "produits");
+        const enrichedProducts = enrichProductsWithUpdateInfo(tableProducts);
+        setParsedProducts(enrichedProducts);
+        setImportStep("preview");
+
+        const updateCount = enrichedProducts.filter((p) => p.isUpdate).length;
+        const changedCount = enrichedProducts.filter((p) => p.priceChanged).length;
+        const newCount = enrichedProducts.filter((p) => !p.isUpdate).length;
+
+        toast.success(
+          `${enrichedProducts.length} produits (tableau) : ${updateCount} existants (${changedCount} modifiés), ${newCount} nouveaux`,
+        );
+        return;
+      }
+
+      // === Sinon, utiliser le parsing texte classique ===
       // Regrouper en lignes (éléments avec Y similaire)
       const lines: string[] = [];
       let currentLine: string[] = [];
@@ -359,6 +381,215 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       setIsLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  // === NOUVEAU : Parser pour PDF de type tableau (catalogues) ===
+  const parseTableFromPdfItems = (
+    items: { text: string; x: number; y: number; width: number; page: number }[],
+  ): ParsedProduct[] => {
+    if (items.length < 10) return [];
+
+    // 1. Détecter les positions X récurrentes pour identifier les colonnes
+    const xPositions = items.map((item) => item.x);
+    const xCounts: Record<number, number> = {};
+
+    // Grouper les X similaires (tolérance de 15 pixels)
+    for (const x of xPositions) {
+      const roundedX = Math.round(x / 15) * 15;
+      xCounts[roundedX] = (xCounts[roundedX] || 0) + 1;
+    }
+
+    // Garder les X qui apparaissent au moins 3 fois (colonnes probables)
+    const columnPositions = Object.entries(xCounts)
+      .filter(([_, count]) => count >= 3)
+      .map(([x]) => parseInt(x))
+      .sort((a, b) => a - b);
+
+    console.log("📊 Colonnes détectées aux positions X:", columnPositions);
+
+    if (columnPositions.length < 2) {
+      console.log("❌ Pas assez de colonnes détectées pour un tableau");
+      return [];
+    }
+
+    // 2. Regrouper les items par ligne (Y similaire)
+    const rowTolerance = 12;
+    const rows: { y: number; items: typeof items }[] = [];
+
+    for (const item of items) {
+      const existingRow = rows.find((r) => Math.abs(r.y - item.y) <= rowTolerance);
+      if (existingRow) {
+        existingRow.items.push(item);
+      } else {
+        rows.push({ y: item.y, items: [item] });
+      }
+    }
+
+    // Trier les lignes par Y
+    rows.sort((a, b) => a.y - b.y);
+    console.log("📊 Lignes détectées:", rows.length);
+
+    // 3. Détecter la ligne d'en-tête
+    const headerKeywords = [
+      "référence",
+      "ref",
+      "désignation",
+      "description",
+      "nom",
+      "prix",
+      "poids",
+      "dimensions",
+      "kg",
+      "ht",
+      "ttc",
+      "€",
+    ];
+    let headerRowIndex = -1;
+    let headerRow: string[] = [];
+
+    for (let i = 0; i < Math.min(rows.length, 15); i++) {
+      const rowText = rows[i].items.map((item) => item.text.toLowerCase()).join(" ");
+      const matchCount = headerKeywords.filter((kw) => rowText.includes(kw)).length;
+      if (matchCount >= 2) {
+        headerRowIndex = i;
+        // Construire le header en assignant chaque item à sa colonne
+        headerRow = columnPositions.map((colX) => {
+          const colItems = rows[i].items.filter((item) => Math.abs(item.x - colX) <= 30);
+          return colItems
+            .map((item) => item.text)
+            .join(" ")
+            .toLowerCase()
+            .trim();
+        });
+        console.log("📊 En-tête trouvé à la ligne", i, ":", headerRow);
+        break;
+      }
+    }
+
+    if (headerRowIndex === -1) {
+      console.log("❌ Pas d'en-tête de tableau trouvé");
+      return [];
+    }
+
+    // 4. Mapper les colonnes aux champs
+    const columnMapping: Record<number, string> = {};
+    const fieldPatterns: Record<string, string[]> = {
+      reference: ["ref", "référence", "reference", "code", "article"],
+      nom: ["désignation", "designation", "nom", "name", "description", "produit", "libellé"],
+      dimensions: ["dimensions", "dim", "l x l", "lxl", "mm"],
+      poids_kg: ["poids", "kg", "weight"],
+      prix_reference: ["net", "ht", "achat", "pro", "revendeur"],
+      prix_vente_ttc: ["ppc", "ttc", "public", "vente", "pvp"],
+    };
+
+    headerRow.forEach((header, colIndex) => {
+      for (const [field, patterns] of Object.entries(fieldPatterns)) {
+        if (patterns.some((p) => header.includes(p))) {
+          // Éviter les doublons - préférer le premier match pour prix
+          if (
+            !Object.values(columnMapping).includes(field) ||
+            (field !== "prix_reference" && field !== "prix_vente_ttc")
+          ) {
+            columnMapping[colIndex] = field;
+            break;
+          } else if (field === "prix_reference" && !Object.values(columnMapping).includes("prix_vente_ttc")) {
+            // Si on a déjà prix_reference, ce nouveau prix devient prix_vente_ttc
+            columnMapping[colIndex] = "prix_vente_ttc";
+            break;
+          }
+        }
+      }
+    });
+
+    console.log("📊 Mapping colonnes:", columnMapping);
+
+    // Vérifier qu'on a au moins une référence/nom et un prix
+    const hasRef = Object.values(columnMapping).some((f) => f === "reference" || f === "nom");
+    const hasPrice = Object.values(columnMapping).some((f) => f.includes("prix"));
+
+    if (!hasRef || !hasPrice) {
+      console.log("❌ Colonnes essentielles manquantes (ref/nom ou prix)");
+      return [];
+    }
+
+    // 5. Parser les lignes de données
+    const products: ParsedProduct[] = [];
+    let productIndex = 0;
+
+    for (let i = headerRowIndex + 1; i < rows.length; i++) {
+      const row = rows[i];
+
+      // Assigner chaque item à sa colonne
+      const rowData: Record<string, string> = {};
+
+      for (const [colIndexStr, field] of Object.entries(columnMapping)) {
+        const colIndex = parseInt(colIndexStr);
+        const colX = columnPositions[colIndex];
+        if (colX === undefined) continue;
+
+        // Trouver les items de cette colonne
+        const colItems = row.items.filter((item) => Math.abs(item.x - colX) <= 40);
+        if (colItems.length > 0) {
+          rowData[field] = colItems
+            .map((item) => item.text)
+            .join(" ")
+            .trim();
+        }
+      }
+
+      // Vérifier que c'est une ligne valide (a une référence ou nom)
+      const ref = rowData.reference || "";
+      const nom = rowData.nom || "";
+
+      if (!ref && !nom) continue;
+
+      // Ignorer les lignes qui ressemblent à des headers
+      const rowText = Object.values(rowData).join(" ").toLowerCase();
+      if (headerKeywords.filter((kw) => rowText.includes(kw)).length >= 2) continue;
+
+      const product: ParsedProduct = {
+        id: `import-${productIndex++}`,
+        selected: true,
+        reference: ref,
+        nom: nom || ref,
+        description: nom !== ref ? nom : undefined,
+        dimensions: rowData.dimensions,
+      };
+
+      // Parser le poids
+      if (rowData.poids_kg) {
+        const poids = parsePrice(rowData.poids_kg);
+        if (poids > 0 && poids < 100) {
+          product.poids_kg = poids;
+        }
+      }
+
+      // Parser les prix
+      if (rowData.prix_reference) {
+        const prix = parsePrice(rowData.prix_reference);
+        if (prix > 0) product.prix_reference = prix;
+      }
+      if (rowData.prix_vente_ttc) {
+        const prix = parsePrice(rowData.prix_vente_ttc);
+        if (prix > 0) product.prix_vente_ttc = prix;
+      }
+
+      // Parser les dimensions pour extraire L x l x h
+      if (rowData.dimensions) {
+        const dimsMatch = rowData.dimensions.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})\s*[x×]\s*(\d{2,4})/i);
+        if (dimsMatch) {
+          product.longueur_mm = parseInt(dimsMatch[1]);
+          product.largeur_mm = parseInt(dimsMatch[2]);
+          product.hauteur_mm = parseInt(dimsMatch[3]);
+          product.dimensions = `${product.longueur_mm}x${product.largeur_mm}x${product.hauteur_mm} mm`;
+        }
+      }
+
+      products.push(product);
+    }
+
+    console.log("📊 Produits parsés depuis tableau:", products.length);
+    return products;
   };
 
   const handleManualParse = () => {
