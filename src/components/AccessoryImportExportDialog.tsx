@@ -60,6 +60,9 @@ interface ParsedProduct {
   marque?: string;
   poids_kg?: number;
   dimensions?: string;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
   // Champs pour la mise à jour
   existingId?: string;
   isUpdate?: boolean;
@@ -352,6 +355,16 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           const dims = line.match(/(\d{3})\*(\d{2,3})\*(\d{2,3})/);
           const weight = line.match(/(\d+[.,]?\d*)\s*kg/i);
 
+          // Extraire dimensions séparées
+          let longueur_mm: number | undefined;
+          let largeur_mm: number | undefined;
+          let hauteur_mm: number | undefined;
+          if (dims) {
+            longueur_mm = parseInt(dims[1]);
+            largeur_mm = parseInt(dims[2]);
+            hauteur_mm = parseInt(dims[3]);
+          }
+
           let description = "";
           if (ref.startsWith("ULS") || ref.startsWith("ULM") || ref.startsWith("UBL")) {
             description = `Batterie au lithium LiFePO4`;
@@ -406,6 +419,9 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
             marque: "Ultimatron",
             poids_kg: weight ? parseFloat(weight[1].replace(",", ".")) : undefined,
             dimensions: dims ? `${dims[1]}x${dims[2]}x${dims[3]} mm` : undefined,
+            longueur_mm,
+            largeur_mm,
+            hauteur_mm,
           });
         }
       }
@@ -572,6 +588,9 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
             fournisseur: product.fournisseur || defaultFournisseur || null,
             description: product.description || null,
             poids_kg: product.poids_kg || null,
+            longueur_mm: product.longueur_mm || null,
+            largeur_mm: product.largeur_mm || null,
+            hauteur_mm: product.hauteur_mm || null,
             needs_completion: true,
             imported_at: new Date().toISOString(),
           });
@@ -951,9 +970,10 @@ const PreviewTable = ({
             <TableHead className="w-20">Statut</TableHead>
             <TableHead>Référence</TableHead>
             <TableHead>Nom</TableHead>
-            <TableHead className="text-right">Prix achat HT</TableHead>
-            <TableHead className="text-right">Prix vente TTC</TableHead>
-            <TableHead>Fournisseur</TableHead>
+            <TableHead className="text-right">Prix achat</TableHead>
+            <TableHead className="text-right">Prix vente</TableHead>
+            <TableHead className="text-center">Poids</TableHead>
+            <TableHead className="text-center">Dimensions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1021,7 +1041,10 @@ const PreviewTable = ({
                   </div>
                 </div>
               </TableCell>
-              <TableCell>{product.fournisseur || defaultFournisseur || "-"}</TableCell>
+              <TableCell className="text-center text-xs text-muted-foreground">
+                {product.poids_kg ? `${product.poids_kg} kg` : "-"}
+              </TableCell>
+              <TableCell className="text-center text-xs text-muted-foreground">{product.dimensions || "-"}</TableCell>
             </TableRow>
           ))}
         </TableBody>
