@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import {
   Upload,
@@ -98,12 +97,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   }, [isOpen]);
 
   const loadExistingAccessories = async () => {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("accessories")
       .select("id, nom, marque, prix_reference, prix_vente_ttc, fournisseur");
 
     if (!error && data) {
-      setExistingAccessories(data as ExistingAccessory[]);
+      setExistingAccessories(data);
     }
   };
 
@@ -326,104 +325,134 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     }
   };
 
+  // Générer description Ultimatron basée sur la référence
+  const generateUltimatronDescription = (ref: string): string => {
+    if (ref.startsWith("ULS") || ref.startsWith("ULM") || ref.startsWith("UBL")) {
+      let desc = `Batterie au lithium LiFePO4`;
+      if (ref.includes("-12-")) desc += " 12.8V";
+      else if (ref.includes("-24-")) desc += " 25.6V";
+      else if (ref.includes("-36-")) desc += " 38.4V";
+      const capacityMatch = ref.match(/-(\d{2,3})(?:H|-PRO|-LN3|$)/i);
+      if (capacityMatch) desc += ` ${capacityMatch[1]}Ah`;
+      if (ref.includes("H") && !ref.includes("-PRO")) desc += " avec chauffage";
+      if (ref.includes("-PRO")) desc += " PRO";
+      if (ref.includes("-LN3")) desc += " (format LN3)";
+      return desc;
+    } else if (ref.startsWith("ECO")) {
+      return "Batterie Ecowatt LiFePO4 12.8V 100Ah";
+    } else if (ref.startsWith("JM")) {
+      const cap = ref.match(/-(\d{2,3})$/);
+      return `Batterie solaire AGM 12V ${cap ? cap[1] + "Ah" : ""}`;
+    } else if (ref.startsWith("JDG")) {
+      const cap = ref.match(/-(\d{2,3})$/);
+      return `Batterie solaire à gel 12V ${cap ? cap[1] + "Ah" : ""}`;
+    } else if (ref.startsWith("JPC")) {
+      const cap = ref.match(/-(\d{2,3})$/);
+      return `Batterie solaire plomb-carbone 12V ${cap ? cap[1] + "Ah" : ""}`;
+    } else if (ref.startsWith("MT")) {
+      return "Régulateur de charge solaire MPPT";
+    } else if (ref.startsWith("RTD")) {
+      return "Régulateur de charge solaire PWM";
+    } else if (ref.includes("MONO")) {
+      const watts = ref.match(/(\d{3})W/);
+      return `Panneau solaire ${watts ? watts[1] + "W" : ""} monocristallin`;
+    } else if (ref.includes("ETFE")) {
+      const watts = ref.match(/(\d{3})W/);
+      return `Panneau solaire ${watts ? watts[1] + "W" : ""} flexible ETFE`;
+    } else if (ref.toLowerCase().includes("portable")) {
+      const watts = ref.match(/(\d{3})W/i);
+      return `Panneau solaire portable ${watts ? watts[1] + "W" : ""}`;
+    } else if (ref.startsWith("RVM")) {
+      return "Kit support de panneau solaire";
+    } else if (ref.startsWith("A701")) {
+      return ref.includes("G")
+        ? "Sectionneur coupe-batterie unipolaire 200A"
+        : "Sectionneur coupe-batterie bipolaire 200A";
+    }
+    return "";
+  };
+
   // Parser PDF
   const parsePdfText = (text: string): ParsedProduct[] => {
     const products: ParsedProduct[] = [];
-    const refPatternUltimatron =
-      /\b(U[BLM][SL]?-\d{2}-\d{2,3}[A-Z]?(?:-[A-Z0-9]+)?|ECO-\d{2}-\d{3}|JM-\d{2}-\d{3}|JDG-\d{2}-\d{3}|JPC-\d{2}-\d{3}|MT\d{4}-?[A-Z]*|RTD\d{4}|A\d{3}-[A-Z]|\d{3}W\s*(?:MONO|ETFE)|Portable\s*\d{3}W|RVM-ABS-\d+PCS)\b/gi;
 
     const isUltimatron = text.toLowerCase().includes("ultimatron") || text.toLowerCase().includes("lifepo4");
     const isSCA = text.toLowerCase().includes("sca") || text.toLowerCase().includes("toit relevable");
 
     let productIndex = 0;
 
-    // Ultimatron
+    // Ultimatron - Pattern pour toutes les références
     if (isUltimatron) {
-      const lines = text.split(/[\n\r]+/);
+      const refPatternUltimatron =
+        /\b(ECO-\d{2}-\d{2,3}|U[BL][SLM]?-\d{2}-\d{2,3}(?:-[A-Z0-9]+)?|JM-\d{2}-\d{2,3}|JDG-\d{2}-\d{2,3}|JPC-\d{2}-\d{2,3}|MT\d{4}[A-Z-]*|RTD\d{4}|A\d{3}-[A-Z]|RVM-ABS-\d+PCS|\d{3}W\s*(?:MONO|ETFE)|Portable\s*\d{3}W)\b/gi;
+
+      const allMatches = [...text.matchAll(refPatternUltimatron)];
       const seenRefs = new Set<string>();
 
-      for (const line of lines) {
-        const matches = [...line.matchAll(refPatternUltimatron)];
+      for (let i = 0; i < allMatches.length; i++) {
+        const match = allMatches[i];
+        const ref = match[0].toUpperCase().trim();
 
-        for (const match of matches) {
-          const ref = match[0].toUpperCase();
-          if (seenRefs.has(ref)) continue;
-          seenRefs.add(ref);
+        // Skip doublons et mots-clés génériques
+        if (seenRefs.has(ref)) continue;
+        if (ref === "PHOTO" || ref === "DESCRIPTION") continue;
+        seenRefs.add(ref);
 
-          const priceMatches = [...line.matchAll(/(\d+[.,]\d{2})€/g)];
-          const prices = priceMatches.map((m) => parsePrice(m[1]));
-          const dims = line.match(/(\d{3})\*(\d{2,3})\*(\d{2,3})/);
-          const weight = line.match(/(\d+[.,]?\d*)\s*kg/i);
+        // Extraire le contexte : 50 chars avant et jusqu'à la prochaine référence (max 500 chars)
+        const startIndex = Math.max(0, match.index! - 50);
+        const endIndex =
+          i < allMatches.length - 1 ? Math.min(match.index! + 500, allMatches[i + 1].index!) : match.index! + 500;
+        const context = text.substring(startIndex, Math.min(endIndex, text.length));
 
-          // Extraire dimensions séparées
-          let longueur_mm: number | undefined;
-          let largeur_mm: number | undefined;
-          let hauteur_mm: number | undefined;
-          if (dims) {
-            longueur_mm = parseInt(dims[1]);
-            largeur_mm = parseInt(dims[2]);
-            hauteur_mm = parseInt(dims[3]);
-          }
-
-          let description = "";
-          if (ref.startsWith("ULS") || ref.startsWith("ULM") || ref.startsWith("UBL")) {
-            description = `Batterie au lithium LiFePO4`;
-            if (ref.includes("-12-")) description += " 12.8V";
-            else if (ref.includes("-24-")) description += " 25.6V";
-            else if (ref.includes("-36-")) description += " 38.4V";
-            const capacityMatch = ref.match(/-(\d{2,3})(?:H|-PRO|-LN3|$)/i);
-            if (capacityMatch) description += ` ${capacityMatch[1]}Ah`;
-            if (ref.includes("H") && !ref.includes("-PRO")) description += " avec chauffage";
-            if (ref.includes("-PRO")) description += " PRO";
-            if (ref.includes("-LN3")) description += " (format LN3)";
-          } else if (ref.startsWith("ECO")) {
-            description = "Batterie Ecowatt LiFePO4 12.8V 100Ah";
-          } else if (ref.startsWith("JM")) {
-            const cap = ref.match(/-(\d{3})$/);
-            description = `Batterie solaire AGM 12V ${cap ? cap[1] + "Ah" : ""}`;
-          } else if (ref.startsWith("JDG")) {
-            const cap = ref.match(/-(\d{3})$/);
-            description = `Batterie solaire à gel 12V ${cap ? cap[1] + "Ah" : ""}`;
-          } else if (ref.startsWith("JPC")) {
-            const cap = ref.match(/-(\d{3})$/);
-            description = `Batterie solaire plomb-carbone 12V ${cap ? cap[1] + "Ah" : ""}`;
-          } else if (ref.startsWith("MT") || ref.startsWith("RTD")) {
-            description = ref.startsWith("MT")
-              ? "Régulateur de charge solaire MPPT"
-              : "Régulateur de charge solaire PWM";
-          } else if (ref.includes("MONO") || ref.includes("ETFE")) {
-            const watts = ref.match(/(\d{3})W/);
-            description = `Panneau solaire ${watts ? watts[1] + "W" : ""}`;
-            if (ref.includes("ETFE")) description += " flexible ETFE";
-            else description += " monocristallin";
-          } else if (ref.toLowerCase().includes("portable")) {
-            const watts = ref.match(/(\d{3})W/i);
-            description = `Panneau solaire portable ${watts ? watts[1] + "W" : ""}`;
-          } else if (ref.startsWith("RVM")) {
-            description = "Kit support de panneau solaire";
-          } else if (ref.startsWith("A701")) {
-            description = ref.includes("G")
-              ? "Sectionneur coupe-batterie unipolaire 200A"
-              : "Sectionneur coupe-batterie bipolaire 200A";
-          }
-
-          products.push({
-            id: `import-${productIndex++}`,
-            selected: true,
-            reference: ref,
-            nom: ref,
-            description,
-            prix_reference: prices[0],
-            prix_vente_ttc: prices[1],
-            fournisseur: "Ultimatron",
-            marque: "Ultimatron",
-            poids_kg: weight ? parseFloat(weight[1].replace(",", ".")) : undefined,
-            dimensions: dims ? `${dims[1]}x${dims[2]}x${dims[3]} mm` : undefined,
-            longueur_mm,
-            largeur_mm,
-            hauteur_mm,
-          });
+        // Extraire les dimensions (format: 330*172*220 ou 330 * 172 * 220)
+        const dimsMatch = context.match(/(\d{2,3})\s*\*\s*(\d{2,3})\s*\*\s*(\d{2,3})/);
+        let longueur_mm: number | undefined;
+        let largeur_mm: number | undefined;
+        let hauteur_mm: number | undefined;
+        let dimensions: string | undefined;
+        if (dimsMatch) {
+          longueur_mm = parseInt(dimsMatch[1]);
+          largeur_mm = parseInt(dimsMatch[2]);
+          hauteur_mm = parseInt(dimsMatch[3]);
+          dimensions = `${longueur_mm}x${largeur_mm}x${hauteur_mm} mm`;
         }
+
+        // Extraire le poids (format: 11.5 ou 5.7 - nombre décimal suivi d'espace ou fin)
+        // Chercher après les dimensions pour éviter de confondre
+        let poids_kg: number | undefined;
+        const afterDims = dimsMatch ? context.substring(context.indexOf(dimsMatch[0]) + dimsMatch[0].length) : context;
+        const weightMatch = afterDims.match(/\b(\d{1,2}[.,]\d{1,2})\b/);
+        if (weightMatch) {
+          const w = parseFloat(weightMatch[1].replace(",", "."));
+          if (w >= 0.5 && w <= 50) {
+            // Poids réaliste pour batterie
+            poids_kg = w;
+          }
+        }
+
+        // Extraire les prix (format: 258.94€ ou 258,94€)
+        const priceMatches = [...context.matchAll(/(\d{1,4}[.,]\d{2})\s*€/g)];
+        const prices = priceMatches.map((m) => parsePrice(m[1])).filter((p) => p > 5 && p < 5000); // Prix réalistes
+
+        // Générer description basée sur la référence
+        let description = generateUltimatronDescription(ref);
+
+        products.push({
+          id: `import-${productIndex++}`,
+          selected: true,
+          reference: ref,
+          nom: ref,
+          description,
+          prix_reference: prices.length > 0 ? prices[0] : undefined,
+          prix_vente_ttc: prices.length > 1 ? prices[1] : undefined,
+          fournisseur: "Ultimatron",
+          marque: "Ultimatron",
+          poids_kg,
+          dimensions,
+          longueur_mm,
+          largeur_mm,
+          hauteur_mm,
+        });
       }
     }
 
@@ -573,12 +602,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (product.prix_vente_ttc !== undefined) updateData.prix_vente_ttc = product.prix_vente_ttc;
           updateData.last_price_check = new Date().toISOString();
 
-          const { error } = await (supabase as any).from("accessories").update(updateData).eq("id", product.existingId);
+          const { error } = await supabase.from("accessories").update(updateData).eq("id", product.existingId);
 
           if (error) errors++;
           else updated++;
         } else {
-          const { error } = await (supabase as any).from("accessories").insert({
+          const { error } = await supabase.from("accessories").insert({
             user_id: user.id,
             nom: product.nom || product.reference || "Sans nom",
             marque: product.marque || defaultFournisseur || null,
@@ -622,14 +651,14 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   const handleExport = async () => {
     setIsLoading(true);
     try {
-      const { data: accessories, error } = await (supabase as any)
+      const { data: accessories, error } = await supabase
         .from("accessories")
         .select(`*, categories (nom)`)
         .order("nom");
 
       if (error) throw error;
 
-      const exportData = ((accessories || []) as any[]).map((acc: any) => ({
+      const exportData = (accessories || []).map((acc) => ({
         Référence: acc.id.substring(0, 8),
         Nom: acc.nom,
         Marque: acc.marque || "",
@@ -900,7 +929,7 @@ const PreviewTable = ({
   isLoading,
   PriceChange,
 }: PreviewTableProps) => (
-  <div className="flex-1 flex flex-col overflow-hidden">
+  <div className="flex flex-col h-full max-h-[60vh]">
     <div className="p-4 border-b space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={onBack}>
@@ -957,7 +986,7 @@ const PreviewTable = ({
       </div>
     </div>
 
-    <ScrollArea className="flex-1">
+    <div className="flex-1 overflow-auto">
       <Table>
         <TableHeader>
           <TableRow>
@@ -1049,7 +1078,7 @@ const PreviewTable = ({
           ))}
         </TableBody>
       </Table>
-    </ScrollArea>
+    </div>
 
     <div className="p-4 border-t flex justify-between items-center">
       <div className="text-sm text-muted-foreground">
