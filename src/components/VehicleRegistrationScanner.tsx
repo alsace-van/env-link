@@ -521,9 +521,11 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
           isOpen={showConfirmModal}
           onClose={() => setShowConfirmModal(false)}
           onConfirm={handleConfirmData}
-          onRescan={handleRescan}
-          data={extractedData}
-          imagePreview={imagePreview}
+          scannedData={extractedData}
+          onRescanVIN={handleRescan}
+          onRescanImmat={handleRescan}
+          onRescanMarque={handleRescan}
+          onRescanModele={handleRescan}
         />
       )}
     </>
