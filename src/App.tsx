@@ -19,6 +19,7 @@ import ShopAdmin from "./pages/ShopAdmin";
 import BilanComptable from "./pages/BilanComptable";
 import PhotoTemplates from "./pages/PhotoTemplates";
 import PhotoTemplateDetail from "./pages/PhotoTemplateDetail";
+import Downloads from "./pages/Downloads";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,9 @@ const App = () => (
                 {/* Routes boutique */}
                 <Route path="/shop" element={<ShopPublic />} />
                 <Route path="/admin/shop" element={<ShopAdmin />} />
+                
+                {/* Page outils/téléchargements */}
+                <Route path="/downloads" element={<Downloads />} />
                 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
