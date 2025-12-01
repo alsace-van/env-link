@@ -306,8 +306,8 @@ const AccessoriesCatalogView = () => {
 
   // Marquer un article comme complété (column may not be in generated types yet)
   const handleMarkAsCompleted = async (id: string) => {
-    const updateData: Record<string, unknown> = { needs_completion: false };
-    const { error } = await supabase.from("accessories_catalog").update(updateData as any).eq("id", id);
+    // @ts-ignore - needs_completion column exists but not in generated types
+    const { error } = await supabase.from("accessories_catalog").update({ needs_completion: false }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
