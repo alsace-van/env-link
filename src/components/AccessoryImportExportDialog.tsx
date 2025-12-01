@@ -383,212 +383,233 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     }
   };
 
-  // === NOUVEAU : Parser pour PDF de type tableau (catalogues) ===
+  // === Parser pour PDF de type tableau (catalogues) ===
   const parseTableFromPdfItems = (
     items: { text: string; x: number; y: number; width: number; page: number }[],
   ): ParsedProduct[] => {
     if (items.length < 10) return [];
 
-    // 1. Détecter les positions X récurrentes pour identifier les colonnes
-    const xPositions = items.map((item) => item.x);
-    const xCounts: Record<number, number> = {};
+    console.log("📊 ====== DÉBUT PARSING TABLEAU PDF ======");
+    console.log("📊 Nombre total d'items:", items.length);
 
-    // Grouper les X similaires (tolérance de 15 pixels)
-    for (const x of xPositions) {
-      const roundedX = Math.round(x / 15) * 15;
-      xCounts[roundedX] = (xCounts[roundedX] || 0) + 1;
-    }
+    // Debug: afficher les 30 premiers items
+    console.log(
+      "📊 Premiers items:",
+      items.slice(0, 30).map((i) => ({ text: i.text, x: i.x, y: i.y })),
+    );
 
-    // Garder les X qui apparaissent au moins 3 fois (colonnes probables)
-    const columnPositions = Object.entries(xCounts)
-      .filter(([_, count]) => count >= 3)
-      .map(([x]) => parseInt(x))
-      .sort((a, b) => a - b);
-
-    console.log("📊 Colonnes détectées aux positions X:", columnPositions);
-
-    if (columnPositions.length < 2) {
-      console.log("❌ Pas assez de colonnes détectées pour un tableau");
-      return [];
-    }
-
-    // 2. Regrouper les items par ligne (Y similaire)
-    const rowTolerance = 12;
-    const rows: { y: number; items: typeof items }[] = [];
+    // 1. Regrouper les items par ligne (Y similaire) avec une tolérance plus large
+    const rowTolerance = 15;
+    const rows: { y: number; items: typeof items; page: number }[] = [];
 
     for (const item of items) {
-      const existingRow = rows.find((r) => Math.abs(r.y - item.y) <= rowTolerance);
+      const existingRow = rows.find((r) => r.page === item.page && Math.abs(r.y - item.y) <= rowTolerance);
       if (existingRow) {
         existingRow.items.push(item);
+        // Mettre à jour Y avec la moyenne
+        existingRow.y = Math.round((existingRow.y + item.y) / 2);
       } else {
-        rows.push({ y: item.y, items: [item] });
+        rows.push({ y: item.y, items: [item], page: item.page });
       }
     }
 
-    // Trier les lignes par Y
-    rows.sort((a, b) => a.y - b.y);
-    console.log("📊 Lignes détectées:", rows.length);
+    // Trier les items dans chaque ligne par X
+    rows.forEach((row) => row.items.sort((a, b) => a.x - b.x));
 
-    // 3. Détecter la ligne d'en-tête
-    const headerKeywords = [
-      "référence",
-      "ref",
-      "désignation",
-      "description",
-      "nom",
-      "prix",
-      "poids",
-      "dimensions",
-      "kg",
-      "ht",
-      "ttc",
-      "€",
+    // Trier les lignes par page puis Y
+    rows.sort((a, b) => {
+      if (a.page !== b.page) return a.page - b.page;
+      return a.y - b.y;
+    });
+
+    console.log("📊 Lignes regroupées:", rows.length);
+    console.log(
+      "📊 Premières lignes:",
+      rows.slice(0, 10).map((r) => r.items.map((i) => i.text).join(" | ")),
+    );
+
+    // 2. Détecter les lignes de produits par pattern de référence
+    // Patterns typiques: PS12-300, PSW12-350-V2, PSW12-700DIF-V2, REMOTE-PSW-V2, etc.
+    const refPatterns = [
+      /^[A-Z]{2,4}\d{1,2}-\d{2,4}/i, // PS12-300, PSW12-350
+      /^[A-Z]{2,4}\d{1,2}-\d{2,4}-?[A-Z0-9]*/i, // PSW12-350-V2, PSW12-700DIF-V2
+      /^[A-Z]+-[A-Z]+-[A-Z0-9]+/i, // REMOTE-PSW-V2
+      /^[A-Z]{3,}\d{2,}/i, // ABC123
+      /^\d{5,}/, // Code numérique 5+ chiffres
     ];
-    let headerRowIndex = -1;
-    let headerRow: string[] = [];
 
-    for (let i = 0; i < Math.min(rows.length, 15); i++) {
-      const rowText = rows[i].items.map((item) => item.text.toLowerCase()).join(" ");
-      const matchCount = headerKeywords.filter((kw) => rowText.includes(kw)).length;
-      if (matchCount >= 2) {
-        headerRowIndex = i;
-        // Construire le header en assignant chaque item à sa colonne
-        headerRow = columnPositions.map((colX) => {
-          const colItems = rows[i].items.filter((item) => Math.abs(item.x - colX) <= 30);
-          return colItems
-            .map((item) => item.text)
-            .join(" ")
-            .toLowerCase()
-            .trim();
-        });
-        console.log("📊 En-tête trouvé à la ligne", i, ":", headerRow);
-        break;
+    const isProductReference = (text: string): boolean => {
+      const cleaned = text.trim();
+      return refPatterns.some((pattern) => pattern.test(cleaned));
+    };
+
+    // 3. Identifier les lignes qui sont des produits
+    const productRows: { y: number; items: typeof items; page: number; lineText: string }[] = [];
+
+    for (const row of rows) {
+      const lineText = row.items.map((i) => i.text).join(" ");
+
+      // Vérifier si cette ligne contient une référence produit
+      const hasRef = row.items.some((item) => isProductReference(item.text));
+
+      // Vérifier si cette ligne contient un prix (nombre suivi de € ou juste un nombre décimal)
+      const hasPrice = /\d+\s*€|\d+[.,]\d{2}/.test(lineText);
+
+      // Vérifier que ce n'est pas un header
+      const headerKeywords = ["référence", "désignation", "description", "dimensions", "poids", "prix"];
+      const isHeader = headerKeywords.filter((kw) => lineText.toLowerCase().includes(kw)).length >= 2;
+
+      if (hasRef && hasPrice && !isHeader) {
+        productRows.push({ ...row, lineText });
       }
     }
 
-    if (headerRowIndex === -1) {
-      console.log("❌ Pas d'en-tête de tableau trouvé");
+    console.log("📊 Lignes produits détectées:", productRows.length);
+    if (productRows.length > 0) {
+      console.log("📊 Exemple ligne produit:", productRows[0].lineText);
+    }
+
+    if (productRows.length === 0) {
+      console.log("❌ Aucune ligne produit détectée, essai méthode alternative...");
+
+      // Méthode alternative: chercher les lignes avec des prix
+      for (const row of rows) {
+        const lineText = row.items.map((i) => i.text).join(" ");
+        const priceMatches = lineText.match(/(\d+)\s*€/g);
+
+        if (priceMatches && priceMatches.length >= 1) {
+          // Vérifier que ce n'est pas un header
+          const isHeader =
+            ["référence", "désignation", "prix"].filter((kw) => lineText.toLowerCase().includes(kw)).length >= 2;
+
+          if (!isHeader && row.items.length >= 3) {
+            productRows.push({ ...row, lineText });
+          }
+        }
+      }
+
+      console.log("📊 Lignes avec prix détectées (méthode alt):", productRows.length);
+    }
+
+    if (productRows.length === 0) {
+      console.log("❌ Toujours aucun produit détecté");
       return [];
     }
 
-    // 4. Mapper les colonnes aux champs
-    const columnMapping: Record<number, string> = {};
-    const fieldPatterns: Record<string, string[]> = {
-      reference: ["ref", "référence", "reference", "code", "article"],
-      nom: ["désignation", "designation", "nom", "name", "description", "produit", "libellé"],
-      dimensions: ["dimensions", "dim", "l x l", "lxl", "mm"],
-      poids_kg: ["poids", "kg", "weight"],
-      prix_reference: ["net", "ht", "achat", "pro", "revendeur"],
-      prix_vente_ttc: ["ppc", "ttc", "public", "vente", "pvp"],
-    };
+    // 4. Parser chaque ligne produit
+    const products: ParsedProduct[] = [];
+    let productIndex = 0;
 
-    headerRow.forEach((header, colIndex) => {
-      for (const [field, patterns] of Object.entries(fieldPatterns)) {
-        if (patterns.some((p) => header.includes(p))) {
-          // Éviter les doublons - préférer le premier match pour prix
-          if (
-            !Object.values(columnMapping).includes(field) ||
-            (field !== "prix_reference" && field !== "prix_vente_ttc")
-          ) {
-            columnMapping[colIndex] = field;
-            break;
-          } else if (field === "prix_reference" && !Object.values(columnMapping).includes("prix_vente_ttc")) {
-            // Si on a déjà prix_reference, ce nouveau prix devient prix_vente_ttc
-            columnMapping[colIndex] = "prix_vente_ttc";
+    for (const row of productRows) {
+      const items = row.items;
+
+      // Trouver la référence (premier élément qui match un pattern)
+      let reference = "";
+      let refIndex = -1;
+      for (let i = 0; i < items.length; i++) {
+        if (isProductReference(items[i].text)) {
+          reference = items[i].text.trim();
+          refIndex = i;
+          break;
+        }
+      }
+
+      // Si pas de référence pattern, prendre le premier élément non-vide
+      if (!reference && items.length > 0) {
+        reference = items[0].text.trim();
+        refIndex = 0;
+      }
+
+      // Trouver les prix (chercher les nombres avec € ou décimaux en fin de ligne)
+      const prices: number[] = [];
+      const pricePattern = /(\d+(?:[.,]\d+)?)\s*€?/g;
+
+      // Parcourir les items de droite à gauche pour trouver les prix
+      for (let i = items.length - 1; i >= 0; i--) {
+        const text = items[i].text;
+        const matches = [...text.matchAll(pricePattern)];
+        for (const match of matches) {
+          const price = parseFloat(match[1].replace(",", "."));
+          if (price > 0 && price < 50000) {
+            prices.unshift(price);
+          }
+        }
+        // Arrêter après avoir trouvé 2-3 prix ou si on atteint la référence
+        if (prices.length >= 2 || i <= refIndex + 1) break;
+      }
+
+      // Trouver la désignation (texte entre référence et prix, ou après référence)
+      let designation = "";
+      const designationItems: string[] = [];
+
+      for (let i = refIndex + 1; i < items.length; i++) {
+        const text = items[i].text.trim();
+        // Arrêter si on trouve un prix ou des dimensions
+        if (/^\d+(?:[.,]\d+)?\s*€?$/.test(text) || /^\d+\s*x\s*\d+/.test(text)) break;
+        if (text && !/^[\d.,]+$/.test(text)) {
+          designationItems.push(text);
+        }
+      }
+      designation = designationItems.join(" ").trim();
+
+      // Trouver les dimensions (format: 210 x 120 x 52)
+      let dimensions = "";
+      const dimsPattern = /(\d{2,4})\s*x\s*(\d{2,4})\s*x\s*(\d{1,4})/i;
+      const lineText = row.lineText;
+      const dimsMatch = lineText.match(dimsPattern);
+      if (dimsMatch) {
+        dimensions = `${dimsMatch[1]}x${dimsMatch[2]}x${dimsMatch[3]} mm`;
+      }
+
+      // Trouver le poids (nombre décimal suivi potentiellement de kg ou seul)
+      let poids: number | undefined;
+      const poidsPattern = /(\d+[.,]\d)\s*(?:kg)?/gi;
+      const poidsMatches = [...lineText.matchAll(poidsPattern)];
+      for (const match of poidsMatches) {
+        const p = parseFloat(match[1].replace(",", "."));
+        // Le poids est généralement entre 0.1 et 50 kg
+        if (p >= 0.1 && p <= 50) {
+          // Vérifier que ce n'est pas un prix (pas suivi de €)
+          const idx = lineText.indexOf(match[0]);
+          const after = lineText.substring(idx + match[0].length, idx + match[0].length + 5);
+          if (!after.includes("€")) {
+            poids = p;
             break;
           }
         }
       }
-    });
 
-    console.log("📊 Mapping colonnes:", columnMapping);
+      if (reference) {
+        const product: ParsedProduct = {
+          id: `import-${productIndex++}`,
+          selected: true,
+          reference: reference,
+          nom: designation || reference,
+          description: designation && designation !== reference ? designation : undefined,
+          dimensions: dimensions || undefined,
+          poids_kg: poids,
+          prix_reference: prices.length >= 2 ? prices[0] : undefined,
+          prix_vente_ttc: prices.length >= 2 ? prices[1] : prices.length === 1 ? prices[0] : undefined,
+        };
 
-    // Vérifier qu'on a au moins une référence/nom et un prix
-    const hasRef = Object.values(columnMapping).some((f) => f === "reference" || f === "nom");
-    const hasPrice = Object.values(columnMapping).some((f) => f.includes("prix"));
-
-    if (!hasRef || !hasPrice) {
-      console.log("❌ Colonnes essentielles manquantes (ref/nom ou prix)");
-      return [];
-    }
-
-    // 5. Parser les lignes de données
-    const products: ParsedProduct[] = [];
-    let productIndex = 0;
-
-    for (let i = headerRowIndex + 1; i < rows.length; i++) {
-      const row = rows[i];
-
-      // Assigner chaque item à sa colonne
-      const rowData: Record<string, string> = {};
-
-      for (const [colIndexStr, field] of Object.entries(columnMapping)) {
-        const colIndex = parseInt(colIndexStr);
-        const colX = columnPositions[colIndex];
-        if (colX === undefined) continue;
-
-        // Trouver les items de cette colonne
-        const colItems = row.items.filter((item) => Math.abs(item.x - colX) <= 40);
-        if (colItems.length > 0) {
-          rowData[field] = colItems
-            .map((item) => item.text)
-            .join(" ")
-            .trim();
-        }
-      }
-
-      // Vérifier que c'est une ligne valide (a une référence ou nom)
-      const ref = rowData.reference || "";
-      const nom = rowData.nom || "";
-
-      if (!ref && !nom) continue;
-
-      // Ignorer les lignes qui ressemblent à des headers
-      const rowText = Object.values(rowData).join(" ").toLowerCase();
-      if (headerKeywords.filter((kw) => rowText.includes(kw)).length >= 2) continue;
-
-      const product: ParsedProduct = {
-        id: `import-${productIndex++}`,
-        selected: true,
-        reference: ref,
-        nom: nom || ref,
-        description: nom !== ref ? nom : undefined,
-        dimensions: rowData.dimensions,
-      };
-
-      // Parser le poids
-      if (rowData.poids_kg) {
-        const poids = parsePrice(rowData.poids_kg);
-        if (poids > 0 && poids < 100) {
-          product.poids_kg = poids;
-        }
-      }
-
-      // Parser les prix
-      if (rowData.prix_reference) {
-        const prix = parsePrice(rowData.prix_reference);
-        if (prix > 0) product.prix_reference = prix;
-      }
-      if (rowData.prix_vente_ttc) {
-        const prix = parsePrice(rowData.prix_vente_ttc);
-        if (prix > 0) product.prix_vente_ttc = prix;
-      }
-
-      // Parser les dimensions pour extraire L x l x h
-      if (rowData.dimensions) {
-        const dimsMatch = rowData.dimensions.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})\s*[x×]\s*(\d{2,4})/i);
+        // Parser les dimensions pour L x l x h
         if (dimsMatch) {
           product.longueur_mm = parseInt(dimsMatch[1]);
           product.largeur_mm = parseInt(dimsMatch[2]);
           product.hauteur_mm = parseInt(dimsMatch[3]);
-          product.dimensions = `${product.longueur_mm}x${product.largeur_mm}x${product.hauteur_mm} mm`;
         }
-      }
 
-      products.push(product);
+        products.push(product);
+        console.log("📊 Produit parsé:", {
+          ref: product.reference,
+          nom: product.nom,
+          prixRef: product.prix_reference,
+          prixVente: product.prix_vente_ttc,
+        });
+      }
     }
 
-    console.log("📊 Produits parsés depuis tableau:", products.length);
+    console.log("📊 ====== FIN PARSING: " + products.length + " produits ======");
     return products;
   };
 
