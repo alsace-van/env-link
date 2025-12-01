@@ -1,271 +1,125 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Package, Plus, Check } from "lucide-react";
-import { toast } from "sonner";
+import { Package, Plus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
-interface Accessory {
-  id: string;
-  nom_accessoire?: string;
-  nom?: string;
-  marque?: string;
-  categorie?: string;
-  type_electrique?: string;
-  prix?: number;
-  prix_reference?: number;
-  prix_vente_ttc?: number;
-  marge_pourcent?: number;
-  fournisseur?: string;
-  quantite?: number;
-  category_id?: string;
-  categories?: { nom: string };
-  poids_kg?: number;
-  longueur_mm?: number;
-  largeur_mm?: number;
-  hauteur_mm?: number;
-  puissance_watts?: number;
-  intensite_amperes?: number;
-  image_url?: string | null;
-  url_produit?: string | null;
-  last_price_check?: string | null;
-}
+import { Input } from "@/components/ui/input";
 
 interface AccessorySelectorProps {
-  projectId: string;
-  onSelectAccessory: (accessory: Accessory, source: "expense" | "catalog") => void;
-  onAddToCatalog?: (accessory: Accessory) => void;
+  selectedAccessories: any[];
+  onChange: (accessories: any[]) => void;
+  productType: string;
 }
 
-export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog }: AccessorySelectorProps) => {
-  const [expenses, setExpenses] = useState<Accessory[]>([]);
-  const [catalog, setCatalog] = useState<Accessory[]>([]);
+export const AccessorySelector = ({ selectedAccessories, onChange, productType }: AccessorySelectorProps) => {
+  const [catalog, setCatalog] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
-    if (open) {
-      loadData();
-    }
-  }, [open, projectId]);
+    loadCatalog();
+  }, []);
 
-  const loadData = async () => {
+  const loadCatalog = async () => {
     setLoading(true);
-
-    const { data: expensesData, error: expensesError } = await supabase
-      .from("project_expenses")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("nom_accessoire");
-
-    if (expensesError) {
-      console.error("Erreur lors du chargement des dépenses:", expensesError);
-    } else {
-      setExpenses(expensesData || []);
-    }
-
-    const { data: catalogData, error: catalogError } = await supabase
+    const { data, error } = await supabase
       .from("accessories_catalog")
-      .select("*, categories!category_id(nom), url_produit, last_price_check")
+      .select("id, nom, marque, prix_reference, image_url, categories!category_id(nom)")
       .order("nom");
 
-    if (catalogError) {
-      console.error("Erreur lors du chargement du catalogue:", catalogError);
+    if (error) {
+      console.error("Erreur lors du chargement du catalogue:", error);
     } else {
-      setCatalog(catalogData || []);
+      setCatalog(data || []);
     }
-
     setLoading(false);
   };
 
-  // Vérifier si le prix doit être mis à jour (>7 jours ou jamais vérifié)
-  const shouldUpdatePrice = (lastCheck: string | null | undefined): boolean => {
-    if (!lastCheck) return true;
-    const daysSinceCheck = (Date.now() - new Date(lastCheck).getTime()) / (1000 * 60 * 60 * 24);
-    return daysSinceCheck > 7;
-  };
-
-  const handleAddToExpenses = async (accessory: Accessory) => {
-    const { data: fullAccessory } = await supabase
-      .from("accessories_catalog")
-      .select("*")
-      .eq("id", accessory.id)
-      .single();
-
-    const accessoryToAdd = fullAccessory || accessory;
-
-    // Vérifier si le prix doit être mis à jour
-    if (accessoryToAdd.url_produit && shouldUpdatePrice(accessoryToAdd.last_price_check)) {
-      const daysSinceCheck = accessoryToAdd.last_price_check
-        ? Math.floor((Date.now() - new Date(accessoryToAdd.last_price_check).getTime()) / (1000 * 60 * 60 * 24))
-        : null;
-
-      const message = daysSinceCheck
-        ? `Le prix n'a pas été vérifié depuis ${daysSinceCheck} jours`
-        : "Le prix n'a jamais été vérifié";
-
-      toast.info(`${message}. Voulez-vous vérifier le prix actuel ?`, {
-        duration: 8000,
-        action: {
-          label: "Vérifier le prix",
-          onClick: () => {
-            window.open(accessoryToAdd.url_produit!, "_blank");
-            toast.info("Utilisez l'extension Van Price pour mettre à jour le prix", { duration: 5000 });
-          },
-        },
-      });
-    }
-
-    const { error } = await supabase.from("project_expenses").insert({
-      project_id: projectId,
-      nom_accessoire: accessoryToAdd.nom || "Accessoire",
-      marque: accessoryToAdd.marque,
-      prix: accessoryToAdd.prix_reference || 0,
-      quantite: 1,
-      fournisseur: accessoryToAdd.fournisseur,
-      categorie: accessory.categories?.nom || accessory.category_id || "",
-      type_electrique: accessoryToAdd.type_electrique,
-      accessory_id: accessoryToAdd.id,
-      prix_vente_ttc: accessoryToAdd.prix_vente_ttc,
-      poids_kg: accessoryToAdd.poids_kg,
-      puissance_watts: accessoryToAdd.puissance_watts,
-      intensite_amperes: accessoryToAdd.intensite_amperes,
-    });
-
-    if (error) {
-      toast.error("Erreur lors de l'ajout aux dépenses");
-      console.error(error);
-    } else {
-      toast.success("Accessoire ajouté aux dépenses");
-
-      loadData();
-      if (onAddToCatalog) {
-        onAddToCatalog(accessoryToAdd);
-      }
+  const handleAdd = (accessory: any) => {
+    if (!selectedAccessories.find((a) => a.id === accessory.id)) {
+      onChange([...selectedAccessories, accessory]);
     }
   };
 
-  const renderAccessoryCard = (accessory: Accessory, source: "expense" | "catalog") => {
-    const name = accessory.nom_accessoire || accessory.nom || "Sans nom";
-    const categoryName = accessory.categories?.nom || accessory.categorie;
-    const price = accessory.prix || accessory.prix_reference;
+  const handleRemove = (id: string) => {
+    onChange(selectedAccessories.filter((a) => a.id !== id));
+  };
 
+  const filteredCatalog = catalog.filter((acc) => {
+    const searchLower = search.toLowerCase();
     return (
-      <div
-        key={accessory.id}
-        className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-      >
-        {accessory.image_url && (
-          <img src={accessory.image_url} alt={name} className="w-12 h-12 object-contain rounded border flex-shrink-0" />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="font-medium truncate">{name}</div>
-          <div className="flex flex-wrap gap-1 mt-1">
-            {accessory.marque && (
-              <Badge variant="secondary" className="text-xs">
-                {accessory.marque}
-              </Badge>
-            )}
-            {categoryName && (
-              <Badge variant="outline" className="text-xs">
-                {categoryName}
-              </Badge>
-            )}
-            {accessory.type_electrique && (
-              <Badge variant="outline" className="text-xs">
-                {accessory.type_electrique}
-              </Badge>
-            )}
-          </div>
-          {price && (
-            <div className="text-sm text-muted-foreground mt-1">
-              {price.toFixed(2)} €{accessory.quantite && source === "expense" && ` × ${accessory.quantite}`}
-            </div>
-          )}
-        </div>
-        <div className="flex gap-2 flex-shrink-0">
-          {source === "catalog" && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleAddToExpenses(accessory)}
-              title="Ajouter aux dépenses"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() => {
-              onSelectAccessory(accessory, source);
-              setOpen(false);
-            }}
-          >
-            <Check className="h-4 w-4 mr-1" />
-            Ajouter
-          </Button>
-        </div>
-      </div>
+      acc.nom?.toLowerCase().includes(searchLower) ||
+      acc.marque?.toLowerCase().includes(searchLower)
     );
-  };
+  });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Package className="h-4 w-4 mr-2" />
-          Accessoires
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Ajouter un Accessoire au Schéma</DialogTitle>
-          <DialogDescription>Sélectionnez un accessoire depuis vos dépenses ou votre catalogue</DialogDescription>
-        </DialogHeader>
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-sm font-medium mb-2">Accessoires sélectionnés ({selectedAccessories.length})</h4>
+        {selectedAccessories.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucun accessoire sélectionné</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {selectedAccessories.map((acc) => (
+              <Badge key={acc.id} variant="secondary" className="flex items-center gap-1">
+                {acc.nom || "Sans nom"}
+                <button onClick={() => handleRemove(acc.id)} className="ml-1 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
 
-        <Tabs defaultValue="expenses" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="expenses">Dépenses ({expenses.length})</TabsTrigger>
-            <TabsTrigger value="catalog">Catalogue ({catalog.length})</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="expenses" className="mt-4">
-            <ScrollArea className="h-[400px] pr-4">
-              {loading ? (
-                <p className="text-center text-muted-foreground py-8">Chargement...</p>
-              ) : expenses.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Aucun accessoire dans les dépenses</p>
-              ) : (
-                <div className="space-y-2">
-                  {expenses.map((accessory) => renderAccessoryCard(accessory, "expense"))}
-                </div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-
-          <TabsContent value="catalog" className="mt-4">
-            <ScrollArea className="h-[400px] pr-4">
-              {loading ? (
-                <p className="text-center text-muted-foreground py-8">Chargement...</p>
-              ) : catalog.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Aucun accessoire dans le catalogue</p>
-              ) : (
-                <div className="space-y-2">{catalog.map((accessory) => renderAccessoryCard(accessory, "catalog"))}</div>
-              )}
-            </ScrollArea>
-          </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+      <div>
+        <Input
+          placeholder="Rechercher un accessoire..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mb-2"
+        />
+        <h4 className="text-sm font-medium mb-2">Catalogue ({filteredCatalog.length})</h4>
+        <ScrollArea className="h-[300px] border rounded-md p-2">
+          {loading ? (
+            <p className="text-center text-muted-foreground py-4">Chargement...</p>
+          ) : filteredCatalog.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">Aucun accessoire trouvé</p>
+          ) : (
+            <div className="space-y-2">
+              {filteredCatalog.map((accessory) => {
+                const isSelected = selectedAccessories.some((a) => a.id === accessory.id);
+                return (
+                  <div
+                    key={accessory.id}
+                    className={`flex items-center gap-3 p-2 border rounded-lg ${isSelected ? "bg-muted" : "hover:bg-muted/50"}`}
+                  >
+                    {accessory.image_url && (
+                      <img src={accessory.image_url} alt={accessory.nom} className="w-10 h-10 object-contain rounded" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">{accessory.nom || "Sans nom"}</div>
+                      {accessory.marque && <div className="text-xs text-muted-foreground">{accessory.marque}</div>}
+                      {accessory.prix_reference && (
+                        <div className="text-xs text-muted-foreground">{accessory.prix_reference.toFixed(2)} €</div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={isSelected ? "secondary" : "outline"}
+                      onClick={() => (isSelected ? handleRemove(accessory.id) : handleAdd(accessory))}
+                    >
+                      {isSelected ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </ScrollArea>
+      </div>
+    </div>
   );
 };

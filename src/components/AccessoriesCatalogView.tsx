@@ -306,7 +306,7 @@ const AccessoriesCatalogView = () => {
 
   // Marquer un article comme complété
   const handleMarkAsCompleted = async (id: string) => {
-    const { error } = await supabase.from("accessories_catalog").update({ needs_completion: false }).eq("id", id);
+    const { error } = await (supabase.from("accessories_catalog") as any).update({ needs_completion: false }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
