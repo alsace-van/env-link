@@ -3,14 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Users, Shield, Trash2, Activity, FileText } from "lucide-react";
 import { toast } from "sonner";
@@ -57,8 +50,10 @@ const Admin = () => {
   }, []);
 
   const checkAdminAccess = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (!user) {
       navigate("/");
       return;
@@ -86,18 +81,17 @@ const Admin = () => {
     setIsLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-get-users`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-        }
-      );
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-get-users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+      });
 
       const result = await response.json();
 
@@ -118,19 +112,18 @@ const Admin = () => {
     if (!deleteUserId) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-delete-user`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({ userId: deleteUserId }),
-        }
-      );
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-delete-user`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ userId: deleteUserId }),
+      });
 
       const result = await response.json();
 
@@ -151,11 +144,7 @@ const Admin = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container max-w-7xl mx-auto py-8 px-4">
-        <Button
-          variant="ghost"
-          onClick={() => navigate("/dashboard")}
-          className="mb-6"
-        >
+        <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Retour au tableau de bord
         </Button>
@@ -166,9 +155,7 @@ const Admin = () => {
               <Shield className="h-8 w-8 text-primary" />
               <div>
                 <h1 className="text-3xl font-bold">Administration</h1>
-                <p className="text-muted-foreground">
-                  Gestion des utilisateurs et de la plateforme
-                </p>
+                <p className="text-muted-foreground">Gestion des utilisateurs et de la plateforme</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -181,50 +168,34 @@ const Admin = () => {
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total des utilisateurs
-                </CardTitle>
+                <CardTitle className="text-sm font-medium">Total des utilisateurs</CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{users.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Comptes enregistrés
-                </p>
+                <p className="text-xs text-muted-foreground">Comptes enregistrés</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Administrateurs
-                </CardTitle>
+                <CardTitle className="text-sm font-medium">Administrateurs</CardTitle>
                 <Shield className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {users.filter((u) => u.is_admin).length}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Comptes avec privilèges admin
-                </p>
+                <div className="text-2xl font-bold">{users.filter((u) => u.is_admin).length}</div>
+                <p className="text-xs text-muted-foreground">Comptes avec privilèges admin</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total des projets
-                </CardTitle>
+                <CardTitle className="text-sm font-medium">Total des projets</CardTitle>
                 <Activity className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {users.reduce((sum, u) => sum + u.project_count, 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Projets créés
-                </p>
+                <div className="text-2xl font-bold">{users.reduce((sum, u) => sum + u.project_count, 0)}</div>
+                <p className="text-xs text-muted-foreground">Projets créés</p>
               </CardContent>
             </Card>
           </div>
@@ -244,9 +215,7 @@ const Admin = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Liste des utilisateurs</CardTitle>
-                  <CardDescription>
-                    Vue d'ensemble de tous les comptes utilisateurs
-                  </CardDescription>
+                  <CardDescription>Vue d'ensemble de tous les comptes utilisateurs</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {isLoading ? (
@@ -267,12 +236,8 @@ const Admin = () => {
                       <TableBody>
                         {users.map((user) => (
                           <TableRow key={user.id}>
-                            <TableCell className="font-medium">
-                              {user.email}
-                            </TableCell>
-                            <TableCell>
-                              {user.display_name || "-"}
-                            </TableCell>
+                            <TableCell className="font-medium">{user.email}</TableCell>
+                            <TableCell>{user.display_name || "-"}</TableCell>
                             <TableCell>
                               {user.is_admin ? (
                                 <Badge variant="default">
@@ -304,16 +269,9 @@ const Admin = () => {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
-                                <SendMessageDialog 
-                                  recipientId={user.id} 
-                                  recipientEmail={user.email}
-                                />
+                                <SendMessageDialog recipientId={user.id} recipientEmail={user.email} />
                                 {user.id !== currentUser?.id && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setDeleteUserId(user.id)}
-                                  >
+                                  <Button variant="ghost" size="sm" onClick={() => setDeleteUserId(user.id)}>
                                     <Trash2 className="h-4 w-4 text-destructive" />
                                   </Button>
                                 )}
@@ -359,13 +317,16 @@ const Admin = () => {
             <AlertDialogHeader>
               <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
               <AlertDialogDescription>
-                Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible
-                et supprimera également tous ses projets et données associées.
+                Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible et supprimera
+                également tous ses projets et données associées.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Annuler</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
                 Supprimer
               </AlertDialogAction>
             </AlertDialogFooter>
