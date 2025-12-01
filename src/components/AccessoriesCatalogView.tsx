@@ -78,6 +78,9 @@ interface Accessory {
   hauteur_mm?: number;
   puissance_watts?: number;
   intensite_amperes?: number;
+  capacite_ah?: number;
+  tension_volts?: number;
+  volume_litres?: number;
   available_in_shop?: boolean;
   image_url?: string | null;
   categories?: Category;
@@ -301,10 +304,9 @@ const AccessoriesCatalogView = () => {
     handleFormClose();
   };
 
-  // Marquer un article comme complété (bypass TS - column may not be in generated types)
+  // Marquer un article comme complété
   const handleMarkAsCompleted = async (id: string) => {
-    const updatePayload = { needs_completion: false };
-    const { error } = await (supabase as any).from("accessories_catalog").update(updatePayload).eq("id", id);
+    const { error } = await supabase.from("accessories_catalog").update({ needs_completion: false }).eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
