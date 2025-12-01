@@ -80,8 +80,7 @@ export function AdminDownloadsManager() {
     try {
       setLoading(true);
       setError(null);
-
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await (supabase as any)
         .from('downloads')
         .select('*')
         .order('sort_order', { ascending: true })
@@ -128,7 +127,7 @@ export function AdminDownloadsManager() {
       }
 
       // Supprimer l'entrée de la base de données
-      const { error: dbError } = await supabase
+      const { error: dbError } = await (supabase as any)
         .from('downloads')
         .delete()
         .eq('id', deleteItemId);
@@ -147,7 +146,7 @@ export function AdminDownloadsManager() {
 
   const toggleActive = async (id: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('downloads')
         .update({ is_active: !currentStatus, updated_at: new Date().toISOString() })
         .eq('id', id);
@@ -164,7 +163,7 @@ export function AdminDownloadsManager() {
 
   const toggleFeatured = async (id: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('downloads')
         .update({ is_featured: !currentStatus, updated_at: new Date().toISOString() })
         .eq('id', id);
