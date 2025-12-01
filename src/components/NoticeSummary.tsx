@@ -2,11 +2,14 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, AlertCircle, Search, X } from "lucide-react";
+import { Sparkles, Loader2, AlertCircle, Search, X, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
+import { useAIConfig } from "@/hooks/useAIConfig";
+import { AIConfigDialog } from "@/components/AIConfigDialog";
+import { callAI } from "@/services/aiService";
 
 interface NoticeSummaryProps {
   noticeId: string;
@@ -14,132 +17,120 @@ interface NoticeSummaryProps {
   onSummaryGenerated?: (summary: string) => void;
 }
 
-interface AIUsage {
-  plan: string;
-  today_count: number;
-  month_count: number;
-  month_tokens: number;
-  limit_per_day: number;
-  limit_per_month: number;
-  remaining_today: number;
-  remaining_month_tokens: number;
-}
-
+/**
+ * NoticeSummary - VERSION MULTI-IA (Clé utilisateur)
+ * 
+ * L'utilisateur configure sa propre clé API pour générer les résumés.
+ * Pas de gestion de quotas côté serveur.
+ */
 export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }: NoticeSummaryProps) => {
   const [summary, setSummary] = useState<string | null>(existingSummary || null);
   const [loading, setLoading] = useState(false);
-  const [usage, setUsage] = useState<AIUsage | null>(null);
-  const [loadingUsage, setLoadingUsage] = useState(false);
-  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState(0);
+  const [showAiConfig, setShowAiConfig] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  const loadUsage = async () => {
-    setLoadingUsage(true);
-    try {
-      const { data, error } = await supabase.rpc("get_user_ai_usage" as any, {
-        p_feature: "pdf_summary",
-      });
+  // Configuration IA centralisée
+  const { config: aiConfig, isConfigured: aiIsConfigured, providerInfo: aiProviderInfo } = useAIConfig();
 
-      if (error) {
-        console.error("Erreur chargement usage:", error);
-        return;
+  // Charger l'URL du PDF de la notice
+  useEffect(() => {
+    const loadNoticeUrl = async () => {
+      const { data, error } = await supabase
+        .from("notices")
+        .select("fichier_url")
+        .eq("id", noticeId)
+        .single();
+      
+      if (data?.fichier_url) {
+        setPdfUrl(data.fichier_url);
       }
-
-      if (data && Array.isArray(data) && data.length > 0) {
-        setUsage(data[0] as AIUsage);
-      }
-    } catch (error) {
-      console.error("Erreur:", error);
-    } finally {
-      setLoadingUsage(false);
-    }
-  };
+    };
+    loadNoticeUrl();
+  }, [noticeId]);
 
   const handleGenerateSummary = async () => {
+    // Vérifier que l'IA est configurée
+    if (!aiIsConfigured) {
+      setShowAiConfig(true);
+      toast.error("Veuillez d'abord configurer votre clé API IA");
+      return;
+    }
+
+    if (!pdfUrl) {
+      toast.error("Impossible de récupérer le fichier PDF");
+      return;
+    }
+
     setLoading(true);
-    setErrorDetails(null);
-    await loadUsage();
 
     try {
-      console.log("🚀 Appel Edge Function avec noticeId:", noticeId);
+      console.log(`🚀 Génération du résumé avec ${aiProviderInfo.name}...`);
+      toast.info(`Analyse avec ${aiProviderInfo.name}...`);
 
-      const { data, error } = await supabase.functions.invoke("summarize-notice", {
-        body: { noticeId },
+      // Télécharger le PDF et le convertir en base64
+      const response = await fetch(pdfUrl);
+      const blob = await response.blob();
+      const base64 = await blobToBase64(blob);
+      const base64Data = base64.includes(",") ? base64.split(",")[1] : base64;
+
+      const prompt = `Analyse cette notice technique et génère un résumé structuré en français.
+
+Le résumé doit inclure :
+1. **Présentation du produit** : Nom, marque, fonction principale
+2. **Caractéristiques techniques** : Dimensions, poids, puissance, capacités
+3. **Installation** : Étapes principales d'installation et prérequis
+4. **Utilisation** : Mode d'emploi et fonctionnalités principales
+5. **Sécurité** : Précautions importantes et avertissements
+6. **Entretien** : Conseils de maintenance
+
+Format le résumé de manière claire avec des sections bien identifiées.
+Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
+
+      const aiResponse = await callAI({
+        provider: aiConfig.provider,
+        apiKey: aiConfig.apiKey,
+        prompt,
+        pdfBase64: base64Data,
+        maxTokens: 4000,
       });
 
-      console.log("📥 Réponse Edge Function:", { data, error });
-
-      if (error) {
-        console.error("❌ Erreur Edge Function:", error);
-
-        // AFFICHER L'ERREUR COMPLÈTE
-        const errorMessage = JSON.stringify(error, null, 2);
-        setErrorDetails(errorMessage);
-
-        toast.error("Erreur lors de la génération du résumé", {
-          description: error.message || "Erreur inconnue",
-          duration: 10000,
-        });
-        return;
+      if (!aiResponse.success || !aiResponse.text) {
+        throw new Error(aiResponse.error || "Erreur lors de la génération du résumé");
       }
 
-      if (data?.error) {
-        console.error("❌ Erreur dans data:", data.error);
-        setErrorDetails(JSON.stringify(data, null, 2));
+      const generatedSummary = aiResponse.text;
+      setSummary(generatedSummary);
 
-        if (data.error.includes("Limite")) {
-          toast.error(data.error, {
-            description: `Réinitialisation à minuit`,
-            action: {
-              label: "Passer Pro",
-              onClick: () => (window.location.href = "/pricing"),
-            },
-            duration: 5000,
-          });
-        } else {
-          toast.error(data.error, { duration: 10000 });
-        }
-        return;
-      }
+      // Sauvegarder le résumé en base
+      await supabase
+        .from("notices")
+        .update({ resume_ia: generatedSummary })
+        .eq("id", noticeId);
 
-      console.log("✅ Résumé généré avec succès");
-      setSummary(data.summary);
       if (onSummaryGenerated) {
-        onSummaryGenerated(data.summary);
+        onSummaryGenerated(generatedSummary);
       }
 
-      if (data.fromCache) {
-        toast.success("Résumé récupéré instantanément (cache)", {
-          description: "Aucun crédit utilisé",
-        });
-      } else {
-        toast.success("Résumé généré avec succès !", {
-          description: `${data.tokens} tokens utilisés`,
-        });
-      }
+      toast.success("Résumé généré avec succès !");
 
-      // Recharger l'usage
-      await loadUsage();
-    } catch (error) {
-      console.error("❌ Exception:", error);
-      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      setErrorDetails(errorMessage);
-      toast.error("Erreur lors de la génération du résumé", {
-        description: errorMessage,
-        duration: 10000,
-      });
+    } catch (error: any) {
+      console.error("❌ Erreur:", error);
+      toast.error(error.message || "Erreur lors de la génération du résumé");
     } finally {
       setLoading(false);
     }
   };
 
-  // Charger l'usage au montage si pas de résumé existant
-  useEffect(() => {
-    if (!existingSummary) {
-      loadUsage();
-    }
-  }, [existingSummary]);
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(blob);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
 
   // Fonction pour surligner les mots recherchés
   const highlightText = (text: string, query: string) => {
@@ -165,148 +156,142 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
     : summary;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              Résumé IA
-            </CardTitle>
-            <CardDescription>Résumé automatique généré par intelligence artificielle</CardDescription>
-          </div>
-          {!summary && usage && (
-            <Badge variant={usage.remaining_today > 2 ? "secondary" : "destructive"}>
-              {usage.remaining_today === -1
-                ? "∞ résumés restants"
-                : `${usage.remaining_today}/${usage.limit_per_day} restants aujourd'hui`}
-            </Badge>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* AFFICHAGE DEBUG DES ERREURS */}
-        {errorDetails && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              <div className="font-mono text-xs whitespace-pre-wrap max-h-64 overflow-y-auto">{errorDetails}</div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {!summary ? (
-          <div className="space-y-4">
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Générez un résumé intelligent de cette notice pour en extraire les informations clés : caractéristiques
-                techniques, installation, sécurité et conseils d'utilisation.
-              </AlertDescription>
-            </Alert>
-
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                Résumé IA
+              </CardTitle>
+              <CardDescription>Résumé automatique généré par intelligence artificielle</CardDescription>
+            </div>
             <Button
-              onClick={handleGenerateSummary}
-              disabled={loading || loadingUsage || usage?.remaining_today === 0}
-              className="w-full"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAiConfig(true)}
+              className="text-muted-foreground"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Génération en cours...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Générer le résumé IA
-                </>
-              )}
+              <Settings2 className="h-4 w-4 mr-1" />
+              {aiIsConfigured ? aiProviderInfo.name : "Configurer"}
             </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!summary ? (
+            <div className="space-y-4">
+              {/* Alerte si IA non configurée */}
+              {!aiIsConfigured ? (
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Sparkles className="h-5 w-5 text-amber-600 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-amber-800 dark:text-amber-200">Configuration IA requise</p>
+                      <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                        Pour générer des résumés, configurez votre clé API IA (Gemini gratuit recommandé).
+                      </p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-2"
+                        onClick={() => setShowAiConfig(true)}
+                      >
+                        Configurer maintenant
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Générez un résumé intelligent de cette notice pour en extraire les informations clés : 
+                    caractéristiques techniques, installation, sécurité et conseils d'utilisation.
+                  </AlertDescription>
+                </Alert>
+              )}
 
-            {usage && usage.remaining_today === 0 && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Limite journalière atteinte ({usage.limit_per_day} résumés).
-                  {usage.plan === "free" && (
+              <Button
+                onClick={handleGenerateSummary}
+                disabled={loading || !aiIsConfigured}
+                className="w-full"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Génération en cours...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Générer le résumé IA
+                  </>
+                )}
+              </Button>
+
+              {aiIsConfigured && (
+                <p className="text-xs text-center text-muted-foreground">
+                  Utilise votre clé {aiProviderInfo.name}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Barre de recherche */}
+              <div className="flex items-center gap-2 pb-2 border-b">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Rechercher dans le résumé..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-9"
+                  />
+                  {searchQuery && (
                     <Button
-                      variant="link"
-                      className="p-0 h-auto font-normal ml-1"
-                      onClick={() => (window.location.href = "/pricing")}
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults(0);
+                      }}
                     >
-                      Passez Pro pour 50 résumés/jour
+                      <X className="h-4 w-4" />
                     </Button>
                   )}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {usage && usage.plan === "free" && usage.remaining_today > 0 && usage.remaining_today < 3 && (
-              <div className="text-sm text-muted-foreground text-center">
-                Plus que {usage.remaining_today} résumé{usage.remaining_today > 1 ? "s" : ""} gratuit
-                {usage.remaining_today > 1 ? "s" : ""} aujourd'hui.{" "}
-                <Button
-                  variant="link"
-                  className="p-0 h-auto font-normal"
-                  onClick={() => (window.location.href = "/pricing")}
-                >
-                  Passer Pro
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Barre de recherche */}
-            <div className="flex items-center gap-2 pb-2 border-b">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Rechercher dans le résumé..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-9"
-                />
+                </div>
                 {searchQuery && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-                    onClick={() => {
-                      setSearchQuery("");
-                      setSearchResults(0);
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  <Badge variant="secondary" className="shrink-0">
+                    {searchResults} résultat{searchResults !== 1 ? 's' : ''}
+                  </Badge>
                 )}
               </div>
-              {searchQuery && (
-                <Badge variant="secondary" className="shrink-0">
-                  {searchResults} résultat{searchResults !== 1 ? 's' : ''}
-                </Badge>
-              )}
-            </div>
 
-            {/* Résumé avec surlignage */}
-            <div 
-              className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap"
-              dangerouslySetInnerHTML={{ __html: displayedSummary || '' }}
-            />
+              {/* Résumé avec surlignage */}
+              <div 
+                className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap"
+                dangerouslySetInnerHTML={{ __html: displayedSummary || '' }}
+              />
 
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div className="text-xs text-muted-foreground">
-                Résumé généré par IA • Vérifiez toujours la notice complète
+              <div className="flex justify-between items-center pt-4 border-t">
+                <div className="text-xs text-muted-foreground">
+                  Résumé généré par {aiProviderInfo.name} • Vérifiez toujours la notice complète
+                </div>
+                <Button variant="outline" size="sm" onClick={handleGenerateSummary} disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Sparkles className="mr-2 h-3 w-3" />}
+                  Régénérer
+                </Button>
               </div>
-              <Button variant="outline" size="sm" onClick={handleGenerateSummary} disabled={loading}>
-                {loading ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Sparkles className="mr-2 h-3 w-3" />}
-                Régénérer
-              </Button>
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialog Configuration IA */}
+      <AIConfigDialog open={showAiConfig} onOpenChange={setShowAiConfig} />
+    </>
   );
 };
