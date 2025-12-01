@@ -24,11 +24,15 @@ import {
   Minus,
   Plus,
   Eye,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import * as XLSX from "xlsx";
 import * as pdfjsLib from "pdfjs-dist";
+import { useAIConfig } from "@/hooks/useAIConfig";
+import { AIConfigDialog, AIConfigBadge } from "@/components/AIConfigDialog";
+import { callAI, parseAIJsonResponse } from "@/services/aiService";
 
 // Configuration pdf.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
@@ -88,6 +92,10 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   const [isUpdateMode, setIsUpdateMode] = useState(false);
   const [existingAccessories, setExistingAccessories] = useState<ExistingAccessory[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Configuration IA centralisée
+  const [showAiConfig, setShowAiConfig] = useState(false);
+  const { config: aiConfig, isConfigured: aiIsConfigured, providerInfo: aiProviderInfo } = useAIConfig();
 
   // Charger les accessoires existants
   useEffect(() => {
@@ -263,120 +271,113 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     }
   };
 
-  // Import PDF
+  // Import PDF avec IA (service centralisé)
   const handlePdfFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Vérifier la configuration IA
+    if (!aiIsConfigured) {
+      setShowAiConfig(true);
+      toast.error("Veuillez configurer votre clé API IA");
+      return;
+    }
+
     setIsLoading(true);
     try {
+      // Convertir le PDF en base64
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const base64Data = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
+      );
 
-      // Extraire tous les éléments de texte avec leurs positions
-      interface TextItem {
-        text: string;
-        x: number;
-        y: number;
-        width: number;
-        page: number;
-      }
+      console.log(`📊 Envoi du PDF à ${aiConfig.provider}...`);
+      toast.info(`Analyse du PDF par ${aiProviderInfo.name} en cours...`);
 
-      const allItems: TextItem[] = [];
+      const prompt = `Analyse ce catalogue PDF et extrait TOUS les produits en JSON.
 
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const viewport = page.getViewport({ scale: 1 });
+Pour chaque produit, extrais:
+- reference: le code/référence du produit (ex: "LTPRO12-60", "PSW12-350-V2")  
+- designation: la description complète du produit
+- prix_achat: le prix d'achat/net HT (le plus petit prix, SANS le symbole €, juste le nombre)
+- prix_vente: le prix de vente/PPC HT (le plus grand prix, SANS le symbole €, juste le nombre)
+- poids: le poids en kg (nombre décimal, ex: 6.5)
+- dimensions: les dimensions au format "LxlxH" (ex: "229x145x217")
 
-        for (const item of textContent.items as any[]) {
-          if (item.str.trim()) {
-            allItems.push({
-              text: item.str,
-              x: Math.round(item.transform[4]),
-              y: Math.round(viewport.height - item.transform[5]), // Inverser Y pour avoir haut->bas
-              width: item.width || 0,
-              page: i,
-            });
-          }
-        }
-      }
+IMPORTANT:
+- Extrais TOUS les produits de TOUTES les pages, pas seulement les premiers
+- Les prix sont en HT (hors taxes)
+- Le prix d'achat est toujours INFÉRIEUR au prix de vente
+- Retourne UNIQUEMENT un tableau JSON valide, sans texte avant ou après, sans markdown
+- Format attendu: [{"reference":"XXX","designation":"YYY","prix_achat":123,"prix_vente":456,"poids":1.5,"dimensions":"100x50x30"},...]
+- Si un champ n'est pas disponible, mets null`;
 
-      // Trier par page puis par Y puis par X
-      allItems.sort((a, b) => {
-        if (a.page !== b.page) return a.page - b.page;
-        if (Math.abs(a.y - b.y) > 8) return a.y - b.y; // Tolérance de 8 pixels pour même ligne
-        return a.x - b.x;
+      const response = await callAI({
+        provider: aiConfig.provider,
+        apiKey: aiConfig.apiKey,
+        prompt,
+        pdfBase64: base64Data,
+        maxTokens: 65536,
       });
 
-      // === NOUVEAU : Essayer d'abord le parsing de tableau ===
-      const tableProducts = parseTableFromPdfItems(allItems);
-
-      if (tableProducts.length > 0) {
-        console.log("✅ Parsing tableau réussi:", tableProducts.length, "produits");
-        const enrichedProducts = enrichProductsWithUpdateInfo(tableProducts);
-        setParsedProducts(enrichedProducts);
-        setImportStep("preview");
-
-        const updateCount = enrichedProducts.filter((p) => p.isUpdate).length;
-        const changedCount = enrichedProducts.filter((p) => p.priceChanged).length;
-        const newCount = enrichedProducts.filter((p) => !p.isUpdate).length;
-
-        toast.success(
-          `${enrichedProducts.length} produits (tableau) : ${updateCount} existants (${changedCount} modifiés), ${newCount} nouveaux`,
-        );
+      if (!response.success || !response.text) {
+        toast.error(response.error || "Erreur lors de l'analyse du PDF");
         return;
       }
 
-      // === Sinon, utiliser le parsing texte classique ===
-      // Regrouper en lignes (éléments avec Y similaire)
-      const lines: string[] = [];
-      let currentLine: string[] = [];
-      let currentY = -1;
-      let currentPage = -1;
+      const parsedData = parseAIJsonResponse<any[]>(response.text);
 
-      for (const item of allItems) {
-        if (currentPage !== item.page || (currentY !== -1 && Math.abs(item.y - currentY) > 8)) {
-          // Nouvelle ligne
-          if (currentLine.length > 0) {
-            lines.push(currentLine.join(" "));
-          }
-          currentLine = [item.text];
-          currentY = item.y;
-          currentPage = item.page;
-        } else {
-          currentLine.push(item.text);
-          currentY = item.y; // Mettre à jour Y pour la moyenne
-        }
-      }
-      if (currentLine.length > 0) {
-        lines.push(currentLine.join(" "));
+      if (!parsedData || parsedData.length === 0) {
+        toast.warning("Aucun produit détecté dans le PDF");
+        return;
       }
 
-      const fullText = lines.join("\n");
-      console.log("Texte extrait (premières lignes):", lines.slice(0, 20));
+      console.log(`📊 ${parsedData.length} produits extraits par ${aiConfig.provider}`);
 
-      setPdfText(fullText);
-      const products = parsePdfText(fullText);
+      // Convertir en ParsedProduct
+      const products: ParsedProduct[] = parsedData.map((p, idx) => {
+        const prixAchat = typeof p.prix_achat === "number" ? p.prix_achat : 
+          (p.prix_achat ? parseFloat(String(p.prix_achat).replace(/\s/g, "").replace(",", ".")) : undefined);
+        const prixVente = typeof p.prix_vente === "number" ? p.prix_vente :
+          (p.prix_vente ? parseFloat(String(p.prix_vente).replace(/\s/g, "").replace(",", ".")) : undefined);
+        const poids = typeof p.poids === "number" ? p.poids :
+          (p.poids ? parseFloat(String(p.poids).replace(",", ".")) : undefined);
 
-      if (products.length > 0) {
-        const enrichedProducts = enrichProductsWithUpdateInfo(products);
-        setParsedProducts(enrichedProducts);
-        setImportStep("preview");
+        return {
+          id: `import-${idx}`,
+          selected: true,
+          reference: String(p.reference || "").trim(),
+          nom: String(p.designation || p.nom || p.reference || "").trim(),
+          description: p.designation,
+          prix_reference: prixAchat && prixAchat > 0 ? prixAchat : undefined,
+          prix_vente_ttc: prixVente && prixVente > 0 ? prixVente : undefined,
+          poids_kg: poids && poids > 0 && poids < 500 ? poids : undefined,
+          dimensions: p.dimensions || undefined,
+          fournisseur: p.fournisseur || p.marque,
+          marque: p.marque,
+        };
+      }).filter(p => p.reference);
 
-        const updateCount = enrichedProducts.filter((p) => p.isUpdate).length;
-        const changedCount = enrichedProducts.filter((p) => p.priceChanged).length;
-        const newCount = enrichedProducts.filter((p) => !p.isUpdate).length;
-
-        toast.success(
-          `${enrichedProducts.length} produits : ${updateCount} existants (${changedCount} modifiés), ${newCount} nouveaux`,
-        );
-      } else {
-        toast.warning("Aucun produit détecté");
+      if (products.length === 0) {
+        toast.warning("Aucun produit valide détecté");
+        return;
       }
-    } catch (error) {
+
+      const enrichedProducts = enrichProductsWithUpdateInfo(products);
+      setParsedProducts(enrichedProducts);
+      setImportStep("preview");
+
+      const updateCount = enrichedProducts.filter((p) => p.isUpdate).length;
+      const changedCount = enrichedProducts.filter((p) => p.priceChanged).length;
+      const newCount = enrichedProducts.filter((p) => !p.isUpdate).length;
+
+      toast.success(
+        `${enrichedProducts.length} produits (${aiProviderInfo.name}) : ${updateCount} existants (${changedCount} modifiés), ${newCount} nouveaux`
+      );
+
+    } catch (error: any) {
       console.error("Erreur:", error);
-      toast.error("Erreur de lecture du PDF");
+      toast.error(error.message || "Erreur lors de l'analyse du PDF");
     } finally {
       setIsLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -384,173 +385,212 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   };
 
   // === Parser pour PDF de type tableau (catalogues) ===
-  const parseTableFromPdfItems = (
-    items: { text: string; x: number; y: number; width: number; page: number }[],
-  ): ParsedProduct[] => {
+  const parseTableFromPdfItems = (items: { text: string; x: number; y: number; width: number; page: number }[]): ParsedProduct[] => {
     if (items.length < 10) return [];
 
     console.log("📊 ====== DÉBUT PARSING TABLEAU PDF ======");
     console.log("📊 Nombre total d'items:", items.length);
 
-    // 1. Regrouper les items par ligne (Y similaire)
-    const rowTolerance = 10;
-    const rows: { y: number; items: typeof items; page: number }[] = [];
+    // 1. Détecter les positions X des colonnes (positions qui reviennent souvent)
+    const xPositions: number[] = items.map(i => i.x);
+    const xGroups: Record<number, number> = {};
+    
+    for (const x of xPositions) {
+      // Arrondir à 5 pixels près
+      const rounded = Math.round(x / 5) * 5;
+      xGroups[rounded] = (xGroups[rounded] || 0) + 1;
+    }
+    
+    // Garder les positions X qui apparaissent au moins 5 fois
+    const frequentX = Object.entries(xGroups)
+      .filter(([_, count]) => count >= 5)
+      .map(([x]) => parseInt(x))
+      .sort((a, b) => a - b);
+    
+    console.log("📊 Positions X fréquentes:", frequentX);
 
+    // 2. Regrouper les items par ligne avec une tolérance Y plus large
+    const rowTolerance = 8;
+    const rows: { y: number; items: typeof items; page: number }[] = [];
+    
+    // Trier par page puis Y
     const sortedItems = [...items].sort((a, b) => {
       if (a.page !== b.page) return a.page - b.page;
-      if (Math.abs(a.y - b.y) > rowTolerance) return a.y - b.y;
-      return a.x - b.x;
+      return a.y - b.y;
     });
 
     for (const item of sortedItems) {
-      const existingRow = rows.find((r) => r.page === item.page && Math.abs(r.y - item.y) <= rowTolerance);
-      if (existingRow) {
-        existingRow.items.push(item);
-      } else {
+      // Chercher une ligne existante proche en Y
+      let foundRow = false;
+      for (const row of rows) {
+        if (row.page === item.page && Math.abs(row.y - item.y) <= rowTolerance) {
+          row.items.push(item);
+          foundRow = true;
+          break;
+        }
+      }
+      if (!foundRow) {
         rows.push({ y: item.y, items: [item], page: item.page });
       }
     }
 
-    rows.forEach((row) => row.items.sort((a, b) => a.x - b.x));
+    // Trier les items dans chaque ligne par X
+    rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
+    
+    // Trier les lignes par page puis Y
     rows.sort((a, b) => {
       if (a.page !== b.page) return a.page - b.page;
       return a.y - b.y;
     });
 
-    console.log("📊 Lignes regroupées:", rows.length);
+    console.log("📊 Lignes détectées:", rows.length);
+    
+    // Debug: afficher les 20 premières lignes
+    rows.slice(0, 20).forEach((r, i) => {
+      const content = r.items.map(it => it.text).join(" | ");
+      console.log(`📊 Ligne ${i} (Y=${r.y}, page=${r.page}): ${content.substring(0, 120)}`);
+    });
 
-    // 2. Patterns de référence produit
+    // 3. Trouver les lignes d'en-tête pour identifier les colonnes Prix
+    let prixNetX = -1;
+    let prixPPCX = -1;
+    let refX = -1;
+    let designationX = -1;
+    let poidsX = -1;
+    let dimsX = -1;
+
+    for (const row of rows) {
+      const lineText = row.items.map(i => i.text.toLowerCase()).join(" ");
+      if (lineText.includes("référence") && lineText.includes("prix")) {
+        // C'est une ligne d'en-tête
+        for (const item of row.items) {
+          const text = item.text.toLowerCase();
+          if (text.includes("référence") || text === "ref") refX = item.x;
+          if (text.includes("désignation") || text.includes("description")) designationX = item.x;
+          if (text.includes("poids")) poidsX = item.x;
+          if (text.includes("dimensions")) dimsX = item.x;
+          if (text.includes("net") || text.includes("ht")) prixNetX = item.x;
+          if (text.includes("ppc") || text.includes("ttc") || text.includes("public")) prixPPCX = item.x;
+        }
+        if (prixNetX > 0) {
+          console.log("📊 En-tête trouvé - RefX:", refX, "DesigX:", designationX, "PrixNetX:", prixNetX, "PrixPPCX:", prixPPCX);
+          break;
+        }
+      }
+    }
+
+    // 4. Patterns de référence
     const refPatterns = [
-      /^[A-Z]{2,6}\d{1,2}-\d{1,4}/i, // LTPRO12-60, PSW12-350
-      /^[A-Z]{2,6}\d{1,2}-\d{1,4}[A-Z\-]*/i, // LTPRO12-100HD-P-BT
-      /^[A-Z]+-[A-Z]+-[A-Z0-9]+/i, // REMOTE-PSW-V2
-      /^[A-Z]{3,}\d{2,}/i, // AGM12-70
-      /^CAB\d+\/\d+[A-Z]?/i, // CAB25/1N, CAB25/05N
+      /^[A-Z]{2,8}\d{1,2}-\d{1,4}/i,
+      /^[A-Z]{2,8}\d{1,2}-\d{1,4}[A-Z0-9\-]*/i,
+      /^[A-Z]+-[A-Z]+-[A-Z0-9]+/i,
+      /^[A-Z]{3,}\d{2,}/i,
+      /^CAB\d+\/\d+[A-Z]?/i,
     ];
 
     const isProductReference = (text: string): boolean => {
       const cleaned = text.trim();
-      return refPatterns.some((pattern) => pattern.test(cleaned));
+      if (cleaned.length < 4) return false;
+      return refPatterns.some(pattern => pattern.test(cleaned));
     };
 
-    // 3. Identifier les lignes produits (avec référence ET prix avec €)
-    const productRows: { y: number; items: typeof items; page: number; lineText: string; rowIndex: number }[] = [];
-
-    for (let idx = 0; idx < rows.length; idx++) {
-      const row = rows[idx];
-      const lineText = row.items.map((i) => i.text).join(" ");
-
-      const hasRef = row.items.some((item) => isProductReference(item.text));
-      // IMPORTANT: Chercher uniquement les prix avec € et valeur >= 10
-      const hasPriceWithEuro = /\d{2,}\s*€/.test(lineText);
-
-      const headerKeywords = ["référence", "désignation", "description", "dimensions", "poids", "prix"];
-      const isHeader = headerKeywords.filter((kw) => lineText.toLowerCase().includes(kw)).length >= 2;
-
-      if (hasRef && hasPriceWithEuro && !isHeader) {
-        productRows.push({ ...row, lineText, rowIndex: idx });
-      }
-    }
-
-    console.log("📊 Lignes produits détectées:", productRows.length);
-
-    if (productRows.length === 0) {
-      // Méthode alternative
-      for (let idx = 0; idx < rows.length; idx++) {
-        const row = rows[idx];
-        const lineText = row.items.map((i) => i.text).join(" ");
-        // Chercher au moins un prix >= 10 avec €
-        if (/\d{2,}\s*€/.test(lineText) && row.items.length >= 4) {
-          const isHeader =
-            ["référence", "désignation", "prix"].filter((kw) => lineText.toLowerCase().includes(kw)).length >= 2;
-          if (!isHeader) {
-            productRows.push({ ...row, lineText, rowIndex: idx });
-          }
-        }
-      }
-      console.log("📊 Lignes (méthode alt):", productRows.length);
-    }
-
-    if (productRows.length === 0) return [];
-
-    // 4. Parser chaque ligne produit
+    // 5. Parser chaque ligne
     const products: ParsedProduct[] = [];
     let productIndex = 0;
 
-    for (const row of productRows) {
+    for (const row of rows) {
       const items = row.items;
-      const lineText = row.lineText;
-
-      console.log("📊 --- Parsing:", lineText.substring(0, 100));
-
-      // Trouver la référence
+      const lineText = items.map(i => i.text).join(" ");
+      
+      // Ignorer les en-têtes
+      if (/référence|désignation|dimensions|prix\s*(net|ppc)/i.test(lineText)) continue;
+      
+      // Chercher une référence dans cette ligne
       let reference = "";
-      let refIndex = -1;
-      for (let i = 0; i < items.length; i++) {
-        if (isProductReference(items[i].text)) {
-          reference = items[i].text.trim();
-          refIndex = i;
+      let refItem: typeof items[0] | null = null;
+      
+      for (const item of items) {
+        if (isProductReference(item.text)) {
+          reference = item.text.trim();
+          refItem = item;
           break;
         }
       }
+      
+      if (!reference) continue;
 
-      if (!reference && items.length > 0) {
-        reference = items[0].text.trim();
-        refIndex = 0;
-      }
-
-      // === EXTRACTION DES PRIX AVEC € UNIQUEMENT ===
-      const priceItems: { value: number; x: number; text: string }[] = [];
-
+      // Extraire les prix en cherchant les items avec €
+      const pricesWithEuro: { value: number; x: number }[] = [];
+      
       for (const item of items) {
         const text = item.text.trim();
-        // Pattern: nombre (avec ou sans espace) suivi de €
-        // Exemples: "228 €", "1 580 €", "380€"
-        const priceMatch = text.match(/^([\d\s]+)\s*€$/);
-        if (priceMatch) {
-          // Enlever les espaces dans le nombre (ex: "1 580" -> "1580")
-          const priceStr = priceMatch[1].replace(/\s/g, "");
-          const price = parseFloat(priceStr);
-          // Filtrer les prix < 10€ (probablement pas des vrais prix)
-          if (price >= 10 && price < 50000) {
-            priceItems.push({ value: price, x: item.x, text: text });
+        // Pattern: nombre (avec espaces possibles) + €
+        const match = text.match(/^([\d\s]+)\s*€$/);
+        if (match) {
+          const priceStr = match[1].replace(/\s/g, "");
+          const price = parseInt(priceStr);
+          if (price >= 10) {
+            pricesWithEuro.push({ value: price, x: item.x });
           }
         }
       }
+      
+      // Trier par X
+      pricesWithEuro.sort((a, b) => a.x - b.x);
 
-      // Trier par position X (gauche à droite)
-      priceItems.sort((a, b) => a.x - b.x);
+      // Si on a trouvé les positions des colonnes prix, les utiliser
+      let prixNet: number | undefined;
+      let prixPPC: number | undefined;
+      
+      if (prixNetX > 0 && pricesWithEuro.length > 0) {
+        // Trouver le prix le plus proche de la colonne Prix Net
+        const nearNet = pricesWithEuro.find(p => Math.abs(p.x - prixNetX) < 50);
+        if (nearNet) prixNet = nearNet.value;
+        
+        // Trouver le prix le plus proche de la colonne Prix PPC
+        if (prixPPCX > 0) {
+          const nearPPC = pricesWithEuro.find(p => Math.abs(p.x - prixPPCX) < 50);
+          if (nearPPC) prixPPC = nearPPC.value;
+        }
+      } else if (pricesWithEuro.length >= 2) {
+        // Fallback: premier prix = Net, deuxième = PPC
+        prixNet = pricesWithEuro[0].value;
+        prixPPC = pricesWithEuro[1].value;
+      } else if (pricesWithEuro.length === 1) {
+        prixNet = pricesWithEuro[0].value;
+      }
 
-      console.log(
-        "📊 Prix avec € trouvés:",
-        priceItems.map((p) => p.value),
-      );
-
-      // === EXTRACTION DE LA DÉSIGNATION ===
+      // Extraire la désignation (texte après la référence, avant les dimensions/prix)
       let designation = "";
-      const designationItems: string[] = [];
-
-      for (let i = refIndex + 1; i < items.length; i++) {
-        const text = items[i].text.trim();
-        // Arrêter si on trouve un prix avec € ou des dimensions
+      const desigItems: string[] = [];
+      let foundRef = false;
+      
+      for (const item of items) {
+        if (item === refItem) {
+          foundRef = true;
+          continue;
+        }
+        if (!foundRef) continue;
+        
+        const text = item.text.trim();
+        // Arrêter si on trouve des dimensions, un prix, ou un poids
+        if (/^\d{2,3}\s*x\s*\d{2,3}/.test(text)) break;
         if (/€/.test(text)) break;
-        if (/^\d{2,3}\s*x\s*\d{2,3}\s*x\s*\d{2,3}$/.test(text)) break;
-        // Ignorer les nombres seuls (poids, etc.)
-        if (/^[\d,.\s]+$/.test(text)) continue;
-        if (text) {
-          designationItems.push(text);
+        if (/^\d{1,2}[,.]?\d?$/.test(text) && !text.includes("V")) break;
+        
+        if (text && text.length > 1) {
+          desigItems.push(text);
         }
       }
-      designation = designationItems.join(" ").trim();
+      designation = desigItems.join(" ").trim();
 
-      // === EXTRACTION DES DIMENSIONS ===
+      // Extraire les dimensions
       let dimensions = "";
       let longueur_mm: number | undefined;
       let largeur_mm: number | undefined;
       let hauteur_mm: number | undefined;
-
-      const dimsPattern = /(\d{2,4})\s*x\s*(\d{2,4})\s*x\s*(\d{1,4})/i;
-      const dimsMatch = lineText.match(dimsPattern);
+      
+      const dimsMatch = lineText.match(/(\d{2,4})\s*x\s*(\d{2,4})\s*x\s*(\d{2,4})/i);
       if (dimsMatch) {
         longueur_mm = parseInt(dimsMatch[1]);
         largeur_mm = parseInt(dimsMatch[2]);
@@ -558,46 +598,37 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         dimensions = `${longueur_mm}x${largeur_mm}x${hauteur_mm} mm`;
       }
 
-      // === EXTRACTION DU POIDS ===
-      // Le poids est un nombre décimal entre 0.1 et 100, PAS suivi de €
+      // Extraire le poids
       let poids: number | undefined;
       for (const item of items) {
         const text = item.text.trim();
-        // Pattern: nombre décimal seul (ex: "6,5" ou "10.4" ou "25,3")
-        if (/^(\d{1,3})[,.](\d)$/.test(text)) {
+        if (/^(\d{1,2})[,.](\d)$/.test(text)) {
           const p = parseFloat(text.replace(",", "."));
-          if (p >= 0.1 && p <= 100) {
+          if (p >= 0.5 && p <= 100) {
             poids = p;
             break;
           }
         }
       }
 
-      if (reference && priceItems.length > 0) {
-        const product: ParsedProduct = {
-          id: `import-${productIndex++}`,
-          selected: true,
-          reference: reference,
-          nom: designation || reference,
-          description: designation && designation !== reference ? designation : undefined,
-          dimensions: dimensions || undefined,
-          longueur_mm,
-          largeur_mm,
-          hauteur_mm,
-          poids_kg: poids,
-          // Premier prix = Prix Net (HT), Deuxième = Prix PPC (HT)
-          prix_reference: priceItems.length >= 1 ? priceItems[0].value : undefined,
-          prix_vente_ttc: priceItems.length >= 2 ? priceItems[1].value : undefined,
-        };
+      const product: ParsedProduct = {
+        id: `import-${productIndex++}`,
+        selected: true,
+        reference: reference,
+        nom: designation || reference,
+        description: designation && designation !== reference ? designation : undefined,
+        dimensions: dimensions || undefined,
+        longueur_mm,
+        largeur_mm,
+        hauteur_mm,
+        poids_kg: poids,
+        // S'assurer que le prix le plus petit = prix d'achat, le plus grand = prix de vente
+        prix_reference: prixNet && prixPPC ? Math.min(prixNet, prixPPC) : prixNet,
+        prix_vente_ttc: prixNet && prixPPC ? Math.max(prixNet, prixPPC) : prixPPC,
+      };
 
-        products.push(product);
-        console.log("📊 Produit:", {
-          ref: product.reference,
-          prixNet: product.prix_reference,
-          prixPPC: product.prix_vente_ttc,
-          poids: product.poids_kg,
-        });
-      }
+      products.push(product);
+      console.log("📊 Produit:", reference, "| Net:", prixNet, "| PPC:", prixPPC, "| Poids:", poids);
     }
 
     console.log("📊 ====== FIN: " + products.length + " produits ======");
@@ -1159,6 +1190,25 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           <TabsContent value="pdf" className="flex-1 overflow-hidden flex flex-col">
             {importStep === "upload" ? (
               <div className="space-y-4 p-4">
+                {/* Configuration IA centralisée */}
+                <div className="flex items-center justify-between p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-purple-600" />
+                    <div>
+                      <p className="font-medium">IA : {aiProviderInfo.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {aiIsConfigured ? "Clé API configurée ✓" : "Clé API non configurée"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowAiConfig(true)}>
+                    Configurer
+                  </Button>
+                </div>
+
+                {/* Dialog Configuration IA */}
+                <AIConfigDialog open={showAiConfig} onOpenChange={setShowAiConfig} />
+
                 <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
                   <div className="flex items-center gap-3">
                     <RefreshCw className="w-5 h-5 text-blue-600" />
@@ -1184,7 +1234,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
                   <label htmlFor="pdf-upload" className="cursor-pointer">
                     <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-lg font-medium">Cliquez pour sélectionner un PDF</p>
-                    <p className="text-sm text-muted-foreground">Catalogue fournisseur</p>
+                    <p className="text-sm text-muted-foreground">Catalogue fournisseur (analysé par IA)</p>
                   </label>
                 </div>
 
