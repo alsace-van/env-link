@@ -81,7 +81,7 @@ export function AdminDownloadsManager() {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await (supabase as any)
         .from('downloads')
         .select('*')
         .order('sort_order', { ascending: true })
@@ -114,7 +114,7 @@ export function AdminDownloadsManager() {
       if (!itemToDelete) return;
 
       // Supprimer le fichier du storage
-      if (itemToDelete.file_url.includes('downloads')) {
+      if (itemToDelete.file_url?.includes('downloads')) {
         const urlParts = itemToDelete.file_url.split('/');
         const fileName = urlParts[urlParts.length - 1];
         
@@ -128,9 +128,216 @@ export function AdminDownloadsManager() {
       }
 
       // Supprimer l'entrée de la base de données
-      const { error: dbError } = await supabase
+      const { error: dbError } = await (supabase as any)
         .from('downloads')
         .delete()
         .eq('id', deleteItemId);
 
-      if (dbError) thro
+      if (dbError) throw dbError;
+
+      toast.success('Téléchargement supprimé');
+      setDeleteItemId(null);
+      loadDownloads();
+    } catch (err) {
+      console.error('Erreur lors de la suppression:', err);
+      toast.error('Erreur lors de la suppression');
+    }
+  };
+
+  const toggleFeatured = async (item: DownloadItem) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('downloads')
+        .update({ is_featured: !item.is_featured })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      toast.success(item.is_featured ? 'Retiré des favoris' : 'Ajouté aux favoris');
+      loadDownloads();
+    } catch (err) {
+      console.error('Erreur:', err);
+      toast.error('Erreur lors de la mise à jour');
+    }
+  };
+
+  const toggleActive = async (item: DownloadItem) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('downloads')
+        .update({ is_active: !item.is_active })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      toast.success(item.is_active ? 'Désactivé' : 'Activé');
+      loadDownloads();
+    } catch (err) {
+      console.error('Erreur:', err);
+      toast.error('Erreur lors de la mise à jour');
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes) return 'N/A';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const getCategoryIcon = (category: string) => {
+    const cat = CATEGORIES.find(c => c.value === category);
+    return cat?.icon || '📦';
+  };
+
+  const getPlatformLabel = (platform: string) => {
+    const plat = PLATFORMS.find(p => p.value === platform);
+    return plat?.label || platform;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center p-8 text-destructive">
+        <AlertCircle className="h-5 w-5 mr-2" />
+        {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="border rounded-md px-3 py-1.5 text-sm bg-background"
+          >
+            <option value="all">Toutes les catégories</option>
+            {CATEGORIES.map(cat => (
+              <option key={cat.value} value={cat.value}>
+                {cat.icon} {cat.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button onClick={() => { setEditingItem(null); setUploadDialogOpen(true); }}>
+          <Plus className="h-4 w-4 mr-2" />
+          Ajouter
+        </Button>
+      </div>
+
+      <div className="grid gap-4">
+        {filteredDownloads.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            Aucun téléchargement trouvé
+          </div>
+        ) : (
+          filteredDownloads.map(item => (
+            <div
+              key={item.id}
+              className={`border rounded-lg p-4 ${!item.is_active ? 'opacity-50' : ''}`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="text-2xl">{getCategoryIcon(item.category)}</div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold">{item.name}</h3>
+                      <Badge variant="outline">{item.version}</Badge>
+                      {item.is_featured && (
+                        <Badge className="bg-yellow-500">Favoris</Badge>
+                      )}
+                      {!item.is_active && (
+                        <Badge variant="secondary">Inactif</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                      <span>{getPlatformLabel(item.platform)}</span>
+                      <span>{formatFileSize(item.file_size)}</span>
+                      <span>{item.download_count} téléchargements</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => toggleFeatured(item)}
+                    title={item.is_featured ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+                  >
+                    {item.is_featured ? (
+                      <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
+                    ) : (
+                      <StarOff className="h-4 w-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => toggleActive(item)}
+                    title={item.is_active ? 'Désactiver' : 'Activer'}
+                  >
+                    <Eye className={`h-4 w-4 ${item.is_active ? '' : 'text-muted-foreground'}`} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => { setEditingItem(item); setUploadDialogOpen(true); }}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteItemId(item.id)}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <DownloadUploadDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        editingItem={editingItem}
+        onSuccess={() => {
+          setUploadDialogOpen(false);
+          setEditingItem(null);
+          loadDownloads();
+        }}
+      />
+
+      <AlertDialog open={!!deleteItemId} onOpenChange={() => setDeleteItemId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Le fichier et toutes les données associées seront supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteItem} className="bg-destructive text-destructive-foreground">
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
