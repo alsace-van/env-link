@@ -39,6 +39,9 @@ interface AccessoryCatalogFormDialogProps {
     hauteur_mm?: number | null;
     puissance_watts?: number | null;
     intensite_amperes?: number | null;
+    capacite_ah?: number | null;
+    tension_volts?: number | null;
+    volume_litres?: number | null;
     couleur?: string | null;
     image_url?: string | null;
   } | null;
@@ -63,6 +66,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     hauteur_mm: "",
     puissance_watts: "",
     intensite_amperes: "",
+    capacite_ah: "",
+    tension_volts: "",
+    volume_litres: "",
   });
   const [couleurs, setCouleurs] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -124,6 +130,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
           puissance_watts: accessory.puissance_watts?.toString() ?? "",
           intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
+          capacite_ah: accessory.capacite_ah?.toString() ?? "",
+          tension_volts: accessory.tension_volts?.toString() ?? "",
+          volume_litres: accessory.volume_litres?.toString() ?? "",
         });
 
         // Charger les couleurs depuis le JSON
@@ -171,6 +180,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: "",
           puissance_watts: "",
           intensite_amperes: "",
+          capacite_ah: "",
+          tension_volts: "",
+          volume_litres: "",
         });
         setCouleurs([]);
         setParentCategoryId("");
@@ -538,6 +550,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+          capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
+          tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
+          volume_litres: formData.volume_litres ? parseFloat(formData.volume_litres) : null,
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
           image_url: imageUrl,
           needs_completion: false, // Marquer comme complété après édition
@@ -571,6 +586,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+          capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
+          tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
+          volume_litres: formData.volume_litres ? parseFloat(formData.volume_litres) : null,
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
           image_url: imageUrl,
           user_id: user.id,
@@ -964,6 +982,45 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 onChange={(e) => handleElectricalChange("intensite_amperes", e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Ex: 33.3"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="capacite">Capacité (Ah)</Label>
+              <Input
+                id="capacite"
+                type="number"
+                step="0.1"
+                value={formData.capacite_ah}
+                onChange={(e) => setFormData({ ...formData, capacite_ah: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 100"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tension">Tension (V)</Label>
+              <Input
+                id="tension"
+                type="number"
+                step="0.1"
+                value={formData.tension_volts}
+                onChange={(e) => setFormData({ ...formData, tension_volts: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 12"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="volume">Volume (L)</Label>
+              <Input
+                id="volume"
+                type="number"
+                step="0.1"
+                value={formData.volume_litres}
+                onChange={(e) => setFormData({ ...formData, volume_litres: e.target.value })}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="Ex: 80"
               />
             </div>
 
