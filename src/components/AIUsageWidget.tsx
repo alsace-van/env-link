@@ -1,38 +1,17 @@
 import { useState } from "react";
-import { Sparkles, ExternalLink, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
+import { Sparkles, ExternalLink, ChevronUp, ChevronDown, RotateCcw, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAIConfig, AI_PROVIDERS } from "@/hooks/useAIConfig";
 import { getAIUsageStats, resetAIUsageStats } from "@/services/aiService";
 import { AIConfigDialog } from "@/components/AIConfigDialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-// Limites connues du free tier par fournisseur
-const FREE_TIER_LIMITS = {
-  gemini: {
-    tokensPerDay: 1_500_000, // ~1.5M tokens/jour
-    requestsPerDay: 1500,
-    dashboardUrl: "https://aistudio.google.com/apikey",
-  },
-  openai: {
-    tokensPerDay: null, // Pas de free tier fixe
-    requestsPerDay: null,
-    dashboardUrl: "https://platform.openai.com/usage",
-  },
-  anthropic: {
-    tokensPerDay: null,
-    requestsPerDay: null,
-    dashboardUrl: "https://console.anthropic.com/settings/billing",
-  },
-  mistral: {
-    tokensPerDay: null,
-    requestsPerDay: null,
-    dashboardUrl: "https://console.mistral.ai/usage",
-  },
+// URLs des dashboards par fournisseur
+const DASHBOARD_URLS = {
+  gemini: "https://aistudio.google.com/apikey",
+  openai: "https://platform.openai.com/usage",
+  anthropic: "https://console.anthropic.com/settings/billing",
+  mistral: "https://console.mistral.ai/usage",
 };
 
 interface AIUsageWidgetProps {
@@ -43,9 +22,9 @@ interface AIUsageWidgetProps {
 export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWidgetProps) {
   const [isExpanded, setIsExpanded] = useState(variant === "expanded");
   const [showConfig, setShowConfig] = useState(false);
-  const { provider, isConfigured, providerInfo } = useAIConfig();
+  const { provider, isConfigured, providerInfo, dailyLimit } = useAIConfig();
   const stats = getAIUsageStats();
-  const limits = FREE_TIER_LIMITS[provider];
+  const dashboardUrl = DASHBOARD_URLS[provider];
 
   const formatTokens = (tokens: number): string => {
     if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
@@ -53,10 +32,8 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
     return tokens.toString();
   };
 
-  // Calcul du pourcentage pour la jauge (seulement si on a une limite connue)
-  const percentUsed = limits.tokensPerDay 
-    ? Math.min((stats.todayTokens / limits.tokensPerDay) * 100, 100)
-    : null;
+  // Calcul du pourcentage pour la jauge (seulement si l'utilisateur a configuré une limite)
+  const percentUsed = dailyLimit ? Math.min((stats.todayTokens / dailyLimit) * 100, 100) : null;
 
   const getBarColor = (percent: number | null): string => {
     if (percent === null) return "bg-purple-500";
@@ -105,7 +82,7 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
                   <span className="font-medium">{formatTokens(stats.todayTokens)}</span>
                   {percentUsed !== null && (
                     <div className="w-8 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className={`h-full ${getBarColor(percentUsed)} transition-all`}
                         style={{ width: `${percentUsed}%` }}
                       />
@@ -127,12 +104,29 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
                 <Sparkles className="h-4 w-4 text-purple-600" />
                 <span className="text-sm font-medium">{providerInfo.name}</span>
               </div>
-              <button 
-                onClick={() => setIsExpanded(false)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <ChevronUp className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => setShowConfig(true)}
+                        className="text-muted-foreground hover:text-foreground p-1"
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Configurer</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <button
+                  onClick={() => setIsExpanded(false)}
+                  className="text-muted-foreground hover:text-foreground p-1"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* Jauge */}
@@ -141,15 +135,16 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
                 <span>Aujourd'hui</span>
                 <span>
                   {formatTokens(stats.todayTokens)}
-                  {limits.tokensPerDay && ` / ${formatTokens(limits.tokensPerDay)}`}
+                  {dailyLimit && ` / ${formatTokens(dailyLimit)}`}
                 </span>
               </div>
               <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div 
+                <div
                   className={`h-full ${getBarColor(percentUsed)} transition-all`}
-                  style={{ width: percentUsed !== null ? `${percentUsed}%` : '0%' }}
+                  style={{ width: percentUsed !== null ? `${percentUsed}%` : "0%" }}
                 />
               </div>
+              {!dailyLimit && <p className="text-[10px] text-muted-foreground mt-1">Pas de limite configurée</p>}
             </div>
 
             {/* Stats */}
@@ -167,7 +162,7 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
             {/* Actions */}
             <div className="flex items-center gap-2">
               <a
-                href={limits.dashboardUrl}
+                href={dashboardUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 flex items-center justify-center gap-1 text-xs text-purple-600 hover:text-purple-700 hover:underline"
@@ -198,9 +193,7 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
             </div>
 
             {/* Note */}
-            <p className="text-[10px] text-muted-foreground mt-2 text-center">
-              Stats de ce site uniquement
-            </p>
+            <p className="text-[10px] text-muted-foreground mt-2 text-center">Stats de ce site uniquement</p>
           </div>
         )}
       </div>
