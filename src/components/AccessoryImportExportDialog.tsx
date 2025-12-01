@@ -98,7 +98,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
   const loadExistingAccessories = async () => {
     const { data, error } = await supabase
-      .from("accessories")
+      .from("accessories_catalog")
       .select("id, nom, marque, prix_reference, prix_vente_ttc, fournisseur");
 
     if (!error && data) {
@@ -706,12 +706,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (product.prix_vente_ttc !== undefined) updateData.prix_vente_ttc = product.prix_vente_ttc;
           updateData.last_price_check = new Date().toISOString();
 
-          const { error } = await supabase.from("accessories").update(updateData).eq("id", product.existingId);
+          const { error } = await supabase.from("accessories_catalog").update(updateData).eq("id", product.existingId);
 
           if (error) errors++;
           else updated++;
         } else {
-          const { error } = await supabase.from("accessories").insert({
+          const { error } = await supabase.from("accessories_catalog").insert({
             user_id: user.id,
             nom: product.nom || product.reference || "Sans nom",
             marque: product.marque || defaultFournisseur || null,
@@ -756,7 +756,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     setIsLoading(true);
     try {
       const { data: accessories, error } = await supabase
-        .from("accessories")
+        .from("accessories_catalog")
         .select(`*, categories (nom)`)
         .order("nom");
 
