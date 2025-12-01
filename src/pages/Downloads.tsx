@@ -76,6 +76,7 @@ const Downloads = () => {
   const loadDownloads = async () => {
     try {
       setIsLoading(true);
+      // Fetch downloads from custom table (not in generated types)
       const { data, error } = await (supabase as any)
         .from("downloads")
         .select("*")
