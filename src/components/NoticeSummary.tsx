@@ -19,7 +19,7 @@ interface NoticeSummaryProps {
 
 /**
  * NoticeSummary - VERSION MULTI-IA (Clé utilisateur)
- * 
+ *
  * L'utilisateur configure sa propre clé API pour générer les résumés.
  * Pas de gestion de quotas côté serveur.
  */
@@ -42,7 +42,7 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
         .select("fichier_url")
         .eq("id", noticeId)
         .maybeSingle();
-      
+
       if (data?.fichier_url) {
         setPdfUrl(data.fichier_url);
       }
@@ -104,17 +104,13 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
       setSummary(generatedSummary);
 
       // Sauvegarder le résumé en base
-      await (supabase as any)
-        .from("notices")
-        .update({ resume_ia: generatedSummary })
-        .eq("id", noticeId);
+      await (supabase as any).from("notices").update({ resume_ia: generatedSummary }).eq("id", noticeId);
 
       if (onSummaryGenerated) {
         onSummaryGenerated(generatedSummary);
       }
 
       toast.success("Résumé généré avec succès !");
-
     } catch (error: any) {
       console.error("❌ Erreur:", error);
       toast.error(error.message || "Erreur lors de la génération du résumé");
@@ -136,24 +132,24 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
   const highlightText = (text: string, query: string) => {
     if (!query.trim()) return text;
 
-    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    const parts = text.split(new RegExp(`(${query})`, "gi"));
     let count = 0;
-    
-    const highlighted = parts.map((part, i) => {
-      if (part.toLowerCase() === query.toLowerCase()) {
-        count++;
-        return `<mark class="bg-yellow-300 dark:bg-yellow-600">${part}</mark>`;
-      }
-      return part;
-    }).join('');
-    
+
+    const highlighted = parts
+      .map((part, i) => {
+        if (part.toLowerCase() === query.toLowerCase()) {
+          count++;
+          return `<mark class="bg-yellow-300 dark:bg-yellow-600">${part}</mark>`;
+        }
+        return part;
+      })
+      .join("");
+
     setSearchResults(count);
     return highlighted;
   };
 
-  const displayedSummary = searchQuery && summary 
-    ? highlightText(summary, searchQuery) 
-    : summary;
+  const displayedSummary = searchQuery && summary ? highlightText(summary, searchQuery) : summary;
 
   return (
     <>
@@ -167,12 +163,7 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
               </CardTitle>
               <CardDescription>Résumé automatique généré par intelligence artificielle</CardDescription>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowAiConfig(true)}
-              className="text-muted-foreground"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setShowAiConfig(true)} className="text-muted-foreground">
               <Settings2 className="h-4 w-4 mr-1" />
               {aiIsConfigured ? aiProviderInfo.name : "Configurer"}
             </Button>
@@ -191,12 +182,7 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
                       <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                         Pour générer des résumés, configurez votre clé API IA (Gemini gratuit recommandé).
                       </p>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="mt-2"
-                        onClick={() => setShowAiConfig(true)}
-                      >
+                      <Button variant="outline" size="sm" className="mt-2" onClick={() => setShowAiConfig(true)}>
                         Configurer maintenant
                       </Button>
                     </div>
@@ -206,17 +192,13 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    Générez un résumé intelligent de cette notice pour en extraire les informations clés : 
+                    Générez un résumé intelligent de cette notice pour en extraire les informations clés :
                     caractéristiques techniques, installation, sécurité et conseils d'utilisation.
                   </AlertDescription>
                 </Alert>
               )}
 
-              <Button
-                onClick={handleGenerateSummary}
-                disabled={loading || !aiIsConfigured}
-                className="w-full"
-              >
+              <Button onClick={handleGenerateSummary} disabled={loading || !aiIsConfigured} className="w-full">
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -231,9 +213,7 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
               </Button>
 
               {aiIsConfigured && (
-                <p className="text-xs text-center text-muted-foreground">
-                  Utilise votre clé {aiProviderInfo.name}
-                </p>
+                <p className="text-xs text-center text-muted-foreground">Utilise votre clé {aiProviderInfo.name}</p>
               )}
             </div>
           ) : (
@@ -265,15 +245,15 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
                 </div>
                 {searchQuery && (
                   <Badge variant="secondary" className="shrink-0">
-                    {searchResults} résultat{searchResults !== 1 ? 's' : ''}
+                    {searchResults} résultat{searchResults !== 1 ? "s" : ""}
                   </Badge>
                 )}
               </div>
 
               {/* Résumé avec surlignage */}
-              <div 
+              <div
                 className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap"
-                dangerouslySetInnerHTML={{ __html: displayedSummary || '' }}
+                dangerouslySetInnerHTML={{ __html: displayedSummary || "" }}
               />
 
               <div className="flex justify-between items-center pt-4 border-t">
