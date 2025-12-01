@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import { Camera, Upload, X, Sparkles, Loader2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Camera, Upload, X, Sparkles, Loader2, Settings2, FileText, PenLine } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 import { ScanConfirmationModal } from "./ScanConfirmationModal";
+import { useAIConfig } from "@/hooks/useAIConfig";
+import { AIConfigDialog } from "@/components/AIConfigDialog";
+import { callAI, parseAIJsonResponse } from "@/services/aiService";
 import type { VehicleRegistrationData } from "@/lib/registrationCardParser";
 
 interface VehicleRegistrationScannerProps {
@@ -16,29 +18,66 @@ interface VehicleRegistrationScannerProps {
 }
 
 /**
- * VehicleRegistrationScanner - VERSION ULTIME GEMINI + MODAL
+ * VehicleRegistrationScanner - VERSION MULTI-IA + SAISIE MANUELLE
  *
- * Cette version :
- * 1. Utilise Gemini AI (pas Tesseract) via l'Edge Function scan-carte-grise
- * 2. Affiche le ScanConfirmationModal pour vérifier les données
- * 3. Mappe correctement tous les champs entre Gemini et le Modal
- * 4. Gère les rescans et modifications manuelles
+ * 2 modes :
+ * - Scan IA : L'utilisateur configure sa propre clé API
+ * - Saisie manuelle : L'utilisateur entre les données à la main
  */
 export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrationScannerProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<VehicleRegistrationData | null>(null);
-
-  // ✅ État pour gérer l'affichage du modal de confirmation
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showAiConfig, setShowAiConfig] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("scan");
+
+  // Formulaire manuel
+  const [manualData, setManualData] = useState<VehicleRegistrationData>({
+    vin: "",
+    immatriculation: "",
+    marque: "",
+    modele: "",
+    typeVariante: "",
+    datePremiereImmatriculation: "",
+    dateImmatriculation: "",
+    genre: "",
+    carrosserie: "",
+    couleur: "",
+    placesAssises: null,
+    placesDebout: null,
+    ptac: null,
+    ptra: null,
+    poidsVide: null,
+    puissanceFiscale: null,
+    puissanceKw: null,
+    cylindree: null,
+    energie: "",
+    co2: null,
+    nomProprietaire: "",
+    prenomProprietaire: "",
+    adresse: "",
+    codePostal: "",
+    ville: "",
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentImageBase64Ref = useRef<string | null>(null);
 
+  // Configuration IA centralisée
+  const { config: aiConfig, isConfigured: aiIsConfigured, providerInfo: aiProviderInfo } = useAIConfig();
+
   const handleImageUpload = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast.error("Veuillez sélectionner une image");
+      return;
+    }
+
+    // Vérifier que l'IA est configurée
+    if (!aiIsConfigured) {
+      setShowAiConfig(true);
+      toast.error("Veuillez d'abord configurer votre clé API IA");
       return;
     }
 
@@ -49,231 +88,140 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
     };
     reader.readAsDataURL(file);
 
-    // Lancer le scan avec Gemini
-    await scanWithGemini(file);
+    // Lancer le scan
+    await scanWithAI(file);
   };
 
-  /**
-   * Scan la carte grise avec Gemini AI via l'Edge Function
-   */
-  const scanWithGemini = async (file: File) => {
+  const scanWithAI = async (file: File) => {
     setIsProcessing(true);
     setProgress(10);
 
     try {
-      console.log("🚀 Démarrage du scan Gemini...");
+      console.log(`🚀 Scan avec ${aiProviderInfo.name}...`);
+      toast.info(`Analyse avec ${aiProviderInfo.name}...`);
 
-      // Convertir l'image en base64
       const base64 = await fileToBase64(file);
       currentImageBase64Ref.current = base64;
       setProgress(30);
 
-      console.log("📤 Envoi de l'image à l'Edge Function scan-carte-grise...");
+      const prompt = `Analyse cette image de carte grise française et extrait toutes les informations.
 
-      // Appeler l'Edge Function Gemini avec les données en base64 complet
-      const { data, error } = await supabase.functions.invoke("scan-carte-grise", {
-        body: {
-          imageData: base64, // Envoyer le base64 complet avec le préfixe data:image/...
-        },
+Retourne UNIQUEMENT un JSON valide avec ces champs (utilise null si non trouvé):
+{
+  "vin": "numéro VIN (champ E)",
+  "immatriculation": "plaque d'immatriculation (champ A)",
+  "marque": "marque du véhicule (champ D.1)",
+  "modele": "modèle/variante (champ D.2)",
+  "type_variante": "type variante version (champ D.2)",
+  "date_premiere_immatriculation": "date format JJ/MM/AAAA (champ B)",
+  "date_immatriculation": "date carte grise (champ I)",
+  "genre": "genre national (champ J.1)",
+  "carrosserie": "carrosserie CE (champ J.2)", 
+  "couleur": "couleur",
+  "places_assises": nombre de places (champ S.1),
+  "places_debout": nombre places debout (champ S.2),
+  "ptac": poids PTAC en kg (champ F.2),
+  "ptra": poids PTRA en kg (champ F.3),
+  "poids_vide": poids à vide en kg (champ G),
+  "puissance_fiscale": puissance fiscale CV (champ P.6),
+  "puissance_kw": puissance en kW (champ P.2),
+  "cylindree": cylindrée en cm3 (champ P.1),
+  "energie": "type énergie/carburant (champ P.3)",
+  "co2": émission CO2 g/km (champ V.7),
+  "nom_proprietaire": "nom du titulaire (champ C.1)",
+  "prenom_proprietaire": "prénom du titulaire",
+  "adresse": "adresse complète (champ C.3)",
+  "code_postal": "code postal",
+  "ville": "ville"
+}
+
+IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
+
+      const base64Data = base64.includes(",") ? base64.split(",")[1] : base64;
+      const mimeType = base64.includes("data:") ? base64.split(";")[0].split(":")[1] : "image/jpeg";
+
+      const response = await callAI({
+        provider: aiConfig.provider,
+        apiKey: aiConfig.apiKey,
+        prompt,
+        imageBase64: base64Data,
+        imageMimeType: mimeType,
       });
 
       setProgress(70);
 
-      if (error) {
-        console.error("❌ Erreur Edge Function:", error);
-        throw error;
+      if (!response.success || !response.text) {
+        throw new Error(response.error || "Erreur lors du scan");
       }
 
-      if (!data.success) {
-        console.error("❌ Erreur scan:", data.error);
-        throw new Error(data.error || "Erreur lors du scan");
+      const parsedData = parseAIJsonResponse<any>(response.text);
+      if (!parsedData) {
+        throw new Error("Format de réponse invalide");
       }
 
-      console.log("✅ Réponse Gemini reçue:", data);
-      console.log(`📊 ${data.detected_fields_count || 0} champs détectés`);
-      console.log("📋 Champs détectés:", data.detected_fields || []);
+      const scanResult = mapAIResponseToVehicleData(parsedData);
 
-      // ✅ MAPPING : Gemini retourne des noms lisibles (vin, immatriculation, marque...)
-      // On essaie d'abord les noms lisibles, puis les codes officiels en fallback
-      const scanData = data.data;
-      const mappedData: VehicleRegistrationData = {
-        // ✅ Champs critiques
-        numeroChassisVIN: scanData.vin || scanData.E || undefined,
-        immatriculation: scanData.immatriculation || scanData.A || undefined,
-        marque: scanData.marque || scanData.D1 || undefined,
-        denominationCommerciale: scanData.modele || scanData.D3 || undefined, // ✅ D3 = dénomination commerciale (EXPERT)
-
-        // Classification
-        genreNational: scanData.genre || scanData.J || undefined,
-        carrosserieCE: scanData.carrosserie || scanData.J1 || undefined,
-
-        // Motorisation
-        energie: scanData.energie || scanData.P3 || undefined,
-        puissanceFiscale: scanData.puissance_fiscale || (scanData.P6 ? parseInt(scanData.P6) : undefined),
-        cylindree: scanData.cylindree || (scanData.P1 ? parseInt(scanData.P1) : undefined),
-
-        // Masses
-        masseVide: scanData.poids_vide || (scanData.G ? parseInt(scanData.G) : undefined),
-        masseEnChargeMax: scanData.ptac || (scanData.F1 ? parseInt(scanData.F1) : undefined),
-        ptra: scanData.ptra || (scanData.F2 ? parseInt(scanData.F2) : undefined),
-
-        // Dimensions
-        longueur: scanData.longueur || (scanData.L ? parseInt(scanData.L) : undefined),
-        largeur: scanData.largeur || (scanData.B ? parseInt(scanData.B) : undefined),
-        hauteur: scanData.hauteur || (scanData.H ? parseInt(scanData.H) : undefined),
-      };
-
-      console.log("✅ Données mappées pour ScanConfirmationModal:");
-      console.log("📊 Détails du scan:");
-      console.log(`  🔑 VIN: ${mappedData.numeroChassisVIN || "❌ Non détecté"}`);
-      console.log(`  🚗 Immatriculation: ${mappedData.immatriculation || "❌ Non détecté"}`);
-      console.log(`  🏭 Marque: ${mappedData.marque || "❌ Non détecté"}`);
-      console.log(`  📝 Modèle: ${mappedData.denominationCommerciale || "❌ Non détecté"}`);
-      console.log(`  📅 Date: ${mappedData.datePremiereImmatriculation || "❌ Non détecté"}`);
-      console.log(`  ⚖️  Masse vide: ${mappedData.masseVide || "❌ Non détecté"} kg`);
-      console.log(`  📦 PTAC: ${mappedData.masseEnChargeMax || "❌ Non détecté"} kg`);
-      console.log(`  🏷️  Genre: ${mappedData.genreNational || "❌ Non détecté"}`);
-
+      setProgress(90);
+      setExtractedData(scanResult);
+      setShowConfirmModal(true);
       setProgress(100);
-      setExtractedData(mappedData);
 
-      // ✅ AFFICHER LE MODAL DE CONFIRMATION
-      setShowConfirmModal(true);
+      toast.success("Carte grise analysée avec succès !");
 
-      const detectedCount = Object.keys(mappedData).filter(
-        (key) => mappedData[key] !== undefined && mappedData[key] !== null,
-      ).length;
-
-      toast.success(`Carte grise scannée : ${detectedCount} champs détectés`, {
-        description: `Vérifiez avant de valider`,
-        duration: 4000,
-      });
     } catch (error: any) {
-      console.error("❌ Erreur scan Gemini:", error);
-      toast.error("Erreur lors du scan Gemini", {
-        description: error.message || "Impossible de lire la carte grise",
-        duration: 5000,
-      });
+      console.error("❌ Erreur:", error);
+      toast.error(error.message || "Erreur lors du scan de la carte grise");
     } finally {
       setIsProcessing(false);
       setProgress(0);
     }
   };
 
-  /**
-   * Convertit un fichier en base64
-   */
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (error) => reject(error);
-    });
+  const mapAIResponseToVehicleData = (data: any): VehicleRegistrationData => {
+    return {
+      vin: data.vin || "",
+      immatriculation: data.immatriculation || "",
+      marque: data.marque || "",
+      modele: data.modele || "",
+      typeVariante: data.type_variante || data.typeVariante || "",
+      datePremiereImmatriculation: data.date_premiere_immatriculation || data.datePremiereImmatriculation || "",
+      dateImmatriculation: data.date_immatriculation || data.dateImmatriculation || "",
+      genre: data.genre || "",
+      carrosserie: data.carrosserie || "",
+      couleur: data.couleur || "",
+      placesAssises: data.places_assises || data.placesAssises || null,
+      placesDebout: data.places_debout || data.placesDebout || null,
+      ptac: data.ptac || null,
+      ptra: data.ptra || null,
+      poidsVide: data.poids_vide || data.poidsVide || null,
+      puissanceFiscale: data.puissance_fiscale || data.puissanceFiscale || null,
+      puissanceKw: data.puissance_kw || data.puissanceKw || null,
+      cylindree: data.cylindree || null,
+      energie: data.energie || "",
+      co2: data.co2 || null,
+      nomProprietaire: data.nom_proprietaire || data.nomProprietaire || "",
+      prenomProprietaire: data.prenom_proprietaire || data.prenomProprietaire || "",
+      adresse: data.adresse || "",
+      codePostal: data.code_postal || data.codePostal || "",
+      ville: data.ville || "",
+    };
   };
 
-  /**
-   * Confirme les données validées par l'utilisateur dans le modal
-   */
   const handleConfirmData = (confirmedData: VehicleRegistrationData) => {
-    console.log("✅ Données confirmées par l'utilisateur:", confirmedData);
     onDataExtracted(confirmedData);
-    toast.success("Données de la carte grise enregistrées", {
-      description: "Vous pouvez maintenant continuer la création du projet",
-      duration: 3000,
-    });
     setShowConfirmModal(false);
-    resetScanner();
-  };
-
-  /**
-   * Rescanne un champ spécifique (VIN, Immat, Marque, Modèle)
-   */
-  const handleRescanField = async (fieldName: string) => {
-    console.log(`🔄 Rescan demandé pour: ${fieldName}`);
-
-    if (!currentImageBase64Ref.current) {
-      toast.error("Image non disponible pour le rescan");
-      return;
-    }
-
-    toast.info(`Rescan du champ ${fieldName}...`, {
-      description: "Analyse en cours avec Gemini",
-    });
-
-    // Fermer le modal pendant le rescan
-    setShowConfirmModal(false);
-    setIsProcessing(true);
-    setProgress(50);
-
-    try {
-      // Extraire la partie base64 pure
-      const base64Pure = currentImageBase64Ref.current.split(",")[1];
-      const mimeType = "image/jpeg";
-
-      // Refaire un scan complet (pour l'instant)
-      // TODO: Implémenter un scan ciblé sur un champ spécifique
-      const { data, error } = await supabase.functions.invoke("scan-carte-grise", {
-        body: {
-          imageBase64: base64Pure,
-          mimeType: mimeType,
-        },
-      });
-
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error);
-
-      const scanData = data.data;
-      const mappedData: VehicleRegistrationData = {
-        numeroChassisVIN: scanData.vin || scanData.E || undefined,
-        immatriculation: scanData.immatriculation || scanData.A || undefined,
-        marque: scanData.marque || scanData.D1 || undefined,
-        denominationCommerciale: scanData.modele || scanData.D3 || undefined, // ✅ D3 = dénomination commerciale (EXPERT)
-        genreNational: scanData.genre || scanData.J || undefined,
-        carrosserieCE: scanData.carrosserie || scanData.J1 || undefined,
-        energie: scanData.energie || scanData.P3 || undefined,
-        puissanceFiscale: scanData.puissance_fiscale || (scanData.P6 ? parseInt(scanData.P6) : undefined),
-        cylindree: scanData.cylindree || (scanData.P1 ? parseInt(scanData.P1) : undefined),
-        masseVide: scanData.poids_vide || (scanData.G ? parseInt(scanData.G) : undefined),
-        masseEnChargeMax: scanData.ptac || (scanData.F1 ? parseInt(scanData.F1) : undefined),
-        ptra: scanData.ptra || (scanData.F2 ? parseInt(scanData.F2) : undefined),
-        longueur: scanData.longueur || (scanData.L ? parseInt(scanData.L) : undefined),
-        largeur: scanData.largeur || (scanData.B ? parseInt(scanData.B) : undefined),
-        hauteur: scanData.hauteur || (scanData.H ? parseInt(scanData.H) : undefined),
-        datePremiereImmatriculation: scanData.date_premiere_immatriculation || scanData.B1 || undefined,
-      };
-
-      console.log(`✅ Rescan ${fieldName} terminé`);
-      setExtractedData(mappedData);
-      setShowConfirmModal(true);
-
-      toast.success(`Rescan effectué`, {
-        description: "Vérifiez les nouvelles données",
-      });
-    } catch (error: any) {
-      console.error(`❌ Erreur rescan ${fieldName}:`, error);
-      toast.error(`Erreur lors du rescan`, {
-        description: error.message,
-      });
-      // Réouvrir le modal avec les anciennes données
-      setShowConfirmModal(true);
-    } finally {
-      setIsProcessing(false);
-      setProgress(0);
-    }
-  };
-
-  /**
-   * Réinitialise le scanner
-   */
-  const resetScanner = () => {
     setImagePreview(null);
     setExtractedData(null);
-    setShowConfirmModal(false);
-    setProgress(0);
-    currentImageBase64Ref.current = null;
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    toast.success("Données du véhicule importées !");
+  };
+
+  const handleRescan = async () => {
+    if (currentImageBase64Ref.current) {
+      setShowConfirmModal(false);
+      const response = await fetch(currentImageBase64Ref.current);
+      const blob = await response.blob();
+      const file = new File([blob], "rescan.jpg", { type: blob.type });
+      await scanWithAI(file);
     }
   };
 
@@ -284,108 +232,297 @@ export const VehicleRegistrationScanner = ({ onDataExtracted }: VehicleRegistrat
     }
   };
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const clearImage = () => {
+    setImagePreview(null);
+    setExtractedData(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Saisie manuelle
+  const handleManualChange = (field: keyof VehicleRegistrationData, value: string | number | null) => {
+    setManualData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleManualSubmit = () => {
+    if (!manualData.immatriculation && !manualData.vin) {
+      toast.error("Veuillez renseigner au moins l'immatriculation ou le VIN");
+      return;
+    }
+    onDataExtracted(manualData);
+    toast.success("Données du véhicule enregistrées !");
+  };
+
   return (
     <>
-      <Card className="w-full">
+      <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Camera className="h-5 w-5" />
-                Scanner la carte grise
-                <Badge variant="secondary" className="ml-2">
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  IA Gemini
-                </Badge>
-              </CardTitle>
-              <CardDescription>
-                Scannez automatiquement votre carte grise avec l'IA Gemini - Précision 95%
-              </CardDescription>
-            </div>
-          </div>
+          <CardTitle className="flex items-center gap-2">
+            <Camera className="h-5 w-5" />
+            Importer les données du véhicule
+          </CardTitle>
+          <CardDescription>
+            Scannez la carte grise avec l'IA ou saisissez les données manuellement
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {!imagePreview && (
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-              <Upload className="mx-auto h-12 w-12 text-gray-400" />
-              <div className="mt-4">
-                <Label htmlFor="image-upload" className="cursor-pointer">
-                  <Button asChild variant="outline" size="lg">
-                    <span>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Choisir une photo
-                    </span>
-                  </Button>
-                </Label>
-                <Input
-                  id="image-upload"
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handleFileChange}
-                  disabled={isProcessing}
-                />
-              </div>
-              <div className="mt-4 space-y-2">
-                <p className="text-sm text-muted-foreground font-medium">
-                  📸 Prenez une photo nette de la carte grise (recto)
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Conseils : carte à plat, lumière naturelle, photo bien cadrée
-                </p>
-              </div>
-            </div>
-          )}
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="scan" className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                Scan IA
+              </TabsTrigger>
+              <TabsTrigger value="manual" className="flex items-center gap-2">
+                <PenLine className="h-4 w-4" />
+                Saisie manuelle
+              </TabsTrigger>
+            </TabsList>
 
-          {imagePreview && (
-            <div className="space-y-4">
-              <div className="relative">
-                <img src={imagePreview} alt="Carte grise" className="w-full rounded-lg border-2 border-gray-200" />
-                {!isProcessing && (
-                  <Button variant="destructive" size="sm" className="absolute top-2 right-2" onClick={resetScanner}>
+            {/* Onglet Scan IA */}
+            <TabsContent value="scan" className="space-y-4">
+              {/* Config IA */}
+              <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-600" />
+                  <span className="text-sm">
+                    {aiIsConfigured ? `IA : ${aiProviderInfo.name}` : "IA non configurée"}
+                  </span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setShowAiConfig(true)}>
+                  <Settings2 className="h-4 w-4 mr-1" />
+                  {aiIsConfigured ? "Modifier" : "Configurer"}
+                </Button>
+              </div>
+
+              {/* Zone d'upload */}
+              {!imagePreview ? (
+                <div className={`border-2 border-dashed rounded-lg p-8 text-center ${!aiIsConfigured ? 'opacity-50' : ''}`}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="carte-grise-upload"
+                    disabled={!aiIsConfigured}
+                  />
+                  <label htmlFor="carte-grise-upload" className={aiIsConfigured ? "cursor-pointer" : "cursor-not-allowed"}>
+                    <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-lg font-medium">Cliquez pour sélectionner une image</p>
+                    <p className="text-sm text-muted-foreground">ou prenez une photo de la carte grise</p>
+                  </label>
+                </div>
+              ) : (
+                <div className="relative">
+                  <img
+                    src={imagePreview}
+                    alt="Aperçu carte grise"
+                    className="w-full rounded-lg max-h-64 object-contain bg-muted"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-2 right-2"
+                    onClick={clearImage}
+                  >
                     <X className="h-4 w-4" />
                   </Button>
-                )}
-              </div>
-
-              {isProcessing && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 font-medium">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Analyse en cours avec Gemini AI...
-                    </span>
-                    <span className="font-bold">{progress}%</span>
-                  </div>
-                  <Progress value={progress} className="h-2" />
-                  <p className="text-xs text-muted-foreground text-center">⏱️ Temps estimé : 3-5 secondes</p>
                 </div>
               )}
-            </div>
-          )}
+
+              {/* Barre de progression */}
+              {isProcessing && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Analyse en cours avec {aiProviderInfo.name}...</span>
+                  </div>
+                  <Progress value={progress} />
+                </div>
+              )}
+
+              {!aiIsConfigured && (
+                <p className="text-sm text-muted-foreground text-center">
+                  Configurez votre clé IA pour utiliser le scan automatique, ou passez en saisie manuelle.
+                </p>
+              )}
+            </TabsContent>
+
+            {/* Onglet Saisie manuelle */}
+            <TabsContent value="manual" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Identification */}
+                <div className="space-y-3 p-4 border rounded-lg">
+                  <h4 className="font-medium text-sm text-muted-foreground">Identification</h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="immat">Immatriculation (A)</Label>
+                    <Input
+                      id="immat"
+                      placeholder="AA-123-BB"
+                      value={manualData.immatriculation}
+                      onChange={(e) => handleManualChange("immatriculation", e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="vin">N° VIN (E)</Label>
+                    <Input
+                      id="vin"
+                      placeholder="VF7..."
+                      value={manualData.vin}
+                      onChange={(e) => handleManualChange("vin", e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="date1">1ère immat. (B)</Label>
+                    <Input
+                      id="date1"
+                      placeholder="JJ/MM/AAAA"
+                      value={manualData.datePremiereImmatriculation}
+                      onChange={(e) => handleManualChange("datePremiereImmatriculation", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Véhicule */}
+                <div className="space-y-3 p-4 border rounded-lg">
+                  <h4 className="font-medium text-sm text-muted-foreground">Véhicule</h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="marque">Marque (D.1)</Label>
+                    <Input
+                      id="marque"
+                      placeholder="FIAT, RENAULT..."
+                      value={manualData.marque}
+                      onChange={(e) => handleManualChange("marque", e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="modele">Modèle (D.2)</Label>
+                    <Input
+                      id="modele"
+                      placeholder="DUCATO, MASTER..."
+                      value={manualData.modele}
+                      onChange={(e) => handleManualChange("modele", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="genre">Genre (J.1)</Label>
+                    <Input
+                      id="genre"
+                      placeholder="CTTE, VP, VASP..."
+                      value={manualData.genre}
+                      onChange={(e) => handleManualChange("genre", e.target.value.toUpperCase())}
+                    />
+                  </div>
+                </div>
+
+                {/* Poids */}
+                <div className="space-y-3 p-4 border rounded-lg">
+                  <h4 className="font-medium text-sm text-muted-foreground">Poids (kg)</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="ptac">PTAC (F.2)</Label>
+                      <Input
+                        id="ptac"
+                        type="number"
+                        placeholder="3500"
+                        value={manualData.ptac || ""}
+                        onChange={(e) => handleManualChange("ptac", e.target.value ? parseInt(e.target.value) : null)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ptra">PTRA (F.3)</Label>
+                      <Input
+                        id="ptra"
+                        type="number"
+                        placeholder="5500"
+                        value={manualData.ptra || ""}
+                        onChange={(e) => handleManualChange("ptra", e.target.value ? parseInt(e.target.value) : null)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="poidsVide">Poids à vide (G)</Label>
+                    <Input
+                      id="poidsVide"
+                      type="number"
+                      placeholder="2000"
+                      value={manualData.poidsVide || ""}
+                      onChange={(e) => handleManualChange("poidsVide", e.target.value ? parseInt(e.target.value) : null)}
+                    />
+                  </div>
+                </div>
+
+                {/* Places */}
+                <div className="space-y-3 p-4 border rounded-lg">
+                  <h4 className="font-medium text-sm text-muted-foreground">Places</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="placesAssises">Assises (S.1)</Label>
+                      <Input
+                        id="placesAssises"
+                        type="number"
+                        placeholder="3"
+                        value={manualData.placesAssises || ""}
+                        onChange={(e) => handleManualChange("placesAssises", e.target.value ? parseInt(e.target.value) : null)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="placesDebout">Debout (S.2)</Label>
+                      <Input
+                        id="placesDebout"
+                        type="number"
+                        placeholder="0"
+                        value={manualData.placesDebout || ""}
+                        onChange={(e) => handleManualChange("placesDebout", e.target.value ? parseInt(e.target.value) : null)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="energie">Énergie (P.3)</Label>
+                    <Input
+                      id="energie"
+                      placeholder="GAZOLE, ESSENCE..."
+                      value={manualData.energie}
+                      onChange={(e) => handleManualChange("energie", e.target.value.toUpperCase())}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Button onClick={handleManualSubmit} className="w-full">
+                <FileText className="h-4 w-4 mr-2" />
+                Valider les données
+              </Button>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
-      {/* ✅ MODAL DE CONFIRMATION DES DONNÉES SCANNÉES */}
+      {/* Dialog Configuration IA */}
+      <AIConfigDialog open={showAiConfig} onOpenChange={setShowAiConfig} />
+
+      {/* Modal de confirmation */}
       {extractedData && (
         <ScanConfirmationModal
           isOpen={showConfirmModal}
-          onClose={() => {
-            setShowConfirmModal(false);
-            // Ne pas réinitialiser le scanner pour permettre un nouveau scan
-          }}
-          scannedData={extractedData}
+          onClose={() => setShowConfirmModal(false)}
           onConfirm={handleConfirmData}
-          onRescanVIN={() => handleRescanField("VIN")}
-          onRescanImmat={() => handleRescanField("Immatriculation")}
-          onRescanMarque={() => handleRescanField("Marque")}
-          onRescanModele={() => handleRescanField("Modèle")}
+          onRescan={handleRescan}
+          data={extractedData}
+          imagePreview={imagePreview}
         />
       )}
     </>
   );
 };
-
-export default VehicleRegistrationScanner;
