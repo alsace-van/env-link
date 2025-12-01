@@ -98,12 +98,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   }, [isOpen]);
 
   const loadExistingAccessories = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("accessories")
       .select("id, nom, marque, prix_reference, prix_vente_ttc, fournisseur");
 
     if (!error && data) {
-      setExistingAccessories(data);
+      setExistingAccessories(data as ExistingAccessory[]);
     }
   };
 
@@ -573,12 +573,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (product.prix_vente_ttc !== undefined) updateData.prix_vente_ttc = product.prix_vente_ttc;
           updateData.last_price_check = new Date().toISOString();
 
-          const { error } = await supabase.from("accessories").update(updateData).eq("id", product.existingId);
+          const { error } = await (supabase as any).from("accessories").update(updateData).eq("id", product.existingId);
 
           if (error) errors++;
           else updated++;
         } else {
-          const { error } = await supabase.from("accessories").insert({
+          const { error } = await (supabase as any).from("accessories").insert({
             user_id: user.id,
             nom: product.nom || product.reference || "Sans nom",
             marque: product.marque || defaultFournisseur || null,
@@ -622,14 +622,14 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   const handleExport = async () => {
     setIsLoading(true);
     try {
-      const { data: accessories, error } = await supabase
+      const { data: accessories, error } = await (supabase as any)
         .from("accessories")
         .select(`*, categories (nom)`)
         .order("nom");
 
       if (error) throw error;
 
-      const exportData = (accessories || []).map((acc) => ({
+      const exportData = ((accessories || []) as any[]).map((acc: any) => ({
         Référence: acc.id.substring(0, 8),
         Nom: acc.nom,
         Marque: acc.marque || "",
