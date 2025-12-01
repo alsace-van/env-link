@@ -1,162 +1,162 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Sparkles, ExternalLink, Trash2 } from "lucide-react";
-import { useAIConfig, AIProvider, AI_PROVIDERS } from "@/hooks/useAIConfig";
-import { toast } from "sonner";
+import { useState, useEffect, useCallback } from "react";
 
-interface AIConfigDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+export type AIProvider = "gemini" | "openai" | "anthropic" | "mistral";
+
+export interface AIConfig {
+  provider: AIProvider;
+  apiKey: string;
+  isConfigured: boolean;
+  dailyLimit: number | null; // null = pas de limite
+  warningThreshold: number; // Pourcentage d'avertissement (ex: 80)
 }
 
-export function AIConfigDialog({ open, onOpenChange }: AIConfigDialogProps) {
-  const { provider, apiKey, saveConfig, clearConfig } = useAIConfig();
-  const [tempProvider, setTempProvider] = useState<AIProvider>(provider);
-  const [tempApiKey, setTempApiKey] = useState(apiKey);
+const AI_PROVIDER_KEY = "ai_provider";
+const AI_API_KEY = "ai_api_key";
+const AI_DAILY_LIMIT_KEY = "ai_daily_limit";
+const AI_WARNING_THRESHOLD_KEY = "ai_warning_threshold";
+const AI_CONFIG_EVENT = "ai_config_updated";
 
-  const handleSave = () => {
-    if (!tempApiKey.trim()) {
-      toast.error("Veuillez entrer une clé API");
-      return;
-    }
-    saveConfig(tempProvider, tempApiKey.trim());
-    toast.success("Configuration IA sauvegardée");
-    onOpenChange(false);
+export const AI_PROVIDERS = {
+  gemini: {
+    name: "Google Gemini",
+    description: "Gratuit avec quota généreux",
+    placeholder: "AIzaSy...",
+    helpUrl: "https://aistudio.google.com/apikey",
+    helpText: "Obtenir une clé gratuite",
+    suggestedLimit: 1_000_000, // Suggestion : 1M tokens/jour
+  },
+  openai: {
+    name: "OpenAI GPT-4o",
+    description: "Payant par token",
+    placeholder: "sk-...",
+    helpUrl: "https://platform.openai.com/api-keys",
+    helpText: "Obtenir une clé",
+    suggestedLimit: 100_000, // Suggestion : 100k tokens/jour
+  },
+  anthropic: {
+    name: "Anthropic Claude",
+    description: "Payant par token",
+    placeholder: "sk-ant-...",
+    helpUrl: "https://console.anthropic.com/",
+    helpText: "Obtenir une clé",
+    suggestedLimit: 100_000,
+  },
+  mistral: {
+    name: "Mistral AI",
+    description: "Français, tarifs compétitifs",
+    placeholder: "...",
+    helpUrl: "https://console.mistral.ai/",
+    helpText: "Obtenir une clé",
+    suggestedLimit: 500_000,
+  },
+};
+
+export function useAIConfig() {
+  const [provider, setProvider] = useState<AIProvider>(() => {
+    const saved = localStorage.getItem(AI_PROVIDER_KEY);
+    return (saved as AIProvider) || "gemini";
+  });
+
+  const [apiKey, setApiKey] = useState<string>(() => {
+    return localStorage.getItem(AI_API_KEY) || "";
+  });
+
+  const [dailyLimit, setDailyLimit] = useState<number | null>(() => {
+    const saved = localStorage.getItem(AI_DAILY_LIMIT_KEY);
+    return saved ? parseInt(saved) : null;
+  });
+
+  const [warningThreshold, setWarningThreshold] = useState<number>(() => {
+    const saved = localStorage.getItem(AI_WARNING_THRESHOLD_KEY);
+    return saved ? parseInt(saved) : 80;
+  });
+
+  // Écouter les changements de config (synchronisation entre composants)
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      const savedProvider = localStorage.getItem(AI_PROVIDER_KEY);
+      const savedApiKey = localStorage.getItem(AI_API_KEY);
+      const savedLimit = localStorage.getItem(AI_DAILY_LIMIT_KEY);
+      const savedThreshold = localStorage.getItem(AI_WARNING_THRESHOLD_KEY);
+
+      setProvider((savedProvider as AIProvider) || "gemini");
+      setApiKey(savedApiKey || "");
+      setDailyLimit(savedLimit ? parseInt(savedLimit) : null);
+      setWarningThreshold(savedThreshold ? parseInt(savedThreshold) : 80);
+    };
+
+    window.addEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
+    window.addEventListener("storage", handleConfigUpdate);
+
+    return () => {
+      window.removeEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
+      window.removeEventListener("storage", handleConfigUpdate);
+    };
+  }, []);
+
+  const isConfigured = !!apiKey;
+
+  const saveConfig = useCallback(
+    (newProvider: AIProvider, newApiKey: string, newDailyLimit?: number | null, newWarningThreshold?: number) => {
+      localStorage.setItem(AI_PROVIDER_KEY, newProvider);
+      localStorage.setItem(AI_API_KEY, newApiKey);
+
+      if (newDailyLimit !== undefined) {
+        if (newDailyLimit === null) {
+          localStorage.removeItem(AI_DAILY_LIMIT_KEY);
+        } else {
+          localStorage.setItem(AI_DAILY_LIMIT_KEY, newDailyLimit.toString());
+        }
+        setDailyLimit(newDailyLimit);
+      }
+
+      if (newWarningThreshold !== undefined) {
+        localStorage.setItem(AI_WARNING_THRESHOLD_KEY, newWarningThreshold.toString());
+        setWarningThreshold(newWarningThreshold);
+      }
+
+      setProvider(newProvider);
+      setApiKey(newApiKey);
+
+      window.dispatchEvent(new Event(AI_CONFIG_EVENT));
+    },
+    [],
+  );
+
+  const clearConfig = useCallback(() => {
+    localStorage.removeItem(AI_PROVIDER_KEY);
+    localStorage.removeItem(AI_API_KEY);
+    localStorage.removeItem(AI_DAILY_LIMIT_KEY);
+    localStorage.removeItem(AI_WARNING_THRESHOLD_KEY);
+    setProvider("gemini");
+    setApiKey("");
+    setDailyLimit(null);
+    setWarningThreshold(80);
+
+    window.dispatchEvent(new Event(AI_CONFIG_EVENT));
+  }, []);
+
+  const config: AIConfig = {
+    provider,
+    apiKey,
+    isConfigured,
+    dailyLimit,
+    warningThreshold,
   };
 
-  const handleClear = () => {
-    clearConfig();
-    setTempProvider("gemini");
-    setTempApiKey("");
-    toast.success("Configuration IA supprimée");
+  return {
+    config,
+    provider,
+    apiKey,
+    isConfigured,
+    dailyLimit,
+    warningThreshold,
+    setProvider,
+    setApiKey,
+    setDailyLimit,
+    setWarningThreshold,
+    saveConfig,
+    clearConfig,
+    providerInfo: AI_PROVIDERS[provider],
   };
-
-  const currentProviderInfo = AI_PROVIDERS[tempProvider];
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-500" />
-            Configuration IA
-          </DialogTitle>
-          <DialogDescription>
-            Configurez votre fournisseur d'IA pour toutes les fonctionnalités du site
-            (import PDF, lecture carte grise, résumé de notice...)
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label>Fournisseur IA</Label>
-            <Select value={tempProvider} onValueChange={(v) => setTempProvider(v as AIProvider)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Choisir un fournisseur" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(AI_PROVIDERS).map(([key, info]) => (
-                  <SelectItem key={key} value={key}>
-                    <div className="flex items-center gap-2">
-                      <span>{info.name}</span>
-                      {key === "gemini" && (
-                        <Badge variant="secondary" className="text-xs">Gratuit</Badge>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">{currentProviderInfo.description}</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Clé API</Label>
-            <Input
-              type="password"
-              value={tempApiKey}
-              onChange={(e) => setTempApiKey(e.target.value)}
-              placeholder={currentProviderInfo.placeholder}
-            />
-            <a
-              href={currentProviderInfo.helpUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary hover:underline flex items-center gap-1"
-            >
-              {currentProviderInfo.helpText}
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-
-          {apiKey && (
-            <div className="pt-2 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClear}
-                className="text-destructive hover:text-destructive"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Supprimer la configuration
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Annuler
-          </Button>
-          <Button onClick={handleSave} disabled={!tempApiKey.trim()}>
-            Enregistrer
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/**
- * Composant compact pour afficher le statut IA et ouvrir la config
- */
-interface AIConfigBadgeProps {
-  onClick: () => void;
-}
-
-export function AIConfigBadge({ onClick }: AIConfigBadgeProps) {
-  const { provider, isConfigured, providerInfo } = useAIConfig();
-
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-950/50 transition-colors"
-    >
-      <Sparkles className="w-4 h-4 text-purple-600" />
-      <div className="text-left">
-        <p className="text-sm font-medium">{providerInfo.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {isConfigured ? "✓ Configuré" : "Non configuré"}
-        </p>
-      </div>
-    </button>
-  );
 }
