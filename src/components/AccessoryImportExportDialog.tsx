@@ -97,12 +97,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   }, [isOpen]);
 
   const loadExistingAccessories = async () => {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("accessories")
       .select("id, nom, marque, prix_reference, prix_vente_ttc, fournisseur");
 
     if (!error && data) {
-      setExistingAccessories(data as ExistingAccessory[]);
+      setExistingAccessories(data);
     }
   };
 
@@ -273,13 +273,37 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-      let fullText = "";
+      // Extraire le texte en conservant les positions pour reconstruire les lignes
+      let allLines: { y: number; text: string }[] = [];
+
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items.map((item: any) => item.str).join(" ");
-        fullText += pageText + "\n\n";
+
+        // Grouper par position Y (ligne)
+        const lineMap = new Map<number, string[]>();
+
+        for (const item of textContent.items as any[]) {
+          const y = Math.round(item.transform[5]); // Position Y
+          const x = Math.round(item.transform[4]); // Position X pour trier
+
+          if (!lineMap.has(y)) {
+            lineMap.set(y, []);
+          }
+          lineMap.get(y)!.push(`${x.toString().padStart(5, "0")}:${item.str}`);
+        }
+
+        // Trier chaque ligne par X et joindre
+        lineMap.forEach((items, y) => {
+          items.sort(); // Trier par X (préfixé)
+          const lineText = items.map((s) => s.split(":").slice(1).join(":")).join(" ");
+          allLines.push({ y: y + i * 10000, text: lineText }); // Offset par page
+        });
       }
+
+      // Trier par Y décroissant (haut en bas) et joindre
+      allLines.sort((a, b) => b.y - a.y);
+      const fullText = allLines.map((l) => l.text).join("\n");
 
       setPdfText(fullText);
       const products = parsePdfText(fullText);
@@ -381,78 +405,80 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
     let productIndex = 0;
 
-    // Ultimatron - Pattern pour toutes les références
+    // Ultimatron - Parser ligne par ligne
     if (isUltimatron) {
       const refPatternUltimatron =
         /\b(ECO-\d{2}-\d{2,3}|U[BL][SLM]?-\d{2}-\d{2,3}(?:-[A-Z0-9]+)?|JM-\d{2}-\d{2,3}|JDG-\d{2}-\d{2,3}|JPC-\d{2}-\d{2,3}|MT\d{4}[A-Z-]*|RTD\d{4}|A\d{3}-[A-Z]|RVM-ABS-\d+PCS|\d{3}W\s*(?:MONO|ETFE)|Portable\s*\d{3}W)\b/gi;
 
-      const allMatches = [...text.matchAll(refPatternUltimatron)];
+      const lines = text.split(/\n/);
       const seenRefs = new Set<string>();
 
-      for (let i = 0; i < allMatches.length; i++) {
-        const match = allMatches[i];
-        const ref = match[0].toUpperCase().trim();
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
+        const matches = [...line.matchAll(refPatternUltimatron)];
 
-        // Skip doublons et mots-clés génériques
-        if (seenRefs.has(ref)) continue;
-        if (ref === "PHOTO" || ref === "DESCRIPTION") continue;
-        seenRefs.add(ref);
+        for (const match of matches) {
+          const ref = match[0].toUpperCase().trim();
 
-        // Extraire le contexte : 50 chars avant et jusqu'à la prochaine référence (max 500 chars)
-        const startIndex = Math.max(0, match.index! - 50);
-        const endIndex =
-          i < allMatches.length - 1 ? Math.min(match.index! + 500, allMatches[i + 1].index!) : match.index! + 500;
-        const context = text.substring(startIndex, Math.min(endIndex, text.length));
+          if (seenRefs.has(ref)) continue;
+          if (ref === "PHOTO" || ref === "DESCRIPTION") continue;
+          seenRefs.add(ref);
 
-        // Extraire les dimensions (format: 330*172*220 ou 330 * 172 * 220)
-        const dimsMatch = context.match(/(\d{2,3})\s*\*\s*(\d{2,3})\s*\*\s*(\d{2,3})/);
-        let longueur_mm: number | undefined;
-        let largeur_mm: number | undefined;
-        let hauteur_mm: number | undefined;
-        let dimensions: string | undefined;
-        if (dimsMatch) {
-          longueur_mm = parseInt(dimsMatch[1]);
-          largeur_mm = parseInt(dimsMatch[2]);
-          hauteur_mm = parseInt(dimsMatch[3]);
-          dimensions = `${longueur_mm}x${largeur_mm}x${hauteur_mm} mm`;
-        }
+          // Chercher les données sur cette ligne et les 2 suivantes
+          const contextLines = lines.slice(lineIndex, Math.min(lineIndex + 3, lines.length));
+          const context = contextLines.join(" ");
 
-        // Extraire le poids (format: 11.5 ou 5.7 - nombre décimal suivi d'espace ou fin)
-        // Chercher après les dimensions pour éviter de confondre
-        let poids_kg: number | undefined;
-        const afterDims = dimsMatch ? context.substring(context.indexOf(dimsMatch[0]) + dimsMatch[0].length) : context;
-        const weightMatch = afterDims.match(/\b(\d{1,2}[.,]\d{1,2})\b/);
-        if (weightMatch) {
-          const w = parseFloat(weightMatch[1].replace(",", "."));
-          if (w >= 0.5 && w <= 50) {
-            // Poids réaliste pour batterie
-            poids_kg = w;
+          // Dimensions (format: 330*172*220)
+          const dimsMatch = context.match(/(\d{2,3})\s*\*\s*(\d{2,3})\s*\*\s*(\d{2,3})/);
+          let longueur_mm: number | undefined;
+          let largeur_mm: number | undefined;
+          let hauteur_mm: number | undefined;
+          let dimensions: string | undefined;
+          if (dimsMatch) {
+            longueur_mm = parseInt(dimsMatch[1]);
+            largeur_mm = parseInt(dimsMatch[2]);
+            hauteur_mm = parseInt(dimsMatch[3]);
+            dimensions = `${longueur_mm}x${largeur_mm}x${hauteur_mm} mm`;
           }
+
+          // Poids - chercher un nombre décimal suivi ou non de "kg"
+          let poids_kg: number | undefined;
+          // Chercher après les dimensions si elles existent
+          const searchText = dimsMatch
+            ? context.substring(context.indexOf(dimsMatch[0]) + dimsMatch[0].length)
+            : context;
+          const weightMatch = searchText.match(/\b(\d{1,2}[.,]\d{1,2})\s*(?:kg)?\b/i);
+          if (weightMatch) {
+            const w = parseFloat(weightMatch[1].replace(",", "."));
+            if (w >= 0.5 && w <= 60) {
+              poids_kg = w;
+            }
+          }
+
+          // Prix (format: 258.94€ ou 258,94€)
+          const priceMatches = [...context.matchAll(/(\d{1,4}[.,]\d{2})\s*€/g)];
+          const prices = priceMatches.map((m) => parsePrice(m[1])).filter((p) => p > 5 && p < 5000);
+
+          // Générer description
+          const description = generateUltimatronDescription(ref);
+
+          products.push({
+            id: `import-${productIndex++}`,
+            selected: true,
+            reference: ref,
+            nom: ref,
+            description,
+            prix_reference: prices.length > 0 ? prices[0] : undefined,
+            prix_vente_ttc: prices.length > 1 ? prices[1] : undefined,
+            fournisseur: "Ultimatron",
+            marque: "Ultimatron",
+            poids_kg,
+            dimensions,
+            longueur_mm,
+            largeur_mm,
+            hauteur_mm,
+          });
         }
-
-        // Extraire les prix (format: 258.94€ ou 258,94€)
-        const priceMatches = [...context.matchAll(/(\d{1,4}[.,]\d{2})\s*€/g)];
-        const prices = priceMatches.map((m) => parsePrice(m[1])).filter((p) => p > 5 && p < 5000); // Prix réalistes
-
-        // Générer description basée sur la référence
-        let description = generateUltimatronDescription(ref);
-
-        products.push({
-          id: `import-${productIndex++}`,
-          selected: true,
-          reference: ref,
-          nom: ref,
-          description,
-          prix_reference: prices.length > 0 ? prices[0] : undefined,
-          prix_vente_ttc: prices.length > 1 ? prices[1] : undefined,
-          fournisseur: "Ultimatron",
-          marque: "Ultimatron",
-          poids_kg,
-          dimensions,
-          longueur_mm,
-          largeur_mm,
-          hauteur_mm,
-        });
       }
     }
 
@@ -602,12 +628,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (product.prix_vente_ttc !== undefined) updateData.prix_vente_ttc = product.prix_vente_ttc;
           updateData.last_price_check = new Date().toISOString();
 
-          const { error } = await (supabase as any).from("accessories").update(updateData).eq("id", product.existingId);
+          const { error } = await supabase.from("accessories").update(updateData).eq("id", product.existingId);
 
           if (error) errors++;
           else updated++;
         } else {
-          const { error } = await (supabase as any).from("accessories").insert({
+          const { error } = await supabase.from("accessories").insert({
             user_id: user.id,
             nom: product.nom || product.reference || "Sans nom",
             marque: product.marque || defaultFournisseur || null,
@@ -651,14 +677,14 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   const handleExport = async () => {
     setIsLoading(true);
     try {
-      const { data: accessories, error } = await (supabase as any)
+      const { data: accessories, error } = await supabase
         .from("accessories")
         .select(`*, categories (nom)`)
         .order("nom");
 
       if (error) throw error;
 
-      const exportData = (accessories || []).map((acc: any) => ({
+      const exportData = (accessories || []).map((acc) => ({
         Référence: acc.id.substring(0, 8),
         Nom: acc.nom,
         Marque: acc.marque || "",
