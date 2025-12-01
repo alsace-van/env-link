@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export type AIProvider = "gemini" | "openai" | "anthropic" | "mistral";
 
@@ -10,6 +10,7 @@ export interface AIConfig {
 
 const AI_PROVIDER_KEY = "ai_provider";
 const AI_API_KEY = "ai_api_key";
+const AI_CONFIG_EVENT = "ai_config_updated";
 
 export const AI_PROVIDERS = {
   gemini: {
@@ -52,21 +53,48 @@ export function useAIConfig() {
     return localStorage.getItem(AI_API_KEY) || "";
   });
 
+  // Écouter les changements de config (synchronisation entre composants)
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      const savedProvider = localStorage.getItem(AI_PROVIDER_KEY);
+      const savedApiKey = localStorage.getItem(AI_API_KEY);
+      setProvider((savedProvider as AIProvider) || "gemini");
+      setApiKey(savedApiKey || "");
+    };
+
+    // Écouter l'événement custom
+    window.addEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
+
+    // Écouter aussi les changements de localStorage (pour autres onglets)
+    window.addEventListener("storage", handleConfigUpdate);
+
+    return () => {
+      window.removeEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
+      window.removeEventListener("storage", handleConfigUpdate);
+    };
+  }, []);
+
   const isConfigured = !!apiKey;
 
-  const saveConfig = (newProvider: AIProvider, newApiKey: string) => {
+  const saveConfig = useCallback((newProvider: AIProvider, newApiKey: string) => {
     localStorage.setItem(AI_PROVIDER_KEY, newProvider);
     localStorage.setItem(AI_API_KEY, newApiKey);
     setProvider(newProvider);
     setApiKey(newApiKey);
-  };
 
-  const clearConfig = () => {
+    // Émettre un événement pour synchroniser tous les composants
+    window.dispatchEvent(new Event(AI_CONFIG_EVENT));
+  }, []);
+
+  const clearConfig = useCallback(() => {
     localStorage.removeItem(AI_PROVIDER_KEY);
     localStorage.removeItem(AI_API_KEY);
     setProvider("gemini");
     setApiKey("");
-  };
+
+    // Émettre un événement pour synchroniser tous les composants
+    window.dispatchEvent(new Event(AI_CONFIG_EVENT));
+  }, []);
 
   const config: AIConfig = {
     provider,
