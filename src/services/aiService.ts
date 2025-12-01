@@ -42,16 +42,48 @@ export async function callAI(options: AIRequestOptions): Promise<AIResponse> {
 
     switch (provider) {
       case "gemini":
-        textResponse = await callGemini({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
+        textResponse = await callGemini({
+          apiKey,
+          prompt,
+          pdfBase64,
+          imageBase64,
+          imageMimeType,
+          maxTokens,
+          temperature,
+        });
         break;
       case "openai":
-        textResponse = await callOpenAI({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
+        textResponse = await callOpenAI({
+          apiKey,
+          prompt,
+          pdfBase64,
+          imageBase64,
+          imageMimeType,
+          maxTokens,
+          temperature,
+        });
         break;
       case "anthropic":
-        textResponse = await callAnthropic({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
+        textResponse = await callAnthropic({
+          apiKey,
+          prompt,
+          pdfBase64,
+          imageBase64,
+          imageMimeType,
+          maxTokens,
+          temperature,
+        });
         break;
       case "mistral":
-        textResponse = await callMistral({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
+        textResponse = await callMistral({
+          apiKey,
+          prompt,
+          pdfBase64,
+          imageBase64,
+          imageMimeType,
+          maxTokens,
+          temperature,
+        });
         break;
       default:
         return { success: false, error: `Fournisseur IA non supporté: ${provider}` };
@@ -90,8 +122,12 @@ async function callGemini(options: ProviderCallOptions): Promise<string> {
     parts.push({ inline_data: { mime_type: imageMimeType, data: imageBase64 } });
   }
 
+  // Utiliser gemini-2.5-flash (gratuit avec quota généreux) ou gemini-2.0-flash en fallback
+  // Note: gemini-3-pro-preview n'a pas de free tier
+  const model = "gemini-2.5-flash";
+
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -99,7 +135,7 @@ async function callGemini(options: ProviderCallOptions): Promise<string> {
         contents: [{ parts }],
         generationConfig: { temperature, maxOutputTokens: maxTokens },
       }),
-    }
+    },
   );
 
   if (!response.ok) {
