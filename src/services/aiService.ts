@@ -15,6 +15,86 @@ export interface AIResponse {
   success: boolean;
   text?: string;
   error?: string;
+  tokensUsed?: {
+    input: number;
+    output: number;
+    total: number;
+  };
+}
+
+// Tracking de l'usage en localStorage
+const USAGE_KEY = "ai_usage_stats";
+
+interface UsageStats {
+  totalTokens: number;
+  totalRequests: number;
+  todayTokens: number;
+  todayRequests: number;
+  lastResetDate: string;
+  history: { date: string; tokens: number; requests: number }[];
+}
+
+function getTodayDate(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function getUsageStats(): UsageStats {
+  const saved = localStorage.getItem(USAGE_KEY);
+  const today = getTodayDate();
+
+  if (saved) {
+    const stats: UsageStats = JSON.parse(saved);
+    // Reset les compteurs du jour si c'est un nouveau jour
+    if (stats.lastResetDate !== today) {
+      // Sauvegarder l'historique du jour précédent
+      if (stats.todayTokens > 0 || stats.todayRequests > 0) {
+        stats.history = stats.history || [];
+        stats.history.push({
+          date: stats.lastResetDate,
+          tokens: stats.todayTokens,
+          requests: stats.todayRequests,
+        });
+        // Garder seulement les 30 derniers jours
+        if (stats.history.length > 30) {
+          stats.history = stats.history.slice(-30);
+        }
+      }
+      stats.todayTokens = 0;
+      stats.todayRequests = 0;
+      stats.lastResetDate = today;
+    }
+    return stats;
+  }
+
+  return {
+    totalTokens: 0,
+    totalRequests: 0,
+    todayTokens: 0,
+    todayRequests: 0,
+    lastResetDate: today,
+    history: [],
+  };
+}
+
+function saveUsageStats(stats: UsageStats): void {
+  localStorage.setItem(USAGE_KEY, JSON.stringify(stats));
+}
+
+export function trackUsage(tokens: number): void {
+  const stats = getUsageStats();
+  stats.totalTokens += tokens;
+  stats.totalRequests += 1;
+  stats.todayTokens += tokens;
+  stats.todayRequests += 1;
+  saveUsageStats(stats);
+}
+
+export function getAIUsageStats(): UsageStats {
+  return getUsageStats();
+}
+
+export function resetAIUsageStats(): void {
+  localStorage.removeItem(USAGE_KEY);
 }
 
 /**
@@ -38,62 +118,43 @@ export async function callAI(options: AIRequestOptions): Promise<AIResponse> {
   }
 
   try {
-    let textResponse = "";
+    let result: ProviderResponse;
 
     switch (provider) {
       case "gemini":
-        textResponse = await callGemini({
-          apiKey,
-          prompt,
-          pdfBase64,
-          imageBase64,
-          imageMimeType,
-          maxTokens,
-          temperature,
-        });
+        result = await callGemini({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
         break;
       case "openai":
-        textResponse = await callOpenAI({
-          apiKey,
-          prompt,
-          pdfBase64,
-          imageBase64,
-          imageMimeType,
-          maxTokens,
-          temperature,
-        });
+        result = await callOpenAI({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
         break;
       case "anthropic":
-        textResponse = await callAnthropic({
-          apiKey,
-          prompt,
-          pdfBase64,
-          imageBase64,
-          imageMimeType,
-          maxTokens,
-          temperature,
-        });
+        result = await callAnthropic({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
         break;
       case "mistral":
-        textResponse = await callMistral({
-          apiKey,
-          prompt,
-          pdfBase64,
-          imageBase64,
-          imageMimeType,
-          maxTokens,
-          temperature,
-        });
+        result = await callMistral({ apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature });
         break;
       default:
         return { success: false, error: `Fournisseur IA non supporté: ${provider}` };
     }
 
-    if (!textResponse) {
+    if (!result.text) {
       return { success: false, error: "Réponse vide de l'IA" };
     }
 
-    return { success: true, text: textResponse };
+    // Tracker les tokens utilisés
+    if (result.tokensUsed > 0) {
+      trackUsage(result.tokensUsed);
+    }
+
+    return {
+      success: true,
+      text: result.text,
+      tokensUsed: {
+        input: 0, // On n'a pas le détail pour tous les providers
+        output: 0,
+        total: result.tokensUsed,
+      },
+    };
   } catch (error: any) {
     console.error(`Erreur ${provider}:`, error);
     return { success: false, error: error.message || "Erreur lors de l'appel IA" };
@@ -110,7 +171,12 @@ interface ProviderCallOptions {
   temperature: number;
 }
 
-async function callGemini(options: ProviderCallOptions): Promise<string> {
+interface ProviderResponse {
+  text: string;
+  tokensUsed: number;
+}
+
+async function callGemini(options: ProviderCallOptions): Promise<ProviderResponse> {
   const { apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature } = options;
 
   const parts: any[] = [{ text: prompt }];
@@ -122,8 +188,7 @@ async function callGemini(options: ProviderCallOptions): Promise<string> {
     parts.push({ inline_data: { mime_type: imageMimeType, data: imageBase64 } });
   }
 
-  // Utiliser gemini-2.5-flash (gratuit avec quota généreux) ou gemini-2.0-flash en fallback
-  // Note: gemini-3-pro-preview n'a pas de free tier
+  // Utiliser gemini-2.5-flash (gratuit avec quota généreux)
   const model = "gemini-2.5-flash";
 
   const response = await fetch(
@@ -147,10 +212,16 @@ async function callGemini(options: ProviderCallOptions): Promise<string> {
   }
 
   const result = await response.json();
-  return result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+  // Récupérer les tokens utilisés
+  const promptTokens = result.usageMetadata?.promptTokenCount || 0;
+  const outputTokens = result.usageMetadata?.candidatesTokenCount || 0;
+
+  return { text, tokensUsed: promptTokens + outputTokens };
 }
 
-async function callOpenAI(options: ProviderCallOptions): Promise<string> {
+async function callOpenAI(options: ProviderCallOptions): Promise<ProviderResponse> {
   const { apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature } = options;
 
   const content: any[] = [{ type: "text", text: prompt }];
@@ -189,10 +260,16 @@ async function callOpenAI(options: ProviderCallOptions): Promise<string> {
   }
 
   const result = await response.json();
-  return result.choices?.[0]?.message?.content || "";
+  const text = result.choices?.[0]?.message?.content || "";
+
+  // Récupérer les tokens utilisés
+  const promptTokens = result.usage?.prompt_tokens || 0;
+  const outputTokens = result.usage?.completion_tokens || 0;
+
+  return { text, tokensUsed: promptTokens + outputTokens };
 }
 
-async function callAnthropic(options: ProviderCallOptions): Promise<string> {
+async function callAnthropic(options: ProviderCallOptions): Promise<ProviderResponse> {
   const { apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens } = options;
 
   const content: any[] = [];
@@ -232,10 +309,16 @@ async function callAnthropic(options: ProviderCallOptions): Promise<string> {
   }
 
   const result = await response.json();
-  return result.content?.[0]?.text || "";
+  const text = result.content?.[0]?.text || "";
+
+  // Récupérer les tokens utilisés
+  const inputTokens = result.usage?.input_tokens || 0;
+  const outputTokens = result.usage?.output_tokens || 0;
+
+  return { text, tokensUsed: inputTokens + outputTokens };
 }
 
-async function callMistral(options: ProviderCallOptions): Promise<string> {
+async function callMistral(options: ProviderCallOptions): Promise<ProviderResponse> {
   const { apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens, temperature } = options;
 
   const content: any[] = [{ type: "text", text: prompt }];
@@ -273,7 +356,13 @@ async function callMistral(options: ProviderCallOptions): Promise<string> {
   }
 
   const result = await response.json();
-  return result.choices?.[0]?.message?.content || "";
+  const text = result.choices?.[0]?.message?.content || "";
+
+  // Récupérer les tokens utilisés
+  const promptTokens = result.usage?.prompt_tokens || 0;
+  const outputTokens = result.usage?.completion_tokens || 0;
+
+  return { text, tokensUsed: promptTokens + outputTokens };
 }
 
 /**
