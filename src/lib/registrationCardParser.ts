@@ -195,6 +195,7 @@ export const isValidImmatriculation = (immat: string): boolean => {
  */
 
 export interface VehicleRegistrationData {
+  // Données principales déjà utilisées dans le parsing avancé
   immatriculation?: string;
   datePremiereImmatriculation?: string;
   numeroChassisVIN?: string;
@@ -213,6 +214,26 @@ export interface VehicleRegistrationData {
   longueur?: number;
   largeur?: number;
   hauteur?: number;
+
+  // Champs complémentaires utilisés par le scanner IA et la saisie manuelle
+  vin?: string;
+  modele?: string;
+  typeVariante?: string;
+  dateImmatriculation?: string;
+  genre?: string;
+  carrosserie?: string;
+  couleur?: string;
+  placesAssises?: number | null;
+  placesDebout?: number | null;
+  ptac?: number | null;
+  poidsVide?: number | null;
+  puissanceKw?: number | null;
+  co2?: number | null;
+  nomProprietaire?: string;
+  prenomProprietaire?: string;
+  adresse?: string;
+  codePostal?: string;
+  ville?: string;
 }
 
 /**

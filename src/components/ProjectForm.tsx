@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, Scan, RotateCcw } from "lucide-react";
-import VehicleRegistrationScanner from "./VehicleRegistrationScanner";
+import { VehicleRegistrationScanner } from "./VehicleRegistrationScanner";
 import type { VehicleRegistrationData } from "@/lib/registrationCardParser";
 
 interface VehicleCatalog {

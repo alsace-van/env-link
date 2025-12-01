@@ -37,11 +37,11 @@ export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }:
   // Charger l'URL du PDF de la notice
   useEffect(() => {
     const loadNoticeUrl = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("notices")
         .select("fichier_url")
         .eq("id", noticeId)
-        .single();
+        .maybeSingle();
       
       if (data?.fichier_url) {
         setPdfUrl(data.fichier_url);
@@ -104,7 +104,7 @@ Si certaines informations ne sont pas disponibles, ne les inclus pas.`;
       setSummary(generatedSummary);
 
       // Sauvegarder le résumé en base
-      await supabase
+      await (supabase as any)
         .from("notices")
         .update({ resume_ia: generatedSummary })
         .eq("id", noticeId);
