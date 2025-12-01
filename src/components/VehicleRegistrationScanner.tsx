@@ -167,7 +167,6 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
       setProgress(100);
 
       toast.success("Carte grise analysée avec succès !");
-
     } catch (error: any) {
       console.error("❌ Erreur:", error);
       toast.error(error.message || "Erreur lors du scan de la carte grise");
@@ -251,7 +250,7 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
 
   // Saisie manuelle
   const handleManualChange = (field: keyof VehicleRegistrationData, value: string | number | null) => {
-    setManualData(prev => ({ ...prev, [field]: value }));
+    setManualData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleManualSubmit = () => {
@@ -271,9 +270,7 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
             <Camera className="h-5 w-5" />
             Importer les données du véhicule
           </CardTitle>
-          <CardDescription>
-            Scannez la carte grise avec l'IA ou saisissez les données manuellement
-          </CardDescription>
+          <CardDescription>Scannez la carte grise avec l'IA ou saisissez les données manuellement</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -306,7 +303,9 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
 
               {/* Zone d'upload */}
               {!imagePreview ? (
-                <div className={`border-2 border-dashed rounded-lg p-8 text-center ${!aiIsConfigured ? 'opacity-50' : ''}`}>
+                <div
+                  className={`border-2 border-dashed rounded-lg p-8 text-center ${!aiIsConfigured ? "opacity-50" : ""}`}
+                >
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -317,7 +316,10 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
                     id="carte-grise-upload"
                     disabled={!aiIsConfigured}
                   />
-                  <label htmlFor="carte-grise-upload" className={aiIsConfigured ? "cursor-pointer" : "cursor-not-allowed"}>
+                  <label
+                    htmlFor="carte-grise-upload"
+                    className={aiIsConfigured ? "cursor-pointer" : "cursor-not-allowed"}
+                  >
                     <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                     <p className="text-lg font-medium">Cliquez pour sélectionner une image</p>
                     <p className="text-sm text-muted-foreground">ou prenez une photo de la carte grise</p>
@@ -330,12 +332,7 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
                     alt="Aperçu carte grise"
                     className="w-full rounded-lg max-h-64 object-contain bg-muted"
                   />
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2 right-2"
-                    onClick={clearImage}
-                  >
+                  <Button variant="destructive" size="icon" className="absolute top-2 right-2" onClick={clearImage}>
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
@@ -458,7 +455,9 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
                       type="number"
                       placeholder="2000"
                       value={manualData.poidsVide || ""}
-                      onChange={(e) => handleManualChange("poidsVide", e.target.value ? parseInt(e.target.value) : null)}
+                      onChange={(e) =>
+                        handleManualChange("poidsVide", e.target.value ? parseInt(e.target.value) : null)
+                      }
                     />
                   </div>
                 </div>
@@ -474,7 +473,9 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
                         type="number"
                         placeholder="3"
                         value={manualData.placesAssises || ""}
-                        onChange={(e) => handleManualChange("placesAssises", e.target.value ? parseInt(e.target.value) : null)}
+                        onChange={(e) =>
+                          handleManualChange("placesAssises", e.target.value ? parseInt(e.target.value) : null)
+                        }
                       />
                     </div>
                     <div className="space-y-2">
@@ -484,7 +485,9 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
                         type="number"
                         placeholder="0"
                         value={manualData.placesDebout || ""}
-                        onChange={(e) => handleManualChange("placesDebout", e.target.value ? parseInt(e.target.value) : null)}
+                        onChange={(e) =>
+                          handleManualChange("placesDebout", e.target.value ? parseInt(e.target.value) : null)
+                        }
                       />
                     </div>
                   </div>
@@ -517,12 +520,10 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans markdown ni texte.`;
         <ScanConfirmationModal
           isOpen={showConfirmModal}
           onClose={() => setShowConfirmModal(false)}
-          scannedData={extractedData}
           onConfirm={handleConfirmData}
-          onRescanVIN={handleRescan}
-          onRescanImmat={handleRescan}
-          onRescanMarque={handleRescan}
-          onRescanModele={handleRescan}
+          onRescan={handleRescan}
+          data={extractedData}
+          imagePreview={imagePreview}
         />
       )}
     </>
