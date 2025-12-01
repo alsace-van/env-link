@@ -392,17 +392,10 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     console.log("📊 ====== DÉBUT PARSING TABLEAU PDF ======");
     console.log("📊 Nombre total d'items:", items.length);
 
-    // Debug: afficher les 30 premiers items
-    console.log(
-      "📊 Premiers items:",
-      items.slice(0, 30).map((i) => ({ text: i.text, x: i.x, y: i.y })),
-    );
-
-    // 1. Regrouper les items par ligne (Y similaire) avec une tolérance
+    // 1. Regrouper les items par ligne (Y similaire)
     const rowTolerance = 10;
     const rows: { y: number; items: typeof items; page: number }[] = [];
 
-    // Trier d'abord tous les items par page puis Y puis X
     const sortedItems = [...items].sort((a, b) => {
       if (a.page !== b.page) return a.page - b.page;
       if (Math.abs(a.y - b.y) > rowTolerance) return a.y - b.y;
@@ -418,28 +411,21 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       }
     }
 
-    // Trier les items dans chaque ligne par X (gauche à droite)
     rows.forEach((row) => row.items.sort((a, b) => a.x - b.x));
-
-    // Trier les lignes par page puis Y (haut en bas)
     rows.sort((a, b) => {
       if (a.page !== b.page) return a.page - b.page;
       return a.y - b.y;
     });
 
     console.log("📊 Lignes regroupées:", rows.length);
-    console.log("📊 Premières 15 lignes:");
-    rows.slice(0, 15).forEach((r, i) => {
-      console.log(`📊 Ligne ${i} (Y=${r.y}):`, r.items.map((it) => it.text).join(" | "));
-    });
 
-    // 2. Détecter les lignes de produits par pattern de référence
+    // 2. Patterns de référence produit
     const refPatterns = [
-      /^[A-Z]{2,4}\d{1,2}-\d{2,4}/i, // PS12-300, PSW12-350
-      /^[A-Z]{2,4}\d{1,2}-\d{2,4}-?[A-Z0-9]*/i, // PSW12-350-V2, PSW12-700DIF-V2
+      /^[A-Z]{2,6}\d{1,2}-\d{1,4}/i, // LTPRO12-60, PSW12-350
+      /^[A-Z]{2,6}\d{1,2}-\d{1,4}[A-Z\-]*/i, // LTPRO12-100HD-P-BT
       /^[A-Z]+-[A-Z]+-[A-Z0-9]+/i, // REMOTE-PSW-V2
-      /^[A-Z]{3,}\d{2,}/i, // ABC123
-      /^\d{5,}/, // Code numérique 5+ chiffres
+      /^[A-Z]{3,}\d{2,}/i, // AGM12-70
+      /^CAB\d+\/\d+[A-Z]?/i, // CAB25/1N, CAB25/05N
     ];
 
     const isProductReference = (text: string): boolean => {
@@ -447,24 +433,21 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       return refPatterns.some((pattern) => pattern.test(cleaned));
     };
 
-    // 3. Identifier les lignes qui sont des produits
+    // 3. Identifier les lignes produits (avec référence ET prix avec €)
     const productRows: { y: number; items: typeof items; page: number; lineText: string; rowIndex: number }[] = [];
 
     for (let idx = 0; idx < rows.length; idx++) {
       const row = rows[idx];
       const lineText = row.items.map((i) => i.text).join(" ");
 
-      // Vérifier si cette ligne contient une référence produit
       const hasRef = row.items.some((item) => isProductReference(item.text));
+      // IMPORTANT: Chercher uniquement les prix avec € et valeur >= 10
+      const hasPriceWithEuro = /\d{2,}\s*€/.test(lineText);
 
-      // Vérifier si cette ligne contient un prix (nombre suivi de € ou juste un nombre décimal)
-      const hasPrice = /\d+\s*€|\d+[.,]\d{2}/.test(lineText);
-
-      // Vérifier que ce n'est pas un header
       const headerKeywords = ["référence", "désignation", "description", "dimensions", "poids", "prix"];
       const isHeader = headerKeywords.filter((kw) => lineText.toLowerCase().includes(kw)).length >= 2;
 
-      if (hasRef && hasPrice && !isHeader) {
+      if (hasRef && hasPriceWithEuro && !isHeader) {
         productRows.push({ ...row, lineText, rowIndex: idx });
       }
     }
@@ -472,37 +455,23 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     console.log("📊 Lignes produits détectées:", productRows.length);
 
     if (productRows.length === 0) {
-      console.log("❌ Aucune ligne produit détectée, essai méthode alternative...");
-
-      // Méthode alternative: chercher les lignes avec des prix
+      // Méthode alternative
       for (let idx = 0; idx < rows.length; idx++) {
         const row = rows[idx];
         const lineText = row.items.map((i) => i.text).join(" ");
-        const priceMatches = lineText.match(/(\d+)\s*€/g);
-
-        if (priceMatches && priceMatches.length >= 1) {
+        // Chercher au moins un prix >= 10 avec €
+        if (/\d{2,}\s*€/.test(lineText) && row.items.length >= 4) {
           const isHeader =
             ["référence", "désignation", "prix"].filter((kw) => lineText.toLowerCase().includes(kw)).length >= 2;
-
-          if (!isHeader && row.items.length >= 3) {
+          if (!isHeader) {
             productRows.push({ ...row, lineText, rowIndex: idx });
           }
         }
       }
-
-      console.log("📊 Lignes avec prix détectées (méthode alt):", productRows.length);
+      console.log("📊 Lignes (méthode alt):", productRows.length);
     }
 
-    if (productRows.length === 0) {
-      console.log("❌ Toujours aucun produit détecté");
-      return [];
-    }
-
-    // Les productRows sont déjà dans l'ordre grâce au tri des rows
-    console.log(
-      "📊 Ordre des produits (par rowIndex):",
-      productRows.map((r) => r.rowIndex),
-    );
+    if (productRows.length === 0) return [];
 
     // 4. Parser chaque ligne produit
     const products: ParsedProduct[] = [];
@@ -510,10 +479,11 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
     for (const row of productRows) {
       const items = row.items;
+      const lineText = row.lineText;
 
-      console.log("📊 --- Parsing ligne:", items.map((i) => `[${i.text}]`).join(" "));
+      console.log("📊 --- Parsing:", lineText.substring(0, 100));
 
-      // Trouver la référence (premier élément qui match un pattern)
+      // Trouver la référence
       let reference = "";
       let refIndex = -1;
       for (let i = 0; i < items.length; i++) {
@@ -524,23 +494,26 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         }
       }
 
-      // Si pas de référence pattern, prendre le premier élément non-vide
       if (!reference && items.length > 0) {
         reference = items[0].text.trim();
         refIndex = 0;
       }
 
-      // Trouver les prix - parcourir de GAUCHE À DROITE pour garder l'ordre Prix Net puis Prix PPC
-      const priceItems: { value: number; x: number }[] = [];
+      // === EXTRACTION DES PRIX AVEC € UNIQUEMENT ===
+      const priceItems: { value: number; x: number; text: string }[] = [];
 
       for (const item of items) {
         const text = item.text.trim();
-        // Chercher un prix (nombre avec ou sans €)
-        const priceMatch = text.match(/^(\d+(?:[.,]\d+)?)\s*€?$/);
+        // Pattern: nombre (avec ou sans espace) suivi de €
+        // Exemples: "228 €", "1 580 €", "380€"
+        const priceMatch = text.match(/^([\d\s]+)\s*€$/);
         if (priceMatch) {
-          const price = parseFloat(priceMatch[1].replace(",", "."));
-          if (price > 0 && price < 50000) {
-            priceItems.push({ value: price, x: item.x });
+          // Enlever les espaces dans le nombre (ex: "1 580" -> "1580")
+          const priceStr = priceMatch[1].replace(/\s/g, "");
+          const price = parseFloat(priceStr);
+          // Filtrer les prix < 10€ (probablement pas des vrais prix)
+          if (price >= 10 && price < 50000) {
+            priceItems.push({ value: price, x: item.x, text: text });
           }
         }
       }
@@ -548,30 +521,34 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       // Trier par position X (gauche à droite)
       priceItems.sort((a, b) => a.x - b.x);
 
-      console.log("📊 Prix trouvés (ordre X):", priceItems);
+      console.log(
+        "📊 Prix avec € trouvés:",
+        priceItems.map((p) => p.value),
+      );
 
-      // Trouver la désignation (texte entre référence et premiers prix)
+      // === EXTRACTION DE LA DÉSIGNATION ===
       let designation = "";
       const designationItems: string[] = [];
 
       for (let i = refIndex + 1; i < items.length; i++) {
         const text = items[i].text.trim();
-        // Arrêter si on trouve un prix ou des dimensions
-        if (/^\d+(?:[.,]\d+)?\s*€?$/.test(text)) break;
-        if (/^\d+\s*x\s*\d+/i.test(text)) break;
-        if (text && !/^[\d.,]+$/.test(text)) {
+        // Arrêter si on trouve un prix avec € ou des dimensions
+        if (/€/.test(text)) break;
+        if (/^\d{2,3}\s*x\s*\d{2,3}\s*x\s*\d{2,3}$/.test(text)) break;
+        // Ignorer les nombres seuls (poids, etc.)
+        if (/^[\d,.\s]+$/.test(text)) continue;
+        if (text) {
           designationItems.push(text);
         }
       }
       designation = designationItems.join(" ").trim();
 
-      // Trouver les dimensions (format: 210 x 120 x 52)
+      // === EXTRACTION DES DIMENSIONS ===
       let dimensions = "";
       let longueur_mm: number | undefined;
       let largeur_mm: number | undefined;
       let hauteur_mm: number | undefined;
 
-      const lineText = row.lineText;
       const dimsPattern = /(\d{2,4})\s*x\s*(\d{2,4})\s*x\s*(\d{1,4})/i;
       const dimsMatch = lineText.match(dimsPattern);
       if (dimsMatch) {
@@ -581,22 +558,22 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
         dimensions = `${longueur_mm}x${largeur_mm}x${hauteur_mm} mm`;
       }
 
-      // Trouver le poids (nombre décimal entre dimensions et prix)
+      // === EXTRACTION DU POIDS ===
+      // Le poids est un nombre décimal entre 0.1 et 100, PAS suivi de €
       let poids: number | undefined;
       for (const item of items) {
         const text = item.text.trim();
-        const poidsMatch = text.match(/^(\d+[.,]\d)$/);
-        if (poidsMatch) {
-          const p = parseFloat(poidsMatch[1].replace(",", "."));
-          // Le poids est généralement entre 0.1 et 50 kg
-          if (p >= 0.1 && p <= 50) {
+        // Pattern: nombre décimal seul (ex: "6,5" ou "10.4" ou "25,3")
+        if (/^(\d{1,3})[,.](\d)$/.test(text)) {
+          const p = parseFloat(text.replace(",", "."));
+          if (p >= 0.1 && p <= 100) {
             poids = p;
             break;
           }
         }
       }
 
-      if (reference) {
+      if (reference && priceItems.length > 0) {
         const product: ParsedProduct = {
           id: `import-${productIndex++}`,
           selected: true,
@@ -608,24 +585,22 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           largeur_mm,
           hauteur_mm,
           poids_kg: poids,
-          // Prix Net (HT) = premier prix, Prix PPC (HT) = deuxième prix
+          // Premier prix = Prix Net (HT), Deuxième = Prix PPC (HT)
           prix_reference: priceItems.length >= 1 ? priceItems[0].value : undefined,
           prix_vente_ttc: priceItems.length >= 2 ? priceItems[1].value : undefined,
         };
 
         products.push(product);
-        console.log("📊 Produit parsé:", {
+        console.log("📊 Produit:", {
           ref: product.reference,
-          nom: product.nom,
           prixNet: product.prix_reference,
           prixPPC: product.prix_vente_ttc,
           poids: product.poids_kg,
-          dims: product.dimensions,
         });
       }
     }
 
-    console.log("📊 ====== FIN PARSING: " + products.length + " produits ======");
+    console.log("📊 ====== FIN: " + products.length + " produits ======");
     return products;
   };
 
