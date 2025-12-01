@@ -210,7 +210,7 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
 
       if (editingItem) {
         // Mise à jour
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('downloads')
           .update(downloadData)
           .eq('id', editingItem.id);
@@ -219,7 +219,7 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
         toast.success('Téléchargement mis à jour');
       } else {
         // Création
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('downloads')
           .insert(downloadData);
 
