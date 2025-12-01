@@ -424,12 +424,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (ref === "PHOTO" || ref === "DESCRIPTION") continue;
           seenRefs.add(ref);
 
-          // Chercher les données sur cette ligne et les 2 suivantes
-          const contextLines = lines.slice(lineIndex, Math.min(lineIndex + 3, lines.length));
+          // Chercher les données sur cette ligne et les 8 suivantes (PDF multi-lignes)
+          const contextLines = lines.slice(lineIndex, Math.min(lineIndex + 8, lines.length));
           const context = contextLines.join(" ");
 
-          // Dimensions (format: 330*172*220)
-          const dimsMatch = context.match(/(\d{2,3})\s*\*\s*(\d{2,3})\s*\*\s*(\d{2,3})/);
+          // Dimensions (format: 330*172*220 ou 1250*670*3)
+          const dimsMatch = context.match(/(\d{2,4})\s*\*\s*(\d{2,3})\s*\*\s*(\d{1,3})/);
           let longueur_mm: number | undefined;
           let largeur_mm: number | undefined;
           let hauteur_mm: number | undefined;
@@ -441,17 +441,20 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
             dimensions = `${longueur_mm}x${largeur_mm}x${hauteur_mm} mm`;
           }
 
-          // Poids - chercher un nombre décimal suivi ou non de "kg"
+          // Poids - chercher dans tout le contexte
           let poids_kg: number | undefined;
-          // Chercher après les dimensions si elles existent
-          const searchText = dimsMatch
-            ? context.substring(context.indexOf(dimsMatch[0]) + dimsMatch[0].length)
-            : context;
-          const weightMatch = searchText.match(/\b(\d{1,2}[.,]\d{1,2})\s*(?:kg)?\b/i);
-          if (weightMatch) {
-            const w = parseFloat(weightMatch[1].replace(",", "."));
-            if (w >= 0.5 && w <= 60) {
+          // Pattern pour poids: nombre décimal suivi optionnellement de kg
+          const weightMatches = [...context.matchAll(/\b(\d{1,2}[.,]\d{1,2})\s*(?:kg)?\b/gi)];
+          for (const wm of weightMatches) {
+            const w = parseFloat(wm[1].replace(",", "."));
+            // Filtrer: poids réaliste (0.5-60kg) et pas un prix (pas suivi de €)
+            const afterMatch = context.substring(
+              context.indexOf(wm[0]) + wm[0].length,
+              context.indexOf(wm[0]) + wm[0].length + 5,
+            );
+            if (w >= 0.5 && w <= 60 && !afterMatch.includes("€")) {
               poids_kg = w;
+              break;
             }
           }
 
@@ -545,6 +548,50 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           }
         }
       }
+    }
+
+    // Trier les produits par type et référence
+    if (products.length > 0) {
+      const typeOrder: Record<string, number> = {
+        ECO: 1,
+        UBL: 2,
+        ULS: 3,
+        ULM: 4,
+        JM: 5,
+        JDG: 6,
+        JPC: 7,
+        MT: 8,
+        RTD: 9,
+        A70: 10,
+        RVM: 11,
+        MONO: 12,
+        ETFE: 13,
+        Portable: 14,
+      };
+
+      products.sort((a, b) => {
+        const refA = a.reference || "";
+        const refB = b.reference || "";
+
+        // Trouver le type
+        let typeA = 99,
+          typeB = 99;
+        for (const [prefix, order] of Object.entries(typeOrder)) {
+          if (refA.toUpperCase().startsWith(prefix) || refA.toUpperCase().includes(prefix)) {
+            typeA = order;
+            break;
+          }
+        }
+        for (const [prefix, order] of Object.entries(typeOrder)) {
+          if (refB.toUpperCase().startsWith(prefix) || refB.toUpperCase().includes(prefix)) {
+            typeB = order;
+            break;
+          }
+        }
+
+        if (typeA !== typeB) return typeA - typeB;
+        return refA.localeCompare(refB);
+      });
     }
 
     return products;
