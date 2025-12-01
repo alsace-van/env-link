@@ -58,6 +58,7 @@ import { LayoutCanvas } from "@/components/LayoutCanvas";
 import { Layout3DView } from "@/components/Layout3DView";
 import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
+import { AIUsageWidget } from "@/components/AIUsageWidget";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
 import { OfficialDocumentsLibrary } from "@/components/OfficialDocumentsLibrary";
@@ -1194,6 +1195,7 @@ const ProjectDetail = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <AIUsageWidget />
               <Button variant="default" size="sm" onClick={() => navigate("/shop")}>
                 <ShoppingBag className="h-4 w-4 mr-2" />
                 Boutique
