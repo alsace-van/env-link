@@ -98,7 +98,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
 
   const loadExistingAccessories = async () => {
     const { data, error } = await supabase
-      .from("accessories_catalog")
+      .from("accessories")
       .select("id, nom, marque, prix_reference, prix_vente_ttc, fournisseur");
 
     if (!error && data) {
@@ -442,8 +442,18 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       const lines = text.split(/\n/);
       const seenRefs = new Set<string>();
 
+      // D'abord, trouver toutes les lignes qui contiennent des références
+      const refLines: number[] = [];
+      for (let i = 0; i < lines.length; i++) {
+        if (refPatternUltimatron.test(lines[i])) {
+          refLines.push(i);
+        }
+        refPatternUltimatron.lastIndex = 0; // Reset le regex
+      }
+
       for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
         const line = lines[lineIndex];
+        refPatternUltimatron.lastIndex = 0;
         const matches = [...line.matchAll(refPatternUltimatron)];
 
         for (const match of matches) {
@@ -453,16 +463,16 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (ref === "PHOTO" || ref === "DESCRIPTION") continue;
           seenRefs.add(ref);
 
-          // Chercher les données sur cette ligne et les 12 suivantes (PDF multi-lignes)
-          const contextLines = lines.slice(lineIndex, Math.min(lineIndex + 12, lines.length));
+          // Trouver la prochaine ligne avec une référence pour limiter le contexte
+          const nextRefLine = refLines.find((l) => l > lineIndex) || lines.length;
+          const maxContextLines = Math.min(nextRefLine - lineIndex, 6); // Max 6 lignes ou jusqu'à prochaine ref
+
+          // Chercher les données sur cette ligne et jusqu'à la prochaine référence
+          const contextLines = lines.slice(lineIndex, lineIndex + maxContextLines);
           const context = contextLines.join(" ");
 
-          // Aussi chercher dans les lignes précédentes (parfois les données sont avant la ref)
-          const prevLines = lines.slice(Math.max(0, lineIndex - 3), lineIndex);
-          const fullContext = [...prevLines, ...contextLines].join(" ");
-
           // Dimensions (format: 330*172*220 ou 1250*670*3)
-          const dimsMatch = fullContext.match(/(\d{2,4})\s*\*\s*(\d{2,3})\s*\*\s*(\d{1,3})/);
+          const dimsMatch = context.match(/(\d{2,4})\s*\*\s*(\d{2,3})\s*\*\s*(\d{1,3})/);
           let longueur_mm: number | undefined;
           let largeur_mm: number | undefined;
           let hauteur_mm: number | undefined;
@@ -474,22 +484,27 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
             dimensions = `${longueur_mm}x${largeur_mm}x${hauteur_mm} mm`;
           }
 
-          // Poids - chercher dans tout le contexte
+          // Poids - chercher un nombre décimal qui ressemble à un poids
           let poids_kg: number | undefined;
-          // Pattern pour poids: nombre décimal suivi optionnellement de kg
-          const weightMatches = [...fullContext.matchAll(/\b(\d{1,2}[.,]\d{1,2})\s*(?:kg)?\b/gi)];
-          for (const wm of weightMatches) {
-            const w = parseFloat(wm[1].replace(",", "."));
-            // Filtrer: poids réaliste (0.5-60kg) et pas un prix (pas suivi de €)
-            const matchIndex = fullContext.indexOf(wm[0]);
-            const afterMatch = fullContext.substring(matchIndex + wm[0].length, matchIndex + wm[0].length + 5);
-            if (w >= 0.5 && w <= 60 && !afterMatch.includes("€")) {
+          // Chercher après les dimensions si elles existent, sinon dans tout le contexte
+          const searchArea = dimsMatch
+            ? context.substring(context.indexOf(dimsMatch[0]) + dimsMatch[0].length)
+            : context;
+
+          const weightMatch = searchArea.match(/\b(\d{1,2}[.,]\d)\b/);
+          if (weightMatch) {
+            const w = parseFloat(weightMatch[1].replace(",", "."));
+            // Vérifier que ce n'est pas suivi de € (ce serait un prix)
+            const afterWeight = searchArea.substring(
+              searchArea.indexOf(weightMatch[0]) + weightMatch[0].length,
+              searchArea.indexOf(weightMatch[0]) + weightMatch[0].length + 3,
+            );
+            if (w >= 0.5 && w <= 60 && !afterWeight.includes("€")) {
               poids_kg = w;
-              break;
             }
           }
 
-          // Prix (format: 258.94€ ou 258,94€) - chercher dans le contexte proche
+          // Prix (format: 258.94€ ou 258,94€)
           const priceMatches = [...context.matchAll(/(\d{1,4}[.,]\d{2})\s*€/g)];
           const prices = priceMatches.map((m) => parsePrice(m[1])).filter((p) => p > 5 && p < 5000);
 
@@ -706,12 +721,12 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (product.prix_vente_ttc !== undefined) updateData.prix_vente_ttc = product.prix_vente_ttc;
           updateData.last_price_check = new Date().toISOString();
 
-          const { error } = await supabase.from("accessories_catalog").update(updateData).eq("id", product.existingId);
+          const { error } = await supabase.from("accessories").update(updateData).eq("id", product.existingId);
 
           if (error) errors++;
           else updated++;
         } else {
-          const { error } = await supabase.from("accessories_catalog").insert({
+          const { error } = await supabase.from("accessories").insert({
             user_id: user.id,
             nom: product.nom || product.reference || "Sans nom",
             marque: product.marque || defaultFournisseur || null,
@@ -756,7 +771,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     setIsLoading(true);
     try {
       const { data: accessories, error } = await supabase
-        .from("accessories_catalog")
+        .from("accessories")
         .select(`*, categories (nom)`)
         .order("nom");
 
