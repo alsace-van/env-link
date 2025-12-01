@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { callAI } from "@/services/aiService";
 
 interface NoticeSummaryProps {
   noticeId: string;
+  pdfUrl?: string | null;
   existingSummary?: string | null;
   onSummaryGenerated?: (summary: string) => void;
 }
@@ -23,32 +24,15 @@ interface NoticeSummaryProps {
  * L'utilisateur configure sa propre clé API pour générer les résumés.
  * Pas de gestion de quotas côté serveur.
  */
-export const NoticeSummary = ({ noticeId, existingSummary, onSummaryGenerated }: NoticeSummaryProps) => {
+export const NoticeSummary = ({ noticeId, pdfUrl, existingSummary, onSummaryGenerated }: NoticeSummaryProps) => {
   const [summary, setSummary] = useState<string | null>(existingSummary || null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState(0);
   const [showAiConfig, setShowAiConfig] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   // Configuration IA centralisée
   const { config: aiConfig, isConfigured: aiIsConfigured, providerInfo: aiProviderInfo } = useAIConfig();
-
-  // Charger l'URL du PDF de la notice
-  useEffect(() => {
-    const loadNoticeUrl = async () => {
-      const { data, error } = await (supabase as any)
-        .from("notices")
-        .select("fichier_url")
-        .eq("id", noticeId)
-        .maybeSingle();
-
-      if (data?.fichier_url) {
-        setPdfUrl(data.fichier_url);
-      }
-    };
-    loadNoticeUrl();
-  }, [noticeId]);
 
   const handleGenerateSummary = async () => {
     // Vérifier que l'IA est configurée
