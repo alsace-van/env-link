@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Loader2, X, FileIcon, Link } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import React, { useState, useEffect } from "react";
+import { Upload, Loader2, X, FileIcon, Link } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -13,15 +13,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 interface DownloadItem {
   id: string;
@@ -52,36 +46,36 @@ interface DownloadUploadDialogProps {
 }
 
 const CATEGORIES = [
-  { value: 'extension', label: 'Extension navigateur', icon: '🌐' },
-  { value: 'plugin', label: 'Plugin Fusion 360', icon: '🔧' },
-  { value: 'template', label: 'Template', icon: '📄' },
-  { value: 'document', label: 'Document', icon: '📋' },
-  { value: 'other', label: 'Autre', icon: '📦' },
+  { value: "extension", label: "Extension navigateur", icon: "🌐" },
+  { value: "plugin", label: "Plugin Fusion 360", icon: "🔧" },
+  { value: "template", label: "Template", icon: "📄" },
+  { value: "document", label: "Document", icon: "📋" },
+  { value: "other", label: "Autre", icon: "📦" },
 ];
 
 const PLATFORMS = [
-  { value: 'chrome', label: 'Chrome' },
-  { value: 'opera', label: 'Opera' },
-  { value: 'firefox', label: 'Firefox' },
-  { value: 'edge', label: 'Edge' },
-  { value: 'fusion360', label: 'Fusion 360' },
-  { value: 'freecad', label: 'FreeCAD' },
-  { value: 'all', label: 'Toutes plateformes' },
+  { value: "chrome", label: "Chrome" },
+  { value: "opera", label: "Opera" },
+  { value: "firefox", label: "Firefox" },
+  { value: "edge", label: "Edge" },
+  { value: "fusion360", label: "Fusion 360" },
+  { value: "freecad", label: "FreeCAD" },
+  { value: "all", label: "Toutes plateformes" },
 ];
 
 export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingItem }: DownloadUploadDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
+
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    version: '',
-    category: 'extension',
-    platform: '',
-    changelog: '',
-    requirements: '',
-    documentation_url: '',
+    name: "",
+    description: "",
+    version: "",
+    category: "extension",
+    platform: "",
+    changelog: "",
+    requirements: "",
+    documentation_url: "",
     is_active: true,
     is_featured: false,
     sort_order: 0,
@@ -90,14 +84,14 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
   useEffect(() => {
     if (editingItem) {
       setFormData({
-        name: editingItem.name || '',
-        description: editingItem.description || '',
-        version: editingItem.version || '',
-        category: editingItem.category || 'extension',
-        platform: editingItem.platform || '',
-        changelog: editingItem.changelog || '',
-        requirements: editingItem.requirements || '',
-        documentation_url: editingItem.documentation_url || '',
+        name: editingItem.name || "",
+        description: editingItem.description || "",
+        version: editingItem.version || "",
+        category: editingItem.category || "extension",
+        platform: editingItem.platform || "",
+        changelog: editingItem.changelog || "",
+        requirements: editingItem.requirements || "",
+        documentation_url: editingItem.documentation_url || "",
         is_active: editingItem.is_active ?? true,
         is_featured: editingItem.is_featured ?? false,
         sort_order: editingItem.sort_order || 0,
@@ -105,14 +99,14 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
       setSelectedFile(null);
     } else {
       setFormData({
-        name: '',
-        description: '',
-        version: '1.0.0',
-        category: 'extension',
-        platform: '',
-        changelog: '',
-        requirements: '',
-        documentation_url: '',
+        name: "",
+        description: "",
+        version: "1.0.0",
+        category: "extension",
+        platform: "",
+        changelog: "",
+        requirements: "",
+        documentation_url: "",
         is_active: true,
         is_featured: false,
         sort_order: 0,
@@ -127,64 +121,64 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
       setSelectedFile(file);
       // Auto-remplir le nom si vide
       if (!formData.name) {
-        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
-        setFormData(prev => ({ ...prev, name: nameWithoutExt }));
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+        setFormData((prev) => ({ ...prev, name: nameWithoutExt }));
       }
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
-      toast.error('Le nom est obligatoire');
+      toast.error("Le nom est obligatoire");
       return;
     }
 
     if (!editingItem && !selectedFile) {
-      toast.error('Veuillez sélectionner un fichier');
+      toast.error("Veuillez sélectionner un fichier");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      let fileUrl = editingItem?.file_url || '';
-      let fileName = editingItem?.file_name || '';
+      let fileUrl = editingItem?.file_url || "";
+      let fileName = editingItem?.file_name || "";
       let fileSize = editingItem?.file_size || 0;
-      let fileType = editingItem?.file_type || '';
+      let fileType = editingItem?.file_type || "";
 
       // Upload du nouveau fichier si sélectionné
       if (selectedFile) {
         // Générer un nom unique
         const timestamp = Date.now();
-        const cleanName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const cleanName = selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
         const storagePath = `${timestamp}_${cleanName}`;
 
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('downloads')
+          .from("downloads")
           .upload(storagePath, selectedFile, {
-            cacheControl: '3600',
+            cacheControl: "3600",
             upsert: false,
           });
 
         if (uploadError) throw uploadError;
 
         // Obtenir l'URL publique
-        const { data: { publicUrl } } = supabase.storage
-          .from('downloads')
-          .getPublicUrl(storagePath);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("downloads").getPublicUrl(storagePath);
 
         fileUrl = publicUrl;
         fileName = selectedFile.name;
         fileSize = selectedFile.size;
-        fileType = selectedFile.name.split('.').pop()?.toLowerCase() || '';
+        fileType = selectedFile.name.split(".").pop()?.toLowerCase() || "";
 
         // Supprimer l'ancien fichier si édition
         if (editingItem?.file_url && editingItem.file_url !== fileUrl) {
-          const oldPath = editingItem.file_url.split('/').pop();
+          const oldPath = editingItem.file_url.split("/").pop();
           if (oldPath) {
-            await supabase.storage.from('downloads').remove([oldPath]);
+            await supabase.storage.from("downloads").remove([oldPath]);
           }
         }
       }
@@ -210,27 +204,22 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
 
       if (editingItem) {
         // Mise à jour
-        const { error } = await (supabase as any)
-          .from('downloads')
-          .update(downloadData)
-          .eq('id', editingItem.id);
+        const { error } = await supabase.from("downloads").update(downloadData).eq("id", editingItem.id);
 
         if (error) throw error;
-        toast.success('Téléchargement mis à jour');
+        toast.success("Téléchargement mis à jour");
       } else {
         // Création
-        const { error } = await (supabase as any)
-          .from('downloads')
-          .insert(downloadData);
+        const { error } = await supabase.from("downloads").insert(downloadData);
 
         if (error) throw error;
-        toast.success('Téléchargement ajouté');
+        toast.success("Téléchargement ajouté");
       }
 
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {
-      console.error('Erreur:', error);
+      console.error("Erreur:", error);
       toast.error(`Erreur: ${error.message}`);
     } finally {
       setIsLoading(false);
@@ -241,20 +230,18 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>
-            {editingItem ? 'Modifier le téléchargement' : 'Ajouter un téléchargement'}
-          </DialogTitle>
+          <DialogTitle>{editingItem ? "Modifier le téléchargement" : "Ajouter un téléchargement"}</DialogTitle>
           <DialogDescription>
-            {editingItem 
-              ? 'Modifiez les informations du fichier' 
-              : 'Ajoutez une extension, un plugin ou tout autre fichier à télécharger'}
+            {editingItem
+              ? "Modifiez les informations du fichier"
+              : "Ajoutez une extension, un plugin ou tout autre fichier à télécharger"}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Fichier */}
           <div className="space-y-2">
-            <Label>Fichier {!editingItem && '*'}</Label>
+            <Label>Fichier {!editingItem && "*"}</Label>
             <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
               <input
                 type="file"
@@ -269,15 +256,16 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
                     <FileIcon className="w-8 h-8 text-primary" />
                     <div className="text-left">
                       <p className="font-medium">{selectedFile.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
+                      <p className="text-sm text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
                     </div>
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={(e) => { e.preventDefault(); setSelectedFile(null); }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setSelectedFile(null);
+                      }}
                     >
                       <X className="w-4 h-4" />
                     </Button>
@@ -285,16 +273,10 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
                 ) : (
                   <div>
                     <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      Cliquez pour sélectionner un fichier
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      ZIP, EXE, PDF, DOC, XLS, PY, JS...
-                    </p>
+                    <p className="text-sm text-muted-foreground">Cliquez pour sélectionner un fichier</p>
+                    <p className="text-xs text-muted-foreground mt-1">ZIP, EXE, PDF, DOC, XLS, PY, JS...</p>
                     {editingItem && (
-                      <p className="text-xs text-primary mt-2">
-                        Fichier actuel : {editingItem.file_name}
-                      </p>
+                      <p className="text-xs text-primary mt-2">Fichier actuel : {editingItem.file_name}</p>
                     )}
                   </div>
                 )}
@@ -457,7 +439,7 @@ export function DownloadUploadDialog({ open, onOpenChange, onSuccess, editingIte
             </Button>
             <Button type="submit" disabled={isLoading}>
               {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {editingItem ? 'Mettre à jour' : 'Ajouter'}
+              {editingItem ? "Mettre à jour" : "Ajouter"}
             </Button>
           </DialogFooter>
         </form>
