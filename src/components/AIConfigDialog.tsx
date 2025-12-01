@@ -1,162 +1,240 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Sparkles, ExternalLink, Trash2, AlertTriangle } from "lucide-react";
+import { useAIConfig, AIProvider, AI_PROVIDERS } from "@/hooks/useAIConfig";
+import { toast } from "sonner";
 
-export type AIProvider = "gemini" | "openai" | "anthropic" | "mistral";
-
-export interface AIConfig {
-  provider: AIProvider;
-  apiKey: string;
-  isConfigured: boolean;
-  dailyLimit: number | null; // null = pas de limite
-  warningThreshold: number; // Pourcentage d'avertissement (ex: 80)
+interface AIConfigDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
-const AI_PROVIDER_KEY = "ai_provider";
-const AI_API_KEY = "ai_api_key";
-const AI_DAILY_LIMIT_KEY = "ai_daily_limit";
-const AI_WARNING_THRESHOLD_KEY = "ai_warning_threshold";
-const AI_CONFIG_EVENT = "ai_config_updated";
+export function AIConfigDialog({ open, onOpenChange }: AIConfigDialogProps) {
+  const { provider, apiKey, dailyLimit, warningThreshold, saveConfig, clearConfig } = useAIConfig();
+  const [tempProvider, setTempProvider] = useState<AIProvider>(provider);
+  const [tempApiKey, setTempApiKey] = useState(apiKey);
+  const [tempLimitEnabled, setTempLimitEnabled] = useState(dailyLimit !== null);
+  const [tempLimit, setTempLimit] = useState<string>(dailyLimit ? (dailyLimit / 1000).toString() : "");
+  const [tempWarningThreshold, setTempWarningThreshold] = useState(warningThreshold);
 
-export const AI_PROVIDERS = {
-  gemini: {
-    name: "Google Gemini",
-    description: "Gratuit avec quota généreux",
-    placeholder: "AIzaSy...",
-    helpUrl: "https://aistudio.google.com/apikey",
-    helpText: "Obtenir une clé gratuite",
-    suggestedLimit: 1_000_000, // Suggestion : 1M tokens/jour
-  },
-  openai: {
-    name: "OpenAI GPT-4o",
-    description: "Payant par token",
-    placeholder: "sk-...",
-    helpUrl: "https://platform.openai.com/api-keys",
-    helpText: "Obtenir une clé",
-    suggestedLimit: 100_000, // Suggestion : 100k tokens/jour
-  },
-  anthropic: {
-    name: "Anthropic Claude",
-    description: "Payant par token",
-    placeholder: "sk-ant-...",
-    helpUrl: "https://console.anthropic.com/",
-    helpText: "Obtenir une clé",
-    suggestedLimit: 100_000,
-  },
-  mistral: {
-    name: "Mistral AI",
-    description: "Français, tarifs compétitifs",
-    placeholder: "...",
-    helpUrl: "https://console.mistral.ai/",
-    helpText: "Obtenir une clé",
-    suggestedLimit: 500_000,
-  },
-};
+  const handleSave = () => {
+    if (!tempApiKey.trim()) {
+      toast.error("Veuillez entrer une clé API");
+      return;
+    }
 
-export function useAIConfig() {
-  const [provider, setProvider] = useState<AIProvider>(() => {
-    const saved = localStorage.getItem(AI_PROVIDER_KEY);
-    return (saved as AIProvider) || "gemini";
-  });
+    const limitValue =
+      tempLimitEnabled && tempLimit
+        ? parseInt(tempLimit) * 1000 // Convertir k en tokens
+        : null;
 
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return localStorage.getItem(AI_API_KEY) || "";
-  });
+    saveConfig(tempProvider, tempApiKey.trim(), limitValue, tempWarningThreshold);
+    toast.success("Configuration IA sauvegardée");
+    onOpenChange(false);
+  };
 
-  const [dailyLimit, setDailyLimit] = useState<number | null>(() => {
-    const saved = localStorage.getItem(AI_DAILY_LIMIT_KEY);
-    return saved ? parseInt(saved) : null;
-  });
+  const handleClear = () => {
+    clearConfig();
+    setTempProvider("gemini");
+    setTempApiKey("");
+    setTempLimitEnabled(false);
+    setTempLimit("");
+    toast.success("Configuration IA supprimée");
+  };
 
-  const [warningThreshold, setWarningThreshold] = useState<number>(() => {
-    const saved = localStorage.getItem(AI_WARNING_THRESHOLD_KEY);
-    return saved ? parseInt(saved) : 80;
-  });
+  const handleProviderChange = (newProvider: AIProvider) => {
+    setTempProvider(newProvider);
+    // Suggérer la limite du provider
+    const suggested = AI_PROVIDERS[newProvider].suggestedLimit;
+    if (suggested && !tempLimit) {
+      setTempLimit((suggested / 1000).toString());
+    }
+  };
 
-  // Écouter les changements de config (synchronisation entre composants)
-  useEffect(() => {
-    const handleConfigUpdate = () => {
-      const savedProvider = localStorage.getItem(AI_PROVIDER_KEY);
-      const savedApiKey = localStorage.getItem(AI_API_KEY);
-      const savedLimit = localStorage.getItem(AI_DAILY_LIMIT_KEY);
-      const savedThreshold = localStorage.getItem(AI_WARNING_THRESHOLD_KEY);
+  const currentProviderInfo = AI_PROVIDERS[tempProvider];
 
-      setProvider((savedProvider as AIProvider) || "gemini");
-      setApiKey(savedApiKey || "");
-      setDailyLimit(savedLimit ? parseInt(savedLimit) : null);
-      setWarningThreshold(savedThreshold ? parseInt(savedThreshold) : 80);
-    };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-purple-500" />
+            Configuration IA
+          </DialogTitle>
+          <DialogDescription>
+            Configurez votre fournisseur d'IA pour toutes les fonctionnalités du site
+          </DialogDescription>
+        </DialogHeader>
 
-    window.addEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
-    window.addEventListener("storage", handleConfigUpdate);
+        <div className="space-y-4 py-4">
+          {/* Fournisseur */}
+          <div className="space-y-2">
+            <Label>Fournisseur IA</Label>
+            <Select value={tempProvider} onValueChange={(v) => handleProviderChange(v as AIProvider)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choisir un fournisseur" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(AI_PROVIDERS).map(([key, info]) => (
+                  <SelectItem key={key} value={key}>
+                    <div className="flex items-center gap-2">
+                      <span>{info.name}</span>
+                      {key === "gemini" && (
+                        <Badge variant="secondary" className="text-xs">
+                          Gratuit
+                        </Badge>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{currentProviderInfo.description}</p>
+          </div>
 
-    return () => {
-      window.removeEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
-      window.removeEventListener("storage", handleConfigUpdate);
-    };
-  }, []);
+          {/* Clé API */}
+          <div className="space-y-2">
+            <Label>Clé API</Label>
+            <Input
+              type="password"
+              value={tempApiKey}
+              onChange={(e) => setTempApiKey(e.target.value)}
+              placeholder={currentProviderInfo.placeholder}
+            />
+            <a
+              href={currentProviderInfo.helpUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+            >
+              {currentProviderInfo.helpText}
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
 
-  const isConfigured = !!apiKey;
+          {/* Limite quotidienne */}
+          <div className="space-y-3 pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-500" />
+                  Alerte de consommation
+                </Label>
+                <p className="text-xs text-muted-foreground">Recevoir un avertissement avant de dépasser un quota</p>
+              </div>
+              <Switch checked={tempLimitEnabled} onCheckedChange={setTempLimitEnabled} />
+            </div>
 
-  const saveConfig = useCallback(
-    (newProvider: AIProvider, newApiKey: string, newDailyLimit?: number | null, newWarningThreshold?: number) => {
-      localStorage.setItem(AI_PROVIDER_KEY, newProvider);
-      localStorage.setItem(AI_API_KEY, newApiKey);
+            {tempLimitEnabled && (
+              <div className="space-y-3 pl-6 animate-in fade-in slide-in-from-top-2">
+                <div className="space-y-2">
+                  <Label className="text-sm">Limite quotidienne (en milliers de tokens)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={tempLimit}
+                      onChange={(e) => setTempLimit(e.target.value)}
+                      placeholder={
+                        currentProviderInfo.suggestedLimit
+                          ? (currentProviderInfo.suggestedLimit / 1000).toString()
+                          : "1000"
+                      }
+                      className="w-32"
+                    />
+                    <span className="text-sm text-muted-foreground">k tokens/jour</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Suggestion pour {currentProviderInfo.name} :{" "}
+                    {currentProviderInfo.suggestedLimit
+                      ? `${currentProviderInfo.suggestedLimit / 1000}k`
+                      : "non défini"}
+                  </p>
+                </div>
 
-      if (newDailyLimit !== undefined) {
-        if (newDailyLimit === null) {
-          localStorage.removeItem(AI_DAILY_LIMIT_KEY);
-        } else {
-          localStorage.setItem(AI_DAILY_LIMIT_KEY, newDailyLimit.toString());
-        }
-        setDailyLimit(newDailyLimit);
-      }
+                <div className="space-y-2">
+                  <Label className="text-sm">Seuil d'avertissement</Label>
+                  <Select
+                    value={tempWarningThreshold.toString()}
+                    onValueChange={(v) => setTempWarningThreshold(parseInt(v))}
+                  >
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="50">50%</SelectItem>
+                      <SelectItem value="70">70%</SelectItem>
+                      <SelectItem value="80">80%</SelectItem>
+                      <SelectItem value="90">90%</SelectItem>
+                      <SelectItem value="100">100% (limite)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Avertissement affiché à partir de ce pourcentage</p>
+                </div>
+              </div>
+            )}
+          </div>
 
-      if (newWarningThreshold !== undefined) {
-        localStorage.setItem(AI_WARNING_THRESHOLD_KEY, newWarningThreshold.toString());
-        setWarningThreshold(newWarningThreshold);
-      }
+          {apiKey && (
+            <div className="pt-2 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClear}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Supprimer la configuration
+              </Button>
+            </div>
+          )}
+        </div>
 
-      setProvider(newProvider);
-      setApiKey(newApiKey);
-
-      window.dispatchEvent(new Event(AI_CONFIG_EVENT));
-    },
-    [],
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Annuler
+          </Button>
+          <Button onClick={handleSave} disabled={!tempApiKey.trim()}>
+            Enregistrer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
+}
 
-  const clearConfig = useCallback(() => {
-    localStorage.removeItem(AI_PROVIDER_KEY);
-    localStorage.removeItem(AI_API_KEY);
-    localStorage.removeItem(AI_DAILY_LIMIT_KEY);
-    localStorage.removeItem(AI_WARNING_THRESHOLD_KEY);
-    setProvider("gemini");
-    setApiKey("");
-    setDailyLimit(null);
-    setWarningThreshold(80);
+/**
+ * Composant compact pour afficher le statut IA et ouvrir la config
+ */
+interface AIConfigBadgeProps {
+  onClick: () => void;
+}
 
-    window.dispatchEvent(new Event(AI_CONFIG_EVENT));
-  }, []);
+export function AIConfigBadge({ onClick }: AIConfigBadgeProps) {
+  const { provider, isConfigured, providerInfo } = useAIConfig();
 
-  const config: AIConfig = {
-    provider,
-    apiKey,
-    isConfigured,
-    dailyLimit,
-    warningThreshold,
-  };
-
-  return {
-    config,
-    provider,
-    apiKey,
-    isConfigured,
-    dailyLimit,
-    warningThreshold,
-    setProvider,
-    setApiKey,
-    setDailyLimit,
-    setWarningThreshold,
-    saveConfig,
-    clearConfig,
-    providerInfo: AI_PROVIDERS[provider],
-  };
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 dark:hover:bg-purple-950/50 transition-colors"
+    >
+      <Sparkles className="w-4 h-4 text-purple-600" />
+      <div className="text-left">
+        <p className="text-sm font-medium">{providerInfo.name}</p>
+        <p className="text-xs text-muted-foreground">{isConfigured ? "✓ Configuré" : "Non configuré"}</p>
+      </div>
+    </button>
+  );
 }
