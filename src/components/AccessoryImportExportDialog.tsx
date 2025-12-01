@@ -273,37 +273,66 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-      // Extraire le texte en conservant les positions pour reconstruire les lignes
-      let allLines: { y: number; text: string }[] = [];
+      // Extraire tous les éléments de texte avec leurs positions
+      interface TextItem {
+        text: string;
+        x: number;
+        y: number;
+        page: number;
+      }
+
+      const allItems: TextItem[] = [];
 
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-
-        // Grouper par position Y (ligne)
-        const lineMap = new Map<number, string[]>();
+        const viewport = page.getViewport({ scale: 1 });
 
         for (const item of textContent.items as any[]) {
-          const y = Math.round(item.transform[5]); // Position Y
-          const x = Math.round(item.transform[4]); // Position X pour trier
-
-          if (!lineMap.has(y)) {
-            lineMap.set(y, []);
+          if (item.str.trim()) {
+            allItems.push({
+              text: item.str,
+              x: Math.round(item.transform[4]),
+              y: Math.round(viewport.height - item.transform[5]), // Inverser Y pour avoir haut->bas
+              page: i,
+            });
           }
-          lineMap.get(y)!.push(`${x.toString().padStart(5, "0")}:${item.str}`);
         }
-
-        // Trier chaque ligne par X et joindre
-        lineMap.forEach((items, y) => {
-          items.sort(); // Trier par X (préfixé)
-          const lineText = items.map((s) => s.split(":").slice(1).join(":")).join(" ");
-          allLines.push({ y: y + i * 10000, text: lineText }); // Offset par page
-        });
       }
 
-      // Trier par Y décroissant (haut en bas) et joindre
-      allLines.sort((a, b) => b.y - a.y);
-      const fullText = allLines.map((l) => l.text).join("\n");
+      // Trier par page puis par Y puis par X
+      allItems.sort((a, b) => {
+        if (a.page !== b.page) return a.page - b.page;
+        if (Math.abs(a.y - b.y) > 8) return a.y - b.y; // Tolérance de 8 pixels pour même ligne
+        return a.x - b.x;
+      });
+
+      // Regrouper en lignes (éléments avec Y similaire)
+      const lines: string[] = [];
+      let currentLine: string[] = [];
+      let currentY = -1;
+      let currentPage = -1;
+
+      for (const item of allItems) {
+        if (currentPage !== item.page || (currentY !== -1 && Math.abs(item.y - currentY) > 8)) {
+          // Nouvelle ligne
+          if (currentLine.length > 0) {
+            lines.push(currentLine.join(" "));
+          }
+          currentLine = [item.text];
+          currentY = item.y;
+          currentPage = item.page;
+        } else {
+          currentLine.push(item.text);
+          currentY = item.y; // Mettre à jour Y pour la moyenne
+        }
+      }
+      if (currentLine.length > 0) {
+        lines.push(currentLine.join(" "));
+      }
+
+      const fullText = lines.join("\n");
+      console.log("Texte extrait (premières lignes):", lines.slice(0, 20));
 
       setPdfText(fullText);
       const products = parsePdfText(fullText);
@@ -424,12 +453,16 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           if (ref === "PHOTO" || ref === "DESCRIPTION") continue;
           seenRefs.add(ref);
 
-          // Chercher les données sur cette ligne et les 8 suivantes (PDF multi-lignes)
-          const contextLines = lines.slice(lineIndex, Math.min(lineIndex + 8, lines.length));
+          // Chercher les données sur cette ligne et les 12 suivantes (PDF multi-lignes)
+          const contextLines = lines.slice(lineIndex, Math.min(lineIndex + 12, lines.length));
           const context = contextLines.join(" ");
 
+          // Aussi chercher dans les lignes précédentes (parfois les données sont avant la ref)
+          const prevLines = lines.slice(Math.max(0, lineIndex - 3), lineIndex);
+          const fullContext = [...prevLines, ...contextLines].join(" ");
+
           // Dimensions (format: 330*172*220 ou 1250*670*3)
-          const dimsMatch = context.match(/(\d{2,4})\s*\*\s*(\d{2,3})\s*\*\s*(\d{1,3})/);
+          const dimsMatch = fullContext.match(/(\d{2,4})\s*\*\s*(\d{2,3})\s*\*\s*(\d{1,3})/);
           let longueur_mm: number | undefined;
           let largeur_mm: number | undefined;
           let hauteur_mm: number | undefined;
@@ -444,21 +477,19 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
           // Poids - chercher dans tout le contexte
           let poids_kg: number | undefined;
           // Pattern pour poids: nombre décimal suivi optionnellement de kg
-          const weightMatches = [...context.matchAll(/\b(\d{1,2}[.,]\d{1,2})\s*(?:kg)?\b/gi)];
+          const weightMatches = [...fullContext.matchAll(/\b(\d{1,2}[.,]\d{1,2})\s*(?:kg)?\b/gi)];
           for (const wm of weightMatches) {
             const w = parseFloat(wm[1].replace(",", "."));
             // Filtrer: poids réaliste (0.5-60kg) et pas un prix (pas suivi de €)
-            const afterMatch = context.substring(
-              context.indexOf(wm[0]) + wm[0].length,
-              context.indexOf(wm[0]) + wm[0].length + 5,
-            );
+            const matchIndex = fullContext.indexOf(wm[0]);
+            const afterMatch = fullContext.substring(matchIndex + wm[0].length, matchIndex + wm[0].length + 5);
             if (w >= 0.5 && w <= 60 && !afterMatch.includes("€")) {
               poids_kg = w;
               break;
             }
           }
 
-          // Prix (format: 258.94€ ou 258,94€)
+          // Prix (format: 258.94€ ou 258,94€) - chercher dans le contexte proche
           const priceMatches = [...context.matchAll(/(\d{1,4}[.,]\d{2})\s*€/g)];
           const prices = priceMatches.map((m) => parsePrice(m[1])).filter((p) => p > 5 && p < 5000);
 
