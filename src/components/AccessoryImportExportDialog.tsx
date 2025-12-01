@@ -92,7 +92,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
   const [isUpdateMode, setIsUpdateMode] = useState(false);
   const [existingAccessories, setExistingAccessories] = useState<ExistingAccessory[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Configuration IA centralisée
   const [showAiConfig, setShowAiConfig] = useState(false);
   const { config: aiConfig, isConfigured: aiIsConfigured, providerInfo: aiProviderInfo } = useAIConfig();
@@ -287,9 +287,7 @@ const AccessoryImportExportDialog = ({ isOpen, onClose, onSuccess, categories }:
     try {
       // Convertir le PDF en base64
       const arrayBuffer = await file.arrayBuffer();
-      const base64Data = btoa(
-        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
-      );
+      const base64Data = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ""));
 
       console.log(`📊 Envoi du PDF à ${aiConfig.provider}...`);
       toast.info(`Analyse du PDF par ${aiProviderInfo.name} en cours...`);
@@ -335,28 +333,38 @@ IMPORTANT:
       console.log(`📊 ${parsedData.length} produits extraits par ${aiConfig.provider}`);
 
       // Convertir en ParsedProduct
-      const products: ParsedProduct[] = parsedData.map((p, idx) => {
-        const prixAchat = typeof p.prix_achat === "number" ? p.prix_achat : 
-          (p.prix_achat ? parseFloat(String(p.prix_achat).replace(/\s/g, "").replace(",", ".")) : undefined);
-        const prixVente = typeof p.prix_vente === "number" ? p.prix_vente :
-          (p.prix_vente ? parseFloat(String(p.prix_vente).replace(/\s/g, "").replace(",", ".")) : undefined);
-        const poids = typeof p.poids === "number" ? p.poids :
-          (p.poids ? parseFloat(String(p.poids).replace(",", ".")) : undefined);
+      const products: ParsedProduct[] = parsedData
+        .map((p, idx) => {
+          const prixAchat =
+            typeof p.prix_achat === "number"
+              ? p.prix_achat
+              : p.prix_achat
+                ? parseFloat(String(p.prix_achat).replace(/\s/g, "").replace(",", "."))
+                : undefined;
+          const prixVente =
+            typeof p.prix_vente === "number"
+              ? p.prix_vente
+              : p.prix_vente
+                ? parseFloat(String(p.prix_vente).replace(/\s/g, "").replace(",", "."))
+                : undefined;
+          const poids =
+            typeof p.poids === "number" ? p.poids : p.poids ? parseFloat(String(p.poids).replace(",", ".")) : undefined;
 
-        return {
-          id: `import-${idx}`,
-          selected: true,
-          reference: String(p.reference || "").trim(),
-          nom: String(p.designation || p.nom || p.reference || "").trim(),
-          description: p.designation,
-          prix_reference: prixAchat && prixAchat > 0 ? prixAchat : undefined,
-          prix_vente_ttc: prixVente && prixVente > 0 ? prixVente : undefined,
-          poids_kg: poids && poids > 0 && poids < 500 ? poids : undefined,
-          dimensions: p.dimensions || undefined,
-          fournisseur: p.fournisseur || p.marque,
-          marque: p.marque,
-        };
-      }).filter(p => p.reference);
+          return {
+            id: `import-${idx}`,
+            selected: true,
+            reference: String(p.reference || "").trim(),
+            nom: String(p.designation || p.nom || p.reference || "").trim(),
+            description: p.designation,
+            prix_reference: prixAchat && prixAchat > 0 ? prixAchat : undefined,
+            prix_vente_ttc: prixVente && prixVente > 0 ? prixVente : undefined,
+            poids_kg: poids && poids > 0 && poids < 500 ? poids : undefined,
+            dimensions: p.dimensions || undefined,
+            fournisseur: p.fournisseur || p.marque,
+            marque: p.marque,
+          };
+        })
+        .filter((p) => p.reference);
 
       if (products.length === 0) {
         toast.warning("Aucun produit valide détecté");
@@ -372,9 +380,8 @@ IMPORTANT:
       const newCount = enrichedProducts.filter((p) => !p.isUpdate).length;
 
       toast.success(
-        `${enrichedProducts.length} produits (${aiProviderInfo.name}) : ${updateCount} existants (${changedCount} modifiés), ${newCount} nouveaux`
+        `${enrichedProducts.length} produits (${aiProviderInfo.name}) : ${updateCount} existants (${changedCount} modifiés), ${newCount} nouveaux`,
       );
-
     } catch (error: any) {
       console.error("Erreur:", error);
       toast.error(error.message || "Erreur lors de l'analyse du PDF");
@@ -385,34 +392,36 @@ IMPORTANT:
   };
 
   // === Parser pour PDF de type tableau (catalogues) ===
-  const parseTableFromPdfItems = (items: { text: string; x: number; y: number; width: number; page: number }[]): ParsedProduct[] => {
+  const parseTableFromPdfItems = (
+    items: { text: string; x: number; y: number; width: number; page: number }[],
+  ): ParsedProduct[] => {
     if (items.length < 10) return [];
 
     console.log("📊 ====== DÉBUT PARSING TABLEAU PDF ======");
     console.log("📊 Nombre total d'items:", items.length);
 
     // 1. Détecter les positions X des colonnes (positions qui reviennent souvent)
-    const xPositions: number[] = items.map(i => i.x);
+    const xPositions: number[] = items.map((i) => i.x);
     const xGroups: Record<number, number> = {};
-    
+
     for (const x of xPositions) {
       // Arrondir à 5 pixels près
       const rounded = Math.round(x / 5) * 5;
       xGroups[rounded] = (xGroups[rounded] || 0) + 1;
     }
-    
+
     // Garder les positions X qui apparaissent au moins 5 fois
     const frequentX = Object.entries(xGroups)
       .filter(([_, count]) => count >= 5)
       .map(([x]) => parseInt(x))
       .sort((a, b) => a - b);
-    
+
     console.log("📊 Positions X fréquentes:", frequentX);
 
     // 2. Regrouper les items par ligne avec une tolérance Y plus large
     const rowTolerance = 8;
     const rows: { y: number; items: typeof items; page: number }[] = [];
-    
+
     // Trier par page puis Y
     const sortedItems = [...items].sort((a, b) => {
       if (a.page !== b.page) return a.page - b.page;
@@ -435,8 +444,8 @@ IMPORTANT:
     }
 
     // Trier les items dans chaque ligne par X
-    rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
-    
+    rows.forEach((row) => row.items.sort((a, b) => a.x - b.x));
+
     // Trier les lignes par page puis Y
     rows.sort((a, b) => {
       if (a.page !== b.page) return a.page - b.page;
@@ -444,10 +453,10 @@ IMPORTANT:
     });
 
     console.log("📊 Lignes détectées:", rows.length);
-    
+
     // Debug: afficher les 20 premières lignes
     rows.slice(0, 20).forEach((r, i) => {
-      const content = r.items.map(it => it.text).join(" | ");
+      const content = r.items.map((it) => it.text).join(" | ");
       console.log(`📊 Ligne ${i} (Y=${r.y}, page=${r.page}): ${content.substring(0, 120)}`);
     });
 
@@ -460,7 +469,7 @@ IMPORTANT:
     let dimsX = -1;
 
     for (const row of rows) {
-      const lineText = row.items.map(i => i.text.toLowerCase()).join(" ");
+      const lineText = row.items.map((i) => i.text.toLowerCase()).join(" ");
       if (lineText.includes("référence") && lineText.includes("prix")) {
         // C'est une ligne d'en-tête
         for (const item of row.items) {
@@ -473,7 +482,16 @@ IMPORTANT:
           if (text.includes("ppc") || text.includes("ttc") || text.includes("public")) prixPPCX = item.x;
         }
         if (prixNetX > 0) {
-          console.log("📊 En-tête trouvé - RefX:", refX, "DesigX:", designationX, "PrixNetX:", prixNetX, "PrixPPCX:", prixPPCX);
+          console.log(
+            "📊 En-tête trouvé - RefX:",
+            refX,
+            "DesigX:",
+            designationX,
+            "PrixNetX:",
+            prixNetX,
+            "PrixPPCX:",
+            prixPPCX,
+          );
           break;
         }
       }
@@ -491,7 +509,7 @@ IMPORTANT:
     const isProductReference = (text: string): boolean => {
       const cleaned = text.trim();
       if (cleaned.length < 4) return false;
-      return refPatterns.some(pattern => pattern.test(cleaned));
+      return refPatterns.some((pattern) => pattern.test(cleaned));
     };
 
     // 5. Parser chaque ligne
@@ -500,15 +518,15 @@ IMPORTANT:
 
     for (const row of rows) {
       const items = row.items;
-      const lineText = items.map(i => i.text).join(" ");
-      
+      const lineText = items.map((i) => i.text).join(" ");
+
       // Ignorer les en-têtes
       if (/référence|désignation|dimensions|prix\s*(net|ppc)/i.test(lineText)) continue;
-      
+
       // Chercher une référence dans cette ligne
       let reference = "";
-      let refItem: typeof items[0] | null = null;
-      
+      let refItem: (typeof items)[0] | null = null;
+
       for (const item of items) {
         if (isProductReference(item.text)) {
           reference = item.text.trim();
@@ -516,12 +534,12 @@ IMPORTANT:
           break;
         }
       }
-      
+
       if (!reference) continue;
 
       // Extraire les prix en cherchant les items avec €
       const pricesWithEuro: { value: number; x: number }[] = [];
-      
+
       for (const item of items) {
         const text = item.text.trim();
         // Pattern: nombre (avec espaces possibles) + €
@@ -534,22 +552,22 @@ IMPORTANT:
           }
         }
       }
-      
+
       // Trier par X
       pricesWithEuro.sort((a, b) => a.x - b.x);
 
       // Si on a trouvé les positions des colonnes prix, les utiliser
       let prixNet: number | undefined;
       let prixPPC: number | undefined;
-      
+
       if (prixNetX > 0 && pricesWithEuro.length > 0) {
         // Trouver le prix le plus proche de la colonne Prix Net
-        const nearNet = pricesWithEuro.find(p => Math.abs(p.x - prixNetX) < 50);
+        const nearNet = pricesWithEuro.find((p) => Math.abs(p.x - prixNetX) < 50);
         if (nearNet) prixNet = nearNet.value;
-        
+
         // Trouver le prix le plus proche de la colonne Prix PPC
         if (prixPPCX > 0) {
-          const nearPPC = pricesWithEuro.find(p => Math.abs(p.x - prixPPCX) < 50);
+          const nearPPC = pricesWithEuro.find((p) => Math.abs(p.x - prixPPCX) < 50);
           if (nearPPC) prixPPC = nearPPC.value;
         }
       } else if (pricesWithEuro.length >= 2) {
@@ -564,20 +582,20 @@ IMPORTANT:
       let designation = "";
       const desigItems: string[] = [];
       let foundRef = false;
-      
+
       for (const item of items) {
         if (item === refItem) {
           foundRef = true;
           continue;
         }
         if (!foundRef) continue;
-        
+
         const text = item.text.trim();
         // Arrêter si on trouve des dimensions, un prix, ou un poids
         if (/^\d{2,3}\s*x\s*\d{2,3}/.test(text)) break;
         if (/€/.test(text)) break;
         if (/^\d{1,2}[,.]?\d?$/.test(text) && !text.includes("V")) break;
-        
+
         if (text && text.length > 1) {
           desigItems.push(text);
         }
@@ -589,7 +607,7 @@ IMPORTANT:
       let longueur_mm: number | undefined;
       let largeur_mm: number | undefined;
       let hauteur_mm: number | undefined;
-      
+
       const dimsMatch = lineText.match(/(\d{2,4})\s*x\s*(\d{2,4})\s*x\s*(\d{2,4})/i);
       if (dimsMatch) {
         longueur_mm = parseInt(dimsMatch[1]);
