@@ -63,6 +63,10 @@ export const ScanConfirmationModal = ({
   const [editingMasseVide, setEditingMasseVide] = useState(false);
   const [editingPTAC, setEditingPTAC] = useState(false);
   const [editingGenre, setEditingGenre] = useState(false);
+  const [editingCarrosserie, setEditingCarrosserie] = useState(false);
+  const [editingEnergie, setEditingEnergie] = useState(false);
+  const [editingPuissanceFiscale, setEditingPuissanceFiscale] = useState(false);
+  const [editingCylindree, setEditingCylindree] = useState(false);
 
   // ✅ CORRECTION: Mettre à jour editedData quand scannedData change (après rescan)
   useEffect(() => {
@@ -630,6 +634,165 @@ export const ScanConfirmationModal = ({
                 <div className="p-2 text-gray-500 text-sm italic">
                   Non détecté -{" "}
                   <button onClick={() => setEditingGenre(true)} className="underline">
+                    Saisir
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* SECTION 5 : NOUVEAUX CHAMPS TECHNIQUES */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* CARROSSERIE */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-semibold">Carrosserie</Label>
+                {getDetectionStatus(editedData.carrosserieCE)}
+              </div>
+              {!editingCarrosserie && editedData.carrosserieCE ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded">{editedData.carrosserieCE}</div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingCarrosserie(!editingCarrosserie)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingCarrosserie ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editedData.carrosserieCE || ""}
+                    onChange={(e) => handleFieldChange("carrosserieCE", e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingCarrosserie(false)}>
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingCarrosserie(true)} className="underline">
+                    Saisir
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ÉNERGIE / CARBURANT */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-semibold">Énergie</Label>
+                {getDetectionStatus(editedData.energie)}
+              </div>
+              {!editingEnergie && editedData.energie ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded">{editedData.energie}</div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingEnergie(!editingEnergie)}>
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingEnergie ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={editedData.energie || ""}
+                    onChange={(e) => handleFieldChange("energie", e.target.value.toUpperCase())}
+                    className="flex-1"
+                    placeholder="GO, ES, EL, GPL..."
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingEnergie(false)}>
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingEnergie(true)} className="underline">
+                    Saisir
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* PUISSANCE FISCALE */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-semibold">Puissance fiscale (CV)</Label>
+                {getDetectionStatus(editedData.puissanceFiscale)}
+              </div>
+              {!editingPuissanceFiscale && editedData.puissanceFiscale ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">
+                    {editedData.puissanceFiscale} CV
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingPuissanceFiscale(!editingPuissanceFiscale)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingPuissanceFiscale ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={editedData.puissanceFiscale || ""}
+                    onChange={(e) => handleFieldChange("puissanceFiscale", parseInt(e.target.value) || undefined)}
+                    className="flex-1"
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPuissanceFiscale(false)}>
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingPuissanceFiscale(true)} className="underline">
+                    Saisir
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* CYLINDRÉE */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-semibold">Cylindrée (cm³)</Label>
+                {getDetectionStatus(editedData.cylindree)}
+              </div>
+              {!editingCylindree && editedData.cylindree ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">{editedData.cylindree} cm³</div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingCylindree(!editingCylindree)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : editingCylindree ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={editedData.cylindree || ""}
+                    onChange={(e) => handleFieldChange("cylindree", parseInt(e.target.value) || undefined)}
+                    className="flex-1"
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setEditingCylindree(false)}>
+                    OK
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-2 text-gray-500 text-sm italic">
+                  Non détecté -{" "}
+                  <button onClick={() => setEditingCylindree(true)} className="underline">
                     Saisir
                   </button>
                 </div>
