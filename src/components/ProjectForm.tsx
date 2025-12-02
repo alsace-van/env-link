@@ -42,6 +42,20 @@ interface ProjectFormProps {
 }
 
 const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: ProjectFormProps) => {
+  // Fonction pour convertir une date française (JJ/MM/AAAA) en format ISO (AAAA-MM-JJ)
+  const convertFrenchDateToISO = (frenchDate: string | undefined | null): string | null => {
+    if (!frenchDate) return null;
+    // Si c'est déjà en format ISO (AAAA-MM-JJ)
+    if (/^\d{4}-\d{2}-\d{2}/.test(frenchDate)) return frenchDate;
+    // Conversion JJ/MM/AAAA → AAAA-MM-JJ
+    const parts = frenchDate.split("/");
+    if (parts.length === 3) {
+      const [day, month, year] = parts;
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
+    return frenchDate; // Retourner tel quel si format non reconnu
+  };
+
   const [vehicles, setVehicles] = useState<VehicleCatalog[]>([]);
   const [selectedMarque, setSelectedMarque] = useState<string>("");
   const [selectedModele, setSelectedModele] = useState<string>("");
@@ -116,9 +130,13 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       // Pré-remplir les dimensions personnalisées
       if (existingProject.poids_vide_kg) {
         setCustomPoidsVide(existingProject.poids_vide_kg.toString());
+      } else if (existingProject.masse_vide) {
+        setCustomPoidsVide(existingProject.masse_vide.toString());
       }
       if (existingProject.ptac_kg) {
         setCustomPtac(existingProject.ptac_kg.toString());
+      } else if (existingProject.masse_en_charge_max) {
+        setCustomPtac(existingProject.masse_en_charge_max.toString());
       }
 
       // Pré-remplir la photo
@@ -198,8 +216,13 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     );
     setSelectedVehicle(vehicle || null);
     if (vehicle) {
-      setCustomPoidsVide(vehicle.poids_vide_kg?.toString() || "");
-      setCustomPtac(vehicle.ptac_kg?.toString() || "");
+      // Ne pas écraser les poids si on a des données scannées
+      if (!scannedData?.masseVide) {
+        setCustomPoidsVide(vehicle.poids_vide_kg?.toString() || "");
+      }
+      if (!scannedData?.masseEnChargeMax) {
+        setCustomPtac(vehicle.ptac_kg?.toString() || "");
+      }
     }
   };
 
@@ -433,8 +456,11 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       email_proprietaire: formData.get("email_proprietaire") as string,
       numero_chassis: manualNumeroChassis || null,
       immatriculation: manualImmatriculation || null,
-      date_premiere_circulation: manualDateMiseCirculation || null,
-      date_premiere_immatriculation: scannedData?.datePremiereImmatriculation || null,
+      date_premiere_circulation: convertFrenchDateToISO(manualDateMiseCirculation) || null,
+      date_premiere_immatriculation:
+        convertFrenchDateToISO(scannedData?.datePremiereImmatriculation) ||
+        convertFrenchDateToISO(manualDateMiseCirculation) ||
+        null,
       type_mine: manualTypeMine || null,
       photo_url: photoUrl || (isEditMode && existingProject?.photo_url) || null,
       vehicle_catalog_id: selectedVehicle?.id || null,
