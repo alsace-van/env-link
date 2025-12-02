@@ -29,7 +29,7 @@ export interface ChatMessage {
 }
 
 export interface ChatAction {
-  type: "generate_rti" | "change_supplier" | "view_document" | "view_accessory";
+  type: "generate_rti" | "view_rti" | "change_supplier" | "view_document" | "view_accessory";
   label: string;
   data: Record<string, any>;
 }
@@ -594,7 +594,7 @@ Si tu cites une source, mentionne-la.
 Si tu proposes une action (générer un document, changer de fournisseur), indique-le clairement.`;
 
   if (intent.type === "generate_rti" || intent.type === "generate_document") {
-    systemPrompt += `\n\nL'utilisateur veut générer un document officiel. Liste les informations nécessaires et celles qui manquent.`;
+    systemPrompt += `\n\nL'utilisateur veut préparer un document RTI. Présente un résumé des données disponibles pour le dossier et propose de voir l'aperçu détaillé.`;
   }
 
   if (intent.type === "compare_prices" || intent.type === "compare_suppliers") {
@@ -622,17 +622,28 @@ Réponds de manière concise et utile:`;
   if (intent.type === "generate_rti" || intent.type === "generate_document") {
     if (projectId) {
       // On a directement le projectId depuis le contexte
+      // Proposer d'abord l'aperçu puis la génération
+      actions.push({
+        type: "view_rti",
+        label: "📋 Voir l'aperçu RTI",
+        data: { projectId: projectId },
+      });
       actions.push({
         type: "generate_rti",
-        label: "Générer le RTI",
+        label: "📄 Générer le RTI",
         data: { projectId: projectId },
       });
     } else if (context.some((c) => c.type === "project")) {
       const project = context.find((c) => c.type === "project");
       if (project) {
         actions.push({
+          type: "view_rti",
+          label: "📋 Voir l'aperçu RTI",
+          data: { projectId: project.id, projectName: project.title },
+        });
+        actions.push({
           type: "generate_rti",
-          label: "Générer le RTI",
+          label: "📄 Générer le RTI",
           data: { projectId: project.id, projectName: project.title },
         });
       }
