@@ -383,3 +383,4 @@ export const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps
 };
 
 export default AIChatAssistant;
+export { AIChatAssistant };
