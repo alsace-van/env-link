@@ -147,6 +147,9 @@ import {
   Music,
   Film,
   Sticker,
+  Loader2,
+  FileAudio,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -177,7 +180,7 @@ interface Chapter {
 interface ContentBlock {
   id: string;
   chapter_id: string;
-  type: "text" | "checklist" | "warning" | "tip" | "image" | "tools" | "icon";
+  type: "text" | "checklist" | "warning" | "tip" | "image" | "tools" | "icon" | "audio";
   content: string;
   position_x: number;
   position_y: number;
@@ -186,6 +189,7 @@ interface ContentBlock {
   color?: string;
   order_index: number;
   image_url?: string;
+  audio_url?: string;
 }
 
 // Couleurs pour les onglets
@@ -299,6 +303,13 @@ const BLOCK_TYPES = [
     icon: Image,
     bgColor: "bg-gray-50 dark:bg-gray-800",
     borderColor: "border-gray-300 dark:border-gray-600",
+  },
+  {
+    value: "audio",
+    label: "Audio",
+    icon: Mic,
+    bgColor: "bg-purple-50 dark:bg-purple-950/30",
+    borderColor: "border-purple-300 dark:border-purple-700",
   },
 ];
 
@@ -429,6 +440,10 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+
+  // États pour la transcription audio
+  const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
+  const [summarizingBlockId, setSummarizingBlockId] = useState<string | null>(null);
 
   // États des formulaires
   const [newGamme, setNewGamme] = useState({
@@ -799,6 +814,20 @@ const MechanicalProcedures = () => {
     try {
       const content = type === "checklist" ? "[] Étape 1\n[] Étape 2" : type === "icon" && iconName ? iconName : "";
 
+      // Définir la taille selon le type
+      let width = 300;
+      let height = 150;
+
+      if (type === "icon") {
+        width = 80;
+        height = 80;
+      } else if (type === "image") {
+        height = 200;
+      } else if (type === "audio") {
+        width = 400;
+        height = 280;
+      }
+
       const { data, error } = await (supabase as any)
         .from("mechanical_blocks")
         .insert({
@@ -807,8 +836,8 @@ const MechanicalProcedures = () => {
           content: content,
           position_x: 50 + Math.random() * 100,
           position_y: 50 + blocks.length * 20,
-          width: type === "icon" ? 80 : 300,
-          height: type === "icon" ? 80 : type === "image" ? 200 : 150,
+          width: width,
+          height: height,
           order_index: blocks.length,
         })
         .select()
@@ -978,6 +1007,199 @@ const MechanicalProcedures = () => {
     } catch (error) {
       console.error("Erreur upload:", error);
       toast.error("Erreur lors de l'upload");
+    }
+  };
+
+  // Upload d'audio pour un bloc
+  const handleAudioUpload = async (blockId: string, file: File) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${userData.user.id}/${blockId}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage.from("mechanical-audio").upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("mechanical-audio").getPublicUrl(fileName);
+
+      await handleUpdateBlock(blockId, { audio_url: publicUrl });
+      toast.success("Audio uploadé - Vous pouvez maintenant le transcrire");
+    } catch (error) {
+      console.error("Erreur upload audio:", error);
+      toast.error("Erreur lors de l'upload audio");
+    }
+  };
+
+  // Récupérer la clé API Gemini depuis les paramètres utilisateur
+  const getGeminiApiKey = async (): Promise<string | null> => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return null;
+
+      const { data: settings } = await (supabase as any)
+        .from("user_ai_settings")
+        .select("gemini_api_key")
+        .eq("user_id", userData.user.id)
+        .single();
+
+      return settings?.gemini_api_key || null;
+    } catch (error) {
+      console.error("Erreur récupération clé API:", error);
+      return null;
+    }
+  };
+
+  // Transcrire l'audio avec Gemini
+  const handleTranscribeAudio = async (blockId: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block?.audio_url) {
+      toast.error("Aucun fichier audio à transcrire");
+      return;
+    }
+
+    const apiKey = await getGeminiApiKey();
+    if (!apiKey) {
+      toast.error("Clé API Gemini non configurée. Allez dans Paramètres > IA pour l'ajouter.");
+      return;
+    }
+
+    setTranscribingBlockId(blockId);
+
+    try {
+      // Télécharger l'audio et le convertir en base64
+      const response = await fetch(block.audio_url);
+      const audioBlob = await response.blob();
+
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(",")[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
+
+      // Déterminer le type MIME
+      const mimeType = audioBlob.type || "audio/mpeg";
+
+      // Appel à l'API Gemini
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    inline_data: {
+                      mime_type: mimeType,
+                      data: base64Audio,
+                    },
+                  },
+                  {
+                    text: "Transcris cet enregistrement audio en français. Fais une transcription fidèle et complète du contenu parlé. Si tu détectes plusieurs interlocuteurs, indique les changements de locuteur.",
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      );
+
+      if (!geminiResponse.ok) {
+        const error = await geminiResponse.json();
+        throw new Error(error.error?.message || "Erreur API Gemini");
+      }
+
+      const result = await geminiResponse.json();
+      const transcription = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      if (transcription) {
+        await handleUpdateBlock(blockId, { content: transcription });
+        toast.success("Transcription terminée !");
+      } else {
+        toast.error("Aucune transcription générée");
+      }
+    } catch (error: any) {
+      console.error("Erreur transcription:", error);
+      toast.error(`Erreur: ${error.message || "Impossible de transcrire l'audio"}`);
+    } finally {
+      setTranscribingBlockId(null);
+    }
+  };
+
+  // Résumer le contenu transcrit
+  const handleSummarizeContent = async (blockId: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block?.content) {
+      toast.error("Aucun contenu à résumer");
+      return;
+    }
+
+    const apiKey = await getGeminiApiKey();
+    if (!apiKey) {
+      toast.error("Clé API Gemini non configurée");
+      return;
+    }
+
+    setSummarizingBlockId(blockId);
+
+    try {
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Résume ce texte de manière concise en gardant les points clés et les informations importantes. Utilise des puces pour les points principaux.
+
+Texte à résumer :
+${block.content}`,
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      );
+
+      if (!geminiResponse.ok) {
+        const error = await geminiResponse.json();
+        throw new Error(error.error?.message || "Erreur API Gemini");
+      }
+
+      const result = await geminiResponse.json();
+      const summary = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      if (summary) {
+        // Ajouter le résumé au début du contenu
+        const newContent = `📋 RÉSUMÉ:\n${summary}\n\n---\n\n📝 TRANSCRIPTION COMPLÈTE:\n${block.content}`;
+        await handleUpdateBlock(blockId, { content: newContent });
+        toast.success("Résumé généré !");
+      } else {
+        toast.error("Aucun résumé généré");
+      }
+    } catch (error: any) {
+      console.error("Erreur résumé:", error);
+      toast.error(`Erreur: ${error.message || "Impossible de résumer"}`);
+    } finally {
+      setSummarizingBlockId(null);
     }
   };
 
@@ -1248,6 +1470,86 @@ const MechanicalProcedures = () => {
                     }}
                   />
                 </label>
+              )}
+            </div>
+          ) : block.type === "audio" ? (
+            <div className="space-y-3">
+              {/* Zone upload audio */}
+              {!block.audio_url ? (
+                <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-purple-300 rounded cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-950/20">
+                  <FileAudio className="h-8 w-8 text-purple-400 mb-2" />
+                  <span className="text-sm text-muted-foreground">Cliquer pour uploader un audio</span>
+                  <span className="text-xs text-muted-foreground">(mp3, wav, m4a, ogg...)</span>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAudioUpload(block.id, file);
+                    }}
+                  />
+                </label>
+              ) : (
+                <div className="space-y-2">
+                  {/* Lecteur audio */}
+                  <audio controls className="w-full h-10" src={block.audio_url} />
+
+                  {/* Boutons d'action */}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 text-purple-600 border-purple-300 hover:bg-purple-50"
+                      onClick={() => handleTranscribeAudio(block.id)}
+                      disabled={transcribingBlockId === block.id}
+                    >
+                      {transcribingBlockId === block.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Transcription...
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="h-4 w-4 mr-1" />
+                          Transcrire
+                        </>
+                      )}
+                    </Button>
+
+                    {block.content && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50"
+                        onClick={() => handleSummarizeContent(block.id)}
+                        disabled={summarizingBlockId === block.id}
+                      >
+                        {summarizingBlockId === block.id ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            Résumé...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-1" />
+                            Résumer
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Zone de texte pour la transcription */}
+              {(block.content || block.audio_url) && (
+                <Textarea
+                  value={block.content}
+                  onChange={(e) => handleUpdateBlock(block.id, { content: e.target.value })}
+                  className="min-h-[120px] bg-white dark:bg-gray-900 border border-purple-200 dark:border-purple-800 resize-none"
+                  placeholder="La transcription apparaîtra ici... Vous pouvez aussi écrire vos notes."
+                />
               )}
             </div>
           ) : (
