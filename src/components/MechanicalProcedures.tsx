@@ -1116,17 +1116,46 @@ const MechanicalProcedures = () => {
     const blockType = BLOCK_TYPES.find((t) => t.value === block.type) || BLOCK_TYPES[0];
     const IconComponent = block.type === "icon" ? getIconComponent(block.content) : blockType.icon;
 
+    // Rendu spécial pour les icônes : juste l'icône sans cadre
+    if (block.type === "icon") {
+      return (
+        <div
+          key={block.id}
+          className={`content-block absolute transition-all ${
+            selectedBlockId === block.id ? "ring-2 ring-blue-500 ring-offset-2 rounded-full" : ""
+          }`}
+          style={{
+            left: block.position_x,
+            top: block.position_y,
+            cursor: draggingBlockId === block.id ? "grabbing" : "grab",
+          }}
+          onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedBlockId(block.id);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            handleDeleteBlock(block.id);
+          }}
+          title="Clic droit pour supprimer"
+        >
+          <IconComponent className="h-10 w-10 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors" />
+        </div>
+      );
+    }
+
     return (
       <div
         key={block.id}
         className={`content-block absolute rounded-lg border-2 shadow-md transition-shadow ${
           selectedBlockId === block.id ? "ring-2 ring-blue-500 shadow-lg" : ""
-        } ${block.type === "icon" ? "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600" : `${blockType.bgColor} ${blockType.borderColor}`}`}
+        } ${blockType.bgColor} ${blockType.borderColor}`}
         style={{
           left: block.position_x,
           top: block.position_y,
-          width: block.type === "icon" ? "auto" : block.width,
-          minHeight: block.type === "icon" ? "auto" : block.height,
+          width: block.width,
+          minHeight: block.height,
           cursor: draggingBlockId === block.id ? "grabbing" : "grab",
         }}
         onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
@@ -1137,16 +1166,11 @@ const MechanicalProcedures = () => {
       >
         {/* Header du bloc */}
         <div
-          className={`flex items-center gap-2 px-3 py-2 border-b ${block.type === "icon" ? "border-gray-200 dark:border-gray-600" : blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg`}
+          className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg`}
         >
           <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-          {block.type !== "icon" && (
-            <>
-              <IconComponent className="h-4 w-4" />
-              <span className="text-xs font-medium flex-1">{blockType.label}</span>
-            </>
-          )}
-          {block.type === "icon" && <span className="text-xs font-medium">Icône</span>}
+          <IconComponent className="h-4 w-4" />
+          <span className="text-xs font-medium flex-1">{blockType.label}</span>
           <button
             type="button"
             onPointerDown={(e) => {
@@ -1166,11 +1190,7 @@ const MechanicalProcedures = () => {
 
         {/* Contenu du bloc */}
         <div className="block-content p-3">
-          {block.type === "icon" ? (
-            <div className="flex items-center justify-center p-4">
-              <IconComponent className="h-12 w-12" />
-            </div>
-          ) : block.type === "image" ? (
+          {block.type === "image" ? (
             <div>
               {block.image_url ? (
                 <img src={block.image_url} alt="Illustration" className="max-w-full rounded" />
@@ -1211,11 +1231,9 @@ const MechanicalProcedures = () => {
         </div>
 
         {/* Poignée de redimensionnement */}
-        {block.type !== "icon" && (
-          <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize">
-            <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-gray-400" />
-          </div>
-        )}
+        <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize">
+          <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-gray-400" />
+        </div>
       </div>
     );
   };
