@@ -1,4 +1,7 @@
 // Centralisé : appels aux différents fournisseurs IA + statistiques d'usage
+// Les modèles sont configurables depuis l'admin (table app_settings)
+
+import { supabase } from "@/integrations/supabase/client";
 
 export type AIProvider = "gemini" | "openai" | "anthropic" | "mistral";
 
@@ -19,6 +22,85 @@ export interface AIResponse {
   tokensUsed?: number;
 }
 
+// ========================================
+// MODÈLES PAR DÉFAUT (fallback si DB inaccessible)
+// ========================================
+const DEFAULT_MODELS: Record<AIProvider, string> = {
+  gemini: "gemini-2.0-flash",
+  openai: "gpt-4o-mini",
+  anthropic: "claude-3-haiku-20240307",
+  mistral: "mistral-small-latest",
+};
+
+// ========================================
+// CACHE DES MODÈLES (évite les requêtes répétées)
+// ========================================
+let modelsCache: Record<AIProvider, string> | null = null;
+let modelsCacheTime: number = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Récupère le modèle à utiliser pour un fournisseur donné
+ * Utilise un cache pour éviter les requêtes répétées
+ */
+async function getModelForProvider(provider: AIProvider): Promise<string> {
+  const now = Date.now();
+
+  // Si le cache est valide, l'utiliser
+  if (modelsCache && now - modelsCacheTime < CACHE_DURATION) {
+    return modelsCache[provider] || DEFAULT_MODELS[provider];
+  }
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["gemini_model", "openai_model", "anthropic_model", "mistral_model"]);
+
+    if (error) {
+      console.warn("Impossible de charger les modèles depuis la DB, utilisation des valeurs par défaut:", error);
+      return DEFAULT_MODELS[provider];
+    }
+
+    // Construire le cache
+    modelsCache = { ...DEFAULT_MODELS };
+    data?.forEach((row: { key: string; value: string }) => {
+      const providerKey = row.key.replace("_model", "") as AIProvider;
+      if (providerKey in modelsCache!) {
+        modelsCache![providerKey] = row.value;
+      }
+    });
+    modelsCacheTime = now;
+
+    return modelsCache[provider] || DEFAULT_MODELS[provider];
+  } catch (e) {
+    console.warn("Erreur lors du chargement des modèles:", e);
+    return DEFAULT_MODELS[provider];
+  }
+}
+
+/**
+ * Force le rafraîchissement du cache des modèles
+ * Utile après modification dans l'admin
+ */
+export function refreshModelsCache() {
+  modelsCache = null;
+  modelsCacheTime = 0;
+}
+
+/**
+ * Récupère tous les modèles configurés (pour affichage)
+ */
+export async function getConfiguredModels(): Promise<Record<AIProvider, string>> {
+  // Force refresh
+  refreshModelsCache();
+
+  // Charger chaque modèle pour remplir le cache
+  await getModelForProvider("gemini");
+
+  return modelsCache || DEFAULT_MODELS;
+}
+
 // ========================
 // Appel générique multi-IA
 // ========================
@@ -27,15 +109,19 @@ export async function callAI(params: CallAIParams): Promise<AIResponse> {
   const { provider, apiKey, prompt, pdfBase64, imageBase64, imageMimeType, maxTokens = 4000 } = params;
 
   try {
+    // Récupérer le modèle configuré pour ce fournisseur
+    const model = await getModelForProvider(provider);
+    console.log(`🤖 Appel ${provider} avec modèle: ${model}`);
+
     switch (provider) {
       case "gemini":
-        return await callGemini(apiKey, prompt, { pdfBase64, imageBase64, imageMimeType, maxTokens });
+        return await callGemini(apiKey, prompt, model, { pdfBase64, imageBase64, imageMimeType, maxTokens });
       case "openai":
-        return await callOpenAI(apiKey, prompt, { pdfBase64, imageBase64, imageMimeType, maxTokens });
+        return await callOpenAI(apiKey, prompt, model, { pdfBase64, imageBase64, imageMimeType, maxTokens });
       case "anthropic":
-        return await callAnthropic(apiKey, prompt, { pdfBase64, imageBase64, imageMimeType, maxTokens });
+        return await callAnthropic(apiKey, prompt, model, { pdfBase64, imageBase64, imageMimeType, maxTokens });
       case "mistral":
-        return await callMistral(apiKey, prompt, { pdfBase64, imageBase64, imageMimeType, maxTokens });
+        return await callMistral(apiKey, prompt, model, { pdfBase64, imageBase64, imageMimeType, maxTokens });
       default:
         return { success: false, error: "Fournisseur IA non supporté" };
     }
@@ -59,9 +145,10 @@ interface ProviderExtraParams {
 async function callGemini(
   apiKey: string,
   prompt: string,
+  model: string,
   { pdfBase64, imageBase64, imageMimeType, maxTokens }: ProviderExtraParams,
 ): Promise<AIResponse> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const parts: any[] = [{ text: prompt }];
 
@@ -103,6 +190,7 @@ async function callGemini(
 async function callOpenAI(
   apiKey: string,
   prompt: string,
+  model: string,
   { pdfBase64, imageBase64, imageMimeType, maxTokens }: ProviderExtraParams,
 ): Promise<AIResponse> {
   const messages: any[] = [{ role: "user", content: prompt }];
@@ -128,7 +216,7 @@ async function callOpenAI(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model,
       messages,
       max_tokens: maxTokens,
     }),
@@ -156,6 +244,7 @@ async function callOpenAI(
 async function callAnthropic(
   apiKey: string,
   prompt: string,
+  model: string,
   { pdfBase64, imageBase64, imageMimeType, maxTokens }: ProviderExtraParams,
 ): Promise<AIResponse> {
   const content: any[] = [{ type: "text", text: prompt }];
@@ -181,7 +270,7 @@ async function callAnthropic(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-5-sonnet-20241022",
+      model,
       max_tokens: maxTokens || 4000,
       messages: [{ role: "user", content }],
     }),
@@ -209,11 +298,14 @@ async function callAnthropic(
 async function callMistral(
   apiKey: string,
   prompt: string,
+  model: string,
   { pdfBase64, imageBase64, imageMimeType, maxTokens }: ProviderExtraParams,
 ): Promise<AIResponse> {
   // Actuellement, l'API chat Mistral ne gère pas directement les PDFs/images comme les autres.
   // On envoie donc uniquement le prompt texte.
-  console.warn("Mistral : les paramètres PDF / image ne sont pas encore supportés côté client.");
+  if (pdfBase64 || imageBase64) {
+    console.warn("Mistral : les paramètres PDF / image ne sont pas encore supportés côté client.");
+  }
 
   const messages: any[] = [{ role: "user", content: prompt }];
 
@@ -224,7 +316,7 @@ async function callMistral(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "mistral-large-latest",
+      model,
       messages,
       max_tokens: maxTokens,
     }),
