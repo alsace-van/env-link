@@ -450,7 +450,9 @@ const MechanicalProcedures = () => {
 
   // États pour le drag des blocs
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const dragStartPosRef = useRef({ x: 0, y: 0 });
+  const dragElementRef = useRef<HTMLElement | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // États pour le drag des chapitres
@@ -858,7 +860,7 @@ const MechanicalProcedures = () => {
     }
   };
 
-  // Drag & Drop des blocs
+  // Drag & Drop des blocs - VERSION OPTIMISÉE
   const handleBlockMouseDown = (e: React.MouseEvent, blockId: string) => {
     // Ne pas déclencher le drag si on clique sur un élément interactif
     const target = e.target as HTMLElement;
@@ -874,47 +876,75 @@ const MechanicalProcedures = () => {
     const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
 
+    const element = (e.target as HTMLElement).closest(".content-block") as HTMLElement;
+    if (!element) return;
+
+    // Stocker les références
+    dragElementRef.current = element;
+    dragStartPosRef.current = { x: block.position_x, y: block.position_y };
+    dragOffsetRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+    };
+
     setDraggingBlockId(blockId);
     setSelectedBlockId(blockId);
 
-    const rect = (e.target as HTMLElement).closest(".content-block")?.getBoundingClientRect();
-    if (rect) {
-      setDragOffset({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
-    }
+    // Style pendant le drag
+    element.style.zIndex = "1000";
+    element.style.cursor = "grabbing";
   };
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (!draggingBlockId || !canvasRef.current) return;
+      if (!draggingBlockId || !dragElementRef.current || !canvasRef.current) return;
 
-      const canvasRect = canvasRef.current.getBoundingClientRect();
-      const newX = e.clientX - canvasRect.left - dragOffset.x + canvasRef.current.scrollLeft;
-      const newY = e.clientY - canvasRect.top - dragOffset.y + canvasRef.current.scrollTop;
+      // Calculer le delta depuis le début du drag
+      const deltaX = e.clientX - dragOffsetRef.current.x;
+      const deltaY = e.clientY - dragOffsetRef.current.y;
 
-      setBlocks((prevBlocks) =>
-        prevBlocks.map((b) =>
-          b.id === draggingBlockId ? { ...b, position_x: Math.max(0, newX), position_y: Math.max(0, newY) } : b,
-        ),
-      );
+      // Nouvelle position
+      const newX = Math.max(0, dragStartPosRef.current.x + deltaX);
+      const newY = Math.max(0, dragStartPosRef.current.y + deltaY);
+
+      // Appliquer directement au DOM (pas de re-render React)
+      dragElementRef.current.style.left = `${newX}px`;
+      dragElementRef.current.style.top = `${newY}px`;
     },
-    [draggingBlockId, dragOffset],
+    [draggingBlockId],
   );
 
-  const handleMouseUp = useCallback(() => {
-    if (draggingBlockId) {
-      const block = blocks.find((b) => b.id === draggingBlockId);
-      if (block) {
+  const handleMouseUp = useCallback(
+    (e: MouseEvent) => {
+      if (draggingBlockId && dragElementRef.current) {
+        // Calculer la position finale
+        const deltaX = e.clientX - dragOffsetRef.current.x;
+        const deltaY = e.clientY - dragOffsetRef.current.y;
+        const finalX = Math.max(0, dragStartPosRef.current.x + deltaX);
+        const finalY = Math.max(0, dragStartPosRef.current.y + deltaY);
+
+        // Reset le style
+        dragElementRef.current.style.zIndex = "";
+        dragElementRef.current.style.cursor = "";
+
+        // Mettre à jour le state React et la base de données
+        setBlocks((prevBlocks) =>
+          prevBlocks.map((b) => (b.id === draggingBlockId ? { ...b, position_x: finalX, position_y: finalY } : b)),
+        );
+
+        // Sauvegarder en base
         handleUpdateBlock(draggingBlockId, {
-          position_x: block.position_x,
-          position_y: block.position_y,
+          position_x: finalX,
+          position_y: finalY,
         });
+
+        // Cleanup
+        dragElementRef.current = null;
+        setDraggingBlockId(null);
       }
-      setDraggingBlockId(null);
-    }
-  }, [draggingBlockId, blocks]);
+    },
+    [draggingBlockId],
+  );
 
   useEffect(() => {
     if (draggingBlockId) {
