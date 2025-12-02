@@ -509,7 +509,7 @@ const MechanicalProcedures = () => {
           console.error("Erreur chargement gammes:", error);
         }
       } else {
-        setGammes(data || []);
+        setGammes((data || []) as Gamme[]);
         if (data && data.length > 0 && !activeGammeId) {
           setActiveGammeId(data[0].id);
         }
@@ -535,7 +535,7 @@ const MechanicalProcedures = () => {
         }
         setChapters([]);
       } else {
-        setChapters(data || []);
+        setChapters((data || []) as Chapter[]);
         if (data && data.length > 0) {
           setActiveChapterId(data[0].id);
           setExpandedChapters(new Set([data[0].id]));
@@ -562,7 +562,7 @@ const MechanicalProcedures = () => {
         }
         setBlocks([]);
       } else {
-        setBlocks(data || []);
+        setBlocks((data || []) as ContentBlock[]);
       }
     } catch (error) {
       console.error("Erreur:", error);
@@ -603,8 +603,8 @@ const MechanicalProcedures = () => {
         return;
       }
 
-      setGammes([...gammes, data]);
-      setActiveGammeId(data.id);
+      setGammes([...gammes, data as Gamme]);
+      setActiveGammeId((data as Gamme).id);
       setIsGammeDialogOpen(false);
       setNewGamme({
         title: "",
@@ -692,9 +692,9 @@ const MechanicalProcedures = () => {
 
       if (error) throw error;
 
-      setChapters([...chapters, data]);
-      setActiveChapterId(data.id);
-      setExpandedChapters(new Set([...expandedChapters, data.id]));
+      setChapters([...chapters, data as Chapter]);
+      setActiveChapterId((data as Chapter).id);
+      setExpandedChapters(new Set([...expandedChapters, (data as Chapter).id]));
       setIsChapterDialogOpen(false);
       setNewChapter({ title: "", parent_id: null });
       toast.success("Chapitre créé");
@@ -814,8 +814,8 @@ const MechanicalProcedures = () => {
 
       if (error) throw error;
 
-      setBlocks([...blocks, data]);
-      setSelectedBlockId(data.id);
+      setBlocks([...blocks, data as ContentBlock]);
+      setSelectedBlockId((data as ContentBlock).id);
       setIsIconPickerOpen(false);
       toast.success("Bloc ajouté");
     } catch (error) {
