@@ -315,8 +315,8 @@ const Admin = () => {
                     Paramètres IA
                   </CardTitle>
                   <CardDescription>
-                    Configurez les modèles d'intelligence artificielle utilisés par l'application. Modifiez ces
-                    paramètres si un fournisseur désactive un modèle.
+                    Configurez les modèles d'intelligence artificielle utilisés par l'application.
+                    Modifiez ces paramètres si un fournisseur désactive un modèle.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
