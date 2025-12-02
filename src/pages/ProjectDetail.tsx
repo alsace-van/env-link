@@ -134,6 +134,16 @@ interface Project {
   nombre_places?: number;
   marque_vehicule?: string;
   modele_vehicule?: string;
+  // Champs RTI carte grise
+  categorie_international?: string;
+  type_variante?: string;
+  numero_reception_ce?: string;
+  places_assises_origine?: number;
+  puissance_kw?: number;
+  co2_emission?: number;
+  norme_euro?: string;
+  carrosserie_ce?: string;
+  carrosserie_nationale?: string;
   // Propriétés pour les scénarios
   statut_financier?: string;
   date_validation_devis?: string;
@@ -1373,6 +1383,60 @@ const ProjectDetail = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Données techniques RTI */}
+                {(project.categorie_international ||
+                  project.type_variante ||
+                  project.numero_reception_ce ||
+                  project.places_assises_origine ||
+                  project.puissance_kw ||
+                  project.norme_euro) && (
+                  <div className="space-y-1.5 mb-4 pt-4 border-t">
+                    <h4 className="text-xs font-semibold text-blue-600 mb-2">Données techniques RTI</h4>
+                    {project.categorie_international && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">Catégorie (J) :</span>
+                        <p className="font-bold text-blue-700">{project.categorie_international}</p>
+                      </div>
+                    )}
+                    {project.type_variante && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">Type variante (D.2) :</span>
+                        <p className="font-medium font-mono text-xs">{project.type_variante}</p>
+                      </div>
+                    )}
+                    {project.numero_reception_ce && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">N° Réception (K) :</span>
+                        <p className="font-medium font-mono text-xs">{project.numero_reception_ce}</p>
+                      </div>
+                    )}
+                    {project.places_assises_origine && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">Places origine (S.1) :</span>
+                        <p className="font-medium">{project.places_assises_origine}</p>
+                      </div>
+                    )}
+                    {project.puissance_kw && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">Puissance (P.2) :</span>
+                        <p className="font-medium">{project.puissance_kw} kW</p>
+                      </div>
+                    )}
+                    {project.norme_euro && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">Norme Euro (V.9) :</span>
+                        <p className="font-medium text-green-700">{project.norme_euro}</p>
+                      </div>
+                    )}
+                    {project.co2_emission && (
+                      <div className="flex gap-2 text-xs">
+                        <span className="text-muted-foreground shrink-0">CO2 (V.7) :</span>
+                        <p className="font-medium">{project.co2_emission} g/km</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Propriétaire */}
                 <div className="space-y-1.5 mb-4 pt-4 border-t">
