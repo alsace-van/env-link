@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Users, Shield, Trash2, Activity, FileText, Sparkles } from "lucide-react";
+import { ArrowLeft, Users, Shield, Trash2, Activity, FileText, Sparkles, Search } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -27,6 +27,7 @@ import { AdminNoticesManager } from "@/components/admin/AdminNoticesManager";
 import { ShippingFeesManager } from "@/components/admin/ShippingFeesManager";
 import { AdminDownloadsManager } from "@/components/admin/AdminDownloadsManager";
 import { AdminAISettings } from "@/components/admin/AdminAISettings";
+import { AdminDocumentIndexing } from "@/components/admin/AdminDocumentIndexing";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface UserData {
@@ -212,6 +213,10 @@ const Admin = () => {
                 <Sparkles className="h-4 w-4 mr-1" />
                 Paramètres IA
               </TabsTrigger>
+              <TabsTrigger value="indexation">
+                <Search className="h-4 w-4 mr-1" />
+                Indexation IA
+              </TabsTrigger>
               <TabsTrigger value="logins">Connexions</TabsTrigger>
               <TabsTrigger value="actions">Journal d'activité</TabsTrigger>
             </TabsList>
@@ -321,6 +326,24 @@ const Admin = () => {
                 </CardHeader>
                 <CardContent>
                   <AdminAISettings />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="indexation">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Search className="h-5 w-5" />
+                    Indexation des documents
+                  </CardTitle>
+                  <CardDescription>
+                    Gérez l'indexation des notices et documents DREAL pour la recherche IA.
+                    Les documents indexés sont consultables via le chatbot.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <AdminDocumentIndexing />
                 </CardContent>
               </Card>
             </TabsContent>
