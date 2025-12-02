@@ -274,12 +274,12 @@ export interface VehicleRegistrationData {
   codePostal?: string;
   ville?: string;
 
-  // Nouveaux champs pour RTI
+  // Nouveaux champs pour RTI (carte grise française)
   categorieInternational?: string; // J - N1, M1, N2, etc.
   numeroReceptionCE?: string; // K - e2*2007/46*...
   normeEuro?: string; // V.9 - EURO5, EURO6, etc.
-  masseEnService?: number; // G.1
-  poidsRemorqueFreinee?: number; // F.3
+  masseEnService?: number; // G.1 - masse en service
+  poidsRemorqueFreinee?: number; // F.3 - poids remorque freinée
 }
 
 /**
