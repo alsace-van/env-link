@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -32,6 +31,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Plus,
   ChevronDown,
@@ -54,6 +54,99 @@ import {
   Lightbulb,
   MoreHorizontal,
   Upload,
+  Clock,
+  Hammer,
+  Scissors,
+  Ruler,
+  Zap,
+  Thermometer,
+  Droplets,
+  Wind,
+  Gauge,
+  Cable,
+  Plug,
+  Battery,
+  Cog,
+  Settings,
+  ArrowRight,
+  ArrowDown,
+  ArrowUp,
+  Check,
+  Ban,
+  CircleAlert,
+  Info,
+  HelpCircle,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+  Star,
+  Heart,
+  Flag,
+  Bookmark,
+  Tag,
+  Hash,
+  AtSign,
+  Phone,
+  Mail,
+  MapPin,
+  Navigation,
+  Compass,
+  Target,
+  Crosshair,
+  Move,
+  RotateCw,
+  RefreshCw,
+  Maximize,
+  Minimize,
+  ZoomIn,
+  ZoomOut,
+  Search,
+  Filter,
+  SortAsc,
+  List,
+  Grid3X3,
+  LayoutGrid,
+  Layers2,
+  Box,
+  Package,
+  Truck,
+  Car,
+  Bike,
+  Plane,
+  Ship,
+  Anchor,
+  Key,
+  Shield,
+  ShieldCheck,
+  ShieldAlert,
+  AlertCircle,
+  XCircle,
+  CheckCircle,
+  PlusCircle,
+  MinusCircle,
+  PlayCircle,
+  PauseCircle,
+  StopCircle,
+  Volume2,
+  VolumeX,
+  Mic,
+  Camera,
+  Video,
+  Monitor,
+  Smartphone,
+  Tablet,
+  Laptop,
+  Printer,
+  Wifi,
+  Bluetooth,
+  Radio,
+  Tv,
+  Speaker,
+  Headphones,
+  Music,
+  Film,
+  Sticker,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -84,7 +177,7 @@ interface Chapter {
 interface ContentBlock {
   id: string;
   chapter_id: string;
-  type: "text" | "checklist" | "warning" | "tip" | "image" | "tools";
+  type: "text" | "checklist" | "warning" | "tip" | "image" | "tools" | "icon";
   content: string;
   position_x: number;
   position_y: number;
@@ -97,36 +190,214 @@ interface ContentBlock {
 
 // Couleurs pour les onglets
 const TAB_COLORS = [
-  { value: "blue", label: "Bleu", class: "bg-blue-500", border: "border-blue-500", light: "bg-blue-50" },
-  { value: "green", label: "Vert", class: "bg-green-500", border: "border-green-500", light: "bg-green-50" },
-  { value: "orange", label: "Orange", class: "bg-orange-500", border: "border-orange-500", light: "bg-orange-50" },
-  { value: "purple", label: "Violet", class: "bg-purple-500", border: "border-purple-500", light: "bg-purple-50" },
-  { value: "red", label: "Rouge", class: "bg-red-500", border: "border-red-500", light: "bg-red-50" },
-  { value: "yellow", label: "Jaune", class: "bg-yellow-500", border: "border-yellow-500", light: "bg-yellow-50" },
-  { value: "pink", label: "Rose", class: "bg-pink-500", border: "border-pink-500", light: "bg-pink-50" },
-  { value: "cyan", label: "Cyan", class: "bg-cyan-500", border: "border-cyan-500", light: "bg-cyan-50" },
+  {
+    value: "blue",
+    label: "Bleu",
+    class: "bg-blue-500",
+    border: "border-blue-500",
+    light: "bg-blue-50",
+    darkLight: "dark:bg-blue-950/30",
+  },
+  {
+    value: "green",
+    label: "Vert",
+    class: "bg-green-500",
+    border: "border-green-500",
+    light: "bg-green-50",
+    darkLight: "dark:bg-green-950/30",
+  },
+  {
+    value: "orange",
+    label: "Orange",
+    class: "bg-orange-500",
+    border: "border-orange-500",
+    light: "bg-orange-50",
+    darkLight: "dark:bg-orange-950/30",
+  },
+  {
+    value: "purple",
+    label: "Violet",
+    class: "bg-purple-500",
+    border: "border-purple-500",
+    light: "bg-purple-50",
+    darkLight: "dark:bg-purple-950/30",
+  },
+  {
+    value: "red",
+    label: "Rouge",
+    class: "bg-red-500",
+    border: "border-red-500",
+    light: "bg-red-50",
+    darkLight: "dark:bg-red-950/30",
+  },
+  {
+    value: "yellow",
+    label: "Jaune",
+    class: "bg-yellow-500",
+    border: "border-yellow-500",
+    light: "bg-yellow-50",
+    darkLight: "dark:bg-yellow-950/30",
+  },
+  {
+    value: "pink",
+    label: "Rose",
+    class: "bg-pink-500",
+    border: "border-pink-500",
+    light: "bg-pink-50",
+    darkLight: "dark:bg-pink-950/30",
+  },
+  {
+    value: "cyan",
+    label: "Cyan",
+    class: "bg-cyan-500",
+    border: "border-cyan-500",
+    light: "bg-cyan-50",
+    darkLight: "dark:bg-cyan-950/30",
+  },
 ];
 
 // Types de blocs
 const BLOCK_TYPES = [
-  { value: "text", label: "Texte", icon: Type, bgColor: "bg-white", borderColor: "border-gray-200" },
+  {
+    value: "text",
+    label: "Texte",
+    icon: Type,
+    bgColor: "bg-white dark:bg-gray-800",
+    borderColor: "border-gray-200 dark:border-gray-600",
+  },
   {
     value: "checklist",
     label: "Checklist",
     icon: CheckSquare,
-    bgColor: "bg-green-50",
-    borderColor: "border-green-300",
+    bgColor: "bg-green-50 dark:bg-green-950/30",
+    borderColor: "border-green-300 dark:border-green-700",
   },
   {
     value: "warning",
     label: "Attention",
     icon: AlertTriangle,
-    bgColor: "bg-yellow-50",
-    borderColor: "border-yellow-400",
+    bgColor: "bg-yellow-50 dark:bg-yellow-950/30",
+    borderColor: "border-yellow-400 dark:border-yellow-600",
   },
-  { value: "tip", label: "Astuce", icon: Lightbulb, bgColor: "bg-blue-50", borderColor: "border-blue-300" },
-  { value: "tools", label: "Outils", icon: Wrench, bgColor: "bg-orange-50", borderColor: "border-orange-300" },
-  { value: "image", label: "Image", icon: Image, bgColor: "bg-gray-50", borderColor: "border-gray-300" },
+  {
+    value: "tip",
+    label: "Astuce",
+    icon: Lightbulb,
+    bgColor: "bg-blue-50 dark:bg-blue-950/30",
+    borderColor: "border-blue-300 dark:border-blue-700",
+  },
+  {
+    value: "tools",
+    label: "Outils",
+    icon: Wrench,
+    bgColor: "bg-orange-50 dark:bg-orange-950/30",
+    borderColor: "border-orange-300 dark:border-orange-700",
+  },
+  {
+    value: "image",
+    label: "Image",
+    icon: Image,
+    bgColor: "bg-gray-50 dark:bg-gray-800",
+    borderColor: "border-gray-300 dark:border-gray-600",
+  },
+];
+
+// Banque d'icônes métier
+const ICON_LIBRARY = [
+  {
+    category: "Outils",
+    icons: [
+      { name: "wrench", icon: Wrench, label: "Clé" },
+      { name: "hammer", icon: Hammer, label: "Marteau" },
+      { name: "scissors", icon: Scissors, label: "Ciseaux" },
+      { name: "ruler", icon: Ruler, label: "Règle" },
+      { name: "cog", icon: Cog, label: "Engrenage" },
+      { name: "settings", icon: Settings, label: "Réglages" },
+    ],
+  },
+  {
+    category: "Temps",
+    icons: [
+      { name: "clock", icon: Clock, label: "Horloge" },
+      { name: "pause", icon: PauseCircle, label: "Pause" },
+      { name: "play", icon: PlayCircle, label: "Lecture" },
+      { name: "stop", icon: StopCircle, label: "Stop" },
+      { name: "refresh", icon: RefreshCw, label: "Rafraîchir" },
+      { name: "rotate", icon: RotateCw, label: "Rotation" },
+    ],
+  },
+  {
+    category: "Électrique",
+    icons: [
+      { name: "zap", icon: Zap, label: "Électricité" },
+      { name: "plug", icon: Plug, label: "Prise" },
+      { name: "battery", icon: Battery, label: "Batterie" },
+      { name: "cable", icon: Cable, label: "Câble" },
+      { name: "wifi", icon: Wifi, label: "WiFi" },
+      { name: "bluetooth", icon: Bluetooth, label: "Bluetooth" },
+    ],
+  },
+  {
+    category: "Fluides",
+    icons: [
+      { name: "droplets", icon: Droplets, label: "Eau" },
+      { name: "thermometer", icon: Thermometer, label: "Température" },
+      { name: "wind", icon: Wind, label: "Ventilation" },
+      { name: "gauge", icon: Gauge, label: "Pression" },
+    ],
+  },
+  {
+    category: "Véhicules",
+    icons: [
+      { name: "car", icon: Car, label: "Voiture" },
+      { name: "truck", icon: Truck, label: "Camion" },
+      { name: "bike", icon: Bike, label: "Vélo" },
+      { name: "key", icon: Key, label: "Clé" },
+    ],
+  },
+  {
+    category: "Alertes",
+    icons: [
+      { name: "alert-triangle", icon: AlertTriangle, label: "Attention" },
+      { name: "alert-circle", icon: AlertCircle, label: "Alerte" },
+      { name: "info", icon: Info, label: "Info" },
+      { name: "help", icon: HelpCircle, label: "Aide" },
+      { name: "check-circle", icon: CheckCircle, label: "Validé" },
+      { name: "x-circle", icon: XCircle, label: "Erreur" },
+      { name: "ban", icon: Ban, label: "Interdit" },
+      { name: "shield", icon: Shield, label: "Sécurité" },
+    ],
+  },
+  {
+    category: "Directions",
+    icons: [
+      { name: "arrow-right", icon: ArrowRight, label: "Droite" },
+      { name: "arrow-down", icon: ArrowDown, label: "Bas" },
+      { name: "arrow-up", icon: ArrowUp, label: "Haut" },
+      { name: "move", icon: Move, label: "Déplacer" },
+      { name: "target", icon: Target, label: "Cible" },
+      { name: "crosshair", icon: Crosshair, label: "Viseur" },
+      { name: "compass", icon: Compass, label: "Boussole" },
+      { name: "navigation", icon: Navigation, label: "Navigation" },
+    ],
+  },
+  {
+    category: "Divers",
+    icons: [
+      { name: "eye", icon: Eye, label: "Voir" },
+      { name: "eye-off", icon: EyeOff, label: "Cacher" },
+      { name: "lock", icon: Lock, label: "Verrouillé" },
+      { name: "unlock", icon: Unlock, label: "Déverrouillé" },
+      { name: "star", icon: Star, label: "Étoile" },
+      { name: "flag", icon: Flag, label: "Drapeau" },
+      { name: "bookmark", icon: Bookmark, label: "Marque-page" },
+      { name: "tag", icon: Tag, label: "Étiquette" },
+      { name: "box", icon: Box, label: "Boîte" },
+      { name: "package", icon: Package, label: "Colis" },
+      { name: "camera", icon: Camera, label: "Photo" },
+      { name: "search", icon: Search, label: "Recherche" },
+    ],
+  },
 ];
 
 // Catégories
@@ -158,6 +429,7 @@ const MechanicalProcedures = () => {
   const [isDeleteGammeDialogOpen, setIsDeleteGammeDialogOpen] = useState(false);
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
 
   // États des formulaires
   const [newGamme, setNewGamme] = useState({
@@ -180,6 +452,11 @@ const MechanicalProcedures = () => {
   const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // États pour le drag des chapitres
+  const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null);
+  const [dropTargetChapterId, setDropTargetChapterId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<"before" | "after" | "inside" | null>(null);
 
   // Chapitres expansés
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
@@ -216,7 +493,7 @@ const MechanicalProcedures = () => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mechanical_gammes")
         .select("*")
         .eq("user_id", userData.user.id)
@@ -244,7 +521,7 @@ const MechanicalProcedures = () => {
 
   const loadChapters = async (gammeId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mechanical_chapters")
         .select("*")
         .eq("gamme_id", gammeId)
@@ -271,7 +548,7 @@ const MechanicalProcedures = () => {
 
   const loadBlocks = async (chapterId: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mechanical_blocks")
         .select("*")
         .eq("chapter_id", chapterId)
@@ -299,9 +576,12 @@ const MechanicalProcedures = () => {
 
     try {
       const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
+      if (!userData.user) {
+        toast.error("Utilisateur non connecté");
+        return;
+      }
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mechanical_gammes")
         .insert({
           title: newGamme.title,
@@ -315,7 +595,11 @@ const MechanicalProcedures = () => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Erreur création gamme:", error);
+        toast.error(`Erreur: ${error.message}`);
+        return;
+      }
 
       setGammes([...gammes, data]);
       setActiveGammeId(data.id);
@@ -340,7 +624,7 @@ const MechanicalProcedures = () => {
     if (!editingGamme) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("mechanical_gammes")
         .update({
           title: editingGamme.title,
@@ -369,7 +653,7 @@ const MechanicalProcedures = () => {
     if (!activeGammeId) return;
 
     try {
-      const { error } = await supabase.from("mechanical_gammes").delete().eq("id", activeGammeId);
+      const { error } = await (supabase as any).from("mechanical_gammes").delete().eq("id", activeGammeId);
 
       if (error) throw error;
 
@@ -392,7 +676,7 @@ const MechanicalProcedures = () => {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("mechanical_chapters")
         .insert({
           gamme_id: activeGammeId,
@@ -423,7 +707,7 @@ const MechanicalProcedures = () => {
     if (!activeChapterId) return;
 
     try {
-      const { error } = await supabase.from("mechanical_chapters").delete().eq("id", activeChapterId);
+      const { error } = await (supabase as any).from("mechanical_chapters").delete().eq("id", activeChapterId);
 
       if (error) throw error;
 
@@ -438,24 +722,89 @@ const MechanicalProcedures = () => {
     }
   };
 
+  // Réordonner les chapitres après drag
+  const handleChapterDrop = async (draggedId: string, targetId: string, position: "before" | "after" | "inside") => {
+    if (draggedId === targetId) return;
+
+    const draggedChapter = chapters.find((c) => c.id === draggedId);
+    const targetChapter = chapters.find((c) => c.id === targetId);
+    if (!draggedChapter || !targetChapter) return;
+
+    let newChapters = [...chapters];
+    const draggedIndex = newChapters.findIndex((c) => c.id === draggedId);
+
+    // Retirer le chapitre de sa position actuelle
+    newChapters.splice(draggedIndex, 1);
+
+    // Trouver la nouvelle position
+    let newIndex = newChapters.findIndex((c) => c.id === targetId);
+    let newParentId = targetChapter.parent_id;
+
+    if (position === "after") {
+      newIndex += 1;
+    } else if (position === "inside") {
+      newParentId = targetId;
+      // Ajouter à la fin des enfants
+      const childrenCount = newChapters.filter((c) => c.parent_id === targetId).length;
+      newIndex = newChapters.findIndex((c) => c.id === targetId) + childrenCount + 1;
+    }
+
+    // Insérer à la nouvelle position
+    const updatedChapter = { ...draggedChapter, parent_id: newParentId };
+    newChapters.splice(newIndex, 0, updatedChapter);
+
+    // Mettre à jour les order_index
+    newChapters = newChapters.map((c, idx) => ({ ...c, order_index: idx }));
+
+    setChapters(newChapters);
+
+    // Sauvegarder en base
+    try {
+      // Mettre à jour le parent_id du chapitre déplacé
+      await (supabase as any)
+        .from("mechanical_chapters")
+        .update({ parent_id: newParentId, order_index: newIndex })
+        .eq("id", draggedId);
+
+      // Mettre à jour tous les order_index
+      for (const chapter of newChapters) {
+        await (supabase as any)
+          .from("mechanical_chapters")
+          .update({ order_index: chapter.order_index })
+          .eq("id", chapter.id);
+      }
+
+      toast.success("Chapitre déplacé");
+    } catch (error) {
+      console.error("Erreur réorganisation:", error);
+      loadChapters(activeGammeId!);
+    }
+
+    setDraggingChapterId(null);
+    setDropTargetChapterId(null);
+    setDropPosition(null);
+  };
+
   // Créer un bloc
-  const handleCreateBlock = async (type: string) => {
+  const handleCreateBlock = async (type: string, iconName?: string) => {
     if (!activeChapterId) {
       toast.error("Sélectionnez un chapitre d'abord");
       return;
     }
 
     try {
-      const { data, error } = await supabase
+      const content = type === "checklist" ? "[] Étape 1\n[] Étape 2" : type === "icon" && iconName ? iconName : "";
+
+      const { data, error } = await (supabase as any)
         .from("mechanical_blocks")
         .insert({
           chapter_id: activeChapterId,
           type: type,
-          content: type === "checklist" ? "[] Étape 1\n[] Étape 2" : "",
+          content: content,
           position_x: 50 + Math.random() * 100,
           position_y: 50 + blocks.length * 20,
-          width: 300,
-          height: type === "image" ? 200 : 150,
+          width: type === "icon" ? 80 : 300,
+          height: type === "icon" ? 80 : type === "image" ? 200 : 150,
           order_index: blocks.length,
         })
         .select()
@@ -465,6 +814,7 @@ const MechanicalProcedures = () => {
 
       setBlocks([...blocks, data]);
       setSelectedBlockId(data.id);
+      setIsIconPickerOpen(false);
       toast.success("Bloc ajouté");
     } catch (error) {
       console.error("Erreur création bloc:", error);
@@ -475,7 +825,7 @@ const MechanicalProcedures = () => {
   // Mettre à jour un bloc
   const handleUpdateBlock = async (blockId: string, updates: Partial<ContentBlock>) => {
     try {
-      const { error } = await supabase.from("mechanical_blocks").update(updates).eq("id", blockId);
+      const { error } = await (supabase as any).from("mechanical_blocks").update(updates).eq("id", blockId);
 
       if (error) throw error;
 
@@ -485,25 +835,41 @@ const MechanicalProcedures = () => {
     }
   };
 
-  // Supprimer un bloc
+  // Supprimer un bloc - VERSION AMÉLIORÉE
   const handleDeleteBlock = async (blockId: string) => {
+    // Supprimer immédiatement de l'état local pour feedback instantané
+    setBlocks((prevBlocks) => prevBlocks.filter((b) => b.id !== blockId));
+    setSelectedBlockId(null);
+
     try {
-      const { error } = await supabase.from("mechanical_blocks").delete().eq("id", blockId);
+      const { error } = await (supabase as any).from("mechanical_blocks").delete().eq("id", blockId);
 
-      if (error) throw error;
-
-      setBlocks(blocks.filter((b) => b.id !== blockId));
-      setSelectedBlockId(null);
-      toast.success("Bloc supprimé");
+      if (error) {
+        // Recharger si erreur
+        loadBlocks(activeChapterId!);
+        toast.error("Erreur lors de la suppression");
+      } else {
+        toast.success("Bloc supprimé");
+      }
     } catch (error) {
       console.error("Erreur suppression bloc:", error);
+      loadBlocks(activeChapterId!);
       toast.error("Erreur lors de la suppression");
     }
   };
 
   // Drag & Drop des blocs
   const handleBlockMouseDown = (e: React.MouseEvent, blockId: string) => {
-    if ((e.target as HTMLElement).closest(".block-content")) return;
+    // Ne pas déclencher le drag si on clique sur un élément interactif
+    const target = e.target as HTMLElement;
+    if (
+      target.closest(".block-content") ||
+      target.closest("button") ||
+      target.closest("textarea") ||
+      target.closest("input")
+    ) {
+      return;
+    }
 
     const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
@@ -525,16 +891,16 @@ const MechanicalProcedures = () => {
       if (!draggingBlockId || !canvasRef.current) return;
 
       const canvasRect = canvasRef.current.getBoundingClientRect();
-      const newX = e.clientX - canvasRect.left - dragOffset.x;
-      const newY = e.clientY - canvasRect.top - dragOffset.y;
+      const newX = e.clientX - canvasRect.left - dragOffset.x + canvasRef.current.scrollLeft;
+      const newY = e.clientY - canvasRect.top - dragOffset.y + canvasRef.current.scrollTop;
 
-      setBlocks(
-        blocks.map((b) =>
+      setBlocks((prevBlocks) =>
+        prevBlocks.map((b) =>
           b.id === draggingBlockId ? { ...b, position_x: Math.max(0, newX), position_y: Math.max(0, newY) } : b,
         ),
       );
     },
-    [draggingBlockId, dragOffset, blocks],
+    [draggingBlockId, dragOffset],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -613,19 +979,77 @@ const MechanicalProcedures = () => {
 
   const chapterTree = buildChapterTree(chapters);
 
-  // Rendu récursif des chapitres
+  // Obtenir l'icône d'un bloc icon
+  const getIconComponent = (iconName: string) => {
+    for (const category of ICON_LIBRARY) {
+      const found = category.icons.find((i) => i.name === iconName);
+      if (found) return found.icon;
+    }
+    return HelpCircle;
+  };
+
+  // Rendu récursif des chapitres avec drag & drop
   const renderChapters = (chapterList: Chapter[], level: number = 0) => {
     return chapterList.map((chapter) => (
       <div key={chapter.id} className="group">
         <div
-          className={`flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
+          draggable
+          onDragStart={(e) => {
+            setDraggingChapterId(chapter.id);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragEnd={() => {
+            setDraggingChapterId(null);
+            setDropTargetChapterId(null);
+            setDropPosition(null);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (draggingChapterId && draggingChapterId !== chapter.id) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const y = e.clientY - rect.top;
+              const height = rect.height;
+
+              if (y < height * 0.25) {
+                setDropPosition("before");
+              } else if (y > height * 0.75) {
+                setDropPosition("after");
+              } else {
+                setDropPosition("inside");
+              }
+              setDropTargetChapterId(chapter.id);
+            }
+          }}
+          onDragLeave={() => {
+            if (dropTargetChapterId === chapter.id) {
+              setDropTargetChapterId(null);
+              setDropPosition(null);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (draggingChapterId && dropPosition) {
+              handleChapterDrop(draggingChapterId, chapter.id, dropPosition);
+            }
+          }}
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer transition-all ${
             activeChapterId === chapter.id
-              ? `${activeGammeColor.light} border-l-4 ${activeGammeColor.border}`
+              ? `${activeGammeColor.light} ${activeGammeColor.darkLight} border-l-4 ${activeGammeColor.border}`
               : "hover:bg-muted"
+          } ${draggingChapterId === chapter.id ? "opacity-50" : ""} ${
+            dropTargetChapterId === chapter.id && dropPosition === "before"
+              ? "border-t-2 border-blue-500"
+              : dropTargetChapterId === chapter.id && dropPosition === "after"
+                ? "border-b-2 border-blue-500"
+                : dropTargetChapterId === chapter.id && dropPosition === "inside"
+                  ? "bg-blue-100 dark:bg-blue-900/30"
+                  : ""
           }`}
           style={{ paddingLeft: `${8 + level * 16}px` }}
           onClick={() => setActiveChapterId(chapter.id)}
         >
+          <GripVertical className="h-3 w-3 text-muted-foreground cursor-grab opacity-0 group-hover:opacity-100" />
+
           {chapter.children && chapter.children.length > 0 ? (
             <button
               onClick={(e) => {
@@ -690,43 +1114,63 @@ const MechanicalProcedures = () => {
   // Rendu d'un bloc
   const renderBlock = (block: ContentBlock) => {
     const blockType = BLOCK_TYPES.find((t) => t.value === block.type) || BLOCK_TYPES[0];
-    const IconComponent = blockType.icon;
+    const IconComponent = block.type === "icon" ? getIconComponent(block.content) : blockType.icon;
 
     return (
       <div
         key={block.id}
         className={`content-block absolute rounded-lg border-2 shadow-md transition-shadow ${
           selectedBlockId === block.id ? "ring-2 ring-blue-500 shadow-lg" : ""
-        } ${blockType.bgColor} ${blockType.borderColor}`}
+        } ${block.type === "icon" ? "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600" : `${blockType.bgColor} ${blockType.borderColor}`}`}
         style={{
           left: block.position_x,
           top: block.position_y,
-          width: block.width,
-          minHeight: block.height,
+          width: block.type === "icon" ? "auto" : block.width,
+          minHeight: block.type === "icon" ? "auto" : block.height,
           cursor: draggingBlockId === block.id ? "grabbing" : "grab",
         }}
         onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
-        onClick={() => setSelectedBlockId(block.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedBlockId(block.id);
+        }}
       >
         {/* Header du bloc */}
-        <div className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 rounded-t-lg`}>
+        <div
+          className={`flex items-center gap-2 px-3 py-2 border-b ${block.type === "icon" ? "border-gray-200 dark:border-gray-600" : blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg`}
+        >
           <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-          <IconComponent className="h-4 w-4" />
-          <span className="text-xs font-medium flex-1">{blockType.label}</span>
+          {block.type !== "icon" && (
+            <>
+              <IconComponent className="h-4 w-4" />
+              <span className="text-xs font-medium flex-1">{blockType.label}</span>
+            </>
+          )}
+          {block.type === "icon" && <span className="text-xs font-medium">Icône</span>}
           <button
+            type="button"
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
             onClick={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               handleDeleteBlock(block.id);
             }}
-            className="p-1 hover:bg-red-100 rounded text-red-500"
+            className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-500 z-50"
           >
-            <X className="h-3 w-3" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Contenu du bloc */}
         <div className="block-content p-3">
-          {block.type === "image" ? (
+          {block.type === "icon" ? (
+            <div className="flex items-center justify-center p-4">
+              <IconComponent className="h-12 w-12" />
+            </div>
+          ) : block.type === "image" ? (
             <div>
               {block.image_url ? (
                 <img src={block.image_url} alt="Illustration" className="max-w-full rounded" />
@@ -767,9 +1211,11 @@ const MechanicalProcedures = () => {
         </div>
 
         {/* Poignée de redimensionnement */}
-        <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize">
-          <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-gray-400" />
-        </div>
+        {block.type !== "icon" && (
+          <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize">
+            <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-gray-400" />
+          </div>
+        )}
       </div>
     );
   };
@@ -799,7 +1245,7 @@ const MechanicalProcedures = () => {
                       onClick={() => setActiveGammeId(gamme.id)}
                       className={`flex items-center gap-2 px-4 py-2 rounded-t-lg border-t border-l border-r transition-all ${
                         isActive
-                          ? `${color.light} border-${color.value}-300 bg-white -mb-px`
+                          ? `${color.light} ${color.darkLight} border-gray-300 dark:border-gray-600 -mb-px`
                           : "bg-muted/50 border-transparent hover:bg-muted"
                       }`}
                     >
@@ -905,10 +1351,10 @@ const MechanicalProcedures = () => {
           {/* Zone de contenu centrale */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Barre d'outils */}
-            <div className="flex items-center gap-2 p-2 border-b bg-muted/10">
+            <div className="flex items-center gap-2 p-2 border-b bg-muted/10 flex-wrap">
               <span className="text-sm text-muted-foreground mr-2">Ajouter :</span>
               {BLOCK_TYPES.map((type) => {
-                const IconComponent = type.icon;
+                const IconComp = type.icon;
                 return (
                   <Button
                     key={type.value}
@@ -918,17 +1364,57 @@ const MechanicalProcedures = () => {
                     onClick={() => handleCreateBlock(type.value)}
                     disabled={!activeChapterId}
                   >
-                    <IconComponent className="h-4 w-4 mr-1" />
+                    <IconComp className="h-4 w-4 mr-1" />
                     {type.label}
                   </Button>
                 );
               })}
+
+              {/* Bouton Icônes avec popover */}
+              <Popover open={isIconPickerOpen} onOpenChange={setIsIconPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8" disabled={!activeChapterId}>
+                    <Sticker className="h-4 w-4 mr-1" />
+                    Icônes
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0" align="start">
+                  <div className="p-3 border-b">
+                    <h4 className="font-medium">Banque d'icônes</h4>
+                    <p className="text-xs text-muted-foreground">Cliquez pour insérer</p>
+                  </div>
+                  <ScrollArea className="h-64">
+                    <div className="p-2">
+                      {ICON_LIBRARY.map((category) => (
+                        <div key={category.category} className="mb-3">
+                          <h5 className="text-xs font-medium text-muted-foreground mb-2 px-1">{category.category}</h5>
+                          <div className="grid grid-cols-6 gap-1">
+                            {category.icons.map((iconItem) => {
+                              const IconComp = iconItem.icon;
+                              return (
+                                <button
+                                  key={iconItem.name}
+                                  onClick={() => handleCreateBlock("icon", iconItem.name)}
+                                  className="p-2 rounded hover:bg-muted flex items-center justify-center"
+                                  title={iconItem.label}
+                                >
+                                  <IconComp className="h-5 w-5" />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Canvas des blocs */}
             <div
               ref={canvasRef}
-              className="flex-1 relative overflow-auto bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAyMCAwIEwgMCAwIDAgMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2UwZTBlMCIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')]"
+              className="flex-1 relative overflow-auto bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAyMCAwIEwgMCAwIDAgMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2UwZTBlMCIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] dark:bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAyMCAwIEwgMCAwIDAgMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')]"
               onClick={() => setSelectedBlockId(null)}
             >
               {!activeChapterId ? (
