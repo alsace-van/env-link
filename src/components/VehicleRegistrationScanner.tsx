@@ -7,9 +7,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { toast } from "sonner";
 import { Upload, Loader2, ChevronDown, ChevronUp, Scan } from "lucide-react";
 import { useAIConfig } from "@/hooks/useAIConfig";
+import { ScanConfirmationModal } from "./ScanConfirmationModal";
+import { type VehicleRegistrationData } from "@/lib/registrationCardParser";
 
 // ============================================
-// PROMPT OCR CARTE GRISE
+// PROMPT OCR CARTE GRISE - FORMAT FRANÇAIS
 // ============================================
 
 const VEHICLE_REGISTRATION_OCR_PROMPT = `
@@ -18,55 +20,31 @@ Analyse cette image de carte grise française et extrais les informations.
 IMPORTANT: 
 - Extrais EXACTEMENT ce qui est écrit
 - Si un champ n'est pas visible, mets null
-- Retourne UNIQUEMENT un JSON valide
+- Retourne UNIQUEMENT un JSON valide, sans texte avant ou après
 
 {
-  "registration_number": "AA-123-BB",
-  "first_registration_date": "2020-01-15",
-  "brand": "RENAULT",
-  "type": "FG...",
-  "commercial_name": "MASTER III",
-  "vin": "VF1MA000012345678",
-  "ptac": 3500,
-  "empty_weight": 1850,
-  "genre": "CTTE",
-  "fuel_type": "GO",
-  "original_seats": 3,
-  "fiscal_power": 8,
-  "owner_name": "DUPONT JEAN",
-  "owner_address": "123 RUE DE LA PAIX",
-  "owner_postal_code": "75001",
-  "owner_city": "PARIS"
+  "immatriculation": "AA-123-BB",
+  "datePremiereImmatriculation": "15/01/2020",
+  "numeroChassisVIN": "VF1MA000012345678",
+  "marque": "RENAULT",
+  "denominationCommerciale": "MASTER III",
+  "masseVide": 1850,
+  "masseEnChargeMax": 3500,
+  "genreNational": "CTTE",
+  "carrosserieCE": "FOURGON",
+  "energie": "GO",
+  "puissanceFiscale": 8,
+  "cylindree": 2299
 }
 
 RÈGLES:
-- VIN = 17 caractères
-- Date en format YYYY-MM-DD
-- PTAC et poids en kg (nombres)
+- VIN = exactement 17 caractères alphanumériques (pas de I, O, Q)
+- Date au format JJ/MM/AAAA
+- PTAC = masseEnChargeMax en kg
+- Poids vide = masseVide en kg
+- Genre: VP, CTTE, CAM, VASP, etc.
+- Énergie: GO (gazole), ES (essence), EL (électrique), etc.
 `;
-
-// ============================================
-// TYPES
-// ============================================
-
-export interface VehicleRegistrationData {
-  registration_number?: string | null;
-  first_registration_date?: string | null;
-  brand?: string | null;
-  type?: string | null;
-  commercial_name?: string | null;
-  vin?: string | null;
-  ptac?: number | null;
-  empty_weight?: number | null;
-  genre?: string | null;
-  fuel_type?: string | null;
-  original_seats?: number | null;
-  fiscal_power?: number | null;
-  owner_name?: string | null;
-  owner_address?: string | null;
-  owner_postal_code?: string | null;
-  owner_city?: string | null;
-}
 
 // ============================================
 // FONCTION D'EXTRACTION
@@ -103,6 +81,7 @@ async function extractVehicleRegistration(imageBase64: string, apiKey: string): 
   const data = await response.json();
 
   if (data.error) {
+    console.error("Erreur API Gemini:", data.error);
     throw new Error(data.error.message || "Erreur API Gemini");
   }
 
@@ -111,6 +90,7 @@ async function extractVehicleRegistration(imageBase64: string, apiKey: string): 
   }
 
   const text = data.candidates[0].content.parts[0].text;
+  console.log("Réponse brute Gemini:", text);
 
   // Extraire le JSON de la réponse
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -119,31 +99,13 @@ async function extractVehicleRegistration(imageBase64: string, apiKey: string): 
   }
 
   const extracted = JSON.parse(jsonMatch[0]);
+  console.log("Données extraites:", extracted);
 
   if (extracted.error) {
     throw new Error(extracted.error);
   }
 
   return extracted as VehicleRegistrationData;
-}
-
-// ============================================
-// MAPPING VERS LES COLONNES EXISTANTES
-// ============================================
-
-export function mapToExistingColumns(data: VehicleRegistrationData) {
-  // Ne retourne que les colonnes qui existent déjà dans la table
-  return {
-    registration_number: data.registration_number || null,
-    first_registration_date: data.first_registration_date || null,
-    brand: data.brand || null,
-    type: data.type || null,
-    vin: data.vin || null,
-    ptac: data.ptac || null,
-    empty_weight: data.empty_weight || null,
-    genre: data.genre || null,
-    fuel_type: data.fuel_type || null,
-  };
 }
 
 // ============================================
@@ -160,17 +122,16 @@ export function VehicleRegistrationScanner({ onDataExtracted }: VehicleRegistrat
   const { apiKey, isConfigured, saveConfig } = useAIConfig();
   const [localApiKey, setLocalApiKey] = useState("");
 
+  // État pour la modal de confirmation
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [scannedData, setScannedData] = useState<VehicleRegistrationData | null>(null);
+
   // Synchroniser avec la config globale
   useEffect(() => {
     if (apiKey) {
       setLocalApiKey(apiKey);
     }
   }, [apiKey]);
-
-  // Sauvegarder la clé si elle change
-  const handleApiKeyChange = (newKey: string) => {
-    setLocalApiKey(newKey);
-  };
 
   const handleApiKeyBlur = () => {
     if (localApiKey && localApiKey !== apiKey) {
@@ -198,12 +159,10 @@ export function VehicleRegistrationScanner({ onDataExtracted }: VehicleRegistrat
           const base64 = (reader.result as string).split(",")[1];
           const data = await extractVehicleRegistration(base64, keyToUse);
 
-          // Log pour debug
-          console.log("Données extraites:", data);
-
-          onDataExtracted(data);
-          toast.success("Carte grise scannée avec succès!");
-          setIsOpen(false); // Fermer après succès
+          // Stocker les données et ouvrir la modal de confirmation
+          setScannedData(data);
+          setShowConfirmModal(true);
+          toast.success("Carte grise scannée - Vérifiez les données");
         } catch (error) {
           console.error("Erreur lors du scan:", error);
           toast.error(error instanceof Error ? error.message : "Erreur lors du scan");
@@ -222,90 +181,114 @@ export function VehicleRegistrationScanner({ onDataExtracted }: VehicleRegistrat
     event.target.value = "";
   };
 
+  const handleConfirmData = (confirmedData: VehicleRegistrationData) => {
+    console.log("Données confirmées:", confirmedData);
+    onDataExtracted(confirmedData);
+    setShowConfirmModal(false);
+    setScannedData(null);
+    setIsOpen(false);
+    toast.success("Données de la carte grise appliquées !");
+  };
+
   const currentApiKey = localApiKey || apiKey;
   const hasApiKey = !!currentApiKey;
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger asChild>
-        <Button variant="outline" className="w-full justify-between mb-4">
-          <span className="flex items-center gap-2">
-            <Scan className="h-4 w-4" />
-            {isOpen ? "Masquer le scanner" : "Scanner une carte grise"}
-          </span>
-          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        </Button>
-      </CollapsibleTrigger>
+    <>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="w-full justify-between mb-4">
+            <span className="flex items-center gap-2">
+              <Scan className="h-4 w-4" />
+              {isOpen ? "Masquer le scanner" : "Scanner une carte grise"}
+            </span>
+            {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
+        </CollapsibleTrigger>
 
-      <CollapsibleContent>
-        <Card className="p-4 mb-4">
-          <div className="space-y-4">
-            {/* Clé API - afficher seulement si pas configurée */}
-            {!isConfigured && (
+        <CollapsibleContent>
+          <Card className="p-4 mb-4">
+            <div className="space-y-4">
+              {/* Clé API - afficher seulement si pas configurée */}
+              {!isConfigured && (
+                <div>
+                  <Label htmlFor="gemini-api-key">Clé API Gemini</Label>
+                  <Input
+                    id="gemini-api-key"
+                    type="password"
+                    placeholder="Entrez votre clé API Gemini"
+                    value={localApiKey}
+                    onChange={(e) => setLocalApiKey(e.target.value)}
+                    onBlur={handleApiKeyBlur}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <a
+                      href="https://aistudio.google.com/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Obtenir une clé gratuite
+                    </a>
+                  </p>
+                </div>
+              )}
+
+              {/* Zone upload */}
               <div>
-                <Label htmlFor="gemini-api-key">Clé API Gemini</Label>
-                <Input
-                  id="gemini-api-key"
-                  type="password"
-                  placeholder="Entrez votre clé API Gemini"
-                  value={localApiKey}
-                  onChange={(e) => handleApiKeyChange(e.target.value)}
-                  onBlur={handleApiKeyBlur}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  <a
-                    href="https://aistudio.google.com/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
+                <Label htmlFor="carte-grise-upload">Photo de la carte grise</Label>
+                <div className="mt-2">
+                  <Input
+                    id="carte-grise-upload"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileUpload}
+                    disabled={isScanning}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant={hasApiKey ? "default" : "outline"}
+                    disabled={isScanning || !hasApiKey}
+                    onClick={() => document.getElementById("carte-grise-upload")?.click()}
+                    className="w-full"
                   >
-                    Obtenir une clé gratuite
-                  </a>
-                </p>
+                    {isScanning ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Scan en cours...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        {hasApiKey ? "Télécharger une photo" : "Entrez d'abord la clé API"}
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
-            )}
 
-            {/* Zone upload */}
-            <div>
-              <Label htmlFor="carte-grise-upload">Photo de la carte grise</Label>
-              <div className="mt-2">
-                <Input
-                  id="carte-grise-upload"
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileUpload}
-                  disabled={isScanning}
-                  className="hidden"
-                />
-                <Button
-                  type="button"
-                  variant={hasApiKey ? "default" : "outline"}
-                  disabled={isScanning || !hasApiKey}
-                  onClick={() => document.getElementById("carte-grise-upload")?.click()}
-                  className="w-full"
-                >
-                  {isScanning ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Scan en cours...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      {hasApiKey ? "Télécharger une photo" : "Entrez d'abord la clé API"}
-                    </>
-                  )}
-                </Button>
-              </div>
+              {/* Info clé configurée */}
+              {isConfigured && <p className="text-xs text-muted-foreground">✓ Clé API Gemini configurée</p>}
             </div>
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
 
-            {/* Info clé configurée */}
-            {isConfigured && <p className="text-xs text-muted-foreground">✓ Clé API Gemini configurée</p>}
-          </div>
-        </Card>
-      </CollapsibleContent>
-    </Collapsible>
+      {/* Modal de confirmation */}
+      {scannedData && (
+        <ScanConfirmationModal
+          isOpen={showConfirmModal}
+          onClose={() => {
+            setShowConfirmModal(false);
+            setScannedData(null);
+          }}
+          scannedData={scannedData}
+          onConfirm={handleConfirmData}
+        />
+      )}
+    </>
   );
 }
 
