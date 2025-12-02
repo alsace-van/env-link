@@ -15,11 +15,11 @@ import { type VehicleRegistrationData } from "@/lib/registrationCardParser";
 // ============================================
 
 const VEHICLE_REGISTRATION_OCR_PROMPT = `
-Analyse cette image de carte grise française et extrais les informations.
+Analyse cette image de carte grise française et extrais TOUTES les informations visibles.
 
 IMPORTANT: 
-- Extrais EXACTEMENT ce qui est écrit
-- Si un champ n'est pas visible, mets null
+- Extrais EXACTEMENT ce qui est écrit sur la carte grise
+- Si un champ n'est pas visible ou lisible, mets null
 - Retourne UNIQUEMENT un JSON valide, sans texte avant ou après
 
 {
@@ -27,23 +27,47 @@ IMPORTANT:
   "datePremiereImmatriculation": "15/01/2020",
   "numeroChassisVIN": "VF1MA000012345678",
   "marque": "RENAULT",
+  "typeVariante": "ABCDE-12345",
   "denominationCommerciale": "MASTER III",
   "masseVide": 1850,
   "masseEnChargeMax": 3500,
+  "ptra": 5500,
+  "categorieInternational": "N1",
   "genreNational": "CTTE",
-  "carrosserieCE": "FOURGON",
+  "carrosserieCE": "BB",
+  "carrosserieNationale": "FOURGON",
+  "numeroReceptionCE": "e2*2007/46*0123*04",
+  "cylindree": 2299,
+  "puissanceKw": 120,
   "energie": "GO",
   "puissanceFiscale": 8,
-  "cylindree": 2299
+  "placesAssises": 3,
+  "co2": 189,
+  "normeEuro": "EURO6"
 }
 
-RÈGLES:
-- VIN = exactement 17 caractères alphanumériques (pas de I, O, Q)
-- Date au format JJ/MM/AAAA
-- PTAC = masseEnChargeMax en kg
-- Poids vide = masseVide en kg
-- Genre: VP, CTTE, CAM, VASP, etc.
-- Énergie: GO (gazole), ES (essence), EL (électrique), etc.
+CODES CARTE GRISE:
+- A = immatriculation
+- B = datePremiereImmatriculation (format JJ/MM/AAAA)
+- D.1 = marque
+- D.2 = typeVariante (type mine)
+- D.3 = denominationCommerciale (modèle)
+- E = numeroChassisVIN (17 caractères, pas de I, O, Q)
+- F.1 = masseEnChargeMax (PTAC en kg)
+- F.2 = ptra (en kg)
+- G = masseVide (poids à vide en kg)
+- J = categorieInternational (M1, N1, N2, etc.)
+- J.1 = genreNational (VP, CTTE, CAM, VASP, etc.)
+- J.2 = carrosserieCE (AA, AB, BB, BC, etc.)
+- J.3 = carrosserieNationale (FOURGON, BREAK, etc.)
+- K = numeroReceptionCE (commence par e2* ou e1*)
+- P.1 = cylindree (en cm³)
+- P.2 = puissanceKw (en kW)
+- P.3 = energie (GO=gazole, ES=essence, EL=électrique, EH=hybride)
+- P.6 = puissanceFiscale (en CV)
+- S.1 = placesAssises (nombre)
+- V.7 = co2 (en g/km)
+- V.9 = normeEuro (extraire juste EURO5, EURO6, etc.)
 `;
 
 // ============================================
