@@ -1,18 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  X,
-  Edit,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  User,
-  Ruler,
-  Weight,
-  Car,
-  ClipboardList,
-} from "lucide-react";
+import { X, Edit, ChevronLeft, ChevronRight, FileText, User, Ruler, Weight, Car, ClipboardList } from "lucide-react";
 
 interface Project {
   id: string;
@@ -164,7 +153,7 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
                 <Car className="h-4 w-4 text-blue-600" />
                 <h4 className="text-sm font-semibold text-blue-600">Véhicule</h4>
               </div>
-              
+
               {project.nom_projet && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">Nom du projet :</span>
@@ -180,7 +169,9 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
               {(project.vin || project.numero_chassis_vin || project.numero_chassis) && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">N° châssis (VIN) :</span>
-                  <p className="font-medium text-xs">{project.vin || project.numero_chassis_vin || project.numero_chassis}</p>
+                  <p className="font-medium text-xs">
+                    {project.vin || project.numero_chassis_vin || project.numero_chassis}
+                  </p>
                 </div>
               )}
               {project.type_mine && (
@@ -192,13 +183,17 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
               {(project.marque_officielle || project.marque_vehicule || project.marque_custom) && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">Marque :</span>
-                  <p className="font-medium">{project.marque_officielle || project.marque_vehicule || project.marque_custom}</p>
+                  <p className="font-medium">
+                    {project.marque_officielle || project.marque_vehicule || project.marque_custom}
+                  </p>
                 </div>
               )}
               {(project.modele_officiel || project.modele_vehicule || project.modele_custom) && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">Modèle :</span>
-                  <p className="font-medium">{project.modele_officiel || project.modele_vehicule || project.modele_custom}</p>
+                  <p className="font-medium">
+                    {project.modele_officiel || project.modele_vehicule || project.modele_custom}
+                  </p>
                 </div>
               )}
               {project.denomination_commerciale && (
@@ -246,13 +241,17 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
               {project.date_premiere_circulation && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">1ère circulation :</span>
-                  <p className="font-medium">{new Date(project.date_premiere_circulation).toLocaleDateString("fr-FR")}</p>
+                  <p className="font-medium">
+                    {new Date(project.date_premiere_circulation).toLocaleDateString("fr-FR")}
+                  </p>
                 </div>
               )}
               {project.date_premiere_immatriculation && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">1ère immat. :</span>
-                  <p className="font-medium">{new Date(project.date_premiere_immatriculation).toLocaleDateString("fr-FR")}</p>
+                  <p className="font-medium">
+                    {new Date(project.date_premiere_immatriculation).toLocaleDateString("fr-FR")}
+                  </p>
                 </div>
               )}
             </div>
@@ -263,11 +262,13 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
                 <User className="h-4 w-4 text-green-600" />
                 <h4 className="text-sm font-semibold text-green-600">Propriétaire</h4>
               </div>
-              
+
               {(project.prenom_proprietaire || project.nom_proprietaire) && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">Nom :</span>
-                  <p className="font-medium">{project.prenom_proprietaire} {project.nom_proprietaire}</p>
+                  <p className="font-medium">
+                    {project.prenom_proprietaire} {project.nom_proprietaire}
+                  </p>
                 </div>
               )}
               {project.adresse_proprietaire && (
@@ -279,7 +280,9 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
               {(project.code_postal_proprietaire || project.ville_proprietaire) && (
                 <div className="flex gap-2 text-xs">
                   <span className="text-muted-foreground shrink-0 w-32">Ville :</span>
-                  <p className="font-medium">{project.code_postal_proprietaire} {project.ville_proprietaire}</p>
+                  <p className="font-medium">
+                    {project.code_postal_proprietaire} {project.ville_proprietaire}
+                  </p>
                 </div>
               )}
               {project.telephone_proprietaire && (
@@ -299,8 +302,8 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
             {/* Bouton pour étendre si non étendu et données disponibles */}
             {hasExtendedContent && !isExpanded && (
               <div className="mt-6 pt-4 border-t">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full text-blue-600 border-blue-200 hover:bg-blue-50"
                   onClick={() => setIsExpanded(true)}
                 >
@@ -321,6 +324,15 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
                 <ClipboardList className="h-5 w-5 text-orange-600" />
                 <h3 className="font-semibold text-orange-700 dark:text-orange-400">Données techniques & Dimensions</h3>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsExpanded(false)}
+                title="Replier ce volet"
+                className="text-orange-600 hover:text-orange-700 hover:bg-orange-100"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
             </div>
 
             <ScrollArea className="flex-1 p-4">
