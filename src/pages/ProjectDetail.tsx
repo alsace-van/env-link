@@ -60,6 +60,7 @@ import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { AIUsageWidget } from "@/components/AIUsageWidget";
 import { ProjectSidebar } from "@/components/project/ProjectSidebar";
+import { ProjectInfoSidebar } from "@/components/project/ProjectInfoSidebar";
 import { DocumentsUpload } from "@/components/DocumentsUpload";
 import { OfficialDocumentsLibrary } from "@/components/OfficialDocumentsLibrary";
 import ProjectForm from "@/components/ProjectForm";
@@ -688,19 +689,18 @@ const ProjectDetail = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEditDimensionsOpen, setIsEditDimensionsOpen] = useState(false);
   const [isProjectInfoCollapsed, setIsProjectInfoCollapsed] = useState(false);
-  const [isProjectInfoSidebarOpen, setIsProjectInfoSidebarOpen] = useState(false); // État pour la sidebar des infos projet
-  const [isProjectInfoSidebarClosing, setIsProjectInfoSidebarClosing] = useState(false); // État pour l'animation de fermeture
-  const [isExpensesSidebarOpen, setIsExpensesSidebarOpen] = useState(false); // État pour la sidebar des statistiques
-  const [isExpensesSidebarClosing, setIsExpensesSidebarClosing] = useState(false); // État pour l'animation de fermeture
-  const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false); // État pour le dropdown du calendrier
-  const [isMonthViewOpen, setIsMonthViewOpen] = useState(false); // État pour la vue mensuelle directe
+  const [isProjectInfoSidebarOpen, setIsProjectInfoSidebarOpen] = useState(false);
+  const [isExpensesSidebarOpen, setIsExpensesSidebarOpen] = useState(false);
+  const [isExpensesSidebarClosing, setIsExpensesSidebarClosing] = useState(false);
+  const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(false);
+  const [isMonthViewOpen, setIsMonthViewOpen] = useState(false);
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
 
   // Position draggable du bouton sidebar Notes
   const [sidebarBtnPosition, setSidebarBtnPosition] = useState(() => {
     const saved = localStorage.getItem("projectSidebarBtnPosition");
-    return saved ? JSON.parse(saved) : null; // null = dans le header, sinon position fixe
+    return saved ? JSON.parse(saved) : null;
   });
   const [isSidebarBtnDragging, setIsSidebarBtnDragging] = useState(false);
   const [sidebarBtnDragStart, setSidebarBtnDragStart] = useState({ x: 0, y: 0 });
@@ -716,7 +716,7 @@ const ProjectDetail = () => {
   // Position draggable du bouton Statistiques
   const [statsBtnPosition, setStatsBtnPosition] = useState(() => {
     const saved = localStorage.getItem("statsBtnPosition");
-    return saved ? JSON.parse(saved) : null; // null = dans l'interface normale
+    return saved ? JSON.parse(saved) : null;
   });
   const [isStatsBtnDragging, setIsStatsBtnDragging] = useState(false);
   const [statsBtnDragStart, setStatsBtnDragStart] = useState({ x: 0, y: 0 });
@@ -763,7 +763,6 @@ const ProjectDetail = () => {
       if (!id) return;
 
       try {
-        // Récupérer le projet avec les infos du véhicule
         const { data: projectData, error: projectError } = await supabase
           .from("projects")
           .select(
@@ -838,7 +837,7 @@ const ProjectDetail = () => {
   // Gestionnaires pour le bouton sidebar Notes draggable
   const handleSidebarBtnMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    hasDraggedSidebarBtn.current = false; // Réinitialiser
+    hasDraggedSidebarBtn.current = false;
     setIsSidebarBtnDragging(true);
     const currentPos = sidebarBtnPosition || { x: e.clientX, y: e.clientY };
     setSidebarBtnDragStart({
@@ -849,7 +848,7 @@ const ProjectDetail = () => {
 
   const handleSidebarBtnMouseMove = (e: MouseEvent) => {
     if (!isSidebarBtnDragging) return;
-    hasDraggedSidebarBtn.current = true; // Un mouvement a eu lieu
+    hasDraggedSidebarBtn.current = true;
 
     const newX = Math.max(0, Math.min(e.clientX - sidebarBtnDragStart.x, window.innerWidth - 60));
     const newY = Math.max(0, Math.min(e.clientY - sidebarBtnDragStart.y, window.innerHeight - 60));
@@ -866,7 +865,7 @@ const ProjectDetail = () => {
   const handleSidebarBtnClick = () => {
     if (hasDraggedSidebarBtn.current) {
       hasDraggedSidebarBtn.current = false;
-      return; // Ne pas ouvrir la sidebar si on vient de drag
+      return;
     }
     setIsSidebarOpen(true);
   };
@@ -891,7 +890,7 @@ const ProjectDetail = () => {
   const handleProjectInfoBtnMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    hasDraggedProjectInfoBtn.current = false; // Réinitialiser
+    hasDraggedProjectInfoBtn.current = false;
     setIsProjectInfoBtnDragging(true);
     setProjectInfoBtnDragStart({
       x: e.clientX - projectInfoBtnPosition.x,
@@ -901,7 +900,7 @@ const ProjectDetail = () => {
 
   const handleProjectInfoBtnMouseMove = (e: MouseEvent) => {
     if (!isProjectInfoBtnDragging) return;
-    hasDraggedProjectInfoBtn.current = true; // Un mouvement a eu lieu
+    hasDraggedProjectInfoBtn.current = true;
 
     const newX = Math.max(0, Math.min(e.clientX - projectInfoBtnDragStart.x, window.innerWidth - 60));
     const newY = Math.max(0, Math.min(e.clientY - projectInfoBtnDragStart.y, window.innerHeight - 60));
@@ -918,7 +917,7 @@ const ProjectDetail = () => {
   const handleProjectInfoBtnClick = () => {
     if (hasDraggedProjectInfoBtn.current) {
       hasDraggedProjectInfoBtn.current = false;
-      return; // Ne pas ouvrir la sidebar si on vient de drag
+      return;
     }
     setIsProjectInfoSidebarOpen(true);
   };
@@ -942,7 +941,7 @@ const ProjectDetail = () => {
   // Gestionnaires pour le bouton Statistiques draggable
   const handleStatsBtnMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    hasDraggedStatsBtn.current = false; // Réinitialiser
+    hasDraggedStatsBtn.current = false;
     setIsStatsBtnDragging(true);
     const currentPos = statsBtnPosition || { x: e.clientX, y: e.clientY };
     setStatsBtnDragStart({
@@ -953,7 +952,7 @@ const ProjectDetail = () => {
 
   const handleStatsBtnMouseMove = (e: MouseEvent) => {
     if (!isStatsBtnDragging) return;
-    hasDraggedStatsBtn.current = true; // Un mouvement a eu lieu
+    hasDraggedStatsBtn.current = true;
 
     const newX = Math.max(0, Math.min(e.clientX - statsBtnDragStart.x, window.innerWidth - 200));
     const newY = Math.max(0, Math.min(e.clientY - statsBtnDragStart.y, window.innerHeight - 60));
@@ -970,7 +969,7 @@ const ProjectDetail = () => {
   const handleStatsBtnClick = () => {
     if (hasDraggedStatsBtn.current) {
       hasDraggedStatsBtn.current = false;
-      return; // Ne pas ouvrir la sidebar si on vient de drag
+      return;
     }
     setIsExpensesSidebarOpen(true);
   };
@@ -1042,22 +1041,13 @@ const ProjectDetail = () => {
     }
   }, [isOrdersBtnDragging, ordersBtnDragStart]);
 
-  // Fonction pour fermer la sidebar avec animation
-  const handleCloseProjectInfoSidebar = () => {
-    setIsProjectInfoSidebarClosing(true);
-    setTimeout(() => {
-      setIsProjectInfoSidebarOpen(false);
-      setIsProjectInfoSidebarClosing(false);
-    }, 400); // Durée de l'animation de sortie
-  };
-
   // Fonction pour fermer la sidebar des statistiques avec animation
   const handleCloseExpensesSidebar = () => {
     setIsExpensesSidebarClosing(true);
     setTimeout(() => {
       setIsExpensesSidebarOpen(false);
       setIsExpensesSidebarClosing(false);
-    }, 400); // Durée de l'animation de sortie
+    }, 400);
   };
 
   const handleEditDimensions = () => {
@@ -1252,334 +1242,13 @@ const ProjectDetail = () => {
         </Button>
       </div>
 
-      {/* Sidebar Informations Projet - glisse depuis la GAUCHE vers la DROITE */}
-      {isProjectInfoSidebarOpen && (
-        <>
-          {/* Overlay transparent */}
-          <div className="fixed inset-0 z-40 transition-opacity" onClick={handleCloseProjectInfoSidebar} />
-
-          {/* Sidebar à GAUCHE avec hauteur limitée - Animation horizontale pure */}
-          <div
-            className={`${isProjectInfoSidebarClosing ? "sidebar-slide-out" : "sidebar-slide-in"} fixed left-0 top-1/2 -translate-y-1/2 z-50 w-[500px] max-h-[85vh] bg-card border-r-2 border-blue-200 dark:border-blue-800 shadow-2xl rounded-r-xl overflow-hidden`}
-          >
-            <div className="flex flex-col h-full">
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b bg-blue-50 dark:bg-blue-950/30">
-                <h2 className="text-lg font-semibold">Informations du Projet</h2>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={handleEditDimensions}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Modifier
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={handleCloseProjectInfoSidebar}>
-                    <X className="h-5 w-5" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Contenu scrollable */}
-              <div className="flex-1 overflow-y-auto p-4">
-                {/* Informations générales */}
-                <div className="space-y-1.5 mb-4">
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Informations générales</h4>
-                  {project.nom_projet && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Nom du projet :</span>
-                      <p className="font-medium">{project.nom_projet}</p>
-                    </div>
-                  )}
-                  {project.immatriculation && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Immatriculation :</span>
-                      <p className="font-medium">{project.immatriculation}</p>
-                    </div>
-                  )}
-                  {(project.vin || project.numero_chassis_vin || project.numero_chassis) && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">N° de châssis (VIN) :</span>
-                      <p className="font-medium">
-                        {project.vin || project.numero_chassis_vin || project.numero_chassis}
-                      </p>
-                    </div>
-                  )}
-                  {project.type_mine && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Type mine :</span>
-                      <p className="font-medium">{project.type_mine}</p>
-                    </div>
-                  )}
-                  {(project.marque_officielle || project.marque_vehicule || project.marque_custom) && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Marque :</span>
-                      <p className="font-medium">
-                        {project.marque_officielle || project.marque_vehicule || project.marque_custom}
-                      </p>
-                    </div>
-                  )}
-                  {(project.modele_officiel || project.modele_vehicule || project.modele_custom) && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Modèle :</span>
-                      <p className="font-medium">
-                        {project.modele_officiel || project.modele_vehicule || project.modele_custom}
-                      </p>
-                    </div>
-                  )}
-                  {project.denomination_commerciale && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Dénomination commerciale :</span>
-                      <p className="font-medium">{project.denomination_commerciale}</p>
-                    </div>
-                  )}
-                  {project.genre_national && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Genre :</span>
-                      <p className="font-medium">{project.genre_national}</p>
-                    </div>
-                  )}
-                  {project.carrosserie && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Carrosserie :</span>
-                      <p className="font-medium">{project.carrosserie}</p>
-                    </div>
-                  )}
-                  {project.energie && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Énergie :</span>
-                      <p className="font-medium">{project.energie}</p>
-                    </div>
-                  )}
-                  {project.nombre_places && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Nombre de places :</span>
-                      <p className="font-medium">{project.nombre_places}</p>
-                    </div>
-                  )}
-                  {project.puissance_fiscale && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Puissance fiscale :</span>
-                      <p className="font-medium">{project.puissance_fiscale} CV</p>
-                    </div>
-                  )}
-                  {project.cylindree && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Cylindrée :</span>
-                      <p className="font-medium">{project.cylindree} cm³</p>
-                    </div>
-                  )}
-                  {project.date_premiere_circulation && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">1ère mise en circulation :</span>
-                      <p className="font-medium">
-                        {new Date(project.date_premiere_circulation).toLocaleDateString("fr-FR")}
-                      </p>
-                    </div>
-                  )}
-                  {project.date_premiere_immatriculation && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">1ère immatriculation :</span>
-                      <p className="font-medium">
-                        {new Date(project.date_premiere_immatriculation).toLocaleDateString("fr-FR")}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Données techniques RTI */}
-                {(project.categorie_international ||
-                  project.type_variante ||
-                  project.numero_reception_ce ||
-                  project.places_assises_origine ||
-                  project.puissance_kw ||
-                  project.norme_euro) && (
-                  <div className="space-y-1.5 mb-4 pt-4 border-t">
-                    <h4 className="text-xs font-semibold text-blue-600 mb-2">Données techniques RTI</h4>
-                    {project.categorie_international && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground shrink-0">Catégorie (J) :</span>
-                        <p className="font-bold text-blue-700">{project.categorie_international}</p>
-                      </div>
-                    )}
-                    {project.type_variante && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground shrink-0">Type variante (D.2) :</span>
-                        <p className="font-medium font-mono text-xs">{project.type_variante}</p>
-                      </div>
-                    )}
-                    {project.numero_reception_ce && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground shrink-0">N° Réception (K) :</span>
-                        <p className="font-medium font-mono text-xs">{project.numero_reception_ce}</p>
-                      </div>
-                    )}
-                    {project.places_assises_origine && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground shrink-0">Places origine (S.1) :</span>
-                        <p className="font-medium">{project.places_assises_origine}</p>
-                      </div>
-                    )}
-                    {project.puissance_kw && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground shrink-0">Puissance (P.2) :</span>
-                        <p className="font-medium">{project.puissance_kw} kW</p>
-                      </div>
-                    )}
-                    {project.norme_euro && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground shrink-0">Norme Euro (V.9) :</span>
-                        <p className="font-medium text-green-700">{project.norme_euro}</p>
-                      </div>
-                    )}
-                    {project.co2_emission && (
-                      <div className="flex gap-2 text-xs">
-                        <span className="text-muted-foreground shrink-0">CO2 (V.7) :</span>
-                        <p className="font-medium">{project.co2_emission} g/km</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Propriétaire */}
-                <div className="space-y-1.5 mb-4 pt-4 border-t">
-                  <h4 className="text-xs font-semibold text-muted-foreground mb-2">Propriétaire</h4>
-                  {(project.prenom_proprietaire || project.nom_proprietaire) && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Nom :</span>
-                      <p className="font-medium">
-                        {project.prenom_proprietaire} {project.nom_proprietaire}
-                      </p>
-                    </div>
-                  )}
-                  {project.adresse_proprietaire && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Adresse :</span>
-                      <p className="font-medium">{project.adresse_proprietaire}</p>
-                    </div>
-                  )}
-                  {(project.code_postal_proprietaire || project.ville_proprietaire) && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Ville :</span>
-                      <p className="font-medium">
-                        {project.code_postal_proprietaire} {project.ville_proprietaire}
-                      </p>
-                    </div>
-                  )}
-                  {project.telephone_proprietaire && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Téléphone :</span>
-                      <p className="font-medium">{project.telephone_proprietaire}</p>
-                    </div>
-                  )}
-                  {project.email_proprietaire && (
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-muted-foreground shrink-0">Email :</span>
-                      <p className="font-medium">{project.email_proprietaire}</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Dimensions et Poids */}
-                {(project.longueur_mm ||
-                  project.largeur_mm ||
-                  project.hauteur_mm ||
-                  project.longueur_chargement_mm ||
-                  project.largeur_chargement_mm ||
-                  project.poids_vide_kg ||
-                  project.charge_utile_kg ||
-                  project.ptac_kg) && (
-                  <div className="grid grid-cols-1 gap-4 pt-4 border-t">
-                    {/* Dimensions totales */}
-                    {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
-                      <div className="space-y-2 border-l-4 border-blue-200 dark:border-blue-800 pl-3">
-                        <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-400">Dimensions totales</h4>
-                        {project.longueur_mm && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Longueur :</span>
-                            <p className="font-medium">{project.longueur_mm} mm</p>
-                          </div>
-                        )}
-                        {project.largeur_mm && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Largeur :</span>
-                            <p className="font-medium">{project.largeur_mm} mm</p>
-                          </div>
-                        )}
-                        {project.hauteur_mm && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Hauteur :</span>
-                            <p className="font-medium">{project.hauteur_mm} mm</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Surface utile */}
-                    {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
-                      <div className="space-y-2 border-l-4 border-orange-200 dark:border-orange-800 pl-3">
-                        <h4 className="text-xs font-semibold text-orange-700 dark:text-orange-400">Surface utile</h4>
-                        {project.longueur_chargement_mm && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Longueur :</span>
-                            <p className="font-medium">{project.longueur_chargement_mm} mm</p>
-                          </div>
-                        )}
-                        {project.largeur_chargement_mm && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Largeur :</span>
-                            <p className="font-medium">{project.largeur_chargement_mm} mm</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Poids */}
-                    {(project.poids_vide_kg ||
-                      project.masse_vide ||
-                      project.masse_ordre_marche_kg ||
-                      project.charge_utile_kg ||
-                      project.ptac_kg ||
-                      project.masse_en_charge_max ||
-                      project.ptra) && (
-                      <div className="space-y-2 border-l-4 border-green-200 dark:border-green-800 pl-3">
-                        <h4 className="text-xs font-semibold text-green-700 dark:text-green-400">Poids</h4>
-                        {(project.poids_vide_kg || project.masse_vide) && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Poids à vide :</span>
-                            <p className="font-medium">{project.poids_vide_kg || project.masse_vide} kg</p>
-                          </div>
-                        )}
-                        {project.masse_ordre_marche_kg && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Masse en ordre de marche :</span>
-                            <p className="font-medium">{project.masse_ordre_marche_kg} kg</p>
-                          </div>
-                        )}
-                        {project.charge_utile_kg && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">Charge utile :</span>
-                            <p className="font-medium">{project.charge_utile_kg} kg</p>
-                          </div>
-                        )}
-                        {(project.ptac_kg || project.masse_en_charge_max) && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">PTAC :</span>
-                            <p className="font-medium">{project.ptac_kg || project.masse_en_charge_max} kg</p>
-                          </div>
-                        )}
-                        {project.ptra && (
-                          <div className="flex gap-2 text-xs">
-                            <span className="text-muted-foreground shrink-0">PTRA :</span>
-                            <p className="font-medium">{project.ptra} kg</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Sidebar Informations Projet - avec double volet dépliable */}
+      <ProjectInfoSidebar
+        project={project}
+        isOpen={isProjectInfoSidebarOpen}
+        onClose={() => setIsProjectInfoSidebarOpen(false)}
+        onEdit={handleEditDimensions}
+      />
 
       <main className="container mx-auto px-4 py-4">
         {/* Sidebar pour toutes les tâches */}
