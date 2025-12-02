@@ -72,6 +72,7 @@ import OrderTrackingSidebar from "@/components/OrderTrackingSidebar";
 import MechanicalProcedures from "@/components/MechanicalProcedures";
 import { DownloadsWidget } from "@/components/DownloadsWidget";
 import logo from "@/assets/logo.png";
+import { AIChatAssistant } from "@/components/AIChatAssistant";
 import {
   format,
   isSameDay,
@@ -1876,6 +1877,9 @@ const ProjectDetail = () => {
         onClose={() => setIsOrderTrackingOpen(false)}
         onOrderChange={() => setExpenseRefresh((prev) => prev + 1)}
       />
+
+      {/* Chatbot IA flottant */}
+      <AIChatAssistant projectId={project?.id} projectName={project?.name} />
     </div>
   );
 };
