@@ -94,11 +94,11 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
 
   useEffect(() => {
     loadVehicles();
-    
+
     // Pré-remplir les champs si on est en mode édition
     if (isEditMode && existingProject) {
       console.log("🔄 Mode édition : pré-remplissage des champs", existingProject);
-      
+
       // Pré-remplir les données du véhicule
       if (existingProject.marque_vehicule) {
         setSelectedMarque(existingProject.marque_vehicule);
@@ -106,13 +106,13 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       if (existingProject.modele_vehicule) {
         setSelectedModele(existingProject.modele_vehicule);
       }
-      
+
       // Pré-remplir les données de la carte grise
       setManualImmatriculation(existingProject.immatriculation || "");
       setManualNumeroChassis(existingProject.numero_chassis || existingProject.vin || "");
       setManualDateMiseCirculation(existingProject.date_premiere_circulation || "");
       setManualTypeMine(existingProject.type_mine || "");
-      
+
       // Pré-remplir les dimensions personnalisées
       if (existingProject.poids_vide_kg) {
         setCustomPoidsVide(existingProject.poids_vide_kg.toString());
@@ -120,7 +120,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       if (existingProject.ptac_kg) {
         setCustomPtac(existingProject.ptac_kg.toString());
       }
-      
+
       // Pré-remplir la photo
       if (existingProject.photo_url) {
         setPhotoPreview(existingProject.photo_url);
@@ -300,15 +300,15 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
           const modeleNormalized = normalize(data.denominationCommerciale);
           console.log("🔍 Recherche modèle:", data.denominationCommerciale, "→ normalisé:", modeleNormalized);
 
-          const availableModelesForMarque = vehicles
-            .filter((v) => v.marque === foundMarque)
-            .map((v) => v.modele);
+          const availableModelesForMarque = vehicles.filter((v) => v.marque === foundMarque).map((v) => v.modele);
 
           console.log(`📊 ${availableModelesForMarque.length} modèles pour ${foundMarque}:`, availableModelesForMarque);
 
           const foundModele = Array.from(new Set(availableModelesForMarque)).find((m) => {
             const mNorm = normalize(m);
-            console.log(`  🔎 Comparaison modèle: "${m}" (${mNorm}) vs "${data.denominationCommerciale}" (${modeleNormalized})`);
+            console.log(
+              `  🔎 Comparaison modèle: "${m}" (${mNorm}) vs "${data.denominationCommerciale}" (${modeleNormalized})`,
+            );
             const match = mNorm.includes(modeleNormalized) || modeleNormalized.includes(mNorm);
             if (match) console.log(`    ✅ Match modèle trouvé !`);
             return match;
@@ -455,11 +455,23 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       masse_ordre_marche_kg: scannedData?.masseVide || null,
       masse_en_charge_max: scannedData?.masseEnChargeMax || null,
       ptra: scannedData?.ptra || null,
+      // Nouveaux champs RTI
+      categorie_international: scannedData?.categorieInternational || null,
+      type_variante: scannedData?.typeVariante || null,
+      numero_reception_ce: scannedData?.numeroReceptionCE || null,
+      places_assises_origine: scannedData?.placesAssises || null,
+      puissance_kw: scannedData?.puissanceKw || null,
+      co2_emission: scannedData?.co2 || null,
+      norme_euro: scannedData?.normeEuro || null,
+      carrosserie_ce: scannedData?.carrosserieCE || null,
+      carrosserie_nationale: scannedData?.carrosserieNationale || null,
       // Dimensions du véhicule
       longueur_mm: selectedVehicle?.longueur_mm || scannedData?.longueur || null,
       largeur_mm: selectedVehicle?.largeur_mm || scannedData?.largeur || null,
       hauteur_mm: selectedVehicle?.hauteur_mm || scannedData?.hauteur || null,
-      poids_vide_kg: customPoidsVide ? parseInt(customPoidsVide) : selectedVehicle?.poids_vide_kg || scannedData?.masseVide || null,
+      poids_vide_kg: customPoidsVide
+        ? parseInt(customPoidsVide)
+        : selectedVehicle?.poids_vide_kg || scannedData?.masseVide || null,
       charge_utile_kg: selectedVehicle?.charge_utile_kg || null,
       ptac_kg: customPtac ? parseInt(customPtac) : selectedVehicle?.ptac_kg || scannedData?.masseEnChargeMax || null,
     };
@@ -467,10 +479,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     let result;
     if (isEditMode && existingProject) {
       // Mode édition : update
-      result = await supabase
-        .from("projects")
-        .update(projectData)
-        .eq("id", existingProject.id);
+      result = await supabase.from("projects").update(projectData).eq("id", existingProject.id);
     } else {
       // Mode création : insert
       result = await supabase.from("projects").insert(projectData);
@@ -500,7 +509,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     setManualNumeroChassis("");
     setManualDateMiseCirculation("");
     setManualTypeMine("");
-    
+
     // Petit délai pour laisser la BDD persister les données
     setTimeout(() => {
       onProjectCreated();
@@ -537,10 +546,10 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
 
               <div className="space-y-2">
                 <Label htmlFor="nom_projet">Nom du projet</Label>
-                <Input 
-                  id="nom_projet" 
-                  name="nom_projet" 
-                  disabled={isLoading} 
+                <Input
+                  id="nom_projet"
+                  name="nom_projet"
+                  disabled={isLoading}
                   placeholder="Aménagement camping-car"
                   defaultValue={isEditMode ? existingProject?.nom : ""}
                 />
@@ -857,10 +866,13 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading 
-                ? (isEditMode ? "Modification..." : "Création...") 
-                : (isEditMode ? "Mettre à jour le projet" : "Créer le projet")
-              }
+              {isLoading
+                ? isEditMode
+                  ? "Modification..."
+                  : "Création..."
+                : isEditMode
+                  ? "Mettre à jour le projet"
+                  : "Créer le projet"}
             </Button>
           </form>
         </CardContent>
