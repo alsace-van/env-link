@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Users, Shield, Trash2, Activity, FileText } from "lucide-react";
+import { ArrowLeft, Users, Shield, Trash2, Activity, FileText, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -26,6 +26,7 @@ import { AdminOfficialDocumentsManager } from "@/components/admin/AdminOfficialD
 import { AdminNoticesManager } from "@/components/admin/AdminNoticesManager";
 import { ShippingFeesManager } from "@/components/admin/ShippingFeesManager";
 import { AdminDownloadsManager } from "@/components/admin/AdminDownloadsManager";
+import { AdminAISettings } from "@/components/admin/AdminAISettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface UserData {
@@ -207,6 +208,10 @@ const Admin = () => {
               <TabsTrigger value="manuals">Notices</TabsTrigger>
               <TabsTrigger value="downloads">Téléchargements</TabsTrigger>
               <TabsTrigger value="shipping">Frais de port</TabsTrigger>
+              <TabsTrigger value="ai-settings">
+                <Sparkles className="h-4 w-4 mr-1" />
+                Paramètres IA
+              </TabsTrigger>
               <TabsTrigger value="logins">Connexions</TabsTrigger>
               <TabsTrigger value="actions">Journal d'activité</TabsTrigger>
             </TabsList>
@@ -300,6 +305,24 @@ const Admin = () => {
 
             <TabsContent value="shipping">
               <ShippingFeesManager />
+            </TabsContent>
+
+            <TabsContent value="ai-settings">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    Paramètres IA
+                  </CardTitle>
+                  <CardDescription>
+                    Configurez les modèles d'intelligence artificielle utilisés par l'application. Modifiez ces
+                    paramètres si un fournisseur désactive un modèle.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <AdminAISettings />
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="logins">
