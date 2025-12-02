@@ -45,9 +45,9 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
  */
 async function getModelForProvider(provider: AIProvider): Promise<string> {
   const now = Date.now();
-
+  
   // Si le cache est valide, l'utiliser
-  if (modelsCache && now - modelsCacheTime < CACHE_DURATION) {
+  if (modelsCache && (now - modelsCacheTime) < CACHE_DURATION) {
     return modelsCache[provider] || DEFAULT_MODELS[provider];
   }
 
@@ -94,10 +94,10 @@ export function refreshModelsCache() {
 export async function getConfiguredModels(): Promise<Record<AIProvider, string>> {
   // Force refresh
   refreshModelsCache();
-
+  
   // Charger chaque modèle pour remplir le cache
   await getModelForProvider("gemini");
-
+  
   return modelsCache || DEFAULT_MODELS;
 }
 
