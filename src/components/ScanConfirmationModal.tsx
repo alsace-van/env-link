@@ -67,6 +67,13 @@ export const ScanConfirmationModal = ({
   const [editingEnergie, setEditingEnergie] = useState(false);
   const [editingPuissanceFiscale, setEditingPuissanceFiscale] = useState(false);
   const [editingCylindree, setEditingCylindree] = useState(false);
+  const [editingCategorieInter, setEditingCategorieInter] = useState(false);
+  const [editingTypeVariante, setEditingTypeVariante] = useState(false);
+  const [editingPlacesAssises, setEditingPlacesAssises] = useState(false);
+  const [editingNumeroReception, setEditingNumeroReception] = useState(false);
+  const [editingPuissanceKw, setEditingPuissanceKw] = useState(false);
+  const [editingPtra, setEditingPtra] = useState(false);
+  const [editingNormeEuro, setEditingNormeEuro] = useState(false);
 
   // ✅ CORRECTION: Mettre à jour editedData quand scannedData change (après rescan)
   useEffect(() => {
@@ -797,6 +804,329 @@ export const ScanConfirmationModal = ({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* SECTION 6 : CHAMPS CRITIQUES RTI */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-blue-500" />
+              <span className="text-sm font-semibold text-blue-700">Informations techniques RTI</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* CATÉGORIE INTERNATIONALE */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Catégorie (J)</Label>
+                  {getDetectionStatus(editedData.categorieInternational)}
+                </div>
+                {!editingCategorieInter && editedData.categorieInternational ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-blue-50 border-2 border-blue-200 rounded font-bold text-blue-800">
+                      {editedData.categorieInternational}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingCategorieInter(!editingCategorieInter)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : editingCategorieInter ? (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={editedData.categorieInternational || ""}
+                      onValueChange={(value) => {
+                        handleFieldChange("categorieInternational", value);
+                        setEditingCategorieInter(false);
+                      }}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Sélectionner..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="M1">M1 - Voiture particulière</SelectItem>
+                        <SelectItem value="N1">N1 - Utilitaire léger ≤3.5t</SelectItem>
+                        <SelectItem value="N2">N2 - Utilitaire 3.5t-12t</SelectItem>
+                        <SelectItem value="N3">N3 - Utilitaire &gt;12t</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingCategorieInter(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-2 text-red-600 text-sm font-medium bg-red-50 border border-red-200 rounded">
+                    ⚠️ Non détecté -{" "}
+                    <button onClick={() => setEditingCategorieInter(true)} className="underline font-bold">
+                      Saisir (obligatoire RTI)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* TYPE VARIANTE (D.2) */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Type mine (D.2)</Label>
+                  {getDetectionStatus(editedData.typeVariante)}
+                </div>
+                {!editingTypeVariante && editedData.typeVariante ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-slate-50 border rounded font-mono text-sm">
+                      {editedData.typeVariante}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingTypeVariante(!editingTypeVariante)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : editingTypeVariante ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={editedData.typeVariante || ""}
+                      onChange={(e) => handleFieldChange("typeVariante", e.target.value.toUpperCase())}
+                      className="flex-1 font-mono"
+                      placeholder="VFAHKH-B2B01D"
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingTypeVariante(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-2 text-gray-500 text-sm italic">
+                    Non détecté -{" "}
+                    <button onClick={() => setEditingTypeVariante(true)} className="underline">
+                      Saisir
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* PLACES ASSISES (S.1) */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Places assises (S.1)</Label>
+                  {getDetectionStatus(editedData.placesAssises)}
+                </div>
+                {!editingPlacesAssises && editedData.placesAssises ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">
+                      {editedData.placesAssises} places
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingPlacesAssises(!editingPlacesAssises)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : editingPlacesAssises ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={editedData.placesAssises || ""}
+                      onChange={(e) => handleFieldChange("placesAssises", parseInt(e.target.value) || undefined)}
+                      className="flex-1"
+                      min={1}
+                      max={9}
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPlacesAssises(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-2 text-orange-600 text-sm bg-orange-50 border border-orange-200 rounded">
+                    Non détecté -{" "}
+                    <button onClick={() => setEditingPlacesAssises(true)} className="underline">
+                      Saisir (important)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* PUISSANCE KW (P.2) */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Puissance (P.2)</Label>
+                  {getDetectionStatus(editedData.puissanceKw)}
+                </div>
+                {!editingPuissanceKw && editedData.puissanceKw ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">
+                      {editedData.puissanceKw} kW
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingPuissanceKw(!editingPuissanceKw)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : editingPuissanceKw ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={editedData.puissanceKw || ""}
+                      onChange={(e) => handleFieldChange("puissanceKw", parseInt(e.target.value) || undefined)}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPuissanceKw(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-2 text-gray-500 text-sm italic">
+                    Non détecté -{" "}
+                    <button onClick={() => setEditingPuissanceKw(true)} className="underline">
+                      Saisir
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* NUMÉRO RÉCEPTION CE (K) */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">N° Réception CE (K)</Label>
+                  {getDetectionStatus(editedData.numeroReceptionCE)}
+                </div>
+                {!editingNumeroReception && editedData.numeroReceptionCE ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-slate-50 border rounded font-mono text-xs">
+                      {editedData.numeroReceptionCE}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingNumeroReception(!editingNumeroReception)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : editingNumeroReception ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={editedData.numeroReceptionCE || ""}
+                      onChange={(e) => handleFieldChange("numeroReceptionCE", e.target.value)}
+                      className="flex-1 font-mono text-sm"
+                      placeholder="e2*2007/46*0533*04"
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingNumeroReception(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-2 text-gray-500 text-sm italic">
+                    Non détecté -{" "}
+                    <button onClick={() => setEditingNumeroReception(true)} className="underline">
+                      Saisir
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* PTRA (F.2) */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">PTRA (F.2)</Label>
+                  {getDetectionStatus(editedData.ptra)}
+                </div>
+                {!editingPtra && editedData.ptra ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-slate-50 border rounded font-semibold">{editedData.ptra} kg</div>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPtra(!editingPtra)}>
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : editingPtra ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={editedData.ptra || ""}
+                      onChange={(e) => handleFieldChange("ptra", parseInt(e.target.value) || undefined)}
+                      className="flex-1"
+                    />
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingPtra(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-2 text-gray-500 text-sm italic">
+                    Non détecté -{" "}
+                    <button onClick={() => setEditingPtra(true)} className="underline">
+                      Saisir
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* NORME EURO (V.9) */}
+              <div className="space-y-2 col-span-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Norme Euro (V.9)</Label>
+                  {getDetectionStatus(editedData.normeEuro)}
+                </div>
+                {!editingNormeEuro && editedData.normeEuro ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 p-2 bg-green-50 border border-green-200 rounded font-semibold text-green-800">
+                      {editedData.normeEuro}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingNormeEuro(!editingNormeEuro)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : editingNormeEuro ? (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={editedData.normeEuro || ""}
+                      onValueChange={(value) => {
+                        handleFieldChange("normeEuro", value);
+                        setEditingNormeEuro(false);
+                      }}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Sélectionner..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EURO6">Euro 6</SelectItem>
+                        <SelectItem value="EURO5">Euro 5</SelectItem>
+                        <SelectItem value="EURO4">Euro 4</SelectItem>
+                        <SelectItem value="EURO3">Euro 3</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setEditingNormeEuro(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-2 text-gray-500 text-sm italic">
+                    Non détecté -{" "}
+                    <button onClick={() => setEditingNormeEuro(true)} className="underline">
+                      Saisir
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
