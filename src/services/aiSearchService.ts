@@ -247,6 +247,7 @@ export async function getSupplierComparison(productGroupId: string, userId: stri
 type IntentType =
   | "search_document"
   | "search_accessory"
+  | "list_catalog"
   | "compare_prices"
   | "compare_suppliers"
   | "generate_rti"
