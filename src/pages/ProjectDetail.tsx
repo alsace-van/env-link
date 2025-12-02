@@ -1879,7 +1879,7 @@ const ProjectDetail = () => {
       />
 
       {/* Chatbot IA flottant */}
-      <AIChatAssistant projectId={project?.id} projectName={project?.name} />
+      <AIChatAssistant projectId={project?.id} projectName={project?.nom_projet} />
     </div>
   );
 };
