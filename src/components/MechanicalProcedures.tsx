@@ -150,6 +150,7 @@ import {
   Loader2,
   FileAudio,
   Sparkles,
+  Languages,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -444,6 +445,7 @@ const MechanicalProcedures = () => {
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
   const [summarizingBlockId, setSummarizingBlockId] = useState<string | null>(null);
+  const [translatingBlockId, setTranslatingBlockId] = useState<string | null>(null);
 
   // États des formulaires
   const [newGamme, setNewGamme] = useState({
@@ -825,7 +827,7 @@ const MechanicalProcedures = () => {
         height = 200;
       } else if (type === "audio") {
         width = 400;
-        height = 280;
+        height = 320;
       }
 
       const { data, error } = await (supabase as any)
@@ -1107,7 +1109,7 @@ const MechanicalProcedures = () => {
                     },
                   },
                   {
-                    text: "Transcris cet enregistrement audio en français. Fais une transcription fidèle et complète du contenu parlé. Si tu détectes plusieurs interlocuteurs, indique les changements de locuteur.",
+                    text: "Transcris fidèlement cet enregistrement audio. Détecte automatiquement la langue parlée et transcris dans cette même langue. Si tu détectes plusieurs interlocuteurs, indique les changements de locuteur avec [Locuteur 1], [Locuteur 2], etc.",
                   },
                 ],
               },
@@ -1167,7 +1169,7 @@ const MechanicalProcedures = () => {
               {
                 parts: [
                   {
-                    text: `Résume ce texte de manière concise en gardant les points clés et les informations importantes. Utilise des puces pour les points principaux.
+                    text: `Résume ce texte de manière concise dans la même langue que le texte original. Garde les points clés et les informations importantes. Utilise des puces pour les points principaux.
 
 Texte à résumer :
 ${block.content}`,
@@ -1200,6 +1202,69 @@ ${block.content}`,
       toast.error(`Erreur: ${error.message || "Impossible de résumer"}`);
     } finally {
       setSummarizingBlockId(null);
+    }
+  };
+
+  // Traduire le contenu
+  const handleTranslateContent = async (blockId: string, targetLanguage: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block?.content) {
+      toast.error("Aucun contenu à traduire");
+      return;
+    }
+
+    const apiKey = await getGeminiApiKey();
+    if (!apiKey) {
+      toast.error("Clé API Gemini non configurée");
+      return;
+    }
+
+    setTranslatingBlockId(blockId);
+
+    try {
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Traduis ce texte en ${targetLanguage}. Garde la mise en forme (puces, paragraphes, etc.) et le sens fidèle au texte original.
+
+Texte à traduire :
+${block.content}`,
+                  },
+                ],
+              },
+            ],
+          }),
+        },
+      );
+
+      if (!geminiResponse.ok) {
+        const error = await geminiResponse.json();
+        throw new Error(error.error?.message || "Erreur API Gemini");
+      }
+
+      const result = await geminiResponse.json();
+      const translation = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      if (translation) {
+        await handleUpdateBlock(blockId, { content: translation });
+        toast.success(`Traduit en ${targetLanguage} !`);
+      } else {
+        toast.error("Aucune traduction générée");
+      }
+    } catch (error: any) {
+      console.error("Erreur traduction:", error);
+      toast.error(`Erreur: ${error.message || "Impossible de traduire"}`);
+    } finally {
+      setTranslatingBlockId(null);
     }
   };
 
@@ -1539,6 +1604,60 @@ ${block.content}`,
                       </Button>
                     )}
                   </div>
+
+                  {/* Ligne traduction */}
+                  {block.content && (
+                    <div className="flex gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 text-green-600 border-green-300 hover:bg-green-50"
+                            disabled={translatingBlockId === block.id}
+                          >
+                            {translatingBlockId === block.id ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                Traduction...
+                              </>
+                            ) : (
+                              <>
+                                <Languages className="h-4 w-4 mr-1" />
+                                Traduire en...
+                              </>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "français")}>
+                            🇫🇷 Français
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "anglais")}>
+                            🇬🇧 Anglais
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "allemand")}>
+                            🇩🇪 Allemand
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "espagnol")}>
+                            🇪🇸 Espagnol
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "italien")}>
+                            🇮🇹 Italien
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "portugais")}>
+                            🇵🇹 Portugais
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "néerlandais")}>
+                            🇳🇱 Néerlandais
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTranslateContent(block.id, "polonais")}>
+                            🇵🇱 Polonais
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
                 </div>
               )}
 
