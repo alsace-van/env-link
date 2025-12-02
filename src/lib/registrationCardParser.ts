@@ -1,6 +1,6 @@
 /**
  * VERSION AMÉLIORÉE - registrationCardParser.ts
- * 
+ *
  * Améliorations principales :
  * 1. Corrections OCR spécifiques au VIN plus agressives
  * 2. Validation VIN plus tolérante (mode relaxed pour debug)
@@ -17,18 +17,18 @@ export const correctOCRVIN = (text: string): string => {
   let corrected = text.toUpperCase();
 
   // Le VIN ne contient JAMAIS I, O, Q
-  corrected = corrected.replace(/[Oo]/g, '0');  // O → 0
-  corrected = corrected.replace(/[Ii]/g, '1');  // I → 1
-  corrected = corrected.replace(/[Qq]/g, '0');  // Q → 0
-  
+  corrected = corrected.replace(/[Oo]/g, "0"); // O → 0
+  corrected = corrected.replace(/[Ii]/g, "1"); // I → 1
+  corrected = corrected.replace(/[Qq]/g, "0"); // Q → 0
+
   // Corrections contextuelles courantes
-  corrected = corrected.replace(/[lL|]/g, '1'); // l, L, | → 1
-  corrected = corrected.replace(/[Ss]/g, '5');  // S → 5 (dans contexte VIN)
-  corrected = corrected.replace(/[Zz]/g, '2');  // Z → 2 (moins fréquent)
-  corrected = corrected.replace(/[Bb]/g, '8');  // B → 8 (dans contexte numérique)
-  
+  corrected = corrected.replace(/[lL|]/g, "1"); // l, L, | → 1
+  corrected = corrected.replace(/[Ss]/g, "5"); // S → 5 (dans contexte VIN)
+  corrected = corrected.replace(/[Zz]/g, "2"); // Z → 2 (moins fréquent)
+  corrected = corrected.replace(/[Bb]/g, "8"); // B → 8 (dans contexte numérique)
+
   // Nettoyer les espaces et caractères spéciaux
-  corrected = corrected.replace(/[^A-HJ-NPR-Z0-9]/g, '');
+  corrected = corrected.replace(/[^A-HJ-NPR-Z0-9]/g, "");
 
   return corrected;
 };
@@ -100,13 +100,52 @@ export const isValidVINFormat = (vin: string): boolean => {
 
   // Liste étendue des codes constructeurs connus (2 premières lettres)
   const validManufacturerCodes = [
-    "VF", "WV", "WP", "JA", "JM", "JN", "KL", "KM", "KN", "LV",
-    "SA", "SB", "SU", "TM", "TR", "VN", "VS", "WA", "WB", "WD",
-    "WM", "YS", "YV", "ZA", "ZF", "1F", "1G", "1H", "1J", "2F",
-    "2G", "2H", "3F", "3G", "4F", "5F", "5T", "5X", "6F", "6G",
-    "8A", "9B", "93", "9F"
+    "VF",
+    "WV",
+    "WP",
+    "JA",
+    "JM",
+    "JN",
+    "KL",
+    "KM",
+    "KN",
+    "LV",
+    "SA",
+    "SB",
+    "SU",
+    "TM",
+    "TR",
+    "VN",
+    "VS",
+    "WA",
+    "WB",
+    "WD",
+    "WM",
+    "YS",
+    "YV",
+    "ZA",
+    "ZF",
+    "1F",
+    "1G",
+    "1H",
+    "1J",
+    "2F",
+    "2G",
+    "2H",
+    "3F",
+    "3G",
+    "4F",
+    "5F",
+    "5T",
+    "5X",
+    "6F",
+    "6G",
+    "8A",
+    "9B",
+    "93",
+    "9F",
   ];
-  
+
   const manufacturerCode = vin.substring(0, 2);
   if (!validManufacturerCodes.includes(manufacturerCode)) {
     console.warn(`⚠️ Code constructeur inconnu (mais autorisé): ${manufacturerCode} dans ${vin}`);
@@ -163,11 +202,11 @@ export const isValidImmatriculation = (immat: string): boolean => {
 
   // Nettoyer et corriger les erreurs OCR courantes
   let cleaned = immat.replace(/[\s\-]/g, "").toUpperCase();
-  
+
   // Corrections OCR spécifiques aux immatriculations
-  cleaned = cleaned.replace(/[Oo]/g, '0');  // O → 0
-  cleaned = cleaned.replace(/[Ii]/g, '1');  // I → 1
-  cleaned = cleaned.replace(/[Qq]/g, '0');  // Q → 0
+  cleaned = cleaned.replace(/[Oo]/g, "0"); // O → 0
+  cleaned = cleaned.replace(/[Ii]/g, "1"); // I → 1
+  cleaned = cleaned.replace(/[Qq]/g, "0"); // Q → 0
 
   console.log(`🔍 Immatriculation brute: "${immat}" → nettoyée: "${cleaned}"`);
 
@@ -234,6 +273,13 @@ export interface VehicleRegistrationData {
   adresse?: string;
   codePostal?: string;
   ville?: string;
+
+  // Nouveaux champs pour RTI
+  categorieInternational?: string; // J - N1, M1, N2, etc.
+  numeroReceptionCE?: string; // K - e2*2007/46*...
+  normeEuro?: string; // V.9 - EURO5, EURO6, etc.
+  masseEnService?: number; // G.1
+  poidsRemorqueFreinee?: number; // F.3
 }
 
 /**
@@ -279,7 +325,7 @@ const correctOCRDigits = (text: string): string => {
  */
 export const extractImmatriculation = (text: string): string | undefined => {
   console.log("🔍 Recherche de l'immatriculation...");
-  
+
   const patterns = [
     // Format SIV (depuis 2009): AA-123-AA avec variations
     /\b([A-Z]{2}[\s\-]?\d{3}[\s\-]?[A-Z]{2})\b/i,
@@ -300,13 +346,13 @@ export const extractImmatriculation = (text: string): string | undefined => {
     const match = text.match(pattern);
     if (match) {
       console.log(`  Pattern ${i + 1} match: "${match[1]}"`);
-      
+
       let cleaned = match[1].replace(/[\s\-]/g, "").toUpperCase();
-      
+
       // Appliquer corrections OCR
-      cleaned = cleaned.replace(/[Oo]/g, '0');
-      cleaned = cleaned.replace(/[Ii]/g, '1');
-      cleaned = cleaned.replace(/[Qq]/g, '0');
+      cleaned = cleaned.replace(/[Oo]/g, "0");
+      cleaned = cleaned.replace(/[Ii]/g, "1");
+      cleaned = cleaned.replace(/[Qq]/g, "0");
 
       console.log(`  Après correction OCR: "${cleaned}"`);
 
@@ -377,7 +423,7 @@ export const extractNumeroChassisVIN = (text: string): string | undefined => {
   // Pattern 1: Ligne commençant par "E" ou "E." suivi du VIN
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    
+
     // Patterns variés pour le champ E
     const ePatterns = [
       /E[\s.:]+(VF[A-HJ-NPR-Z0-9]{15})/i,
@@ -427,7 +473,7 @@ export const extractNumeroChassisVIN = (text: string): string | undefined => {
         console.log(`✅ VIN valide: ${vin}`);
       } else {
         console.log(`❌ VIN invalide rejeté: ${vin}`);
-        
+
         // En mode debug, essayer la version relaxed
         const isRelaxedValid = isValidVINFormatRelaxed(vin);
         if (isRelaxedValid) {
@@ -447,13 +493,13 @@ export const extractNumeroChassisVIN = (text: string): string | undefined => {
   }
 
   console.warn("⚠️ Aucun VIN valide détecté");
-  
+
   // En dernier recours, retourner le meilleur candidat même s'il est invalide
   if (vinCandidates.length > 0) {
     const bestCandidate = vinCandidates
       .map((vin) => correctOCRVIN(vin))
       .sort((a, b) => Math.abs(b.length - 17) - Math.abs(a.length - 17))[0];
-    
+
     console.warn(`⚠️ Retour du meilleur candidat (invalide): ${bestCandidate}`);
     return bestCandidate;
   }
@@ -539,11 +585,7 @@ export const extractDenominationCommerciale = (text: string): string | undefined
  */
 export const extractMasseVide = (text: string): number | undefined => {
   // Chercher G.1 ou G1 suivi d'un nombre
-  const patterns = [
-    /G[\.\s]?1[\s.:]+(\d+)/i,
-    /MASSE[\s]+(?:A\s+)?VIDE[\s.:]+(\d+)/i,
-    /TARE[\s.:]+(\d+)/i,
-  ];
+  const patterns = [/G[\.\s]?1[\s.:]+(\d+)/i, /MASSE[\s]+(?:A\s+)?VIDE[\s.:]+(\d+)/i, /TARE[\s.:]+(\d+)/i];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -624,10 +666,10 @@ export const extractGenreNational = (text: string): string | undefined => {
  */
 export const parseRegistrationCardText = (text: string): VehicleRegistrationData => {
   console.log("📄 Parsing du texte OCR...");
-  console.log("=" .repeat(80));
+  console.log("=".repeat(80));
   console.log("Texte brut (premiers 500 caractères):");
   console.log(text.substring(0, 500));
-  console.log("=" .repeat(80));
+  console.log("=".repeat(80));
 
   const data: VehicleRegistrationData = {
     immatriculation: extractImmatriculation(text),
@@ -640,7 +682,7 @@ export const parseRegistrationCardText = (text: string): VehicleRegistrationData
     genreNational: extractGenreNational(text),
   };
 
-  console.log("=" .repeat(80));
+  console.log("=".repeat(80));
   console.log("✅ Résultat du parsing:");
   console.log(`  Immatriculation: ${data.immatriculation || "NON DÉTECTÉ"}`);
   console.log(`  VIN: ${data.numeroChassisVIN || "NON DÉTECTÉ"} (${data.numeroChassisVIN?.length || 0} car.)`);
@@ -650,7 +692,7 @@ export const parseRegistrationCardText = (text: string): VehicleRegistrationData
   console.log(`  Masse vide: ${data.masseVide || "NON DÉTECTÉ"} kg`);
   console.log(`  PTAC: ${data.masseEnChargeMax || "NON DÉTECTÉ"} kg`);
   console.log(`  Genre: ${data.genreNational || "NON DÉTECTÉ"}`);
-  console.log("=" .repeat(80));
+  console.log("=".repeat(80));
 
   return data;
 };
