@@ -1,31 +1,20 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,58 +26,110 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   Plus,
-  Search,
   ChevronDown,
   ChevronRight,
-  Car,
   Wrench,
   FileText,
   Image,
   Pencil,
   Trash2,
   GripVertical,
-  Eye,
   FolderPlus,
-  Settings,
+  X,
   Copy,
-  Download,
+  BookOpen,
+  Layers,
+  StickyNote,
+  Type,
+  CheckSquare,
+  AlertTriangle,
+  Lightbulb,
+  MoreHorizontal,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
 // Types
-interface Vehicle {
-  id: string;
-  marque: string;
-  modele: string;
-}
-
-interface MechanicalProcedure {
+interface Gamme {
   id: string;
   title: string;
   description?: string;
   vehicle_brand: string;
-  vehicle_model: string;
+  vehicle_model?: string;
   category: string;
+  color: string;
   created_at: string;
   updated_at: string;
-  steps?: ProcedureStep[];
+  user_id: string;
 }
 
-interface ProcedureStep {
+interface Chapter {
   id: string;
-  procedure_id: string;
-  step_number: number;
+  gamme_id: string;
   title: string;
-  description?: string;
-  image_url?: string;
-  drawing_data?: string;
-  notes?: string;
-  duration_minutes?: number;
-  tools_required?: string;
+  order_index: number;
+  is_expanded: boolean;
+  parent_id?: string | null;
+  children?: Chapter[];
 }
 
-// Catégories de gammes de montage
+interface ContentBlock {
+  id: string;
+  chapter_id: string;
+  type: "text" | "checklist" | "warning" | "tip" | "image" | "tools";
+  content: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  color?: string;
+  order_index: number;
+  image_url?: string;
+}
+
+// Couleurs pour les onglets
+const TAB_COLORS = [
+  { value: "blue", label: "Bleu", class: "bg-blue-500", border: "border-blue-500", light: "bg-blue-50" },
+  { value: "green", label: "Vert", class: "bg-green-500", border: "border-green-500", light: "bg-green-50" },
+  { value: "orange", label: "Orange", class: "bg-orange-500", border: "border-orange-500", light: "bg-orange-50" },
+  { value: "purple", label: "Violet", class: "bg-purple-500", border: "border-purple-500", light: "bg-purple-50" },
+  { value: "red", label: "Rouge", class: "bg-red-500", border: "border-red-500", light: "bg-red-50" },
+  { value: "yellow", label: "Jaune", class: "bg-yellow-500", border: "border-yellow-500", light: "bg-yellow-50" },
+  { value: "pink", label: "Rose", class: "bg-pink-500", border: "border-pink-500", light: "bg-pink-50" },
+  { value: "cyan", label: "Cyan", class: "bg-cyan-500", border: "border-cyan-500", light: "bg-cyan-50" },
+];
+
+// Types de blocs
+const BLOCK_TYPES = [
+  { value: "text", label: "Texte", icon: Type, bgColor: "bg-white", borderColor: "border-gray-200" },
+  {
+    value: "checklist",
+    label: "Checklist",
+    icon: CheckSquare,
+    bgColor: "bg-green-50",
+    borderColor: "border-green-300",
+  },
+  {
+    value: "warning",
+    label: "Attention",
+    icon: AlertTriangle,
+    bgColor: "bg-yellow-50",
+    borderColor: "border-yellow-400",
+  },
+  { value: "tip", label: "Astuce", icon: Lightbulb, bgColor: "bg-blue-50", borderColor: "border-blue-300" },
+  { value: "tools", label: "Outils", icon: Wrench, bgColor: "bg-orange-50", borderColor: "border-orange-300" },
+  { value: "image", label: "Image", icon: Image, bgColor: "bg-gray-50", borderColor: "border-gray-300" },
+];
+
+// Catégories
 const PROCEDURE_CATEGORIES = [
   { value: "installation", label: "Installation" },
   { value: "demontage", label: "Démontage" },
@@ -100,118 +141,159 @@ const PROCEDURE_CATEGORIES = [
 ];
 
 const MechanicalProcedures = () => {
-  // États
-  const [procedures, setProcedures] = useState<MechanicalProcedure[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  // États principaux
+  const [gammes, setGammes] = useState<Gamme[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [blocks, setBlocks] = useState<ContentBlock[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedBrand, setSelectedBrand] = useState<string>("all");
-  const [selectedModel, setSelectedModel] = useState<string>("all");
-  
-  // États pour les dialogues
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isStepDialogOpen, setIsStepDialogOpen] = useState(false);
-  
-  // États pour les formulaires
-  const [selectedProcedure, setSelectedProcedure] = useState<MechanicalProcedure | null>(null);
-  const [newProcedure, setNewProcedure] = useState({
+
+  // États de sélection
+  const [activeGammeId, setActiveGammeId] = useState<string | null>(null);
+  const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+
+  // États des dialogues
+  const [isGammeDialogOpen, setIsGammeDialogOpen] = useState(false);
+  const [isChapterDialogOpen, setIsChapterDialogOpen] = useState(false);
+  const [isDeleteGammeDialogOpen, setIsDeleteGammeDialogOpen] = useState(false);
+  const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
+  const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
+
+  // États des formulaires
+  const [newGamme, setNewGamme] = useState({
     title: "",
     description: "",
     vehicle_brand: "",
     vehicle_model: "",
     category: "installation",
+    color: "blue",
   });
-  const [newStep, setNewStep] = useState({
+  const [newChapter, setNewChapter] = useState({
     title: "",
-    description: "",
-    notes: "",
-    duration_minutes: 0,
-    tools_required: "",
+    parent_id: null as string | null,
   });
-  const [editingStep, setEditingStep] = useState<ProcedureStep | null>(null);
-  
-  // États pour l'arborescence
-  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
-  const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
 
-  // Charger les données
+  // État pour l'édition des gammes
+  const [editingGamme, setEditingGamme] = useState<Gamme | null>(null);
+
+  // États pour le drag des blocs
+  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Chapitres expansés
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
+
+  // Charger les données au montage
   useEffect(() => {
-    loadProcedures();
-    loadVehicles();
+    loadGammes();
   }, []);
 
-  const loadProcedures = async () => {
+  // Charger les chapitres quand une gamme est sélectionnée
+  useEffect(() => {
+    if (activeGammeId) {
+      loadChapters(activeGammeId);
+    } else {
+      setChapters([]);
+      setBlocks([]);
+      setActiveChapterId(null);
+    }
+  }, [activeGammeId]);
+
+  // Charger les blocs quand un chapitre est sélectionné
+  useEffect(() => {
+    if (activeChapterId) {
+      loadBlocks(activeChapterId);
+    } else {
+      setBlocks([]);
+    }
+  }, [activeChapterId]);
+
+  // Fonctions de chargement
+  const loadGammes = async () => {
     setIsLoading(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      // Charger les gammes depuis Supabase
-      const { data: proceduresData, error: proceduresError } = await (supabase as any)
-        .from("mechanical_procedures")
+      const { data, error } = await supabase
+        .from("mechanical_gammes")
         .select("*")
         .eq("user_id", userData.user.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
-      if (proceduresError) {
-        console.error("Erreur chargement gammes:", proceduresError);
-        toast.error("Erreur lors du chargement des gammes");
-        return;
-      }
-
-      // Charger les étapes pour chaque gamme
-      if (proceduresData && proceduresData.length > 0) {
-        const procedureIds = proceduresData.map((p: any) => p.id);
-        const { data: stepsData, error: stepsError } = await (supabase as any)
-          .from("mechanical_procedure_steps")
-          .select("*")
-          .in("procedure_id", procedureIds)
-          .order("step_number", { ascending: true });
-
-        if (stepsError) {
-          console.error("Erreur chargement étapes:", stepsError);
+      if (error) {
+        if (error.code === "42P01") {
+          console.log("Table mechanical_gammes n'existe pas encore");
+          setGammes([]);
+        } else {
+          console.error("Erreur chargement gammes:", error);
         }
-
-        // Associer les étapes aux gammes
-        const proceduresWithSteps = proceduresData.map((proc: any) => ({
-          ...proc,
-          steps: stepsData?.filter((s: any) => s.procedure_id === proc.id) || [],
-        }));
-
-        setProcedures(proceduresWithSteps);
       } else {
-        setProcedures([]);
+        setGammes(data || []);
+        if (data && data.length > 0 && !activeGammeId) {
+          setActiveGammeId(data[0].id);
+        }
       }
     } catch (error) {
-      console.error("Erreur chargement:", error);
-      toast.error("Erreur lors du chargement");
+      console.error("Erreur:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadVehicles = async () => {
+  const loadChapters = async (gammeId: string) => {
     try {
-      const { data } = await (supabase as any)
-        .from("vehicles_catalog")
-        .select("id, marque, modele")
-        .order("marque");
-      
-      if (data) {
-        setVehicles(data);
+      const { data, error } = await supabase
+        .from("mechanical_chapters")
+        .select("*")
+        .eq("gamme_id", gammeId)
+        .order("order_index", { ascending: true });
+
+      if (error) {
+        if (error.code !== "42P01") {
+          console.error("Erreur chargement chapitres:", error);
+        }
+        setChapters([]);
+      } else {
+        setChapters(data || []);
+        if (data && data.length > 0) {
+          setActiveChapterId(data[0].id);
+          setExpandedChapters(new Set([data[0].id]));
+        } else {
+          setActiveChapterId(null);
+        }
       }
     } catch (error) {
-      console.error("Erreur chargement véhicules:", error);
+      console.error("Erreur:", error);
+    }
+  };
+
+  const loadBlocks = async (chapterId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("mechanical_blocks")
+        .select("*")
+        .eq("chapter_id", chapterId)
+        .order("order_index", { ascending: true });
+
+      if (error) {
+        if (error.code !== "42P01") {
+          console.error("Erreur chargement blocs:", error);
+        }
+        setBlocks([]);
+      } else {
+        setBlocks(data || []);
+      }
+    } catch (error) {
+      console.error("Erreur:", error);
     }
   };
 
   // Créer une nouvelle gamme
-  const handleCreateProcedure = async () => {
-    if (!newProcedure.title || !newProcedure.vehicle_brand) {
-      toast.error("Veuillez remplir les champs obligatoires");
+  const handleCreateGamme = async () => {
+    if (!newGamme.title) {
+      toast.error("Le titre est obligatoire");
       return;
     }
 
@@ -219,808 +301,916 @@ const MechanicalProcedures = () => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      const { data, error } = await (supabase as any)
-        .from("mechanical_procedures")
+      const { data, error } = await supabase
+        .from("mechanical_gammes")
         .insert({
+          title: newGamme.title,
+          description: newGamme.description || null,
+          vehicle_brand: newGamme.vehicle_brand || null,
+          vehicle_model: newGamme.vehicle_model || null,
+          category: newGamme.category,
+          color: newGamme.color,
           user_id: userData.user.id,
-          title: newProcedure.title,
-          description: newProcedure.description || null,
-          vehicle_brand: newProcedure.vehicle_brand,
-          vehicle_model: newProcedure.vehicle_model || null,
-          category: newProcedure.category,
         })
         .select()
         .single();
 
-      if (error) {
-        console.error("Erreur création:", error);
-        toast.error("Erreur lors de la création");
-        return;
-      }
+      if (error) throw error;
 
-      const newProc: MechanicalProcedure = {
-        ...data,
-        steps: [],
-      };
-
-      setProcedures([newProc, ...procedures]);
-      toast.success("Gamme de montage créée");
-      setIsCreateDialogOpen(false);
-      setNewProcedure({
+      setGammes([...gammes, data]);
+      setActiveGammeId(data.id);
+      setIsGammeDialogOpen(false);
+      setNewGamme({
         title: "",
         description: "",
         vehicle_brand: "",
         vehicle_model: "",
         category: "installation",
+        color: "blue",
       });
-    } catch (error) {
-      console.error("Erreur:", error);
+      toast.success("Gamme créée");
+    } catch (error: any) {
+      console.error("Erreur création gamme:", error);
       toast.error("Erreur lors de la création");
     }
   };
 
-  // Supprimer une gamme
-  const handleDeleteProcedure = async () => {
-    if (!selectedProcedure) return;
-    
+  // Modifier une gamme
+  const handleUpdateGamme = async () => {
+    if (!editingGamme) return;
+
     try {
-      const { error } = await (supabase as any)
-        .from("mechanical_procedures")
-        .delete()
-        .eq("id", selectedProcedure.id);
+      const { error } = await supabase
+        .from("mechanical_gammes")
+        .update({
+          title: editingGamme.title,
+          description: editingGamme.description,
+          vehicle_brand: editingGamme.vehicle_brand,
+          vehicle_model: editingGamme.vehicle_model,
+          category: editingGamme.category,
+          color: editingGamme.color,
+        })
+        .eq("id", editingGamme.id);
 
-      if (error) {
-        console.error("Erreur suppression:", error);
-        toast.error("Erreur lors de la suppression");
-        return;
-      }
+      if (error) throw error;
 
-      setProcedures(procedures.filter(p => p.id !== selectedProcedure.id));
-      toast.success("Gamme de montage supprimée");
-      setIsDeleteDialogOpen(false);
-      setSelectedProcedure(null);
+      setGammes(gammes.map((g) => (g.id === editingGamme.id ? editingGamme : g)));
+      setIsEditGammeDialogOpen(false);
+      setEditingGamme(null);
+      toast.success("Gamme modifiée");
     } catch (error) {
-      console.error("Erreur:", error);
+      console.error("Erreur modification gamme:", error);
+      toast.error("Erreur lors de la modification");
+    }
+  };
+
+  // Supprimer une gamme
+  const handleDeleteGamme = async () => {
+    if (!activeGammeId) return;
+
+    try {
+      const { error } = await supabase.from("mechanical_gammes").delete().eq("id", activeGammeId);
+
+      if (error) throw error;
+
+      const newGammes = gammes.filter((g) => g.id !== activeGammeId);
+      setGammes(newGammes);
+      setActiveGammeId(newGammes.length > 0 ? newGammes[0].id : null);
+      setIsDeleteGammeDialogOpen(false);
+      toast.success("Gamme supprimée");
+    } catch (error) {
+      console.error("Erreur suppression gamme:", error);
       toast.error("Erreur lors de la suppression");
     }
   };
 
-  // Ajouter une étape
-  const handleAddStep = async () => {
-    if (!selectedProcedure || !newStep.title) {
-      toast.error("Veuillez remplir le titre de l'étape");
+  // Créer un chapitre
+  const handleCreateChapter = async () => {
+    if (!newChapter.title || !activeGammeId) {
+      toast.error("Le titre est obligatoire");
       return;
     }
 
     try {
-      const stepNumber = (selectedProcedure.steps?.length || 0) + 1;
-      
-      const { data, error } = await (supabase as any)
-        .from("mechanical_procedure_steps")
+      const { data, error } = await supabase
+        .from("mechanical_chapters")
         .insert({
-          procedure_id: selectedProcedure.id,
-          step_number: stepNumber,
-          title: newStep.title,
-          description: newStep.description || null,
-          notes: newStep.notes || null,
-          duration_minutes: newStep.duration_minutes || null,
-          tools_required: newStep.tools_required || null,
+          gamme_id: activeGammeId,
+          title: newChapter.title,
+          parent_id: newChapter.parent_id,
+          order_index: chapters.length,
+          is_expanded: true,
         })
         .select()
         .single();
 
-      if (error) {
-        console.error("Erreur ajout étape:", error);
-        toast.error("Erreur lors de l'ajout de l'étape");
-        return;
-      }
+      if (error) throw error;
 
-      const updatedSteps = [...(selectedProcedure.steps || []), data];
-      
-      // Mettre à jour la gamme sélectionnée
-      setSelectedProcedure({
-        ...selectedProcedure,
-        steps: updatedSteps,
-      });
-
-      // Mettre à jour la liste des gammes
-      setProcedures(procedures.map(p => {
-        if (p.id === selectedProcedure.id) {
-          return { ...p, steps: updatedSteps };
-        }
-        return p;
-      }));
-      
-      toast.success("Étape ajoutée");
-      setIsStepDialogOpen(false);
-      setNewStep({
-        title: "",
-        description: "",
-        notes: "",
-        duration_minutes: 0,
-        tools_required: "",
-      });
+      setChapters([...chapters, data]);
+      setActiveChapterId(data.id);
+      setExpandedChapters(new Set([...expandedChapters, data.id]));
+      setIsChapterDialogOpen(false);
+      setNewChapter({ title: "", parent_id: null });
+      toast.success("Chapitre créé");
     } catch (error) {
-      console.error("Erreur:", error);
-      toast.error("Erreur lors de l'ajout de l'étape");
+      console.error("Erreur création chapitre:", error);
+      toast.error("Erreur lors de la création");
     }
   };
 
-  // Supprimer une étape
-  const handleDeleteStep = async (stepId: string) => {
-    if (!selectedProcedure) return;
+  // Supprimer un chapitre
+  const handleDeleteChapter = async () => {
+    if (!activeChapterId) return;
 
     try {
-      const { error } = await (supabase as any)
-        .from("mechanical_procedure_steps")
-        .delete()
-        .eq("id", stepId);
+      const { error } = await supabase.from("mechanical_chapters").delete().eq("id", activeChapterId);
 
-      if (error) {
-        console.error("Erreur suppression étape:", error);
-        toast.error("Erreur lors de la suppression");
-        return;
-      }
+      if (error) throw error;
 
-      // Recalculer les numéros d'étapes
-      const remainingSteps = selectedProcedure.steps?.filter(s => s.id !== stepId) || [];
-      
-      // Mettre à jour les numéros d'étapes dans Supabase
-      for (let i = 0; i < remainingSteps.length; i++) {
-        if (remainingSteps[i].step_number !== i + 1) {
-          await (supabase as any)
-            .from("mechanical_procedure_steps")
-            .update({ step_number: i + 1 })
-            .eq("id", remainingSteps[i].id);
-          remainingSteps[i].step_number = i + 1;
-        }
-      }
-
-      setSelectedProcedure({
-        ...selectedProcedure,
-        steps: remainingSteps,
-      });
-
-      setProcedures(procedures.map(p => {
-        if (p.id === selectedProcedure.id) {
-          return { ...p, steps: remainingSteps };
-        }
-        return p;
-      }));
-
-      toast.success("Étape supprimée");
+      const newChapters = chapters.filter((c) => c.id !== activeChapterId);
+      setChapters(newChapters);
+      setActiveChapterId(newChapters.length > 0 ? newChapters[0].id : null);
+      setIsDeleteChapterDialogOpen(false);
+      toast.success("Chapitre supprimé");
     } catch (error) {
-      console.error("Erreur:", error);
+      console.error("Erreur suppression chapitre:", error);
       toast.error("Erreur lors de la suppression");
     }
   };
 
-  // Upload d'image pour une étape
-  const handleImageUpload = async (stepId: string, file: File) => {
-    if (!selectedProcedure) return;
+  // Créer un bloc
+  const handleCreateBlock = async (type: string) => {
+    if (!activeChapterId) {
+      toast.error("Sélectionnez un chapitre d'abord");
+      return;
+    }
 
+    try {
+      const { data, error } = await supabase
+        .from("mechanical_blocks")
+        .insert({
+          chapter_id: activeChapterId,
+          type: type,
+          content: type === "checklist" ? "[] Étape 1\n[] Étape 2" : "",
+          position_x: 50 + Math.random() * 100,
+          position_y: 50 + blocks.length * 20,
+          width: 300,
+          height: type === "image" ? 200 : 150,
+          order_index: blocks.length,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setBlocks([...blocks, data]);
+      setSelectedBlockId(data.id);
+      toast.success("Bloc ajouté");
+    } catch (error) {
+      console.error("Erreur création bloc:", error);
+      toast.error("Erreur lors de la création");
+    }
+  };
+
+  // Mettre à jour un bloc
+  const handleUpdateBlock = async (blockId: string, updates: Partial<ContentBlock>) => {
+    try {
+      const { error } = await supabase.from("mechanical_blocks").update(updates).eq("id", blockId);
+
+      if (error) throw error;
+
+      setBlocks(blocks.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
+    } catch (error) {
+      console.error("Erreur mise à jour bloc:", error);
+    }
+  };
+
+  // Supprimer un bloc
+  const handleDeleteBlock = async (blockId: string) => {
+    try {
+      const { error } = await supabase.from("mechanical_blocks").delete().eq("id", blockId);
+
+      if (error) throw error;
+
+      setBlocks(blocks.filter((b) => b.id !== blockId));
+      setSelectedBlockId(null);
+      toast.success("Bloc supprimé");
+    } catch (error) {
+      console.error("Erreur suppression bloc:", error);
+      toast.error("Erreur lors de la suppression");
+    }
+  };
+
+  // Drag & Drop des blocs
+  const handleBlockMouseDown = (e: React.MouseEvent, blockId: string) => {
+    if ((e.target as HTMLElement).closest(".block-content")) return;
+
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    setDraggingBlockId(blockId);
+    setSelectedBlockId(blockId);
+
+    const rect = (e.target as HTMLElement).closest(".content-block")?.getBoundingClientRect();
+    if (rect) {
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
+    }
+  };
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!draggingBlockId || !canvasRef.current) return;
+
+      const canvasRect = canvasRef.current.getBoundingClientRect();
+      const newX = e.clientX - canvasRect.left - dragOffset.x;
+      const newY = e.clientY - canvasRect.top - dragOffset.y;
+
+      setBlocks(
+        blocks.map((b) =>
+          b.id === draggingBlockId ? { ...b, position_x: Math.max(0, newX), position_y: Math.max(0, newY) } : b,
+        ),
+      );
+    },
+    [draggingBlockId, dragOffset, blocks],
+  );
+
+  const handleMouseUp = useCallback(() => {
+    if (draggingBlockId) {
+      const block = blocks.find((b) => b.id === draggingBlockId);
+      if (block) {
+        handleUpdateBlock(draggingBlockId, {
+          position_x: block.position_x,
+          position_y: block.position_y,
+        });
+      }
+      setDraggingBlockId(null);
+    }
+  }, [draggingBlockId, blocks]);
+
+  useEffect(() => {
+    if (draggingBlockId) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [draggingBlockId, handleMouseMove, handleMouseUp]);
+
+  // Upload d'image pour un bloc
+  const handleImageUpload = async (blockId: string, file: File) => {
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
-      // Upload vers Supabase Storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${userData.user.id}/${selectedProcedure.id}/${stepId}_${Date.now()}.${fileExt}`;
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("mechanical-images")
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: true,
-        });
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${userData.user.id}/${blockId}-${Date.now()}.${fileExt}`;
 
-      if (uploadError) {
-        console.error("Erreur upload:", uploadError);
-        // Fallback: stocker en base64 si le bucket n'existe pas
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const imageUrl = e.target?.result as string;
-          await updateStepImage(stepId, imageUrl);
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
+      const { error: uploadError } = await supabase.storage.from("mechanical-images").upload(fileName, file);
 
-      // Obtenir l'URL publique
-      const { data: urlData } = supabase.storage
-        .from("mechanical-images")
-        .getPublicUrl(fileName);
+      if (uploadError) throw uploadError;
 
-      await updateStepImage(stepId, urlData.publicUrl);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("mechanical-images").getPublicUrl(fileName);
+
+      await handleUpdateBlock(blockId, { image_url: publicUrl, content: publicUrl });
+      toast.success("Image uploadée");
     } catch (error) {
-      console.error("Erreur:", error);
-      toast.error("Erreur lors de l'upload de l'image");
+      console.error("Erreur upload:", error);
+      toast.error("Erreur lors de l'upload");
     }
   };
 
-  // Mettre à jour l'image d'une étape
-  const updateStepImage = async (stepId: string, imageUrl: string) => {
-    if (!selectedProcedure) return;
-
-    const { error } = await (supabase as any)
-      .from("mechanical_procedure_steps")
-      .update({ image_url: imageUrl })
-      .eq("id", stepId);
-
-    if (error) {
-      console.error("Erreur mise à jour image:", error);
-      toast.error("Erreur lors de la mise à jour");
-      return;
-    }
-
-    const updatedSteps = selectedProcedure.steps?.map(s => {
-      if (s.id === stepId) {
-        return { ...s, image_url: imageUrl };
-      }
-      return s;
-    }) || [];
-
-    setSelectedProcedure({
-      ...selectedProcedure,
-      steps: updatedSteps,
-    });
-
-    setProcedures(procedures.map(p => {
-      if (p.id === selectedProcedure.id) {
-        return { ...p, steps: updatedSteps };
-      }
-      return p;
-    }));
-
-    toast.success("Image ajoutée");
-  };
-
-  // Organiser les données par marque/modèle
-  const organizedData = () => {
-    const filtered = procedures.filter(p => {
-      const matchesSearch = searchQuery === "" || 
-        p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.description?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesBrand = selectedBrand === "all" || p.vehicle_brand === selectedBrand;
-      const matchesModel = selectedModel === "all" || p.vehicle_model === selectedModel;
-      return matchesSearch && matchesBrand && matchesModel;
-    });
-
-    const byBrand: Record<string, Record<string, MechanicalProcedure[]>> = {};
-    
-    filtered.forEach(p => {
-      const brand = p.vehicle_brand || "Sans marque";
-      const model = p.vehicle_model || "Tous modèles";
-      
-      if (!byBrand[brand]) byBrand[brand] = {};
-      if (!byBrand[brand][model]) byBrand[brand][model] = [];
-      byBrand[brand][model].push(p);
-    });
-
-    return byBrand;
-  };
-
-  // Obtenir les marques uniques
-  const uniqueBrands = [...new Set(vehicles.map(v => v.marque))].sort();
-  
-  // Obtenir les modèles pour une marque
-  const getModelsForBrand = (brand: string) => {
-    return [...new Set(vehicles.filter(v => v.marque === brand).map(v => v.modele))].sort();
-  };
-
-  // Toggle expansion
-  const toggleBrand = (brand: string) => {
-    const newExpanded = new Set(expandedBrands);
-    if (newExpanded.has(brand)) {
-      newExpanded.delete(brand);
+  // Toggle chapitre
+  const toggleChapter = (chapterId: string) => {
+    const newExpanded = new Set(expandedChapters);
+    if (newExpanded.has(chapterId)) {
+      newExpanded.delete(chapterId);
     } else {
-      newExpanded.add(brand);
+      newExpanded.add(chapterId);
     }
-    setExpandedBrands(newExpanded);
+    setExpandedChapters(newExpanded);
   };
 
-  const toggleModel = (key: string) => {
-    const newExpanded = new Set(expandedModels);
-    if (newExpanded.has(key)) {
-      newExpanded.delete(key);
-    } else {
-      newExpanded.add(key);
-    }
-    setExpandedModels(newExpanded);
+  // Obtenir la gamme active
+  const activeGamme = gammes.find((g) => g.id === activeGammeId);
+  const activeGammeColor = TAB_COLORS.find((c) => c.value === activeGamme?.color) || TAB_COLORS[0];
+
+  // Construire l'arborescence des chapitres
+  const buildChapterTree = (chapters: Chapter[], parentId: string | null = null): Chapter[] => {
+    return chapters
+      .filter((c) => c.parent_id === parentId)
+      .map((c) => ({
+        ...c,
+        children: buildChapterTree(chapters, c.id),
+      }));
   };
 
-  const data = organizedData();
+  const chapterTree = buildChapterTree(chapters);
+
+  // Rendu récursif des chapitres
+  const renderChapters = (chapterList: Chapter[], level: number = 0) => {
+    return chapterList.map((chapter) => (
+      <div key={chapter.id} className="group">
+        <div
+          className={`flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
+            activeChapterId === chapter.id
+              ? `${activeGammeColor.light} border-l-4 ${activeGammeColor.border}`
+              : "hover:bg-muted"
+          }`}
+          style={{ paddingLeft: `${8 + level * 16}px` }}
+          onClick={() => setActiveChapterId(chapter.id)}
+        >
+          {chapter.children && chapter.children.length > 0 ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleChapter(chapter.id);
+              }}
+              className="p-0.5 hover:bg-muted rounded"
+            >
+              {expandedChapters.has(chapter.id) ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </button>
+          ) : (
+            <span className="w-4" />
+          )}
+          <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <span className="text-sm truncate flex-1">{chapter.title}</span>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-1 hover:bg-muted rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-3 w-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem
+                onClick={() => {
+                  setNewChapter({ title: "", parent_id: chapter.id });
+                  setIsChapterDialogOpen(true);
+                }}
+              >
+                <FolderPlus className="h-4 w-4 mr-2" />
+                Ajouter sous-chapitre
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-red-600"
+                onClick={() => {
+                  setActiveChapterId(chapter.id);
+                  setIsDeleteChapterDialogOpen(true);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Supprimer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {chapter.children && chapter.children.length > 0 && expandedChapters.has(chapter.id) && (
+          <div>{renderChapters(chapter.children, level + 1)}</div>
+        )}
+      </div>
+    ));
+  };
+
+  // Rendu d'un bloc
+  const renderBlock = (block: ContentBlock) => {
+    const blockType = BLOCK_TYPES.find((t) => t.value === block.type) || BLOCK_TYPES[0];
+    const IconComponent = blockType.icon;
+
+    return (
+      <div
+        key={block.id}
+        className={`content-block absolute rounded-lg border-2 shadow-md transition-shadow ${
+          selectedBlockId === block.id ? "ring-2 ring-blue-500 shadow-lg" : ""
+        } ${blockType.bgColor} ${blockType.borderColor}`}
+        style={{
+          left: block.position_x,
+          top: block.position_y,
+          width: block.width,
+          minHeight: block.height,
+          cursor: draggingBlockId === block.id ? "grabbing" : "grab",
+        }}
+        onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
+        onClick={() => setSelectedBlockId(block.id)}
+      >
+        {/* Header du bloc */}
+        <div className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 rounded-t-lg`}>
+          <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+          <IconComponent className="h-4 w-4" />
+          <span className="text-xs font-medium flex-1">{blockType.label}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteBlock(block.id);
+            }}
+            className="p-1 hover:bg-red-100 rounded text-red-500"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+
+        {/* Contenu du bloc */}
+        <div className="block-content p-3">
+          {block.type === "image" ? (
+            <div>
+              {block.image_url ? (
+                <img src={block.image_url} alt="Illustration" className="max-w-full rounded" />
+              ) : (
+                <label className="flex flex-col items-center justify-center h-32 border-2 border-dashed rounded cursor-pointer hover:bg-muted/50">
+                  <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                  <span className="text-sm text-muted-foreground">Cliquer pour uploader</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImageUpload(block.id, file);
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          ) : (
+            <Textarea
+              value={block.content}
+              onChange={(e) => handleUpdateBlock(block.id, { content: e.target.value })}
+              className="min-h-[80px] bg-transparent border-none resize-none focus-visible:ring-0 p-0"
+              placeholder={
+                block.type === "checklist"
+                  ? "[] Étape 1\n[] Étape 2\n[] Étape 3"
+                  : block.type === "warning"
+                    ? "⚠️ Point d'attention important..."
+                    : block.type === "tip"
+                      ? "💡 Astuce utile..."
+                      : block.type === "tools"
+                        ? "🔧 Outils nécessaires..."
+                        : "Saisissez votre texte..."
+              }
+            />
+          )}
+        </div>
+
+        {/* Poignée de redimensionnement */}
+        <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize">
+          <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-gray-400" />
+        </div>
+      </div>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[600px]">
+        <div className="text-muted-foreground">Chargement...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      {/* Header avec recherche et actions */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Wrench className="h-6 w-6" />
-          <h2 className="text-xl font-bold">Gammes de montage</h2>
-          <Badge variant="secondary">{procedures.length}</Badge>
-        </div>
-        
-        <div className="flex gap-2">
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nouvelle gamme
-          </Button>
-        </div>
-      </div>
+    <div className="flex flex-col h-[calc(100vh-300px)] min-h-[600px] border rounded-lg overflow-hidden bg-background">
+      {/* Onglets des gammes en haut */}
+      <div className="flex items-center border-b bg-muted/30 px-2">
+        <ScrollArea className="flex-1">
+          <div className="flex items-center gap-1 py-2">
+            {gammes.map((gamme) => {
+              const color = TAB_COLORS.find((c) => c.value === gamme.color) || TAB_COLORS[0];
+              const isActive = gamme.id === activeGammeId;
 
-      {/* Filtres */}
-      <div className="flex flex-wrap gap-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher une gamme..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        
-        <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Toutes marques" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Toutes marques</SelectItem>
-            {uniqueBrands.map(brand => (
-              <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {selectedBrand !== "all" && (
-          <Select value={selectedModel} onValueChange={setSelectedModel}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Tous modèles" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous modèles</SelectItem>
-              {getModelsForBrand(selectedBrand).map(model => (
-                <SelectItem key={model} value={model}>{model}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
-
-      {/* Arborescence par marque/modèle */}
-      <ScrollArea className="h-[calc(100vh-350px)]">
-        {isLoading ? (
-          <div className="text-center py-8 text-muted-foreground">Chargement...</div>
-        ) : Object.keys(data).length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Wrench className="h-12 w-12 mx-auto mb-4 opacity-20" />
-            <p className="text-lg font-medium">Aucune gamme de montage</p>
-            <p className="text-sm">Créez votre première gamme de montage</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {Object.entries(data).sort().map(([brand, models]) => (
-              <Collapsible
-                key={brand}
-                open={expandedBrands.has(brand)}
-                onOpenChange={() => toggleBrand(brand)}
-              >
-                <CollapsibleTrigger asChild>
-                  <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                    <CardHeader className="py-3 px-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {expandedBrands.has(brand) ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                          <Car className="h-5 w-5 text-primary" />
-                          <span className="font-semibold">{brand}</span>
-                        </div>
-                        <Badge variant="outline">
-                          {Object.values(models).flat().length} gamme(s)
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                </CollapsibleTrigger>
-                
-                <CollapsibleContent className="pl-6 mt-2 space-y-2">
-                  {Object.entries(models).sort().map(([model, procs]) => (
-                    <Collapsible
-                      key={`${brand}-${model}`}
-                      open={expandedModels.has(`${brand}-${model}`)}
-                      onOpenChange={() => toggleModel(`${brand}-${model}`)}
+              return (
+                <ContextMenu key={gamme.id}>
+                  <ContextMenuTrigger>
+                    <button
+                      onClick={() => setActiveGammeId(gamme.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-t-lg border-t border-l border-r transition-all ${
+                        isActive
+                          ? `${color.light} border-${color.value}-300 bg-white -mb-px`
+                          : "bg-muted/50 border-transparent hover:bg-muted"
+                      }`}
                     >
-                      <CollapsibleTrigger asChild>
-                        <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                          <CardHeader className="py-2 px-4">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                {expandedModels.has(`${brand}-${model}`) ? (
-                                  <ChevronDown className="h-4 w-4" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4" />
-                                )}
-                                <span className="font-medium">{model}</span>
-                              </div>
-                              <Badge variant="secondary" className="text-xs">
-                                {procs.length}
-                              </Badge>
-                            </div>
-                          </CardHeader>
-                        </Card>
-                      </CollapsibleTrigger>
-                      
-                      <CollapsibleContent className="pl-6 mt-2 space-y-2">
-                        {procs.map(proc => (
-                          <Card 
-                            key={proc.id} 
-                            className="hover:border-primary/50 transition-colors"
-                          >
-                            <CardContent className="py-3 px-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <FileText className="h-4 w-4 text-muted-foreground" />
-                                  <div>
-                                    <p className="font-medium">{proc.title}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <Badge variant="outline" className="text-xs">
-                                        {PROCEDURE_CATEGORIES.find(c => c.value === proc.category)?.label}
-                                      </Badge>
-                                      <span className="text-xs text-muted-foreground">
-                                        {proc.steps?.length || 0} étape(s)
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      setSelectedProcedure(proc);
-                                      setIsViewDialogOpen(true);
-                                    }}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      setSelectedProcedure(proc);
-                                      setIsDeleteDialogOpen(true);
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-red-500" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
+                      <div className={`w-3 h-3 rounded-full ${color.class}`} />
+                      <span className={`text-sm font-medium ${isActive ? "" : "text-muted-foreground"}`}>
+                        {gamme.title}
+                      </span>
+                    </button>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem
+                      onClick={() => {
+                        setEditingGamme(gamme);
+                        setIsEditGammeDialogOpen(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Modifier
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() => {
+                        navigator.clipboard.writeText(gamme.title);
+                        toast.success("Nom copié");
+                      }}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copier le nom
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      className="text-red-600"
+                      onClick={() => {
+                        setActiveGammeId(gamme.id);
+                        setIsDeleteGammeDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Supprimer
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              );
+            })}
 
-      {/* Dialog création */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-lg">
+            {/* Bouton ajouter gamme */}
+            <Button variant="ghost" size="sm" className="h-8 px-3" onClick={() => setIsGammeDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Nouvelle gamme
+            </Button>
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* Zone principale */}
+      {activeGammeId ? (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Sidebar chapitres à gauche */}
+          <div className="w-64 border-r flex flex-col bg-muted/10">
+            {/* Header sidebar */}
+            <div className="p-3 border-b flex items-center justify-between bg-muted/20">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4" />
+                <span className="font-medium text-sm">Chapitres</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  setNewChapter({ title: "", parent_id: null });
+                  setIsChapterDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Liste des chapitres */}
+            <ScrollArea className="flex-1">
+              <div className="p-2 space-y-0.5">
+                {chapters.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FolderPlus className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Aucun chapitre</p>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      onClick={() => {
+                        setNewChapter({ title: "", parent_id: null });
+                        setIsChapterDialogOpen(true);
+                      }}
+                    >
+                      Créer un chapitre
+                    </Button>
+                  </div>
+                ) : (
+                  renderChapters(chapterTree)
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+
+          {/* Zone de contenu centrale */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Barre d'outils */}
+            <div className="flex items-center gap-2 p-2 border-b bg-muted/10">
+              <span className="text-sm text-muted-foreground mr-2">Ajouter :</span>
+              {BLOCK_TYPES.map((type) => {
+                const IconComponent = type.icon;
+                return (
+                  <Button
+                    key={type.value}
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => handleCreateBlock(type.value)}
+                    disabled={!activeChapterId}
+                  >
+                    <IconComponent className="h-4 w-4 mr-1" />
+                    {type.label}
+                  </Button>
+                );
+              })}
+            </div>
+
+            {/* Canvas des blocs */}
+            <div
+              ref={canvasRef}
+              className="flex-1 relative overflow-auto bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAyMCAwIEwgMCAwIDAgMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2UwZTBlMCIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')]"
+              onClick={() => setSelectedBlockId(null)}
+            >
+              {!activeChapterId ? (
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>Sélectionnez ou créez un chapitre</p>
+                  </div>
+                </div>
+              ) : blocks.length === 0 ? (
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <StickyNote className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p>Aucun bloc dans ce chapitre</p>
+                    <p className="text-sm">Utilisez la barre d'outils pour ajouter du contenu</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative min-h-full min-w-full" style={{ minHeight: "1000px", minWidth: "1500px" }}>
+                  {blocks.map(renderBlock)}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-muted-foreground">
+          <div className="text-center">
+            <Layers className="h-16 w-16 mx-auto mb-4 opacity-30" />
+            <h3 className="text-lg font-medium mb-2">Aucune gamme de montage</h3>
+            <p className="text-sm mb-4">Créez votre première gamme pour documenter vos procédures</p>
+            <Button onClick={() => setIsGammeDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Créer une gamme
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Dialog création gamme */}
+      <Dialog open={isGammeDialogOpen} onOpenChange={setIsGammeDialogOpen}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Nouvelle gamme de montage</DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label>Titre *</Label>
               <Input
-                value={newProcedure.title}
-                onChange={(e) => setNewProcedure({ ...newProcedure, title: e.target.value })}
+                value={newGamme.title}
+                onChange={(e) => setNewGamme({ ...newGamme, title: e.target.value })}
                 placeholder="Ex: Installation chauffage Webasto"
               />
             </div>
-            
+
             <div>
               <Label>Description</Label>
               <Textarea
-                value={newProcedure.description}
-                onChange={(e) => setNewProcedure({ ...newProcedure, description: e.target.value })}
-                placeholder="Description de la procédure..."
+                value={newGamme.description}
+                onChange={(e) => setNewGamme({ ...newGamme, description: e.target.value })}
+                placeholder="Description de la gamme..."
               />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Marque du véhicule *</Label>
-                <Select
-                  value={newProcedure.vehicle_brand}
-                  onValueChange={(v) => setNewProcedure({ ...newProcedure, vehicle_brand: v, vehicle_model: "" })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {uniqueBrands.map(brand => (
-                      <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label>Modèle</Label>
-                <Select
-                  value={newProcedure.vehicle_model || "__all__"}
-                  onValueChange={(v) => setNewProcedure({ ...newProcedure, vehicle_model: v === "__all__" ? "" : v })}
-                  disabled={!newProcedure.vehicle_brand}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Tous modèles</SelectItem>
-                    {newProcedure.vehicle_brand && getModelsForBrand(newProcedure.vehicle_brand).map(model => (
-                      <SelectItem key={model} value={model}>{model}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <div>
-              <Label>Catégorie</Label>
-              <Select
-                value={newProcedure.category}
-                onValueChange={(v) => setNewProcedure({ ...newProcedure, category: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROCEDURE_CATEGORIES.map(cat => (
-                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-              Annuler
-            </Button>
-            <Button onClick={handleCreateProcedure}>
-              Créer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog visualisation/édition */}
-      <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Wrench className="h-5 w-5" />
-              {selectedProcedure?.title}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {selectedProcedure && (
-            <div className="flex-1 overflow-hidden flex flex-col">
-              {/* Info de la gamme */}
-              <div className="flex items-center gap-4 pb-4 border-b">
-                <Badge>{selectedProcedure.vehicle_brand}</Badge>
-                {selectedProcedure.vehicle_model && (
-                  <Badge variant="outline">{selectedProcedure.vehicle_model}</Badge>
-                )}
-                <Badge variant="secondary">
-                  {PROCEDURE_CATEGORIES.find(c => c.value === selectedProcedure.category)?.label}
-                </Badge>
-                <span className="text-sm text-muted-foreground ml-auto">
-                  {selectedProcedure.steps?.length || 0} étape(s)
-                </span>
-              </div>
-              
-              {selectedProcedure.description && (
-                <p className="text-sm text-muted-foreground py-2">
-                  {selectedProcedure.description}
-                </p>
-              )}
-              
-              {/* Liste des étapes */}
-              <ScrollArea className="flex-1 mt-4">
-                <div className="space-y-4 pr-4">
-                  {selectedProcedure.steps?.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <p>Aucune étape pour cette gamme</p>
-                      <p className="text-sm">Ajoutez des étapes avec le bouton ci-dessous</p>
-                    </div>
-                  ) : (
-                    selectedProcedure.steps?.map((step, index) => (
-                      <Card key={step.id} className="overflow-hidden">
-                        <CardHeader className="py-3 bg-muted/30">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
-                                {step.step_number}
-                              </div>
-                              <span className="font-semibold">{step.title}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {step.duration_minutes && (
-                                <Badge variant="outline" className="text-xs">
-                                  {step.duration_minutes} min
-                                </Badge>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteStep(step.id)}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="py-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Image */}
-                            <div className="space-y-2">
-                              {step.image_url ? (
-                                <img 
-                                  src={step.image_url} 
-                                  alt={step.title}
-                                  className="rounded-lg border max-h-[200px] w-full object-contain bg-muted"
-                                />
-                              ) : (
-                                <div className="h-[150px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center text-muted-foreground">
-                                  <Image className="h-8 w-8 mb-2" />
-                                  <span className="text-sm">Aucune image</span>
-                                </div>
-                              )}
-                              <Input
-                                type="file"
-                                accept="image/*"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) handleImageUpload(step.id, file);
-                                }}
-                                className="text-sm"
-                              />
-                            </div>
-                            
-                            {/* Description */}
-                            <div className="space-y-3">
-                              {step.description && (
-                                <div>
-                                  <Label className="text-xs text-muted-foreground">Description</Label>
-                                  <p className="text-sm">{step.description}</p>
-                                </div>
-                              )}
-                              {step.tools_required && (
-                                <div>
-                                  <Label className="text-xs text-muted-foreground">Outils nécessaires</Label>
-                                  <p className="text-sm">{step.tools_required}</p>
-                                </div>
-                              )}
-                              {step.notes && (
-                                <div>
-                                  <Label className="text-xs text-muted-foreground">Notes</Label>
-                                  <p className="text-sm text-yellow-600">{step.notes}</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
-              
-              {/* Bouton ajouter étape */}
-              <div className="pt-4 border-t">
-                <Button onClick={() => setIsStepDialogOpen(true)} className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Ajouter une étape
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog ajout étape */}
-      <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Ajouter une étape</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label>Titre de l'étape *</Label>
-              <Input
-                value={newStep.title}
-                onChange={(e) => setNewStep({ ...newStep, title: e.target.value })}
-                placeholder="Ex: Déposer le panneau de porte"
-              />
-            </div>
-            
-            <div>
-              <Label>Description</Label>
-              <Textarea
-                value={newStep.description}
-                onChange={(e) => setNewStep({ ...newStep, description: e.target.value })}
-                placeholder="Décrivez les actions à effectuer..."
-              />
-            </div>
-            
-            <div>
-              <Label>Outils nécessaires</Label>
-              <Input
-                value={newStep.tools_required}
-                onChange={(e) => setNewStep({ ...newStep, tools_required: e.target.value })}
-                placeholder="Ex: Tournevis Torx T20, Clé de 10"
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Durée estimée (minutes)</Label>
+                <Label>Marque véhicule</Label>
                 <Input
-                  type="number"
-                  value={newStep.duration_minutes || ""}
-                  onChange={(e) => setNewStep({ ...newStep, duration_minutes: parseInt(e.target.value) || 0 })}
-                  placeholder="15"
+                  value={newGamme.vehicle_brand}
+                  onChange={(e) => setNewGamme({ ...newGamme, vehicle_brand: e.target.value })}
+                  placeholder="Ex: Fiat"
+                />
+              </div>
+              <div>
+                <Label>Modèle véhicule</Label>
+                <Input
+                  value={newGamme.vehicle_model}
+                  onChange={(e) => setNewGamme({ ...newGamme, vehicle_model: e.target.value })}
+                  placeholder="Ex: Ducato"
                 />
               </div>
             </div>
-            
-            <div>
-              <Label>Notes / Attention</Label>
-              <Textarea
-                value={newStep.notes}
-                onChange={(e) => setNewStep({ ...newStep, notes: e.target.value })}
-                placeholder="Points d'attention, risques..."
-                className="border-yellow-300"
-              />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Catégorie</Label>
+                <Select value={newGamme.category} onValueChange={(v) => setNewGamme({ ...newGamme, category: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROCEDURE_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Couleur de l'onglet</Label>
+                <Select value={newGamme.color} onValueChange={(v) => setNewGamme({ ...newGamme, color: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TAB_COLORS.map((color) => (
+                      <SelectItem key={color.value} value={color.value}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full ${color.class}`} />
+                          {color.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
-          
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsStepDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setIsGammeDialogOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={handleAddStep}>
-              Ajouter
-            </Button>
+            <Button onClick={handleCreateGamme}>Créer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog confirmation suppression */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      {/* Dialog modification gamme */}
+      <Dialog open={isEditGammeDialogOpen} onOpenChange={setIsEditGammeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifier la gamme</DialogTitle>
+          </DialogHeader>
+
+          {editingGamme && (
+            <div className="space-y-4">
+              <div>
+                <Label>Titre *</Label>
+                <Input
+                  value={editingGamme.title}
+                  onChange={(e) => setEditingGamme({ ...editingGamme, title: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Description</Label>
+                <Textarea
+                  value={editingGamme.description || ""}
+                  onChange={(e) => setEditingGamme({ ...editingGamme, description: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Marque véhicule</Label>
+                  <Input
+                    value={editingGamme.vehicle_brand || ""}
+                    onChange={(e) => setEditingGamme({ ...editingGamme, vehicle_brand: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Modèle véhicule</Label>
+                  <Input
+                    value={editingGamme.vehicle_model || ""}
+                    onChange={(e) => setEditingGamme({ ...editingGamme, vehicle_model: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Catégorie</Label>
+                  <Select
+                    value={editingGamme.category}
+                    onValueChange={(v) => setEditingGamme({ ...editingGamme, category: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROCEDURE_CATEGORIES.map((cat) => (
+                        <SelectItem key={cat.value} value={cat.value}>
+                          {cat.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Couleur de l'onglet</Label>
+                  <Select
+                    value={editingGamme.color}
+                    onValueChange={(v) => setEditingGamme({ ...editingGamme, color: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TAB_COLORS.map((color) => (
+                        <SelectItem key={color.value} value={color.value}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-4 h-4 rounded-full ${color.class}`} />
+                            {color.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditGammeDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleUpdateGamme}>Enregistrer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog création chapitre */}
+      <Dialog open={isChapterDialogOpen} onOpenChange={setIsChapterDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{newChapter.parent_id ? "Nouveau sous-chapitre" : "Nouveau chapitre"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label>Titre *</Label>
+              <Input
+                value={newChapter.title}
+                onChange={(e) => setNewChapter({ ...newChapter, title: e.target.value })}
+                placeholder="Ex: Préparation du véhicule"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsChapterDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleCreateChapter}>Créer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog suppression gamme */}
+      <AlertDialog open={isDeleteGammeDialogOpen} onOpenChange={setIsDeleteGammeDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette gamme ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est irréversible. La gamme "{selectedProcedure?.title}" et toutes ses étapes seront supprimées.
+              Cette action est irréversible. La gamme "{activeGamme?.title}" et tous ses chapitres seront supprimés.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteProcedure} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction onClick={handleDeleteGamme} className="bg-red-600 hover:bg-red-700">
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog suppression chapitre */}
+      <AlertDialog open={isDeleteChapterDialogOpen} onOpenChange={setIsDeleteChapterDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce chapitre ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Le chapitre et tout son contenu seront supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteChapter} className="bg-red-600 hover:bg-red-700">
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>
