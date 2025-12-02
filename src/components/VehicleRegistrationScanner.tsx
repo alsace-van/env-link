@@ -203,7 +203,7 @@ export function mapToSupabaseColumns(data: VehicleRegistrationData) {
 // COMPONENT
 // ============================================
 
-interface VehicleRegistrationScannerProps {
+export interface VehicleRegistrationScannerProps {
   onDataExtracted: (data: VehicleRegistrationData) => void;
 }
 
