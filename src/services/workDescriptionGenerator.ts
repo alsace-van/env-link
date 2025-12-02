@@ -3,6 +3,7 @@
 // Génère automatiquement la description des travaux
 // depuis les tâches, accessoires et meubles
 // ============================================
+// Force recompile
 
 import { supabase } from "@/integrations/supabase/client";
 
