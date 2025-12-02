@@ -5,7 +5,6 @@
 // ============================================
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,23 +74,28 @@ const OWNER_TITLES = [
 ];
 
 export default function TransformerSettings() {
-  const { user } = useAuth();
+  const [userId, setUserId] = useState<string | null>(null);
   const [settings, setSettings] = useState<TransformerSettingsData>(EMPTY_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      loadSettings();
-    }
-  }, [user]);
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        loadSettings(user.id);
+      }
+    };
+    fetchUser();
+  }, []);
 
-  const loadSettings = async () => {
+  const loadSettings = async (uid: string) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("transformer_settings")
         .select("*")
-        .eq("user_id", user?.id)
+        .eq("user_id", uid)
         .single();
 
       if (error && error.code !== "PGRST116") {
@@ -99,7 +103,7 @@ export default function TransformerSettings() {
       }
 
       if (data) {
-        setSettings(data);
+        setSettings(data as TransformerSettingsData);
       }
     } catch (error) {
       console.error("Erreur chargement paramètres:", error);
@@ -113,18 +117,18 @@ export default function TransformerSettings() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!userId) return;
 
     setIsSaving(true);
     try {
       const dataToSave = {
         ...settings,
-        user_id: user.id,
+        user_id: userId,
       };
 
       if (settings.id) {
         // Update
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("transformer_settings")
           .update(dataToSave)
           .eq("id", settings.id);
@@ -132,7 +136,7 @@ export default function TransformerSettings() {
         if (error) throw error;
       } else {
         // Insert
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
           .from("transformer_settings")
           .insert(dataToSave)
           .select()
@@ -140,7 +144,7 @@ export default function TransformerSettings() {
 
         if (error) throw error;
         if (data) {
-          setSettings(data);
+          setSettings(data as TransformerSettingsData);
         }
       }
 

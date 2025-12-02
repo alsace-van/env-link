@@ -128,7 +128,7 @@ export async function generateWorkDescription(projectId: string): Promise<string
 // ============================================
 
 async function fetchCompletedTasks(projectId: string): Promise<WorkTask[]> {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("work_tasks")
     .select("id, title, description, status, category")
     .eq("project_id", projectId)
@@ -139,11 +139,11 @@ async function fetchCompletedTasks(projectId: string): Promise<WorkTask[]> {
     return [];
   }
 
-  return data || [];
+  return (data || []) as WorkTask[];
 }
 
 async function fetchProjectAccessories(projectId: string): Promise<ProjectAccessory[]> {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("project_accessories")
     .select(`
       id,
