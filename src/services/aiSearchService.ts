@@ -151,6 +151,49 @@ export async function searchAccessories(
   }
 }
 
+// Lister TOUS les articles du catalogue
+export async function listAllAccessories(userId: string, limit: number = 50): Promise<SearchResult[]> {
+  try {
+    const { data, error } = await (supabase as any)
+      .from("accessories_catalog")
+      .select(
+        `
+        id, nom, marque, fournisseur, prix_reference, prix_vente_ttc,
+        description, reference_fabricant, reference_interne, stock_status,
+        product_group_id, poids_kg
+      `,
+      )
+      .eq("user_id", userId)
+      .order("nom", { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      console.error("Erreur liste accessoires:", error);
+      return [];
+    }
+
+    return (data || []).map((row: any) => ({
+      type: "accessory" as const,
+      id: row.id,
+      title: row.nom,
+      content: `${row.nom} | ${row.marque || "-"} | ${row.fournisseur || "-"} | ${row.prix_reference || 0}€`,
+      metadata: {
+        marque: row.marque,
+        fournisseur: row.fournisseur,
+        prix_reference: row.prix_reference,
+        prix_vente_ttc: row.prix_vente_ttc,
+        stock_status: row.stock_status,
+        reference_fabricant: row.reference_fabricant,
+        poids_kg: row.poids_kg,
+        product_group_id: row.product_group_id,
+      },
+    }));
+  } catch (error) {
+    console.error("Erreur listAllAccessories:", error);
+    return [];
+  }
+}
+
 export async function searchProjects(query: string, userId: string, limit: number = 5): Promise<SearchResult[]> {
   try {
     const { data, error } = await (supabase as any)
@@ -231,7 +274,7 @@ Question: "${query}"
 
 Réponds UNIQUEMENT en JSON avec ce format:
 {
-  "type": "search_document" | "search_accessory" | "compare_prices" | "compare_suppliers" | "generate_rti" | "generate_document" | "project_info" | "scenario_info" | "general_question",
+  "type": "search_document" | "search_accessory" | "list_catalog" | "compare_prices" | "compare_suppliers" | "generate_rti" | "generate_document" | "project_info" | "scenario_info" | "general_question",
   "entities": {
     "productName": "nom du produit si mentionné",
     "supplierName": "nom du fournisseur si mentionné",
@@ -242,8 +285,9 @@ Réponds UNIQUEMENT en JSON avec ce format:
 }
 
 Règles:
+- "list_catalog" = demande de LISTER tous les produits/articles du catalogue (mots: "liste", "tous les", "catalogue", "articles")
 - "search_document" = question sur contenu de notices/documents
-- "search_accessory" = recherche de produits dans le catalogue
+- "search_accessory" = recherche d'UN produit spécifique dans le catalogue
 - "compare_prices" = comparaison de prix
 - "compare_suppliers" = comparaison entre fournisseurs
 - "generate_rti" = demande de génération de RTI
@@ -293,6 +337,12 @@ export async function hybridSearch(query: string, userId: string, intent: Analyz
     case "search_document":
       const docResults = await searchDocuments(query, userId, { limit: 5 });
       results.push(...docResults);
+      break;
+
+    case "list_catalog":
+      // Récupérer TOUS les articles du catalogue
+      const allAccessories = await listAllAccessories(userId);
+      results.push(...allAccessories);
       break;
 
     case "search_accessory":
@@ -557,18 +607,45 @@ export async function generateResponse(
     contextText += projectContext + "\n\n";
   }
 
+  // Compter les accessoires
+  const accessoryCount = context.filter((r) => r.type === "accessory").length;
+
   if (context.length > 0) {
-    contextText += "Informations trouvées dans la recherche:\n\n";
-    context.forEach((result, i) => {
-      if (result.type === "document") {
-        contextText += `[Document ${i + 1}: ${result.title}${result.pageNumber ? ` - Page ${result.pageNumber}` : ""}]\n${result.content}\n\n`;
-      } else if (result.type === "accessory") {
-        const meta = result.metadata || {};
-        contextText += `[Accessoire ${i + 1}: ${result.title}]\nMarque: ${meta.marque || "N/A"}, Fournisseur: ${meta.fournisseur || "N/A"}, Prix: ${meta.prix_reference || 0}€, Stock: ${meta.stock_status || "N/A"}\n\n`;
-      } else if (result.type === "project") {
-        contextText += `[Projet: ${result.title}]\n${result.content}\n\n`;
-      }
-    });
+    // Format spécial pour liste de catalogue
+    if (accessoryCount > 0) {
+      contextText += `=== CATALOGUE (${accessoryCount} article${accessoryCount > 1 ? "s" : ""}) ===\n\n`;
+      let num = 1;
+      context.forEach((result) => {
+        if (result.type === "accessory") {
+          const meta = result.metadata || {};
+          contextText += `${num}. ${result.title}\n`;
+          contextText += `   Marque: ${meta.marque || "-"} | Fournisseur: ${meta.fournisseur || "-"} | Prix: ${meta.prix_reference || 0}€\n`;
+          if (meta.poids_kg) contextText += `   Poids: ${meta.poids_kg} kg\n`;
+          contextText += "\n";
+          num++;
+        }
+      });
+    }
+
+    // Documents
+    const docs = context.filter((r) => r.type === "document");
+    if (docs.length > 0) {
+      contextText += "=== DOCUMENTS ===\n\n";
+      docs.forEach((result, i) => {
+        contextText += `[${result.title}${result.pageNumber ? ` - Page ${result.pageNumber}` : ""}]\n${result.content}\n\n`;
+      });
+    }
+
+    // Projets
+    const projects = context.filter((r) => r.type === "project");
+    if (projects.length > 0) {
+      contextText += "=== PROJETS ===\n\n";
+      projects.forEach((result) => {
+        contextText += `[${result.title}]\n${result.content}\n\n`;
+      });
+    }
+  } else {
+    contextText += "Aucune donnée trouvée dans la base.\n\n";
   }
 
   // Historique de conversation (limité aux 5 derniers messages)
@@ -583,30 +660,39 @@ export async function generateResponse(
   }
 
   // Prompt selon l'intention
-  let systemPrompt = `Tu es un assistant pour une application de gestion d'aménagement de fourgons.
-Tu aides à:
-- Rechercher des informations dans les notices techniques et documents DREAL
-- Comparer les prix et fournisseurs du catalogue
-- Préparer les documents d'homologation (RTI, etc.)
+  let systemPrompt = `Tu es un assistant efficace pour une application de gestion d'aménagement de fourgons.
 
-Réponds de manière concise et utile en français.
-Si tu cites une source, mentionne-la.
-Si tu proposes une action (générer un document, changer de fournisseur), indique-le clairement.`;
+RÈGLES IMPORTANTES:
+1. SOIS DIRECT - Exécute les demandes immédiatement sans poser de questions inutiles
+2. UTILISE LES DONNÉES - Si des données sont fournies dans le contexte, utilise-les dans ta réponse. Ne mets JAMAIS de placeholders comme "[insérer ici]" ou "[à compléter]"
+3. AGIS MAINTENANT - Si l'utilisateur demande une liste, donne la liste. S'il demande une comparaison, fais la comparaison.
+4. PAS D'EXCUSES - Ne dis pas "ce serait long" ou "peux-tu préciser". Fais ce qui est demandé.
+5. CONCIS - Réponds de manière directe et utile en français.
+
+Tu peux:
+- Lister les produits du catalogue avec leurs prix
+- Comparer les fournisseurs
+- Rechercher dans les notices techniques
+- Préparer les documents d'homologation`;
 
   if (intent.type === "generate_rti" || intent.type === "generate_document") {
-    systemPrompt += `\n\nL'utilisateur veut préparer un document RTI. Présente un résumé des données disponibles pour le dossier et propose de voir l'aperçu détaillé.`;
+    systemPrompt += `\n\nL'utilisateur veut préparer un document RTI. Présente un résumé des données disponibles et propose de voir l'aperçu détaillé.`;
   }
 
   if (intent.type === "compare_prices" || intent.type === "compare_suppliers") {
-    systemPrompt += `\n\nL'utilisateur veut comparer des prix/fournisseurs. Présente les résultats sous forme de tableau si possible et indique le moins cher.`;
+    systemPrompt += `\n\nCompare les prix/fournisseurs trouvés. Présente un tableau et indique le moins cher.`;
+  }
+
+  if (intent.type === "list_catalog" || intent.type === "search_accessory") {
+    systemPrompt += `\n\nListe TOUS les articles trouvés avec: nom, marque, prix, fournisseur. Pas de résumé, la liste complète.`;
   }
 
   const prompt = `${systemPrompt}
 
 ${historyText}${contextText}
-Question de l'utilisateur: ${query}
+Demande: ${query}
 
-Réponds de manière concise et utile:`;
+Réponds directement:`;
 
   const response = await callAI({
     provider: aiConfig.provider,
