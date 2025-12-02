@@ -361,10 +361,10 @@ class RTIPDFGenerator {
     // Alerte si dépassement
     if (data.chargeUtile !== undefined && data.chargeUtile < 0) {
       this.addSpacing(5);
-      this.drawText("⚠️ ATTENTION : Dépassement de la charge utile !", { bold: true });
+      this.drawText("/!\\ ATTENTION : Depassement de la charge utile !", { bold: true });
     } else if (data.chargeUtile !== undefined && data.chargeUtile < 100) {
       this.addSpacing(5);
-      this.drawText("⚠️ Marge de charge utile faible", { bold: true });
+      this.drawText("/!\\ Marge de charge utile faible", { bold: true });
     }
 
     this.addSpacing();
@@ -402,7 +402,7 @@ class RTIPDFGenerator {
       this.drawText("Détail des aménagements :", { bold: true });
 
       for (const meuble of data.meubles) {
-        const line = `• ${meuble.nom}${meuble.poids ? ` - ${meuble.poids} kg` : ""}${meuble.dimensions ? ` (${meuble.dimensions})` : ""}`;
+        const line = `- ${meuble.nom}${meuble.poids ? ` - ${meuble.poids} kg` : ""}${meuble.dimensions ? ` (${meuble.dimensions})` : ""}`;
         this.drawText(line, { indent: 10 });
       }
     }
@@ -424,7 +424,7 @@ class RTIPDFGenerator {
     const docs = data.documentsJoints || defaultDocs;
 
     for (const doc of docs) {
-      this.drawText(`☐ ${doc}`, { indent: 10 });
+      this.drawText(`[ ] ${doc}`, { indent: 10 });
     }
 
     this.addSpacing();
