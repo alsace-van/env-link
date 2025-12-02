@@ -24,12 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAIConfig } from "@/hooks/useAIConfig";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  ChatMessage,
-  SearchResult,
-  ChatAction,
-  processUserMessage,
-} from "@/services/aiSearchService";
+import { ChatMessage, SearchResult, ChatAction, processUserMessage } from "@/services/aiSearchService";
 import { toast } from "sonner";
 
 // ============================================
@@ -48,12 +43,7 @@ const MessageBubble = ({ message, onActionClick }: MessageBubbleProps) => {
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
-        className={cn(
-          "max-w-[85%] rounded-lg px-4 py-2",
-          isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted"
-        )}
+        className={cn("max-w-[85%] rounded-lg px-4 py-2", isUser ? "bg-primary text-primary-foreground" : "bg-muted")}
       >
         {/* Contenu du message */}
         <div className="whitespace-pre-wrap text-sm">{message.content}</div>
@@ -68,7 +58,7 @@ const MessageBubble = ({ message, onActionClick }: MessageBubbleProps) => {
               {showSources ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               {message.sources.length} source(s)
             </button>
-            
+
             {showSources && (
               <div className="mt-2 space-y-1">
                 {message.sources.map((source, i) => (
@@ -126,23 +116,13 @@ const SourceBadge = ({ source }: { source: SearchResult }) => {
     <div className="flex items-center gap-1 text-xs bg-background/50 rounded px-2 py-1">
       {getIcon()}
       <span className="truncate max-w-[150px]">{source.title}</span>
-      {source.pageNumber && (
-        <span className="opacity-50">p.{source.pageNumber}</span>
-      )}
-      {source.similarity && (
-        <span className="opacity-50">
-          {Math.round(source.similarity * 100)}%
-        </span>
-      )}
+      {source.pageNumber && <span className="opacity-50">p.{source.pageNumber}</span>}
+      {source.similarity && <span className="opacity-50">{Math.round(source.similarity * 100)}%</span>}
     </div>
   );
 };
 
-const SuggestionChips = ({
-  onSelect,
-}: {
-  onSelect: (text: string) => void;
-}) => {
+const SuggestionChips = ({ onSelect }: { onSelect: (text: string) => void }) => {
   const suggestions = [
     "Prépare le RTI pour ce projet",
     "Compare les prix des panneaux solaires",
@@ -174,26 +154,25 @@ interface AIChatAssistantProps {
   projectName?: string;
 }
 
-export const AIChatAssistant = ({
-  projectId,
-  projectName,
-}: AIChatAssistantProps) => {
+export const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  
+
   const { config, isConfigured } = useAIConfig();
 
   // Récupérer l'utilisateur
   useEffect(() => {
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       setUserId(user?.id || null);
     };
     getUser();
@@ -229,12 +208,12 @@ export const AIChatAssistant = ({
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
-    
+
     if (!isConfigured || !config.provider || !config.apiKey) {
       toast.error("Configurez votre clé API dans les paramètres IA");
       return;
     }
-    
+
     if (!userId) {
       toast.error("Vous devez être connecté");
       return;
@@ -258,7 +237,7 @@ export const AIChatAssistant = ({
           provider: config.provider,
           apiKey: config.apiKey,
         },
-        messages
+        messages,
       );
 
       setMessages((prev) => [...prev, response]);
@@ -324,7 +303,7 @@ export const AIChatAssistant = ({
     <Card
       className={cn(
         "fixed bottom-6 right-6 z-50 shadow-xl transition-all duration-200",
-        isMinimized ? "w-72 h-14" : "w-96 h-[500px]"
+        isMinimized ? "w-72 h-14" : "w-96 h-[500px]",
       )}
     >
       {/* Header */}
@@ -333,32 +312,14 @@ export const AIChatAssistant = ({
           <Sparkles className="h-5 w-5 text-primary" />
           <CardTitle className="text-sm font-medium">
             Assistant IA
-            {projectName && (
-              <span className="text-xs font-normal text-muted-foreground ml-2">
-                {projectName}
-              </span>
-            )}
+            {projectName && <span className="text-xs font-normal text-muted-foreground ml-2">{projectName}</span>}
           </CardTitle>
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setIsMinimized(!isMinimized)}
-          >
-            {isMinimized ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsMinimized(!isMinimized)}>
+            {isMinimized ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setIsOpen(false)}
-          >
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsOpen(false)}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -371,13 +332,9 @@ export const AIChatAssistant = ({
           <ScrollArea className="flex-1 p-4" ref={scrollRef}>
             <div className="space-y-4">
               {messages.map((msg, i) => (
-                <MessageBubble
-                  key={i}
-                  message={msg}
-                  onActionClick={handleActionClick}
-                />
+                <MessageBubble key={i} message={msg} onActionClick={handleActionClick} />
               ))}
-              
+
               {isLoading && (
                 <div className="flex justify-start">
                   <div className="bg-muted rounded-lg px-4 py-2 flex items-center gap-2">
@@ -390,9 +347,7 @@ export const AIChatAssistant = ({
           </ScrollArea>
 
           {/* Suggestions (si peu de messages) */}
-          {messages.length <= 1 && !isLoading && (
-            <SuggestionChips onSelect={handleSuggestionSelect} />
-          )}
+          {messages.length <= 1 && !isLoading && <SuggestionChips onSelect={handleSuggestionSelect} />}
 
           {/* Alerte si pas configuré */}
           {!isConfigured && (
@@ -416,11 +371,7 @@ export const AIChatAssistant = ({
                 disabled={isLoading || !isConfigured}
                 className="flex-1"
               />
-              <Button
-                size="icon"
-                onClick={handleSend}
-                disabled={!input.trim() || isLoading || !isConfigured}
-              >
+              <Button size="icon" onClick={handleSend} disabled={!input.trim() || isLoading || !isConfigured}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>
@@ -432,3 +383,4 @@ export const AIChatAssistant = ({
 };
 
 export default AIChatAssistant;
+export { AIChatAssistant };
