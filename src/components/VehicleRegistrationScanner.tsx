@@ -1,3 +1,11 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { toast } from "sonner";
+import { Upload, Loader2 } from "lucide-react";
+
 // ============================================
 // PROMPT OCR CARTE GRISE - VERSION COMPLÈTE
 // Pour extraction via Gemini Vision API
@@ -67,7 +75,7 @@ Si l'image n'est pas une carte grise ou est illisible, retourne:
 `;
 
 // ============================================
-// FONCTION D'EXTRACTION
+// TYPES
 // ============================================
 
 export interface VehicleRegistrationData {
@@ -99,6 +107,10 @@ export interface VehicleRegistrationData {
   owner_postal_code: string | null;
   owner_city: string | null;
 }
+
+// ============================================
+// FONCTION D'EXTRACTION
+// ============================================
 
 export async function extractVehicleRegistration(
   imageBase64: string,
@@ -185,4 +197,102 @@ export function mapToSupabaseColumns(data: VehicleRegistrationData) {
     environmental_class: data.environmental_class,
     // Note: owner_* va dans la table clients, pas vehicle_registration
   };
+}
+
+// ============================================
+// COMPONENT
+// ============================================
+
+interface VehicleRegistrationScannerProps {
+  onDataExtracted: (data: VehicleRegistrationData) => void;
+}
+
+export function VehicleRegistrationScanner({ onDataExtracted }: VehicleRegistrationScannerProps) {
+  const [isScanning, setIsScanning] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!apiKey) {
+      toast.error("Veuillez entrer votre clé API Gemini");
+      return;
+    }
+
+    setIsScanning(true);
+
+    try {
+      // Convert image to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64 = (reader.result as string).split(",")[1];
+          const data = await extractVehicleRegistration(base64, apiKey);
+          onDataExtracted(data);
+          toast.success("Carte grise scannée avec succès!");
+        } catch (error) {
+          console.error("Erreur lors du scan:", error);
+          toast.error(error instanceof Error ? error.message : "Erreur lors du scan");
+        } finally {
+          setIsScanning(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Erreur:", error);
+      toast.error("Erreur lors du chargement du fichier");
+      setIsScanning(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 mb-4">
+      <div className="space-y-4">
+        <div>
+          <Label htmlFor="gemini-api-key">Clé API Gemini</Label>
+          <Input
+            id="gemini-api-key"
+            type="password"
+            placeholder="Entrez votre clé API Gemini"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="carte-grise-upload">Photo de la carte grise</Label>
+          <div className="mt-2">
+            <Input
+              id="carte-grise-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              disabled={isScanning || !apiKey}
+              className="hidden"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isScanning || !apiKey}
+              onClick={() => document.getElementById("carte-grise-upload")?.click()}
+              className="w-full"
+            >
+              {isScanning ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Scan en cours...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Télécharger une photo
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
 }

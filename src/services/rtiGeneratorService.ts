@@ -496,7 +496,8 @@ class RTIPDFGenerator {
 export async function generateRTIPDF(data: RTIData): Promise<Blob> {
   const generator = new RTIPDFGenerator();
   const pdfBytes = await generator.generate(data);
-  return new Blob([pdfBytes], { type: "application/pdf" });
+  // Convert Uint8Array to ArrayBuffer for Blob
+  return new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
 }
 
 export async function downloadRTIPDF(data: RTIData, filename?: string): Promise<void> {
