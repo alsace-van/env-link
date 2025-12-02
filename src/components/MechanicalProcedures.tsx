@@ -1150,7 +1150,7 @@ const MechanicalProcedures = () => {
       return (
         <div
           key={block.id}
-          className={`content-block absolute transition-all ${
+          className={`content-block absolute group ${
             selectedBlockId === block.id ? "ring-2 ring-blue-500 ring-offset-2 rounded-full" : ""
           }`}
           style={{
@@ -1163,13 +1163,24 @@ const MechanicalProcedures = () => {
             e.stopPropagation();
             setSelectedBlockId(block.id);
           }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            handleDeleteBlock(block.id);
-          }}
-          title="Clic droit pour supprimer"
         >
           <IconComponent className="h-10 w-10 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors" />
+          {/* Bouton supprimer au survol */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              handleDeleteBlock(block.id);
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            className="absolute -top-2 -right-2 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+          >
+            <X className="h-3 w-3" />
+          </button>
         </div>
       );
     }
