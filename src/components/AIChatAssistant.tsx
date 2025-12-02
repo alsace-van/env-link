@@ -238,6 +238,7 @@ export const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps
           apiKey: config.apiKey,
         },
         messages,
+        projectId, // Passer le projectId pour accéder aux données du projet
       );
 
       setMessages((prev) => [...prev, response]);
