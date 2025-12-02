@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -421,7 +421,6 @@ const MechanicalProcedures = () => {
   // États de sélection
   const [activeGammeId, setActiveGammeId] = useState<string | null>(null);
   const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
 
   // États des dialogues
   const [isGammeDialogOpen, setIsGammeDialogOpen] = useState(false);
@@ -448,12 +447,15 @@ const MechanicalProcedures = () => {
   // État pour l'édition des gammes
   const [editingGamme, setEditingGamme] = useState<Gamme | null>(null);
 
-  // États pour le drag des blocs
-  const [draggingBlockId, setDraggingBlockId] = useState<string | null>(null);
+  // États pour le drag des blocs - REFS ONLY pour performance
+  const draggingBlockIdRef = useRef<string | null>(null);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const dragStartPosRef = useRef({ x: 0, y: 0 });
   const dragElementRef = useRef<HTMLElement | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // State juste pour le visuel de sélection
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
 
   // États pour le drag des chapitres
   const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null);
@@ -509,7 +511,7 @@ const MechanicalProcedures = () => {
           console.error("Erreur chargement gammes:", error);
         }
       } else {
-        setGammes((data || []) as Gamme[]);
+        setGammes(data || []);
         if (data && data.length > 0 && !activeGammeId) {
           setActiveGammeId(data[0].id);
         }
@@ -535,7 +537,7 @@ const MechanicalProcedures = () => {
         }
         setChapters([]);
       } else {
-        setChapters((data || []) as Chapter[]);
+        setChapters(data || []);
         if (data && data.length > 0) {
           setActiveChapterId(data[0].id);
           setExpandedChapters(new Set([data[0].id]));
@@ -562,7 +564,7 @@ const MechanicalProcedures = () => {
         }
         setBlocks([]);
       } else {
-        setBlocks((data || []) as ContentBlock[]);
+        setBlocks(data || []);
       }
     } catch (error) {
       console.error("Erreur:", error);
@@ -603,8 +605,8 @@ const MechanicalProcedures = () => {
         return;
       }
 
-      setGammes([...gammes, data as Gamme]);
-      setActiveGammeId((data as Gamme).id);
+      setGammes([...gammes, data]);
+      setActiveGammeId(data.id);
       setIsGammeDialogOpen(false);
       setNewGamme({
         title: "",
@@ -692,9 +694,9 @@ const MechanicalProcedures = () => {
 
       if (error) throw error;
 
-      setChapters([...chapters, data as Chapter]);
-      setActiveChapterId((data as Chapter).id);
-      setExpandedChapters(new Set([...expandedChapters, (data as Chapter).id]));
+      setChapters([...chapters, data]);
+      setActiveChapterId(data.id);
+      setExpandedChapters(new Set([...expandedChapters, data.id]));
       setIsChapterDialogOpen(false);
       setNewChapter({ title: "", parent_id: null });
       toast.success("Chapitre créé");
@@ -814,8 +816,8 @@ const MechanicalProcedures = () => {
 
       if (error) throw error;
 
-      setBlocks([...blocks, data as ContentBlock]);
-      setSelectedBlockId((data as ContentBlock).id);
+      setBlocks([...blocks, data]);
+      setSelectedBlockId(data.id);
       setIsIconPickerOpen(false);
       toast.success("Bloc ajouté");
     } catch (error) {
@@ -837,30 +839,38 @@ const MechanicalProcedures = () => {
     }
   };
 
-  // Supprimer un bloc - VERSION AMÉLIORÉE
+  // Supprimer un bloc - VERSION ROBUSTE
   const handleDeleteBlock = async (blockId: string) => {
-    // Supprimer immédiatement de l'état local pour feedback instantané
-    setBlocks((prevBlocks) => prevBlocks.filter((b) => b.id !== blockId));
+    console.log("Suppression bloc:", blockId);
+
+    // Supprimer immédiatement de l'état local
+    setBlocks((prev) => {
+      const newBlocks = prev.filter((b) => b.id !== blockId);
+      console.log("Blocs restants:", newBlocks.length);
+      return newBlocks;
+    });
     setSelectedBlockId(null);
 
+    // Supprimer en base
     try {
       const { error } = await (supabase as any).from("mechanical_blocks").delete().eq("id", blockId);
 
       if (error) {
-        // Recharger si erreur
-        loadBlocks(activeChapterId!);
+        console.error("Erreur suppression:", error);
         toast.error("Erreur lors de la suppression");
+        // Recharger si erreur
+        if (activeChapterId) loadBlocks(activeChapterId);
       } else {
         toast.success("Bloc supprimé");
       }
     } catch (error) {
       console.error("Erreur suppression bloc:", error);
-      loadBlocks(activeChapterId!);
+      if (activeChapterId) loadBlocks(activeChapterId);
       toast.error("Erreur lors de la suppression");
     }
   };
 
-  // Drag & Drop des blocs - VERSION OPTIMISÉE
+  // Drag & Drop des blocs - VERSION 100% DOM (pas de state pendant le drag)
   const handleBlockMouseDown = (e: React.MouseEvent, blockId: string) => {
     // Ne pas déclencher le drag si on clique sur un élément interactif
     const target = e.target as HTMLElement;
@@ -879,83 +889,72 @@ const MechanicalProcedures = () => {
     const element = (e.target as HTMLElement).closest(".content-block") as HTMLElement;
     if (!element) return;
 
+    e.preventDefault();
+
     // Stocker les références
+    draggingBlockIdRef.current = blockId;
     dragElementRef.current = element;
     dragStartPosRef.current = { x: block.position_x, y: block.position_y };
-    dragOffsetRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-    };
+    dragOffsetRef.current = { x: e.clientX, y: e.clientY };
 
-    setDraggingBlockId(blockId);
     setSelectedBlockId(blockId);
 
     // Style pendant le drag
     element.style.zIndex = "1000";
     element.style.cursor = "grabbing";
-  };
+    element.style.pointerEvents = "none";
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!draggingBlockId || !dragElementRef.current || !canvasRef.current) return;
+    // Attacher les listeners DIRECTEMENT (pas via useEffect)
+    const handleMove = (moveEvent: MouseEvent) => {
+      if (!dragElementRef.current) return;
 
-      // Calculer le delta depuis le début du drag
-      const deltaX = e.clientX - dragOffsetRef.current.x;
-      const deltaY = e.clientY - dragOffsetRef.current.y;
-
-      // Nouvelle position
+      const deltaX = moveEvent.clientX - dragOffsetRef.current.x;
+      const deltaY = moveEvent.clientY - dragOffsetRef.current.y;
       const newX = Math.max(0, dragStartPosRef.current.x + deltaX);
       const newY = Math.max(0, dragStartPosRef.current.y + deltaY);
 
-      // Appliquer directement au DOM (pas de re-render React)
       dragElementRef.current.style.left = `${newX}px`;
       dragElementRef.current.style.top = `${newY}px`;
-    },
-    [draggingBlockId],
-  );
+    };
 
-  const handleMouseUp = useCallback(
-    (e: MouseEvent) => {
-      if (draggingBlockId && dragElementRef.current) {
-        // Calculer la position finale
-        const deltaX = e.clientX - dragOffsetRef.current.x;
-        const deltaY = e.clientY - dragOffsetRef.current.y;
+    const handleUp = (upEvent: MouseEvent) => {
+      if (draggingBlockIdRef.current && dragElementRef.current) {
+        const deltaX = upEvent.clientX - dragOffsetRef.current.x;
+        const deltaY = upEvent.clientY - dragOffsetRef.current.y;
         const finalX = Math.max(0, dragStartPosRef.current.x + deltaX);
         const finalY = Math.max(0, dragStartPosRef.current.y + deltaY);
 
         // Reset le style
         dragElementRef.current.style.zIndex = "";
         dragElementRef.current.style.cursor = "";
+        dragElementRef.current.style.pointerEvents = "";
 
-        // Mettre à jour le state React et la base de données
-        setBlocks((prevBlocks) =>
-          prevBlocks.map((b) => (b.id === draggingBlockId ? { ...b, position_x: finalX, position_y: finalY } : b)),
-        );
-
-        // Sauvegarder en base
-        handleUpdateBlock(draggingBlockId, {
+        // Sauvegarder en base (le DOM est déjà à jour visuellement)
+        handleUpdateBlock(draggingBlockIdRef.current, {
           position_x: finalX,
           position_y: finalY,
         });
 
-        // Cleanup
-        dragElementRef.current = null;
-        setDraggingBlockId(null);
+        // Mettre à jour le state pour sync
+        setBlocks((prev) =>
+          prev.map((b) => (b.id === draggingBlockIdRef.current ? { ...b, position_x: finalX, position_y: finalY } : b)),
+        );
       }
-    },
-    [draggingBlockId],
-  );
 
-  useEffect(() => {
-    if (draggingBlockId) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-      return () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-    }
-  }, [draggingBlockId, handleMouseMove, handleMouseUp]);
+      // Cleanup
+      draggingBlockIdRef.current = null;
+      dragElementRef.current = null;
+
+      // Retirer les listeners
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  };
+
+  // Plus besoin de useEffect pour les listeners de drag - ils sont attachés dans mousedown
 
   // Upload d'image pour un bloc
   const handleImageUpload = async (blockId: string, file: File) => {
@@ -1157,7 +1156,7 @@ const MechanicalProcedures = () => {
           style={{
             left: block.position_x,
             top: block.position_y,
-            cursor: draggingBlockId === block.id ? "grabbing" : "grab",
+            cursor: "grab",
           }}
           onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
           onClick={(e) => {
@@ -1186,7 +1185,7 @@ const MechanicalProcedures = () => {
           top: block.position_y,
           width: block.width,
           minHeight: block.height,
-          cursor: draggingBlockId === block.id ? "grabbing" : "grab",
+          cursor: "grab",
         }}
         onMouseDown={(e) => handleBlockMouseDown(e, block.id)}
         onClick={(e) => {
@@ -1481,7 +1480,11 @@ const MechanicalProcedures = () => {
                   </div>
                 </div>
               ) : (
-                <div className="relative min-h-full min-w-full" style={{ minHeight: "1000px", minWidth: "1500px" }}>
+                <div
+                  key={`blocks-${blocks.length}-${blocks.map((b) => b.id).join("-")}`}
+                  className="relative min-h-full min-w-full"
+                  style={{ minHeight: "1000px", minWidth: "1500px" }}
+                >
                   {blocks.map(renderBlock)}
                 </div>
               )}
