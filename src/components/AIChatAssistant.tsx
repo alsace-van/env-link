@@ -33,6 +33,7 @@ import { useAIConfig } from "@/hooks/useAIConfig";
 import { supabase } from "@/integrations/supabase/client";
 import { ChatMessage, SearchResult, ChatAction, processUserMessage } from "@/services/aiSearchService";
 import { toast } from "sonner";
+import { RTIPreviewDialog } from "@/components/RTIPreviewDialog";
 
 // ============================================
 // TYPES
@@ -145,12 +146,11 @@ interface ConversationListProps {
   conversations: Conversation[];
   activeId: string | null;
   onSelect: (id: string) => void;
-  onNew: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
 }
 
-const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, onRename }: ConversationListProps) => {
+const ConversationList = ({ conversations, activeId, onSelect, onDelete, onRename }: ConversationListProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
@@ -191,101 +191,92 @@ const ConversationList = ({ conversations, activeId, onSelect, onNew, onDelete, 
   if (olderItems.length > 0) groups.push({ label: "Plus ancien", items: olderItems });
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-2 border-b">
-        <Button onClick={onNew} size="sm" className="w-full" variant="outline">
-          <Plus className="h-4 w-4 mr-2" />
-          Nouvelle conversation
-        </Button>
-      </div>
+    <ScrollArea className="flex-1">
+      <div className="p-2 space-y-3">
+        {groups.length === 0 ? (
+          <div className="text-center text-muted-foreground text-sm py-4">Aucune conversation</div>
+        ) : (
+          groups.map((group) => (
+            <div key={group.label}>
+              <div className="text-xs font-medium text-muted-foreground px-2 mb-1">{group.label}</div>
+              <div className="space-y-1">
+                {group.items.map((conv) => (
+                  <div
+                    key={conv.id}
+                    className={cn(
+                      "group flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-muted/50 transition-colors",
+                      activeId === conv.id && "bg-muted",
+                    )}
+                    onClick={() => onSelect(conv.id)}
+                  >
+                    <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" />
 
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-3">
-          {groups.length === 0 ? (
-            <div className="text-center text-muted-foreground text-sm py-4">Aucune conversation</div>
-          ) : (
-            groups.map((group) => (
-              <div key={group.label}>
-                <div className="text-xs font-medium text-muted-foreground px-2 mb-1">{group.label}</div>
-                <div className="space-y-1">
-                  {group.items.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className={cn(
-                        "group flex items-center gap-2 p-2 rounded-md cursor-pointer hover:bg-muted/50 transition-colors",
-                        activeId === conv.id && "bg-muted",
-                      )}
-                      onClick={() => onSelect(conv.id)}
-                    >
-                      <MessageSquare className="h-4 w-4 text-muted-foreground shrink-0" />
+                    {editingId === conv.id ? (
+                      <div className="flex-1 flex items-center gap-1">
+                        <Input
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="h-6 text-sm"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSaveEdit();
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          autoFocus
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSaveEdit();
+                          }}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{conv.title}</div>
+                          <div className="text-xs text-muted-foreground">{conv.messages.length - 1} messages</div>
+                        </div>
 
-                      {editingId === conv.id ? (
-                        <div className="flex-1 flex items-center gap-1">
-                          <Input
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            className="h-6 text-sm"
-                            onClick={(e) => e.stopPropagation()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveEdit();
-                              if (e.key === "Escape") setEditingId(null);
-                            }}
-                            autoFocus
-                          />
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
                           <Button
                             size="icon"
                             variant="ghost"
                             className="h-6 w-6"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleSaveEdit();
+                              handleStartEdit(conv);
                             }}
                           >
-                            <Check className="h-3 w-3" />
+                            <Edit2 className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6 text-destructive hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(conv.id);
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
-                      ) : (
-                        <>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{conv.title}</div>
-                            <div className="text-xs text-muted-foreground">{conv.messages.length - 1} messages</div>
-                          </div>
-
-                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStartEdit(conv);
-                              }}
-                            >
-                              <Edit2 className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 text-destructive hover:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDelete(conv.id);
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))
-          )}
-        </div>
-      </ScrollArea>
-    </div>
+            </div>
+          ))
+        )}
+      </div>
+    </ScrollArea>
   );
 };
 
@@ -310,6 +301,7 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [showRTIPreview, setShowRTIPreview] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -528,8 +520,13 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
   const handleActionClick = (action: ChatAction) => {
     switch (action.type) {
       case "generate_rti":
-        toast.info("Génération RTI en cours...");
-        // TODO: Appeler le service de génération RTI
+      case "view_rti":
+        // Ouvrir la modale d'aperçu RTI
+        if (projectId) {
+          setShowRTIPreview(true);
+        } else {
+          toast.error("Sélectionnez d'abord un projet");
+        }
         break;
       case "change_supplier":
         toast.info("Changement de fournisseur...");
@@ -544,7 +541,7 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
 
   // Suggestions
   const suggestions = projectId
-    ? ["Prépare le RTI", "Résumé du projet", "État des poids", "Liste des équipements"]
+    ? ["Prépare le RTI", "Aperçu du dossier RTI", "État des poids", "Liste des équipements"]
     : ["Compare les frigos", "Notices Webasto", "Documents DREAL"];
 
   // ============================================
@@ -580,17 +577,29 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
             </Button>
           )}
           <Sparkles className="h-5 w-5 text-primary" />
-          <CardTitle className="text-sm font-medium">
+          <CardTitle className="text-sm font-medium truncate max-w-[200px]">
             {showHistory ? "Historique" : activeConversation?.title || "Assistant IA"}
           </CardTitle>
         </div>
         <div className="flex items-center gap-1">
-          {!isMinimized && !showHistory && (
+          {/* Bouton Nouvelle conversation - TOUJOURS VISIBLE */}
+          {!isMinimized && (
             <Button
               size="icon"
               variant="ghost"
               className="h-8 w-8"
-              onClick={() => setShowHistory(true)}
+              onClick={createNewConversation}
+              title="Nouvelle conversation"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          )}
+          {!isMinimized && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={() => setShowHistory(!showHistory)}
               title="Historique des conversations"
             >
               <History className="h-4 w-4" />
@@ -617,7 +626,6 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
                 setActiveConversationId(id);
                 setShowHistory(false);
               }}
-              onNew={createNewConversation}
               onDelete={deleteConversation}
               onRename={renameConversation}
             />
@@ -694,6 +702,9 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
           )}
         </CardContent>
       )}
+
+      {/* Modale aperçu RTI */}
+      {projectId && <RTIPreviewDialog open={showRTIPreview} onOpenChange={setShowRTIPreview} projectId={projectId} />}
     </Card>
   );
 };
