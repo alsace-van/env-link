@@ -294,13 +294,10 @@ class RTIPDFGenerator {
     this.drawSectionHeader("2. PROPRIÉTAIRE DU VÉHICULE");
 
     const fullName = [data.clientPrenom, data.clientNom].filter(Boolean).join(" ") || "Non renseigné";
-    const fullAddress = [
-      data.clientAdresse,
-      [data.clientCodePostal, data.clientVille].filter(Boolean).join(" "),
-      data.clientPays,
-    ]
-      .filter(Boolean)
-      .join(", ") || "Non renseigné";
+    const fullAddress =
+      [data.clientAdresse, [data.clientCodePostal, data.clientVille].filter(Boolean).join(" "), data.clientPays]
+        .filter(Boolean)
+        .join(", ") || "Non renseigné";
 
     this.drawField("Nom et prénom", fullName);
     this.drawField("Adresse", fullAddress);
@@ -325,17 +322,17 @@ class RTIPDFGenerator {
     this.drawSectionHeader("4. DESCRIPTION DE LA TRANSFORMATION");
 
     this.drawField("Type de transformation", "Transformation en VASP Caravane");
-    
+
     if (data.descriptionTransformation) {
       this.addSpacing(5);
       this.drawText("Description des travaux :", { bold: true });
-      
+
       // Découper la description en lignes
       const maxCharsPerLine = 80;
       const description = data.descriptionTransformation;
       const words = description.split(" ");
       let currentLine = "";
-      
+
       for (const word of words) {
         if ((currentLine + " " + word).length > maxCharsPerLine) {
           this.drawText(currentLine, { indent: 10 });
@@ -384,12 +381,9 @@ class RTIPDFGenerator {
       this.addSpacing(5);
 
       for (const eq of data.equipements) {
-        const line = [
-          eq.nom,
-          eq.marque || "-",
-          eq.numeroAgrement || "-",
-          eq.poids ? `${eq.poids} kg` : "-",
-        ].join(" | ");
+        const line = [eq.nom, eq.marque || "-", eq.numeroAgrement || "-", eq.poids ? `${eq.poids} kg` : "-"].join(
+          " | ",
+        );
         this.drawText(line, { indent: 10 });
       }
     }
@@ -406,7 +400,7 @@ class RTIPDFGenerator {
     if (data.meubles.length > 0) {
       this.addSpacing(5);
       this.drawText("Détail des aménagements :", { bold: true });
-      
+
       for (const meuble of data.meubles) {
         const line = `• ${meuble.nom}${meuble.poids ? ` - ${meuble.poids} kg` : ""}${meuble.dimensions ? ` (${meuble.dimensions})` : ""}`;
         this.drawText(line, { indent: 10 });
@@ -440,14 +434,8 @@ class RTIPDFGenerator {
     this.checkPageBreak(150);
     this.drawSectionHeader("9. ENGAGEMENT ET SIGNATURE");
 
-    this.drawText(
-      "Je soussigné(e), certifie l'exactitude des informations fournies dans ce document",
-      { indent: 10 }
-    );
-    this.drawText(
-      "et m'engage à présenter le véhicule pour contrôle sur demande de l'administration.",
-      { indent: 10 }
-    );
+    this.drawText("Je soussigné(e), certifie l'exactitude des informations fournies dans ce document", { indent: 10 });
+    this.drawText("et m'engage à présenter le véhicule pour contrôle sur demande de l'administration.", { indent: 10 });
 
     this.addSpacing(30);
 
@@ -457,7 +445,7 @@ class RTIPDFGenerator {
     this.addSpacing(20);
     this.drawText("Signature du propriétaire :", { bold: true });
     this.addSpacing(50);
-    
+
     this.drawText("Signature du transformateur :", { bold: true });
   }
 
@@ -514,13 +502,13 @@ export async function generateRTIPDF(data: RTIData): Promise<Blob> {
 export async function downloadRTIPDF(data: RTIData, filename?: string): Promise<void> {
   const blob = await generateRTIPDF(data);
   const url = URL.createObjectURL(blob);
-  
+
   const link = document.createElement("a");
   link.href = url;
   link.download = filename || `RTI_${data.projectName || "projet"}_${new Date().toISOString().split("T")[0]}.pdf`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  
+
   URL.revokeObjectURL(url);
 }
