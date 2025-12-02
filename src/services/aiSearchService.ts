@@ -244,7 +244,7 @@ export async function getSupplierComparison(productGroupId: string, userId: stri
 // ANALYSE D'INTENTION
 // ============================================
 
-type IntentType =
+export type IntentType =
   | "list_catalog"
   | "search_document"
   | "search_accessory"
@@ -256,7 +256,7 @@ type IntentType =
   | "scenario_info"
   | "general_question";
 
-interface AnalyzedIntent {
+export interface AnalyzedIntent {
   type: IntentType;
   entities: {
     productName?: string;
