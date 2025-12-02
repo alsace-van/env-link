@@ -29,7 +29,7 @@ export interface ChatMessage {
 }
 
 export interface ChatAction {
-  type: "generate_rti" | "view_rti" | "change_supplier" | "view_document" | "view_accessory";
+  type: "view_rti" | "generate_rti" | "change_supplier" | "view_document" | "view_accessory";
   label: string;
   data: Record<string, any>;
 }
