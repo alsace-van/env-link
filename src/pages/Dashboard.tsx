@@ -7,7 +7,7 @@ import UserMenu from "@/components/UserMenu";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { AIUsageWidget } from "@/components/AIUsageWidget";
 import { BackupSettingsDialog } from "@/components/BackupSettingsDialog";
-import { AIChatAssistant } from "@/components/AIChatAssistant";
+import AIChatAssistant from "@/components/AIChatAssistant";
 import { Button } from "@/components/ui/button";
 import { ShoppingBag, Package, TrendingUp } from "lucide-react";
 import logo from "@/assets/logo.png";
