@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   ReactFlow,
@@ -466,7 +466,7 @@ const PROCEDURE_CATEGORIES = [
 // CUSTOM BLOCK NODE POUR REACT FLOW
 // ============================================
 
-const CustomBlockNode = ({ data, selected }: NodeProps) => {
+const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const block = data.block as ContentBlock;
   if (!block) return null;
 
@@ -569,7 +569,9 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
       <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
     </div>
   );
-};
+});
+
+CustomBlockNode.displayName = "CustomBlockNode";
 
 // Types de nodes pour React Flow
 const nodeTypes = {
@@ -1350,7 +1352,7 @@ const MechanicalProcedures = () => {
   // ============================================
 
   // Convertir les blocs en nodes React Flow
-  const flowNodes = useMemo(() => {
+  const initialNodes = useMemo(() => {
     return blocks.map((block) => ({
       id: block.id,
       type: "customBlock",
@@ -1360,19 +1362,45 @@ const MechanicalProcedures = () => {
     }));
   }, [blocks]);
 
-  // Convertir les edges en format React Flow
-  const flowEdges = useMemo(() => {
-    return edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source_block_id,
-      target: edge.target_block_id,
-      type: edge.edge_type || "smoothstep",
-      animated: edge.animated,
-      label: edge.label,
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: 2, stroke: "#64748b" },
-    }));
-  }, [edges]);
+  // Utiliser les hooks optimisés de React Flow
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
+
+  // Référence pour tracker les IDs des blocs
+  const blocksIdsRef = useRef<string>("");
+
+  // Synchroniser les nodes quand les blocs changent (seulement si nécessaire)
+  useEffect(() => {
+    const currentIds = blocks.map((b) => `${b.id}-${b.content?.slice(0, 20)}-${b.width}-${b.height}`).join(",");
+    if (currentIds !== blocksIdsRef.current) {
+      blocksIdsRef.current = currentIds;
+      setNodes(
+        blocks.map((block) => ({
+          id: block.id,
+          type: "customBlock",
+          position: { x: block.position_x, y: block.position_y },
+          data: { block },
+          style: { width: block.width, height: "auto" },
+        })),
+      );
+    }
+  }, [blocks, setNodes]);
+
+  // Synchroniser les edges
+  useEffect(() => {
+    setFlowEdges(
+      edges.map((edge) => ({
+        id: edge.id,
+        source: edge.source_block_id,
+        target: edge.target_block_id,
+        type: edge.edge_type || "smoothstep",
+        animated: edge.animated,
+        label: edge.label,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { strokeWidth: 2, stroke: "#64748b" },
+      })),
+    );
+  }, [edges, setFlowEdges]);
 
   // Gérer la création d'une nouvelle connexion
   const handleConnect = useCallback(
@@ -1423,25 +1451,27 @@ const MechanicalProcedures = () => {
     }
   }, []);
 
-  // Mettre à jour la position d'un node après drag
-  const handleNodeDragStop = useCallback(
-    async (_: any, node: Node) => {
-      const block = blocks.find((b) => b.id === node.id);
-      if (!block) return;
+  // Mettre à jour la position d'un node après drag (sauvegarde uniquement à la fin)
+  const handleNodeDragStop = useCallback(async (_: any, node: Node) => {
+    // Sauvegarder en base uniquement à la fin du drag
+    // On ne met pas à jour le state local car React Flow gère la position visuellement
+    await (supabase as any)
+      .from("mechanical_blocks")
+      .update({
+        position_x: Math.round(node.position.x),
+        position_y: Math.round(node.position.y),
+      })
+      .eq("id", node.id);
 
-      // Mettre à jour localement
-      setBlocks((prev) =>
-        prev.map((b) => (b.id === node.id ? { ...b, position_x: node.position.x, position_y: node.position.y } : b)),
-      );
-
-      // Sauvegarder en base
-      await handleUpdateBlock(node.id, {
-        position_x: node.position.x,
-        position_y: node.position.y,
-      });
-    },
-    [blocks],
-  );
+    // Mettre à jour silencieusement le state des blocs (pour que les données soient cohérentes)
+    setBlocks((prev) =>
+      prev.map((b) =>
+        b.id === node.id
+          ? { ...b, position_x: Math.round(node.position.x), position_y: Math.round(node.position.y) }
+          : b,
+      ),
+    );
+  }, []);
 
   // Auto-layout avec DAGRE
   const handleAutoLayout = useCallback(async () => {
@@ -2668,22 +2698,11 @@ ${block.content}`,
                 </div>
               ) : (
                 <ReactFlow
-                  nodes={flowNodes}
+                  nodes={nodes}
                   edges={flowEdges}
-                  onNodesChange={(changes) => {
-                    // Gérer les changements de position
-                    changes.forEach((change) => {
-                      if (change.type === "position" && change.position && !change.dragging) {
-                        const block = blocks.find((b) => b.id === change.id);
-                        if (block && change.position) {
-                          handleUpdateBlock(change.id, {
-                            position_x: change.position.x,
-                            position_y: change.position.y,
-                          });
-                        }
-                      }
-                    });
-                  }}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onNodeDragStop={handleNodeDragStop}
                   onConnect={handleConnect}
                   onEdgeClick={(_, edge) => {
                     if (confirm("Supprimer cette connexion ?")) {
@@ -2701,6 +2720,16 @@ ${block.content}`,
                     markerEnd: { type: MarkerType.ArrowClosed },
                     style: { strokeWidth: 2, stroke: "#64748b" },
                   }}
+                  proOptions={{ hideAttribution: true }}
+                  nodesDraggable={true}
+                  nodesConnectable={true}
+                  elementsSelectable={true}
+                  selectNodesOnDrag={false}
+                  panOnDrag={[1, 2]}
+                  zoomOnScroll={true}
+                  zoomOnPinch={true}
+                  minZoom={0.2}
+                  maxZoom={2}
                 >
                   <Background gap={20} size={1} />
                   <Controls />
