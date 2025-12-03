@@ -181,7 +181,7 @@ interface Chapter {
 interface ContentBlock {
   id: string;
   chapter_id: string;
-  type: "text" | "checklist" | "warning" | "tip" | "image" | "tools" | "icon" | "audio";
+  type: "text" | "checklist" | "list" | "warning" | "tip" | "image" | "tools" | "icon" | "audio";
   content: string;
   position_x: number;
   position_y: number;
@@ -276,6 +276,13 @@ const BLOCK_TYPES = [
     icon: CheckSquare,
     bgColor: "bg-green-50 dark:bg-green-950/30",
     borderColor: "border-green-300 dark:border-green-700",
+  },
+  {
+    value: "list",
+    label: "Liste",
+    icon: List,
+    bgColor: "bg-slate-50 dark:bg-slate-950/30",
+    borderColor: "border-slate-300 dark:border-slate-700",
   },
   {
     value: "warning",
@@ -818,7 +825,14 @@ const MechanicalProcedures = () => {
     }
 
     try {
-      const content = type === "checklist" ? "[] Étape 1\n[] Étape 2" : type === "icon" && iconName ? iconName : "";
+      const content =
+        type === "checklist"
+          ? "[] Étape 1\n[] Étape 2"
+          : type === "list"
+            ? "• Élément 1\n• Élément 2"
+            : type === "icon" && iconName
+              ? iconName
+              : "";
 
       // Définir la taille selon le type
       let width = 300;
@@ -1048,6 +1062,51 @@ const MechanicalProcedures = () => {
 
   // Supprimer une ligne de checklist
   const handleDeleteChecklistItem = async (blockId: string, lineIndex: number) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const lines = block.content.split("\n");
+    if (lineIndex >= lines.length) return;
+
+    lines.splice(lineIndex, 1);
+    const newContent = lines.join("\n");
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+  };
+
+  // Ajouter un élément à une liste
+  const handleAddListItem = async (blockId: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const newContent = block.content + "\n• Nouvel élément";
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+  };
+
+  // Modifier le texte d'une ligne de liste
+  const handleListTextChange = async (blockId: string, lineIndex: number, newText: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const lines = block.content.split("\n");
+    if (lineIndex >= lines.length) return;
+
+    lines[lineIndex] = "• " + newText;
+
+    const newContent = lines.join("\n");
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+  };
+
+  // Supprimer une ligne de liste
+  const handleDeleteListItem = async (blockId: string, lineIndex: number) => {
     const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
 
@@ -1857,6 +1916,40 @@ ${block.content}`,
               >
                 <Plus className="h-4 w-4" />
                 Ajouter une étape
+              </button>
+            </div>
+          ) : block.type === "list" ? (
+            <div className="space-y-1">
+              {block.content.split("\n").map((line, index) => {
+                const text = line.replace(/^[•\-]\s*/, "");
+
+                return (
+                  <div key={index} className="flex items-center gap-2 group/item">
+                    <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
+                    <input
+                      type="text"
+                      value={text}
+                      onChange={(e) => handleListTextChange(block.id, index, e.target.value)}
+                      className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm"
+                      placeholder="Élément..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteListItem(block.id, index)}
+                      className="opacity-0 group-hover/item:opacity-100 text-red-500 hover:text-red-700 p-1"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => handleAddListItem(block.id)}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mt-2"
+              >
+                <Plus className="h-4 w-4" />
+                Ajouter un élément
               </button>
             </div>
           ) : (
