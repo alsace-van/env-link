@@ -989,6 +989,79 @@ const MechanicalProcedures = () => {
     window.addEventListener("mouseup", handleUp);
   };
 
+  // Toggle checkbox dans une checklist
+  const handleChecklistToggle = async (blockId: string, lineIndex: number) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const lines = block.content.split("\n");
+    if (lineIndex >= lines.length) return;
+
+    const line = lines[lineIndex];
+
+    // Toggle entre [] et [x]
+    if (line.startsWith("[]")) {
+      lines[lineIndex] = "[x]" + line.substring(2);
+    } else if (line.startsWith("[x]")) {
+      lines[lineIndex] = "[]" + line.substring(3);
+    }
+
+    const newContent = lines.join("\n");
+
+    // Mettre à jour localement
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    // Sauvegarder en base
+    await handleUpdateBlock(blockId, { content: newContent });
+  };
+
+  // Ajouter une nouvelle ligne à la checklist
+  const handleAddChecklistItem = async (blockId: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const newContent = block.content + "\n[] Nouvelle étape";
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+  };
+
+  // Modifier le texte d'une ligne de checklist
+  const handleChecklistTextChange = async (blockId: string, lineIndex: number, newText: string) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const lines = block.content.split("\n");
+    if (lineIndex >= lines.length) return;
+
+    const line = lines[lineIndex];
+    const prefix = line.startsWith("[x]") ? "[x] " : "[] ";
+    lines[lineIndex] = prefix + newText;
+
+    const newContent = lines.join("\n");
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+  };
+
+  // Supprimer une ligne de checklist
+  const handleDeleteChecklistItem = async (blockId: string, lineIndex: number) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const lines = block.content.split("\n");
+    if (lineIndex >= lines.length) return;
+
+    lines.splice(lineIndex, 1);
+    const newContent = lines.join("\n");
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+  };
+
   // Resize des blocs
   const handleResizeMouseDown = (e: React.MouseEvent, blockId: string) => {
     e.preventDefault();
@@ -1739,21 +1812,66 @@ ${block.content}`,
                 />
               )}
             </div>
+          ) : block.type === "checklist" ? (
+            <div className="space-y-1">
+              {block.content.split("\n").map((line, index) => {
+                const isChecked = line.startsWith("[x]");
+                const text = line.replace(/^\[x?\]\s*/, "");
+
+                return (
+                  <div key={index} className="flex items-center gap-2 group/item">
+                    <button
+                      type="button"
+                      onClick={() => handleChecklistToggle(block.id, index)}
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isChecked
+                          ? "bg-green-500 border-green-500 text-white"
+                          : "border-gray-300 hover:border-green-400"
+                      }`}
+                    >
+                      {isChecked && <Check className="h-3 w-3" />}
+                    </button>
+                    <input
+                      type="text"
+                      value={text}
+                      onChange={(e) => handleChecklistTextChange(block.id, index, e.target.value)}
+                      className={`flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm ${
+                        isChecked ? "line-through text-muted-foreground" : ""
+                      }`}
+                      placeholder="Étape..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteChecklistItem(block.id, index)}
+                      className="opacity-0 group-hover/item:opacity-100 text-red-500 hover:text-red-700 p-1"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => handleAddChecklistItem(block.id)}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mt-2"
+              >
+                <Plus className="h-4 w-4" />
+                Ajouter une étape
+              </button>
+            </div>
           ) : (
             <Textarea
               value={block.content}
               onChange={(e) => handleUpdateBlock(block.id, { content: e.target.value })}
               className="min-h-[80px] bg-transparent border-none resize-none focus-visible:ring-0 p-0"
               placeholder={
-                block.type === "checklist"
-                  ? "[] Étape 1\n[] Étape 2\n[] Étape 3"
-                  : block.type === "warning"
-                    ? "⚠️ Point d'attention important..."
-                    : block.type === "tip"
-                      ? "💡 Astuce utile..."
-                      : block.type === "tools"
-                        ? "🔧 Outils nécessaires..."
-                        : "Saisissez votre texte..."
+                block.type === "warning"
+                  ? "⚠️ Point d'attention important..."
+                  : block.type === "tip"
+                    ? "💡 Astuce utile..."
+                    : block.type === "tools"
+                      ? "🔧 Outils nécessaires..."
+                      : "Saisissez votre texte..."
               }
             />
           )}
