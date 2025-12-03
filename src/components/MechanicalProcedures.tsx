@@ -468,6 +468,12 @@ const PROCEDURE_CATEGORIES = [
 
 const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const block = data.block as ContentBlock;
+  const onUpdateBlock = data.onUpdateBlock as (id: string, updates: Partial<ContentBlock>) => void;
+  const onDeleteBlock = data.onDeleteBlock as (id: string) => void;
+  const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
+  const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
+  const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
+
   if (!block) return null;
 
   const blockType = BLOCK_TYPES.find((t) => t.value === block.type) || BLOCK_TYPES[0];
@@ -483,13 +489,28 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
 
   const IconComponent = block.type === "icon" ? getIconComponent(block.content) : blockType.icon;
 
+  // Stopper le drag quand on interagit avec un input
+  const stopDrag = (e: React.MouseEvent | React.PointerEvent) => {
+    e.stopPropagation();
+  };
+
   // Rendu spécial pour les icônes
   if (block.type === "icon") {
     return (
       <div className={`p-2 ${selected ? "ring-2 ring-blue-500 ring-offset-2 rounded-full" : ""}`}>
         <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
         <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
-        <IconComponent className="h-10 w-10 text-gray-700 dark:text-gray-300" />
+        <div className="relative group">
+          <IconComponent className="h-10 w-10 text-gray-700 dark:text-gray-300" />
+          <button
+            type="button"
+            onPointerDown={stopDrag}
+            onClick={() => onDeleteBlock(block.id)}
+            className="absolute -top-2 -right-2 p-1 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
         <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
         <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
       </div>
@@ -507,60 +528,216 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
 
       {/* Header du bloc */}
       <div
-        className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg`}
+        className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg cursor-grab`}
       >
-        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
         <IconComponent className="h-4 w-4" />
         <span className="text-xs font-medium flex-1">{blockType.label}</span>
+        <button
+          type="button"
+          onPointerDown={stopDrag}
+          onClick={() => onDeleteBlock(block.id)}
+          className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-500"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
-      {/* Contenu du bloc */}
-      <div className="p-3 text-sm">
-        {block.type === "image" && block.image_url ? (
-          <img src={block.image_url} alt="Illustration" className="max-w-full rounded" />
+      {/* Contenu du bloc - ÉDITABLE */}
+      <div className="p-3 nodrag" onPointerDown={stopDrag}>
+        {block.type === "image" ? (
+          <div>
+            {block.image_url ? (
+              <img src={block.image_url} alt="Illustration" className="max-w-full rounded" />
+            ) : (
+              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded cursor-pointer hover:bg-muted/50">
+                <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                <span className="text-sm text-muted-foreground">Cliquez pour ajouter</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
+                    }
+                  }}
+                />
+              </label>
+            )}
+          </div>
         ) : block.type === "audio" ? (
           <div className="space-y-2">
-            {block.audio_url && (
+            {block.audio_url ? (
               <audio controls className="w-full h-8">
                 <source src={block.audio_url} />
               </audio>
+            ) : (
+              <label className="flex flex-col items-center justify-center h-16 border-2 border-dashed rounded cursor-pointer hover:bg-muted/50">
+                <Mic className="h-6 w-6 text-muted-foreground mb-1" />
+                <span className="text-xs text-muted-foreground">Ajouter un audio</span>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
+                    }
+                  }}
+                />
+              </label>
             )}
-            {block.content && <p className="text-xs text-muted-foreground line-clamp-3">{block.content}</p>}
+            <textarea
+              value={block.content}
+              onChange={(e) => onUpdateBlock(block.id, { content: e.target.value })}
+              className="w-full min-h-[80px] bg-white dark:bg-gray-900 border border-purple-200 dark:border-purple-800 rounded p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-purple-500"
+              placeholder="Transcription ou notes..."
+            />
           </div>
-        ) : block.type === "checklist" || block.type === "list" ? (
+        ) : block.type === "checklist" ? (
           <div className="space-y-1">
-            {block.content
-              .split("\n")
-              .slice(0, 5)
-              .map((line, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs">
-                  {block.type === "checklist" ? (
-                    <>
-                      <div
-                        className={`w-4 h-4 rounded border flex items-center justify-center ${line.startsWith("[x]") ? "bg-green-500 border-green-500 text-white" : "border-gray-300"}`}
-                      >
-                        {line.startsWith("[x]") && <Check className="h-3 w-3" />}
-                      </div>
-                      <span className={line.startsWith("[x]") ? "line-through text-muted-foreground" : ""}>
-                        {line.replace(/^\[x?\]\s*/, "")}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                      <span>{line.replace(/^[•\-]\s*/, "")}</span>
-                    </>
-                  )}
+            {block.content.split("\n").map((line, index) => {
+              const isChecked = line.startsWith("[x]");
+              const text = line.replace(/^\[x?\]\s*/, "");
+
+              return (
+                <div key={index} className="flex items-center gap-2 group/item">
+                  <button
+                    type="button"
+                    onClick={() => onChecklistToggle(block.id, index)}
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      isChecked ? "bg-green-500 border-green-500 text-white" : "border-gray-300 hover:border-green-400"
+                    }`}
+                  >
+                    {isChecked && <Check className="h-3 w-3" />}
+                  </button>
+                  <input
+                    type="text"
+                    value={text}
+                    onChange={(e) => {
+                      const lines = block.content.split("\n");
+                      const prefix = lines[index].startsWith("[x]") ? "[x] " : "[] ";
+                      lines[index] = prefix + e.target.value;
+                      onUpdateBlock(block.id, { content: lines.join("\n") });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        onAddChecklistItem(block.id, index);
+                      } else if (e.key === "Backspace" && text === "") {
+                        e.preventDefault();
+                        const lines = block.content.split("\n");
+                        lines.splice(index, 1);
+                        if (lines.length > 0) {
+                          onUpdateBlock(block.id, { content: lines.join("\n") });
+                        }
+                      }
+                    }}
+                    className={`flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm ${
+                      isChecked ? "line-through text-muted-foreground" : ""
+                    }`}
+                    placeholder="Étape..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const lines = block.content.split("\n");
+                      lines.splice(index, 1);
+                      if (lines.length > 0) {
+                        onUpdateBlock(block.id, { content: lines.join("\n") });
+                      }
+                    }}
+                    className="opacity-0 group-hover/item:opacity-100 text-red-500 hover:text-red-700 p-1"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </div>
-              ))}
-            {block.content.split("\n").length > 5 && (
-              <p className="text-xs text-muted-foreground">+{block.content.split("\n").length - 5} lignes...</p>
-            )}
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => onAddChecklistItem(block.id)}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mt-2"
+            >
+              <Plus className="h-4 w-4" />
+              Ajouter
+            </button>
+          </div>
+        ) : block.type === "list" ? (
+          <div className="space-y-1">
+            {block.content.split("\n").map((line, index) => {
+              const text = line.replace(/^[•\-]\s*/, "");
+
+              return (
+                <div key={index} className="flex items-center gap-2 group/item">
+                  <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
+                  <input
+                    type="text"
+                    value={text}
+                    onChange={(e) => {
+                      const lines = block.content.split("\n");
+                      lines[index] = "• " + e.target.value;
+                      onUpdateBlock(block.id, { content: lines.join("\n") });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        onAddListItem(block.id, index);
+                      } else if (e.key === "Backspace" && text === "") {
+                        e.preventDefault();
+                        const lines = block.content.split("\n");
+                        lines.splice(index, 1);
+                        if (lines.length > 0) {
+                          onUpdateBlock(block.id, { content: lines.join("\n") });
+                        }
+                      }
+                    }}
+                    className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm"
+                    placeholder="Élément..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const lines = block.content.split("\n");
+                      lines.splice(index, 1);
+                      if (lines.length > 0) {
+                        onUpdateBlock(block.id, { content: lines.join("\n") });
+                      }
+                    }}
+                    className="opacity-0 group-hover/item:opacity-100 text-red-500 hover:text-red-700 p-1"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => onAddListItem(block.id)}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mt-2"
+            >
+              <Plus className="h-4 w-4" />
+              Ajouter
+            </button>
           </div>
         ) : (
-          <p className="whitespace-pre-wrap line-clamp-5">
-            {block.content || <span className="text-muted-foreground italic">Double-cliquez pour éditer</span>}
-          </p>
+          <textarea
+            value={block.content}
+            onChange={(e) => onUpdateBlock(block.id, { content: e.target.value })}
+            className="w-full min-h-[60px] bg-transparent border-none resize-none focus:outline-none focus:ring-0 p-0 text-sm"
+            placeholder={
+              block.type === "warning"
+                ? "⚠️ Point d'attention important..."
+                : block.type === "tip"
+                  ? "💡 Astuce utile..."
+                  : block.type === "tools"
+                    ? "🔧 Outils nécessaires..."
+                    : "Saisissez votre texte..."
+            }
+          />
         )}
       </div>
 
@@ -600,8 +777,6 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
 
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
@@ -1347,6 +1522,58 @@ const MechanicalProcedures = () => {
     await handleUpdateBlock(blockId, { content: newContent });
   };
 
+  // Upload d'image pour un bloc
+  const handleImageUpload = async (blockId: string, file: File) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${userData.user.id}/${blockId}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage.from("mechanical-images").upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("mechanical-images").getPublicUrl(fileName);
+
+      await handleUpdateBlock(blockId, { image_url: publicUrl, content: publicUrl });
+      setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, image_url: publicUrl } : b)));
+      toast.success("Image uploadée");
+    } catch (error) {
+      console.error("Erreur upload:", error);
+      toast.error("Erreur lors de l'upload");
+    }
+  };
+
+  // Upload d'audio pour un bloc
+  const handleAudioUpload = async (blockId: string, file: File) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${userData.user.id}/${blockId}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage.from("mechanical-audio").upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("mechanical-audio").getPublicUrl(fileName);
+
+      await handleUpdateBlock(blockId, { audio_url: publicUrl });
+      setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, audio_url: publicUrl } : b)));
+      toast.success("Audio uploadé - Vous pouvez maintenant le transcrire");
+    } catch (error) {
+      console.error("Erreur upload audio:", error);
+      toast.error("Erreur lors de l'upload audio");
+    }
+  };
+
   // ============================================
   // REACT FLOW - GESTION DES CONNEXIONS
   // ============================================
@@ -1357,7 +1584,16 @@ const MechanicalProcedures = () => {
       id: block.id,
       type: "customBlock",
       position: { x: block.position_x, y: block.position_y },
-      data: { block },
+      data: {
+        block,
+        onUpdateBlock: handleUpdateBlock,
+        onDeleteBlock: handleDeleteBlock,
+        onChecklistToggle: handleChecklistToggle,
+        onAddChecklistItem: handleAddChecklistItemAfter,
+        onAddListItem: handleAddListItemAfter,
+        onImageUpload: handleImageUpload,
+        onAudioUpload: handleAudioUpload,
+      },
       style: { width: block.width, height: "auto" },
     }));
   }, [blocks]);
@@ -1371,7 +1607,9 @@ const MechanicalProcedures = () => {
 
   // Synchroniser les nodes quand les blocs changent (seulement si nécessaire)
   useEffect(() => {
-    const currentIds = blocks.map((b) => `${b.id}-${b.content?.slice(0, 20)}-${b.width}-${b.height}`).join(",");
+    const currentIds = blocks
+      .map((b) => `${b.id}-${b.content?.slice(0, 50)}-${b.width}-${b.height}-${b.image_url}-${b.audio_url}`)
+      .join(",");
     if (currentIds !== blocksIdsRef.current) {
       blocksIdsRef.current = currentIds;
       setNodes(
@@ -1379,7 +1617,16 @@ const MechanicalProcedures = () => {
           id: block.id,
           type: "customBlock",
           position: { x: block.position_x, y: block.position_y },
-          data: { block },
+          data: {
+            block,
+            onUpdateBlock: handleUpdateBlock,
+            onDeleteBlock: handleDeleteBlock,
+            onChecklistToggle: handleChecklistToggle,
+            onAddChecklistItem: handleAddChecklistItemAfter,
+            onAddListItem: handleAddListItemAfter,
+            onImageUpload: handleImageUpload,
+            onAudioUpload: handleAudioUpload,
+          },
           style: { width: block.width, height: "auto" },
         })),
       );
@@ -1637,56 +1884,6 @@ const MechanicalProcedures = () => {
   };
 
   // Plus besoin de useEffect pour les listeners de drag - ils sont attachés dans mousedown
-
-  // Upload d'image pour un bloc
-  const handleImageUpload = async (blockId: string, file: File) => {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
-
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${userData.user.id}/${blockId}-${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage.from("mechanical-images").upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("mechanical-images").getPublicUrl(fileName);
-
-      await handleUpdateBlock(blockId, { image_url: publicUrl, content: publicUrl });
-      toast.success("Image uploadée");
-    } catch (error) {
-      console.error("Erreur upload:", error);
-      toast.error("Erreur lors de l'upload");
-    }
-  };
-
-  // Upload d'audio pour un bloc
-  const handleAudioUpload = async (blockId: string, file: File) => {
-    try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) return;
-
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${userData.user.id}/${blockId}-${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage.from("mechanical-audio").upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("mechanical-audio").getPublicUrl(fileName);
-
-      await handleUpdateBlock(blockId, { audio_url: publicUrl });
-      toast.success("Audio uploadé - Vous pouvez maintenant le transcrire");
-    } catch (error) {
-      console.error("Erreur upload audio:", error);
-      toast.error("Erreur lors de l'upload audio");
-    }
-  };
 
   // Récupérer la clé API Gemini depuis les paramètres utilisateur
   const getGeminiApiKey = async (): Promise<string | null> => {
@@ -2709,7 +2906,6 @@ ${block.content}`,
                       handleDeleteEdge(edge.id);
                     }
                   }}
-                  onNodeDoubleClick={handleNodeDoubleClick}
                   nodeTypes={nodeTypes}
                   fitView
                   snapToGrid
