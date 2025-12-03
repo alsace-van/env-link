@@ -567,8 +567,9 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && data.onImageUpload) {
-                      data.onImageUpload(block.id, file);
+                    const uploadFn = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
+                    if (file && uploadFn) {
+                      uploadFn(block.id, file);
                     }
                   }}
                 />
@@ -591,8 +592,9 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && data.onAudioUpload) {
-                      data.onAudioUpload(block.id, file);
+                    const uploadFn = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
+                    if (file && uploadFn) {
+                      uploadFn(block.id, file);
                     }
                   }}
                 />
@@ -785,6 +787,8 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
