@@ -204,6 +204,7 @@ interface ContentBlock {
   id: string;
   chapter_id: string;
   type: "text" | "checklist" | "list" | "warning" | "tip" | "image" | "tools" | "icon" | "audio";
+  title?: string;
   content: string;
   position_x: number;
   position_y: number;
@@ -532,7 +533,14 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
       >
         <GripVertical className="h-4 w-4 text-muted-foreground" />
         <IconComponent className="h-4 w-4" />
-        <span className="text-xs font-medium flex-1">{blockType.label}</span>
+        <input
+          type="text"
+          value={block.title || blockType.label}
+          onChange={(e) => onUpdateBlock(block.id, { title: e.target.value })}
+          onPointerDown={stopDrag}
+          className="text-xs font-medium flex-1 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-300 rounded px-1 min-w-0 nodrag"
+          placeholder={blockType.label}
+        />
         <button
           type="button"
           onPointerDown={stopDrag}
@@ -559,9 +567,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    const uploadFn = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-                    if (file && uploadFn) {
-                      uploadFn(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -584,9 +591,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    const uploadFn = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
-                    if (file && uploadFn) {
-                      uploadFn(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -779,8 +785,6 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
