@@ -1,5 +1,24 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Connection,
+  Edge,
+  Node,
+  NodeProps,
+  Handle,
+  Position,
+  MarkerType,
+  Panel,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import dagre from "dagre";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -151,6 +170,9 @@ import {
   FileAudio,
   Sparkles,
   Languages,
+  GitFork,
+  LayoutDashboard,
+  Unlink,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -191,6 +213,16 @@ interface ContentBlock {
   order_index: number;
   image_url?: string;
   audio_url?: string;
+}
+
+interface BlockEdge {
+  id: string;
+  chapter_id: string;
+  source_block_id: string;
+  target_block_id: string;
+  label?: string;
+  edge_type: string;
+  animated: boolean;
 }
 
 // Couleurs pour les onglets
@@ -430,12 +462,130 @@ const PROCEDURE_CATEGORIES = [
   { value: "autre", label: "Autre" },
 ];
 
+// ============================================
+// CUSTOM BLOCK NODE POUR REACT FLOW
+// ============================================
+
+const CustomBlockNode = ({ data, selected }: NodeProps) => {
+  const block = data.block as ContentBlock;
+  if (!block) return null;
+
+  const blockType = BLOCK_TYPES.find((t) => t.value === block.type) || BLOCK_TYPES[0];
+
+  // Icône spéciale pour les blocs d'icônes
+  const getIconComponent = (iconName: string) => {
+    for (const category of ICON_LIBRARY) {
+      const found = category.icons.find((i) => i.name === iconName);
+      if (found) return found.icon;
+    }
+    return Sticker;
+  };
+
+  const IconComponent = block.type === "icon" ? getIconComponent(block.content) : blockType.icon;
+
+  // Rendu spécial pour les icônes
+  if (block.type === "icon") {
+    return (
+      <div className={`p-2 ${selected ? "ring-2 ring-blue-500 ring-offset-2 rounded-full" : ""}`}>
+        <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+        <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
+        <IconComponent className="h-10 w-10 text-gray-700 dark:text-gray-300" />
+        <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+        <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`rounded-lg border-2 shadow-md ${selected ? "ring-2 ring-blue-500 shadow-lg" : ""} ${blockType.bgColor} ${blockType.borderColor}`}
+      style={{ width: block.width, minHeight: 80 }}
+    >
+      {/* Handles de connexion */}
+      <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+      <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
+
+      {/* Header du bloc */}
+      <div
+        className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg`}
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+        <IconComponent className="h-4 w-4" />
+        <span className="text-xs font-medium flex-1">{blockType.label}</span>
+      </div>
+
+      {/* Contenu du bloc */}
+      <div className="p-3 text-sm">
+        {block.type === "image" && block.image_url ? (
+          <img src={block.image_url} alt="Illustration" className="max-w-full rounded" />
+        ) : block.type === "audio" ? (
+          <div className="space-y-2">
+            {block.audio_url && (
+              <audio controls className="w-full h-8">
+                <source src={block.audio_url} />
+              </audio>
+            )}
+            {block.content && <p className="text-xs text-muted-foreground line-clamp-3">{block.content}</p>}
+          </div>
+        ) : block.type === "checklist" || block.type === "list" ? (
+          <div className="space-y-1">
+            {block.content
+              .split("\n")
+              .slice(0, 5)
+              .map((line, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  {block.type === "checklist" ? (
+                    <>
+                      <div
+                        className={`w-4 h-4 rounded border flex items-center justify-center ${line.startsWith("[x]") ? "bg-green-500 border-green-500 text-white" : "border-gray-300"}`}
+                      >
+                        {line.startsWith("[x]") && <Check className="h-3 w-3" />}
+                      </div>
+                      <span className={line.startsWith("[x]") ? "line-through text-muted-foreground" : ""}>
+                        {line.replace(/^\[x?\]\s*/, "")}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                      <span>{line.replace(/^[•\-]\s*/, "")}</span>
+                    </>
+                  )}
+                </div>
+              ))}
+            {block.content.split("\n").length > 5 && (
+              <p className="text-xs text-muted-foreground">+{block.content.split("\n").length - 5} lignes...</p>
+            )}
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap line-clamp-5">
+            {block.content || <span className="text-muted-foreground italic">Double-cliquez pour éditer</span>}
+          </p>
+        )}
+      </div>
+
+      {/* Handles de connexion sortie */}
+      <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+      <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+    </div>
+  );
+};
+
+// Types de nodes pour React Flow
+const nodeTypes = {
+  customBlock: CustomBlockNode,
+};
+
 const MechanicalProcedures = () => {
   // États principaux
   const [gammes, setGammes] = useState<Gamme[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [blocks, setBlocks] = useState<ContentBlock[]>([]);
+  const [edges, setEdges] = useState<BlockEdge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Mode React Flow
+  const [isFlowMode, setIsFlowMode] = useState(true); // Activer React Flow par défaut
 
   // États de sélection
   const [activeGammeId, setActiveGammeId] = useState<string | null>(null);
@@ -448,6 +598,8 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
+  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
 
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
@@ -580,6 +732,7 @@ const MechanicalProcedures = () => {
 
   const loadBlocks = async (chapterId: string) => {
     try {
+      // Charger les blocs
       const { data, error } = await (supabase as any)
         .from("mechanical_blocks")
         .select("*")
@@ -593,6 +746,21 @@ const MechanicalProcedures = () => {
         setBlocks([]);
       } else {
         setBlocks(data || []);
+      }
+
+      // Charger les edges
+      const { data: edgesData, error: edgesError } = await (supabase as any)
+        .from("mechanical_edges")
+        .select("*")
+        .eq("chapter_id", chapterId);
+
+      if (edgesError) {
+        if (edgesError.code !== "42P01") {
+          console.error("Erreur chargement edges:", edgesError);
+        }
+        setEdges([]);
+      } else {
+        setEdges(edgesData || []);
       }
     } catch (error) {
       console.error("Erreur:", error);
@@ -1175,6 +1343,203 @@ const MechanicalProcedures = () => {
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
 
     await handleUpdateBlock(blockId, { content: newContent });
+  };
+
+  // ============================================
+  // REACT FLOW - GESTION DES CONNEXIONS
+  // ============================================
+
+  // Convertir les blocs en nodes React Flow
+  const flowNodes = useMemo(() => {
+    return blocks.map((block) => ({
+      id: block.id,
+      type: "customBlock",
+      position: { x: block.position_x, y: block.position_y },
+      data: { block },
+      style: { width: block.width, height: "auto" },
+    }));
+  }, [blocks]);
+
+  // Convertir les edges en format React Flow
+  const flowEdges = useMemo(() => {
+    return edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source_block_id,
+      target: edge.target_block_id,
+      type: edge.edge_type || "smoothstep",
+      animated: edge.animated,
+      label: edge.label,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      style: { strokeWidth: 2, stroke: "#64748b" },
+    }));
+  }, [edges]);
+
+  // Gérer la création d'une nouvelle connexion
+  const handleConnect = useCallback(
+    async (connection: Connection) => {
+      if (!connection.source || !connection.target || !activeChapterId) return;
+
+      try {
+        const { data, error } = await (supabase as any)
+          .from("mechanical_edges")
+          .insert({
+            chapter_id: activeChapterId,
+            source_block_id: connection.source,
+            target_block_id: connection.target,
+            edge_type: "smoothstep",
+            animated: false,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setEdges((prev) => [...prev, data]);
+        toast.success("Connexion créée");
+      } catch (error: any) {
+        console.error("Erreur création connexion:", error);
+        if (error.code === "23505") {
+          toast.error("Cette connexion existe déjà");
+        } else {
+          toast.error("Erreur lors de la création");
+        }
+      }
+    },
+    [activeChapterId],
+  );
+
+  // Supprimer une connexion
+  const handleDeleteEdge = useCallback(async (edgeId: string) => {
+    try {
+      const { error } = await (supabase as any).from("mechanical_edges").delete().eq("id", edgeId);
+
+      if (error) throw error;
+
+      setEdges((prev) => prev.filter((e) => e.id !== edgeId));
+      toast.success("Connexion supprimée");
+    } catch (error) {
+      console.error("Erreur suppression connexion:", error);
+      toast.error("Erreur lors de la suppression");
+    }
+  }, []);
+
+  // Mettre à jour la position d'un node après drag
+  const handleNodeDragStop = useCallback(
+    async (_: any, node: Node) => {
+      const block = blocks.find((b) => b.id === node.id);
+      if (!block) return;
+
+      // Mettre à jour localement
+      setBlocks((prev) =>
+        prev.map((b) => (b.id === node.id ? { ...b, position_x: node.position.x, position_y: node.position.y } : b)),
+      );
+
+      // Sauvegarder en base
+      await handleUpdateBlock(node.id, {
+        position_x: node.position.x,
+        position_y: node.position.y,
+      });
+    },
+    [blocks],
+  );
+
+  // Auto-layout avec DAGRE
+  const handleAutoLayout = useCallback(async () => {
+    if (blocks.length === 0) return;
+
+    const dagreGraph = new dagre.graphlib.Graph();
+    dagreGraph.setDefaultEdgeLabel(() => ({}));
+    dagreGraph.setGraph({ rankdir: "TB", nodesep: 50, ranksep: 80 }); // TB = Top to Bottom
+
+    // Ajouter les nodes
+    blocks.forEach((block) => {
+      dagreGraph.setNode(block.id, { width: block.width, height: block.height || 150 });
+    });
+
+    // Ajouter les edges
+    edges.forEach((edge) => {
+      dagreGraph.setEdge(edge.source_block_id, edge.target_block_id);
+    });
+
+    // Calculer le layout
+    dagre.layout(dagreGraph);
+
+    // Appliquer les nouvelles positions
+    const updates: Promise<void>[] = [];
+    const newBlocks = blocks.map((block) => {
+      const nodeWithPosition = dagreGraph.node(block.id);
+      const newX = nodeWithPosition.x - block.width / 2;
+      const newY = nodeWithPosition.y - (block.height || 150) / 2;
+
+      updates.push(handleUpdateBlock(block.id, { position_x: newX, position_y: newY }));
+
+      return { ...block, position_x: newX, position_y: newY };
+    });
+
+    setBlocks(newBlocks);
+    await Promise.all(updates);
+
+    toast.success("Blocs réorganisés automatiquement");
+  }, [blocks, edges]);
+
+  // Supprimer toutes les connexions
+  const handleClearAllEdges = useCallback(async () => {
+    if (!activeChapterId || edges.length === 0) return;
+
+    try {
+      const { error } = await (supabase as any).from("mechanical_edges").delete().eq("chapter_id", activeChapterId);
+
+      if (error) throw error;
+
+      setEdges([]);
+      toast.success("Toutes les connexions supprimées");
+    } catch (error) {
+      console.error("Erreur suppression connexions:", error);
+      toast.error("Erreur lors de la suppression");
+    }
+  }, [activeChapterId, edges]);
+
+  // Double-clic pour éditer un bloc
+  const handleNodeDoubleClick = useCallback(
+    (_: any, node: Node) => {
+      const block = blocks.find((b) => b.id === node.id);
+      if (block) {
+        setEditingBlock({ ...block });
+        setIsEditBlockDialogOpen(true);
+      }
+    },
+    [blocks],
+  );
+
+  // Sauvegarder les modifications du bloc
+  const handleSaveBlockEdit = async () => {
+    if (!editingBlock) return;
+
+    try {
+      await handleUpdateBlock(editingBlock.id, {
+        content: editingBlock.content,
+        width: editingBlock.width,
+        height: editingBlock.height,
+      });
+
+      setBlocks((prev) => prev.map((b) => (b.id === editingBlock.id ? editingBlock : b)));
+
+      setIsEditBlockDialogOpen(false);
+      setEditingBlock(null);
+      toast.success("Bloc mis à jour");
+    } catch (error) {
+      console.error("Erreur mise à jour bloc:", error);
+      toast.error("Erreur lors de la mise à jour");
+    }
+  };
+
+  // Supprimer le bloc depuis le dialog
+  const handleDeleteBlockFromDialog = async () => {
+    if (!editingBlock) return;
+
+    await handleDeleteBlock(editingBlock.id);
+    setIsEditBlockDialogOpen(false);
+    setEditingBlock(null);
   };
 
   // Resize des blocs
@@ -2246,23 +2611,55 @@ ${block.content}`,
                   </ScrollArea>
                 </PopoverContent>
               </Popover>
+
+              {/* Séparateur */}
+              <div className="h-6 w-px bg-border mx-2" />
+
+              {/* Boutons de layout */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={handleAutoLayout}
+                disabled={!activeChapterId || blocks.length === 0}
+                title="Organiser automatiquement les blocs"
+              >
+                <LayoutDashboard className="h-4 w-4 mr-1" />
+                Auto-layout
+              </Button>
+
+              {edges.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-red-600 hover:bg-red-50"
+                  onClick={handleClearAllEdges}
+                  disabled={!activeChapterId}
+                  title="Supprimer toutes les connexions"
+                >
+                  <Unlink className="h-4 w-4 mr-1" />
+                  Effacer connexions
+                </Button>
+              )}
+
+              {activeChapterId && (
+                <span className="text-xs text-muted-foreground ml-auto">
+                  💡 Double-clic pour éditer • Tirez depuis les points pour connecter
+                </span>
+              )}
             </div>
 
-            {/* Canvas des blocs */}
-            <div
-              ref={canvasRef}
-              className="flex-1 relative overflow-auto bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAyMCAwIEwgMCAwIDAgMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2UwZTBlMCIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] dark:bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAyMCAwIEwgMCAwIDAgMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzMzMzMzMyIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')]"
-              onClick={() => setSelectedBlockId(null)}
-            >
+            {/* Canvas React Flow */}
+            <div className="flex-1 relative overflow-hidden">
               {!activeChapterId ? (
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-muted/5">
                   <div className="text-center">
                     <FileText className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p>Sélectionnez ou créez un chapitre</p>
                   </div>
                 </div>
               ) : blocks.length === 0 ? (
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-muted/5">
                   <div className="text-center">
                     <StickyNote className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p>Aucun bloc dans ce chapitre</p>
@@ -2270,13 +2667,65 @@ ${block.content}`,
                   </div>
                 </div>
               ) : (
-                <div
-                  key={`blocks-${blocks.length}-${blocks.map((b) => b.id).join("-")}`}
-                  className="relative min-h-full min-w-full"
-                  style={{ minHeight: "1000px", minWidth: "1500px" }}
+                <ReactFlow
+                  nodes={flowNodes}
+                  edges={flowEdges}
+                  onNodesChange={(changes) => {
+                    // Gérer les changements de position
+                    changes.forEach((change) => {
+                      if (change.type === "position" && change.position && !change.dragging) {
+                        const block = blocks.find((b) => b.id === change.id);
+                        if (block && change.position) {
+                          handleUpdateBlock(change.id, {
+                            position_x: change.position.x,
+                            position_y: change.position.y,
+                          });
+                        }
+                      }
+                    });
+                  }}
+                  onConnect={handleConnect}
+                  onEdgeClick={(_, edge) => {
+                    if (confirm("Supprimer cette connexion ?")) {
+                      handleDeleteEdge(edge.id);
+                    }
+                  }}
+                  onNodeDoubleClick={handleNodeDoubleClick}
+                  nodeTypes={nodeTypes}
+                  fitView
+                  snapToGrid
+                  snapGrid={[20, 20]}
+                  connectionMode={"loose" as any}
+                  defaultEdgeOptions={{
+                    type: "smoothstep",
+                    markerEnd: { type: MarkerType.ArrowClosed },
+                    style: { strokeWidth: 2, stroke: "#64748b" },
+                  }}
                 >
-                  {blocks.map(renderBlock)}
-                </div>
+                  <Background gap={20} size={1} />
+                  <Controls />
+                  <MiniMap
+                    nodeColor={(node) => {
+                      const block = node.data?.block as ContentBlock;
+                      if (!block) return "#e2e8f0";
+                      switch (block.type) {
+                        case "checklist":
+                          return "#86efac";
+                        case "warning":
+                          return "#fde047";
+                        case "tip":
+                          return "#93c5fd";
+                        case "tools":
+                          return "#fdba74";
+                        case "audio":
+                          return "#c4b5fd";
+                        default:
+                          return "#e2e8f0";
+                      }
+                    }}
+                    maskColor="rgba(0,0,0,0.1)"
+                  />
+                </ReactFlow>
               )}
             </div>
           </div>
@@ -2294,6 +2743,269 @@ ${block.content}`,
           </div>
         </div>
       )}
+
+      {/* Dialog édition bloc */}
+      <Dialog open={isEditBlockDialogOpen} onOpenChange={setIsEditBlockDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {editingBlock &&
+                (() => {
+                  const blockType = BLOCK_TYPES.find((t) => t.value === editingBlock.type) || BLOCK_TYPES[0];
+                  const IconComp = blockType.icon;
+                  return (
+                    <>
+                      <IconComp className="h-5 w-5" />
+                      Éditer le bloc {blockType.label}
+                    </>
+                  );
+                })()}
+            </DialogTitle>
+          </DialogHeader>
+
+          {editingBlock && (
+            <div className="space-y-4">
+              {/* Contenu selon le type */}
+              {editingBlock.type === "image" ? (
+                <div>
+                  {editingBlock.image_url ? (
+                    <div className="space-y-2">
+                      <img src={editingBlock.image_url} alt="Illustration" className="max-w-full rounded border" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // TODO: Upload nouvelle image
+                        }}
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        Changer l'image
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Aucune image</p>
+                    </div>
+                  )}
+                </div>
+              ) : editingBlock.type === "audio" ? (
+                <div className="space-y-4">
+                  {editingBlock.audio_url && (
+                    <audio controls className="w-full">
+                      <source src={editingBlock.audio_url} />
+                    </audio>
+                  )}
+                  <div>
+                    <Label>Transcription / Notes</Label>
+                    <Textarea
+                      value={editingBlock.content}
+                      onChange={(e) => setEditingBlock({ ...editingBlock, content: e.target.value })}
+                      className="min-h-[200px] mt-1"
+                      placeholder="Transcription ou notes..."
+                    />
+                  </div>
+                </div>
+              ) : editingBlock.type === "checklist" ? (
+                <div className="space-y-3">
+                  <Label>Éléments de la checklist</Label>
+                  <div className="space-y-2">
+                    {editingBlock.content.split("\n").map((line, index) => {
+                      const isChecked = line.startsWith("[x]");
+                      const text = line.replace(/^\[x?\]\s*/, "");
+
+                      return (
+                        <div key={index} className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const lines = editingBlock.content.split("\n");
+                              if (lines[index].startsWith("[x]")) {
+                                lines[index] = "[] " + text;
+                              } else {
+                                lines[index] = "[x] " + text;
+                              }
+                              setEditingBlock({ ...editingBlock, content: lines.join("\n") });
+                            }}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                              isChecked
+                                ? "bg-green-500 border-green-500 text-white"
+                                : "border-gray-300 hover:border-green-400"
+                            }`}
+                          >
+                            {isChecked && <Check className="h-3 w-3" />}
+                          </button>
+                          <Input
+                            value={text}
+                            onChange={(e) => {
+                              const lines = editingBlock.content.split("\n");
+                              const prefix = lines[index].startsWith("[x]") ? "[x] " : "[] ";
+                              lines[index] = prefix + e.target.value;
+                              setEditingBlock({ ...editingBlock, content: lines.join("\n") });
+                            }}
+                            className={isChecked ? "line-through text-muted-foreground" : ""}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const lines = editingBlock.content.split("\n");
+                              lines.splice(index, 1);
+                              setEditingBlock({ ...editingBlock, content: lines.join("\n") });
+                            }}
+                          >
+                            <X className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingBlock({
+                        ...editingBlock,
+                        content: editingBlock.content + "\n[] Nouvelle étape",
+                      });
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Ajouter une étape
+                  </Button>
+                </div>
+              ) : editingBlock.type === "list" ? (
+                <div className="space-y-3">
+                  <Label>Éléments de la liste</Label>
+                  <div className="space-y-2">
+                    {editingBlock.content.split("\n").map((line, index) => {
+                      const text = line.replace(/^[•\-]\s*/, "");
+
+                      return (
+                        <div key={index} className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
+                          <Input
+                            value={text}
+                            onChange={(e) => {
+                              const lines = editingBlock.content.split("\n");
+                              lines[index] = "• " + e.target.value;
+                              setEditingBlock({ ...editingBlock, content: lines.join("\n") });
+                            }}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const lines = editingBlock.content.split("\n");
+                              lines.splice(index, 1);
+                              setEditingBlock({ ...editingBlock, content: lines.join("\n") });
+                            }}
+                          >
+                            <X className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingBlock({
+                        ...editingBlock,
+                        content: editingBlock.content + "\n• Nouvel élément",
+                      });
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Ajouter un élément
+                  </Button>
+                </div>
+              ) : editingBlock.type === "icon" ? (
+                <div className="space-y-3">
+                  <Label>Choisir une icône</Label>
+                  <ScrollArea className="h-48 border rounded-lg p-2">
+                    <div className="grid grid-cols-8 gap-2">
+                      {ICON_LIBRARY.flatMap((cat) => cat.icons).map((iconItem) => {
+                        const IconComp = iconItem.icon;
+                        return (
+                          <button
+                            key={iconItem.name}
+                            onClick={() => setEditingBlock({ ...editingBlock, content: iconItem.name })}
+                            className={`p-2 rounded hover:bg-muted flex items-center justify-center ${
+                              editingBlock.content === iconItem.name ? "bg-blue-100 ring-2 ring-blue-500" : ""
+                            }`}
+                            title={iconItem.label}
+                          >
+                            <IconComp className="h-6 w-6" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </div>
+              ) : (
+                <div>
+                  <Label>Contenu</Label>
+                  <Textarea
+                    value={editingBlock.content}
+                    onChange={(e) => setEditingBlock({ ...editingBlock, content: e.target.value })}
+                    className="min-h-[150px] mt-1"
+                    placeholder={
+                      editingBlock.type === "warning"
+                        ? "⚠️ Point d'attention important..."
+                        : editingBlock.type === "tip"
+                          ? "💡 Astuce utile..."
+                          : editingBlock.type === "tools"
+                            ? "🔧 Liste des outils nécessaires..."
+                            : "Saisissez votre texte..."
+                    }
+                  />
+                </div>
+              )}
+
+              {/* Dimensions */}
+              {editingBlock.type !== "icon" && (
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                  <div>
+                    <Label>Largeur (px)</Label>
+                    <Input
+                      type="number"
+                      value={editingBlock.width}
+                      onChange={(e) => setEditingBlock({ ...editingBlock, width: parseInt(e.target.value) || 300 })}
+                      min={150}
+                      max={800}
+                    />
+                  </div>
+                  <div>
+                    <Label>Hauteur min (px)</Label>
+                    <Input
+                      type="number"
+                      value={editingBlock.height}
+                      onChange={(e) => setEditingBlock({ ...editingBlock, height: parseInt(e.target.value) || 150 })}
+                      min={80}
+                      max={600}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="flex justify-between">
+            <Button variant="destructive" onClick={handleDeleteBlockFromDialog}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Supprimer
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsEditBlockDialogOpen(false)}>
+                Annuler
+              </Button>
+              <Button onClick={handleSaveBlockEdit}>Enregistrer</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog création gamme */}
       <Dialog open={isGammeDialogOpen} onOpenChange={setIsGammeDialogOpen}>
