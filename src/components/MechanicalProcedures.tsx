@@ -473,8 +473,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
-  const onImageUpload = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-  const onAudioUpload = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
 
   if (!block) return null;
 
@@ -561,8 +559,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onImageUpload) {
-                      onImageUpload(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -583,10 +581,10 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   type="file"
                   accept="audio/*"
                   className="hidden"
-                onChange={(e) => {
+                  onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onAudioUpload) {
-                      onAudioUpload(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -779,8 +777,6 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
@@ -1913,7 +1909,7 @@ const MechanicalProcedures = () => {
   };
 
   // Analyser un dessin/schéma avec Gemini Vision et créer les blocs
-  const handleAnalyzeSchema = async (mode: "blocks" | "svg" | "dxf" = "blocks") => {
+  const handleAnalyzeSchema = async (mode: "blocks" | "svg" | "dxf" | "sketch" = "blocks") => {
     if (!schemaImportImage) return;
 
     const apiKey = await getGeminiApiKey();
@@ -1931,7 +1927,27 @@ const MechanicalProcedures = () => {
 
       let prompt = "";
 
-      if (mode === "svg") {
+      if (mode === "sketch") {
+        prompt = `Analyse cette photo et transforme-la en un croquis technique simplifié en SVG.
+
+OBJECTIF : Créer un dessin au trait épuré qui met en évidence les éléments essentiels, comme un schéma technique ou un croquis d'architecte.
+
+RÈGLES DE SIMPLIFICATION :
+- Garde UNIQUEMENT les contours et formes principales
+- Supprime tous les détails superflus (textures, ombres, reflets, arrière-plan chargé)
+- Utilise des lignes nettes et simples (stroke uniquement, pas de fill sauf pour les zones importantes)
+- Épaisseur de trait : 2px pour les contours principaux, 1px pour les détails
+- Couleur : noir (#333) pour les traits, possibilité de gris (#888) pour les éléments secondaires
+- Si des câbles/tuyaux/fils sont visibles, trace-les clairement
+- Si des composants importants sont visibles (batterie, fusible, vanne, etc.), simplifie-les en formes géométriques reconnaissables
+- Ajoute des étiquettes texte si des éléments sont identifiables (font-family: sans-serif, font-size: 12px)
+- Dimensions du SVG : largeur 800px, hauteur proportionnelle
+
+STYLE : Dessin technique épuré, style manuel/croquis d'ingénieur
+
+RÉPONDS UNIQUEMENT avec le code SVG complet, commençant par <svg et finissant par </svg>.
+Pas de markdown, pas de backticks, pas d'explication.`;
+      } else if (mode === "svg") {
         prompt = `Analyse ce dessin/croquis et recrée-le en SVG propre et professionnel.
 
 RÈGLES IMPORTANTES :
@@ -2037,7 +2053,7 @@ Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explicatio
         throw new Error("Réponse vide de Gemini");
       }
 
-      if (mode === "svg") {
+      if (mode === "svg" || mode === "sketch") {
         // Extraire le SVG
         const svgMatch = responseText.match(/<svg[\s\S]*<\/svg>/i);
         if (!svgMatch) {
@@ -2051,7 +2067,7 @@ Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explicatio
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `schema-${Date.now()}.svg`;
+        a.download = `${mode === "sketch" ? "croquis" : "schema"}-${Date.now()}.svg`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -2060,7 +2076,7 @@ Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explicatio
         // Stocker le SVG pour l'aperçu
         setGeneratedSvg(svgContent);
 
-        toast.success("SVG généré et téléchargé !");
+        toast.success(mode === "sketch" ? "Croquis généré !" : "SVG généré et téléchargé !");
       } else if (mode === "dxf") {
         // Parser le JSON et générer le DXF
         const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
@@ -3753,7 +3769,21 @@ ${block.content}`,
                 <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 rounded-lg p-4">
                   <h4 className="font-medium mb-3">Choisissez le format de sortie :</h4>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {/* Croquis */}
+                    <button
+                      type="button"
+                      onClick={() => handleAnalyzeSchema("sketch")}
+                      disabled={schemaImportLoading}
+                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-amber-200 hover:border-amber-400 hover:shadow-md transition-all disabled:opacity-50"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                        <Pencil className="h-6 w-6 text-amber-600" />
+                      </div>
+                      <span className="font-medium">Croquis</span>
+                      <span className="text-xs text-muted-foreground text-center">Simplifier une photo en dessin</span>
+                    </button>
+
                     {/* SVG */}
                     <button
                       type="button"
@@ -3765,9 +3795,7 @@ ${block.content}`,
                         <FileText className="h-6 w-6 text-purple-600" />
                       </div>
                       <span className="font-medium">SVG</span>
-                      <span className="text-xs text-muted-foreground text-center">
-                        Vectoriel web, éditable dans Illustrator
-                      </span>
+                      <span className="text-xs text-muted-foreground text-center">Nettoyer un dessin existant</span>
                     </button>
 
                     {/* DXF */}
@@ -3781,9 +3809,7 @@ ${block.content}`,
                         <Box className="h-6 w-6 text-blue-600" />
                       </div>
                       <span className="font-medium">DXF</span>
-                      <span className="text-xs text-muted-foreground text-center">
-                        AutoCAD, Fusion 360, découpe laser
-                      </span>
+                      <span className="text-xs text-muted-foreground text-center">Export CAO / Fusion 360</span>
                     </button>
 
                     {/* Blocs */}
@@ -3797,7 +3823,7 @@ ${block.content}`,
                         <LayoutGrid className="h-6 w-6 text-green-600" />
                       </div>
                       <span className="font-medium">Blocs</span>
-                      <span className="text-xs text-muted-foreground text-center">Organigramme avec connexions</span>
+                      <span className="text-xs text-muted-foreground text-center">Organigramme interactif</span>
                     </button>
                   </div>
 
@@ -3811,16 +3837,19 @@ ${block.content}`,
 
                 {/* Conseils */}
                 <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-sm">
-                  <p className="font-medium text-blue-700 dark:text-blue-300 mb-1">💡 Conseils :</p>
+                  <p className="font-medium text-blue-700 dark:text-blue-300 mb-1">💡 Quel format choisir ?</p>
                   <ul className="text-blue-600 dark:text-blue-400 text-xs space-y-1">
                     <li>
-                      • <strong>SVG</strong> : Idéal pour les schémas web, redimensionnable à l'infini
+                      • <strong>Croquis</strong> : Transformer une PHOTO réelle en dessin technique simplifié
                     </li>
                     <li>
-                      • <strong>DXF</strong> : Pour importer dans Fusion 360, AutoCAD, ou découpe laser/CNC
+                      • <strong>SVG</strong> : Nettoyer un DESSIN à main levée en version propre
                     </li>
                     <li>
-                      • <strong>Blocs</strong> : Crée un organigramme interactif dans le chapitre actuel
+                      • <strong>DXF</strong> : Exporter vers Fusion 360, AutoCAD, découpe laser
+                    </li>
+                    <li>
+                      • <strong>Blocs</strong> : Créer un organigramme à partir d'un schéma
                     </li>
                   </ul>
                 </div>
