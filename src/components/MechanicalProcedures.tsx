@@ -568,9 +568,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    const uploadFn = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-                    if (file && uploadFn) {
-                      uploadFn(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -593,9 +592,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    const uploadFn = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
-                    if (file && uploadFn) {
-                      uploadFn(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -792,8 +790,6 @@ const MechanicalProcedures = () => {
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
   const [generatedSvg, setGeneratedSvg] = useState<string | null>(null);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
 
   // Import PDF
   const [isPdfImportDialogOpen, setIsPdfImportDialogOpen] = useState(false);
@@ -2411,39 +2407,41 @@ EOF`;
 
       setPdfImportProgress("Analyse du document avec l'IA...");
 
-      // Analyser le PDF avec Gemini
-      const prompt = `Analyse ce document PDF qui est une gamme de montage / procédure technique.
+      // Analyser le PDF avec Gemini (utiliser gemini-1.5-pro pour meilleure analyse PDF)
+      const prompt = `Analyse ce document PDF qui est une gamme de montage / procédure technique / notice d'installation.
 
-Extrais la structure complète et retourne un JSON avec ce format :
+IMPORTANT: Tu DOIS extraire le contenu et le structurer en chapitres et blocs.
+
+Retourne un JSON avec ce format EXACT :
 {
-  "title": "Titre de la gamme",
-  "description": "Description générale",
+  "title": "Titre du document",
+  "description": "Description courte",
   "chapters": [
     {
-      "title": "Titre du chapitre",
+      "title": "Titre du chapitre ou section",
       "blocks": [
         {
-          "type": "text" | "checklist" | "list" | "warning" | "tip" | "tools",
-          "title": "Titre optionnel du bloc",
-          "content": "Contenu du bloc"
+          "type": "text",
+          "title": "Titre optionnel",
+          "content": "Contenu textuel"
         }
       ]
     }
   ]
 }
 
-RÈGLES D'ANALYSE :
-- Chaque section principale = un chapitre
-- Les paragraphes de texte = blocs "text"
-- Les listes d'étapes numérotées = blocs "checklist" (format: "[] Étape 1\\n[] Étape 2")
-- Les listes à puces = blocs "list" (format: "• Item 1\\n• Item 2")
-- Les avertissements/dangers/attention = blocs "warning"
-- Les conseils/astuces/notes = blocs "tip"
-- Les listes d'outils/matériel = blocs "tools"
-- Si tu détectes une image/schéma, crée un bloc "text" avec "[IMAGE: description de l'image]"
-- Conserve tout le texte important, ne résume pas
+RÈGLES :
+- S'il n'y a pas de sections claires, crée UN SEUL chapitre "Contenu principal"
+- Chaque paragraphe important = un bloc "text"
+- Les listes numérotées = bloc "checklist" avec format "[] Étape 1\\n[] Étape 2"
+- Les listes à puces = bloc "list" avec format "• Item 1\\n• Item 2"
+- Les avertissements/ATTENTION/DANGER = bloc "warning"
+- Les notes/conseils/astuces = bloc "tip"
+- Les listes d'outils/matériel nécessaire = bloc "tools"
+- NE RÉSUME PAS, conserve tout le texte important
+- Tu DOIS retourner au moins 1 chapitre avec au moins 1 bloc
 
-RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
+RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans texte avant ou après.`;
 
       const geminiResponse = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
@@ -2466,7 +2464,7 @@ RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
             ],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 32000,
+              maxOutputTokens: 65536,
             },
           }),
         },
@@ -2484,19 +2482,49 @@ RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
       }
 
       // Parser le JSON
-      const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
-      console.log("Réponse Gemini nettoyée:", cleanedResponse.substring(0, 500));
+      let cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
 
-      const pdfStructure = JSON.parse(cleanedResponse);
+      // Essayer de trouver le JSON dans la réponse si elle contient du texte avant/après
+      const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedResponse = jsonMatch[0];
+      }
+
+      console.log("Réponse Gemini nettoyée:", cleanedResponse.substring(0, 1000));
+
+      let pdfStructure;
+      try {
+        pdfStructure = JSON.parse(cleanedResponse);
+      } catch (parseError) {
+        console.error("Erreur parsing JSON:", parseError);
+        console.log("Réponse complète:", cleanedResponse);
+        throw new Error("L'IA n'a pas retourné un JSON valide. Vérifiez la console pour plus de détails.");
+      }
+
       console.log("Structure PDF parsée:", pdfStructure);
       console.log("Nombre de chapitres:", pdfStructure.chapters?.length);
 
-      if (!pdfStructure.chapters || !Array.isArray(pdfStructure.chapters)) {
-        throw new Error("Structure invalide - pas de chapitres trouvés");
-      }
+      // Si pas de chapitres, créer un chapitre par défaut avec le contenu brut
+      if (!pdfStructure.chapters || !Array.isArray(pdfStructure.chapters) || pdfStructure.chapters.length === 0) {
+        console.warn("Pas de chapitres détectés, création d'un chapitre par défaut");
 
-      if (pdfStructure.chapters.length === 0) {
-        throw new Error("Aucun chapitre détecté dans le PDF");
+        // Créer un chapitre par défaut
+        pdfStructure.chapters = [
+          {
+            title: "Contenu importé",
+            blocks: [
+              {
+                type: "text",
+                title: "Contenu du PDF",
+                content:
+                  pdfStructure.content ||
+                  pdfStructure.text ||
+                  pdfStructure.description ||
+                  "Contenu non extrait - veuillez éditer ce bloc manuellement",
+              },
+            ],
+          },
+        ];
       }
 
       setPdfImportProgress("Création de la gamme...");
@@ -2549,31 +2577,42 @@ RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
         console.log("Chapitre créé avec ID:", newChapterData.id);
 
         // Créer les blocs du chapitre
-        if (chapter.blocks && Array.isArray(chapter.blocks)) {
-          console.log(`  - ${chapter.blocks.length} blocs à créer`);
-          for (let blockIndex = 0; blockIndex < chapter.blocks.length; blockIndex++) {
-            const block = chapter.blocks[blockIndex];
+        let blocksToCreate = chapter.blocks;
 
-            const row = Math.floor(blockIndex / 2);
-            const col = blockIndex % 2;
+        // Si pas de blocs, créer un bloc texte par défaut
+        if (!blocksToCreate || !Array.isArray(blocksToCreate) || blocksToCreate.length === 0) {
+          blocksToCreate = [
+            {
+              type: "text",
+              title: null,
+              content: chapter.content || chapter.description || "Contenu à ajouter",
+            },
+          ];
+        }
 
-            const { error: blockError } = await (supabase as any).from("mechanical_blocks").insert({
-              chapter_id: newChapterData.id,
-              type: block.type || "text",
-              title: block.title || null,
-              content: block.content || "",
-              position_x: 50 + col * 450,
-              position_y: 50 + row * 200,
-              width: 400,
-              height: 150,
-              order_index: blockIndex,
-            });
+        console.log(`  - ${blocksToCreate.length} blocs à créer`);
+        for (let blockIndex = 0; blockIndex < blocksToCreate.length; blockIndex++) {
+          const block = blocksToCreate[blockIndex];
 
-            if (blockError) {
-              console.error("Erreur création bloc:", blockError);
-            } else {
-              createdBlocks++;
-            }
+          const row = Math.floor(blockIndex / 2);
+          const col = blockIndex % 2;
+
+          const { error: blockError } = await (supabase as any).from("mechanical_blocks").insert({
+            chapter_id: newChapterData.id,
+            type: block.type || "text",
+            title: block.title || null,
+            content: block.content || "",
+            position_x: 50 + col * 450,
+            position_y: 50 + row * 200,
+            width: 400,
+            height: 150,
+            order_index: blockIndex,
+          });
+
+          if (blockError) {
+            console.error("Erreur création bloc:", blockError);
+          } else {
+            createdBlocks++;
           }
         }
 
