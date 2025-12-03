@@ -473,8 +473,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
-  const onImageUpload = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-  const onAudioUpload = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
 
   if (!block) return null;
 
@@ -561,8 +559,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onImageUpload) {
-                      onImageUpload(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -585,8 +583,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onAudioUpload) {
-                      onAudioUpload(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -779,12 +777,11 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
   const [generatedSvg, setGeneratedSvg] = useState<string | null>(null);
+  const [schemaImportMode, setSchemaImportMode] = useState<"sketch" | "drawing">("drawing");
 
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
@@ -3297,18 +3294,39 @@ ${block.content}`,
               {/* Séparateur */}
               <div className="h-6 w-px bg-border mx-2" />
 
-              {/* Bouton IA - Schéma depuis image */}
+              {/* Bouton IA - Photo vers Croquis */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border-amber-200"
+                onClick={() => {
+                  setSchemaImportMode("sketch");
+                  setIsSchemaImportDialogOpen(true);
+                }}
+                disabled={!activeChapterId}
+                title="Simplifier une photo en croquis technique"
+              >
+                <Camera className="h-4 w-4 mr-1 text-amber-600" />
+                <span className="bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent font-medium">
+                  Photo → Croquis
+                </span>
+              </Button>
+
+              {/* Bouton IA - Dessin vers SVG/DXF */}
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-purple-200"
-                onClick={() => setIsSchemaImportDialogOpen(true)}
+                onClick={() => {
+                  setSchemaImportMode("drawing");
+                  setIsSchemaImportDialogOpen(true);
+                }}
                 disabled={!activeChapterId}
-                title="Créer un schéma à partir d'un dessin"
+                title="Transformer un dessin en SVG/DXF propre"
               >
                 <Sparkles className="h-4 w-4 mr-1 text-purple-500" />
                 <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent font-medium">
-                  Schéma depuis image
+                  Dessin → SVG/DXF
                 </span>
               </Button>
 
@@ -3689,21 +3707,47 @@ ${block.content}`,
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-500" />
-              Transformer un dessin avec l'IA
+              {schemaImportMode === "sketch" ? (
+                <>
+                  <Camera className="h-5 w-5 text-amber-500" />
+                  Photo → Croquis technique
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-5 w-5 text-purple-500" />
+                  Dessin → SVG / DXF propre
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Uploadez une photo de croquis papier, un dessin iPad, ou n'importe quel schéma à main levée. L'IA va
-              l'analyser et le transformer en version propre.
+              {schemaImportMode === "sketch"
+                ? "Uploadez une photo d'installation (électrique, plomberie, aménagement...) et l'IA la transformera en croquis technique simplifié."
+                : "Uploadez un croquis papier ou un dessin iPad et l'IA le transformera en fichier vectoriel propre."}
             </p>
 
             {!schemaImportImage ? (
-              <label className="flex flex-col items-center justify-center h-48 border-2 border-dashed border-purple-300 rounded-lg cursor-pointer hover:bg-purple-50/50 transition-colors">
-                <Upload className="h-12 w-12 text-purple-400 mb-3" />
-                <span className="text-sm font-medium text-purple-600">Cliquez pour uploader une image</span>
+              <label
+                className={`flex flex-col items-center justify-center h-48 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
+                  schemaImportMode === "sketch"
+                    ? "border-amber-300 hover:bg-amber-50/50"
+                    : "border-purple-300 hover:bg-purple-50/50"
+                }`}
+              >
+                {schemaImportMode === "sketch" ? (
+                  <Camera className="h-12 w-12 text-amber-400 mb-3" />
+                ) : (
+                  <Upload className="h-12 w-12 text-purple-400 mb-3" />
+                )}
+                <span
+                  className={`text-sm font-medium ${schemaImportMode === "sketch" ? "text-amber-600" : "text-purple-600"}`}
+                >
+                  {schemaImportMode === "sketch"
+                    ? "Cliquez pour uploader une photo"
+                    : "Cliquez pour uploader un dessin"}
+                </span>
                 <span className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP acceptés</span>
                 <input
                   type="file"
@@ -3729,11 +3773,11 @@ ${block.content}`,
                   {/* Image originale */}
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium flex items-center gap-2">
-                      <Camera className="h-4 w-4" />
-                      Image originale
+                      {schemaImportMode === "sketch" ? <Camera className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                      {schemaImportMode === "sketch" ? "Photo originale" : "Dessin original"}
                     </h4>
                     <div className="relative rounded-lg overflow-hidden border bg-muted/20 h-48">
-                      <img src={schemaImportImage} alt="Dessin original" className="w-full h-full object-contain" />
+                      <img src={schemaImportImage} alt="Image originale" className="w-full h-full object-contain" />
                       <button
                         type="button"
                         onClick={() => {
@@ -3747,10 +3791,12 @@ ${block.content}`,
                     </div>
                   </div>
 
-                  {/* Résultat SVG */}
+                  {/* Résultat */}
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-purple-500" />
+                      <Sparkles
+                        className={`h-4 w-4 ${schemaImportMode === "sketch" ? "text-amber-500" : "text-purple-500"}`}
+                      />
                       Résultat IA
                     </h4>
                     <div className="relative rounded-lg overflow-hidden border bg-white h-48 flex items-center justify-center">
@@ -3769,96 +3815,95 @@ ${block.content}`,
                   </div>
                 </div>
 
-                {/* Options de transformation */}
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 rounded-lg p-4">
-                  <h4 className="font-medium mb-3">Choisissez le format de sortie :</h4>
+                {/* Options selon le mode */}
+                {schemaImportMode === "sketch" ? (
+                  /* Mode Photo → Croquis */
+                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-lg p-4">
+                    <h4 className="font-medium mb-3">Générer le croquis :</h4>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {/* Croquis */}
-                    <button
-                      type="button"
-                      onClick={() => handleAnalyzeSchema("sketch")}
-                      disabled={schemaImportLoading}
-                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-amber-200 hover:border-amber-400 hover:shadow-md transition-all disabled:opacity-50"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-                        <Pencil className="h-6 w-6 text-amber-600" />
-                      </div>
-                      <span className="font-medium">Croquis</span>
-                      <span className="text-xs text-muted-foreground text-center">Simplifier une photo en dessin</span>
-                    </button>
-
-                    {/* SVG */}
-                    <button
-                      type="button"
-                      onClick={() => handleAnalyzeSchema("svg")}
-                      disabled={schemaImportLoading}
-                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-purple-200 hover:border-purple-400 hover:shadow-md transition-all disabled:opacity-50"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                        <FileText className="h-6 w-6 text-purple-600" />
-                      </div>
-                      <span className="font-medium">SVG</span>
-                      <span className="text-xs text-muted-foreground text-center">Nettoyer un dessin existant</span>
-                    </button>
-
-                    {/* DXF */}
-                    <button
-                      type="button"
-                      onClick={() => handleAnalyzeSchema("dxf")}
-                      disabled={schemaImportLoading}
-                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-blue-200 hover:border-blue-400 hover:shadow-md transition-all disabled:opacity-50"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Box className="h-6 w-6 text-blue-600" />
-                      </div>
-                      <span className="font-medium">DXF</span>
-                      <span className="text-xs text-muted-foreground text-center">Export CAO / Fusion 360</span>
-                    </button>
-
-                    {/* Blocs */}
-                    <button
-                      type="button"
-                      onClick={() => handleAnalyzeSchema("blocks")}
-                      disabled={schemaImportLoading || !activeChapterId}
-                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-green-200 hover:border-green-400 hover:shadow-md transition-all disabled:opacity-50"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                        <LayoutGrid className="h-6 w-6 text-green-600" />
-                      </div>
-                      <span className="font-medium">Blocs</span>
-                      <span className="text-xs text-muted-foreground text-center">Organigramme interactif</span>
-                    </button>
-                  </div>
-
-                  {schemaImportLoading && (
-                    <div className="flex items-center justify-center gap-2 mt-4 text-purple-600">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span>Analyse en cours...</span>
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={() => handleAnalyzeSchema("sketch")}
+                        disabled={schemaImportLoading}
+                        className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+                      >
+                        {schemaImportLoading ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Génération...
+                          </>
+                        ) : (
+                          <>
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Générer le croquis SVG
+                          </>
+                        )}
+                      </Button>
                     </div>
-                  )}
-                </div>
 
-                {/* Conseils */}
-                <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-sm">
-                  <p className="font-medium text-blue-700 dark:text-blue-300 mb-1">💡 Quel format choisir ?</p>
-                  <ul className="text-blue-600 dark:text-blue-400 text-xs space-y-1">
-                    <li>
-                      • <strong>Croquis</strong> : Transformer une PHOTO réelle en dessin technique simplifié
-                    </li>
-                    <li>
-                      • <strong>SVG</strong> : Nettoyer un DESSIN à main levée en version propre
-                    </li>
-                    <li>
-                      • <strong>DXF</strong> : Exporter vers Fusion 360, AutoCAD, découpe laser
-                    </li>
-                    <li>
-                      • <strong>Blocs</strong> : Créer un organigramme à partir d'un schéma
-                    </li>
-                  </ul>
-                </div>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-3">
+                      💡 L'IA va simplifier la photo en gardant uniquement les contours et éléments essentiels
+                    </p>
+                  </div>
+                ) : (
+                  /* Mode Dessin → SVG/DXF */
+                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 rounded-lg p-4">
+                    <h4 className="font-medium mb-3">Choisissez le format de sortie :</h4>
 
-                {/* Actions supplémentaires si SVG généré */}
+                    <div className="grid grid-cols-3 gap-3">
+                      {/* SVG */}
+                      <button
+                        type="button"
+                        onClick={() => handleAnalyzeSchema("svg")}
+                        disabled={schemaImportLoading}
+                        className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-purple-200 hover:border-purple-400 hover:shadow-md transition-all disabled:opacity-50"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                          <FileText className="h-5 w-5 text-purple-600" />
+                        </div>
+                        <span className="font-medium text-sm">SVG</span>
+                        <span className="text-xs text-muted-foreground text-center">Web, Illustrator</span>
+                      </button>
+
+                      {/* DXF */}
+                      <button
+                        type="button"
+                        onClick={() => handleAnalyzeSchema("dxf")}
+                        disabled={schemaImportLoading}
+                        className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-blue-200 hover:border-blue-400 hover:shadow-md transition-all disabled:opacity-50"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <Box className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <span className="font-medium text-sm">DXF</span>
+                        <span className="text-xs text-muted-foreground text-center">Fusion 360, CAO</span>
+                      </button>
+
+                      {/* Blocs */}
+                      <button
+                        type="button"
+                        onClick={() => handleAnalyzeSchema("blocks")}
+                        disabled={schemaImportLoading || !activeChapterId}
+                        className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-green-200 hover:border-green-400 hover:shadow-md transition-all disabled:opacity-50"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                          <LayoutGrid className="h-5 w-5 text-green-600" />
+                        </div>
+                        <span className="font-medium text-sm">Blocs</span>
+                        <span className="text-xs text-muted-foreground text-center">Organigramme</span>
+                      </button>
+                    </div>
+
+                    {schemaImportLoading && (
+                      <div className="flex items-center justify-center gap-2 mt-4 text-purple-600">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>Transformation en cours...</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Actions si SVG généré */}
                 {generatedSvg && (
                   <div className="flex gap-2 justify-end">
                     <Button
@@ -3869,7 +3914,7 @@ ${block.content}`,
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement("a");
                         a.href = url;
-                        a.download = `schema-${Date.now()}.svg`;
+                        a.download = `${schemaImportMode === "sketch" ? "croquis" : "schema"}-${Date.now()}.svg`;
                         a.click();
                         URL.revokeObjectURL(url);
                       }}
