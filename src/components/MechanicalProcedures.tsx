@@ -1039,6 +1039,35 @@ const MechanicalProcedures = () => {
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
 
     await handleUpdateBlock(blockId, { content: newContent });
+
+    // Focus sur le nouvel élément
+    setTimeout(() => {
+      const lines = newContent.split("\n");
+      const input = document.querySelector(
+        `[data-checklist-input="${blockId}-${lines.length - 1}"]`,
+      ) as HTMLInputElement;
+      input?.focus();
+    }, 50);
+  };
+
+  // Ajouter une ligne après un index spécifique (checklist)
+  const handleAddChecklistItemAfter = async (blockId: string, afterIndex: number) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const lines = block.content.split("\n");
+    lines.splice(afterIndex + 1, 0, "[] ");
+    const newContent = lines.join("\n");
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+
+    // Focus sur le nouvel élément
+    setTimeout(() => {
+      const input = document.querySelector(`[data-checklist-input="${blockId}-${afterIndex + 1}"]`) as HTMLInputElement;
+      input?.focus();
+    }, 50);
   };
 
   // Modifier le texte d'une ligne de checklist
@@ -1086,6 +1115,33 @@ const MechanicalProcedures = () => {
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
 
     await handleUpdateBlock(blockId, { content: newContent });
+
+    // Focus sur le nouvel élément
+    setTimeout(() => {
+      const lines = newContent.split("\n");
+      const input = document.querySelector(`[data-list-input="${blockId}-${lines.length - 1}"]`) as HTMLInputElement;
+      input?.focus();
+    }, 50);
+  };
+
+  // Ajouter un élément après un index spécifique (liste)
+  const handleAddListItemAfter = async (blockId: string, afterIndex: number) => {
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const lines = block.content.split("\n");
+    lines.splice(afterIndex + 1, 0, "• ");
+    const newContent = lines.join("\n");
+
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
+
+    await handleUpdateBlock(blockId, { content: newContent });
+
+    // Focus sur le nouvel élément
+    setTimeout(() => {
+      const input = document.querySelector(`[data-list-input="${blockId}-${afterIndex + 1}"]`) as HTMLInputElement;
+      input?.focus();
+    }, 50);
   };
 
   // Modifier le texte d'une ligne de liste
@@ -1894,10 +1950,20 @@ ${block.content}`,
                       type="text"
                       value={text}
                       onChange={(e) => handleChecklistTextChange(block.id, index, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddChecklistItemAfter(block.id, index);
+                        } else if (e.key === "Backspace" && text === "") {
+                          e.preventDefault();
+                          handleDeleteChecklistItem(block.id, index);
+                        }
+                      }}
                       className={`flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm ${
                         isChecked ? "line-through text-muted-foreground" : ""
                       }`}
                       placeholder="Étape..."
+                      data-checklist-input={`${block.id}-${index}`}
                     />
                     <button
                       type="button"
@@ -1930,8 +1996,18 @@ ${block.content}`,
                       type="text"
                       value={text}
                       onChange={(e) => handleListTextChange(block.id, index, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddListItemAfter(block.id, index);
+                        } else if (e.key === "Backspace" && text === "") {
+                          e.preventDefault();
+                          handleDeleteListItem(block.id, index);
+                        }
+                      }}
                       className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm"
                       placeholder="Élément..."
+                      data-list-input={`${block.id}-${index}`}
                     />
                     <button
                       type="button"
