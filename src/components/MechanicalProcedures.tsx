@@ -475,8 +475,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
-  const onImageUpload = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-  const onAudioUpload = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
 
   if (!block) return null;
 
@@ -570,8 +568,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onImageUpload) {
-                      onImageUpload(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -594,8 +592,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onAudioUpload) {
-                      onAudioUpload(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -788,8 +786,6 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
@@ -2485,10 +2481,18 @@ RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
 
       // Parser le JSON
       const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
+      console.log("Réponse Gemini nettoyée:", cleanedResponse.substring(0, 500));
+
       const pdfStructure = JSON.parse(cleanedResponse);
+      console.log("Structure PDF parsée:", pdfStructure);
+      console.log("Nombre de chapitres:", pdfStructure.chapters?.length);
 
       if (!pdfStructure.chapters || !Array.isArray(pdfStructure.chapters)) {
         throw new Error("Structure invalide - pas de chapitres trouvés");
+      }
+
+      if (pdfStructure.chapters.length === 0) {
+        throw new Error("Aucun chapitre détecté dans le PDF");
       }
 
       setPdfImportProgress("Création de la gamme...");
@@ -2514,14 +2518,18 @@ RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
       setPdfImportProgress("Création des chapitres et blocs...");
 
       // Créer les chapitres et blocs
+      let createdChapters = 0;
+      let createdBlocks = 0;
+
       for (let chapterIndex = 0; chapterIndex < pdfStructure.chapters.length; chapterIndex++) {
         const chapter = pdfStructure.chapters[chapterIndex];
+        console.log(`Création chapitre ${chapterIndex + 1}:`, chapter.title);
 
         // Créer le chapitre
         const { data: newChapterData, error: chapterError } = await (supabase as any)
           .from("mechanical_chapters")
           .insert({
-            procedure_id: newGammeData.id,
+            gamme_id: newGammeData.id,
             title: chapter.title || `Chapitre ${chapterIndex + 1}`,
             order_index: chapterIndex,
           })
@@ -2533,15 +2541,19 @@ RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
           continue;
         }
 
+        createdChapters++;
+        console.log("Chapitre créé avec ID:", newChapterData.id);
+
         // Créer les blocs du chapitre
         if (chapter.blocks && Array.isArray(chapter.blocks)) {
+          console.log(`  - ${chapter.blocks.length} blocs à créer`);
           for (let blockIndex = 0; blockIndex < chapter.blocks.length; blockIndex++) {
             const block = chapter.blocks[blockIndex];
 
             const row = Math.floor(blockIndex / 2);
             const col = blockIndex % 2;
 
-            await (supabase as any).from("mechanical_blocks").insert({
+            const { error: blockError } = await (supabase as any).from("mechanical_blocks").insert({
               chapter_id: newChapterData.id,
               type: block.type || "text",
               title: block.title || null,
@@ -2552,23 +2564,33 @@ RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
               height: 150,
               order_index: blockIndex,
             });
+
+            if (blockError) {
+              console.error("Erreur création bloc:", blockError);
+            } else {
+              createdBlocks++;
+            }
           }
         }
 
         setPdfImportProgress(`Chapitre ${chapterIndex + 1}/${pdfStructure.chapters.length} créé...`);
       }
 
+      console.log(`Création terminée: ${createdChapters} chapitres, ${createdBlocks} blocs`);
+
       // Recharger les gammes
       await loadGammes();
 
-      // Sélectionner la nouvelle gamme
+      // Sélectionner la nouvelle gamme et charger ses chapitres
       setActiveGammeId(newGammeData.id);
+      await loadChapters(newGammeData.id);
 
       setIsPdfImportDialogOpen(false);
       setPdfImportFile(null);
       setPdfImportProgress("");
 
-      toast.success(`Gamme créée avec ${pdfStructure.chapters.length} chapitres !`);
+      toast.success(`Gamme créée : ${createdChapters} chapitres, ${createdBlocks} blocs !`);
+      console.log("Import terminé avec succès. Gamme ID:", newGammeData.id);
     } catch (error: any) {
       console.error("Erreur import PDF:", error);
       toast.error(error.message || "Erreur lors de l'import du PDF");
