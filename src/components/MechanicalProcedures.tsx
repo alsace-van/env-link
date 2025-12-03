@@ -473,8 +473,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
-  const onImageUpload = data.onImageUpload as (blockId: string, file: File) => void;
-  const onAudioUpload = data.onAudioUpload as (blockId: string, file: File) => void;
 
   if (!block) return null;
 
@@ -561,8 +559,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onImageUpload) {
-                      onImageUpload(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -585,8 +583,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onAudioUpload) {
-                      onAudioUpload(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -779,8 +777,10 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
+  const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
+  const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
+  const [schemaImportLoading, setSchemaImportLoading] = useState(false);
+  const [generatedSvg, setGeneratedSvg] = useState<string | null>(null);
 
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
@@ -1908,6 +1908,403 @@ const MechanicalProcedures = () => {
     }
   };
 
+  // Analyser un dessin/schéma avec Gemini Vision et créer les blocs
+  const handleAnalyzeSchema = async (mode: "blocks" | "svg" | "dxf" = "blocks") => {
+    if (!schemaImportImage) return;
+
+    const apiKey = await getGeminiApiKey();
+    if (!apiKey) {
+      toast.error("Clé API Gemini non configurée. Allez dans Mon Compte > IA pour l'ajouter.");
+      return;
+    }
+
+    setSchemaImportLoading(true);
+
+    try {
+      // Extraire le base64 de l'image
+      const base64Image = schemaImportImage.split(",")[1];
+      const mimeType = schemaImportImage.split(";")[0].split(":")[1];
+
+      let prompt = "";
+
+      if (mode === "svg") {
+        prompt = `Analyse ce dessin/croquis et recrée-le en SVG propre et professionnel.
+
+RÈGLES IMPORTANTES :
+- Redessine les formes de manière nette et alignée
+- Utilise des lignes droites là où l'intention est une ligne droite
+- Utilise des cercles/ellipses parfaits là où l'intention est un cercle
+- Conserve les proportions et la disposition générale
+- Ajoute des couleurs appropriées si le dessin en a, sinon utilise noir (#333)
+- Utilise des épaisseurs de trait cohérentes (stroke-width)
+- Pour les flèches, utilise des markers SVG
+- Recopie tout texte visible de manière lisible (font-family: sans-serif)
+- Dimensions du SVG : largeur 800px, hauteur proportionnelle
+
+RÉPONDS UNIQUEMENT avec le code SVG complet, commençant par <svg et finissant par </svg>.
+Pas de markdown, pas de backticks, pas d'explication.`;
+      } else if (mode === "dxf") {
+        prompt = `Analyse ce dessin/croquis et génère les instructions pour le recréer en DXF.
+
+Retourne un JSON avec cette structure :
+{
+  "entities": [
+    { "type": "LINE", "start": [x1, y1], "end": [x2, y2], "layer": "0" },
+    { "type": "CIRCLE", "center": [x, y], "radius": r, "layer": "0" },
+    { "type": "ARC", "center": [x, y], "radius": r, "startAngle": a1, "endAngle": a2, "layer": "0" },
+    { "type": "TEXT", "position": [x, y], "text": "contenu", "height": 10, "layer": "0" },
+    { "type": "POLYLINE", "points": [[x1,y1], [x2,y2], ...], "closed": false, "layer": "0" }
+  ],
+  "dimensions": { "width": 800, "height": 600 }
+}
+
+RÈGLES :
+- Redessine les formes de manière nette et précise
+- Utilise LINE pour les lignes droites
+- Utilise CIRCLE pour les cercles
+- Utilise ARC pour les arcs de cercle
+- Utilise POLYLINE pour les formes complexes
+- Utilise TEXT pour tout texte visible
+- Coordonnées en millimètres, origine en bas à gauche
+- Conserve les proportions du dessin original
+
+RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
+      } else {
+        // Mode blocs (existant)
+        prompt = `Analyse ce dessin/schéma technique et extrais-en la structure.
+
+Tu dois retourner un JSON avec exactement cette structure :
+{
+  "blocks": [
+    {
+      "type": "text" | "checklist" | "list" | "warning" | "tip" | "tools",
+      "content": "contenu du bloc",
+      "label": "étiquette courte pour identifier le bloc"
+    }
+  ],
+  "connections": [
+    {
+      "from": "label du bloc source",
+      "to": "label du bloc cible"
+    }
+  ]
+}
+
+Règles :
+- Identifie chaque élément/boîte/étape du schéma comme un bloc
+- Les flèches ou lignes de connexion deviennent des "connections"
+- Utilise "checklist" pour les listes d'étapes à cocher
+- Utilise "warning" pour les points d'attention/danger
+- Utilise "tip" pour les astuces/conseils
+- Utilise "tools" pour les listes d'outils/matériel
+- Utilise "list" pour les listes simples
+- Utilise "text" pour le reste
+
+Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explication.`;
+      }
+
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [{ inlineData: { mimeType, data: base64Image } }, { text: prompt }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 8192,
+            },
+          }),
+        },
+      );
+
+      const data = await geminiResponse.json();
+
+      if (data.error) {
+        throw new Error(data.error.message || "Erreur API Gemini");
+      }
+
+      const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!responseText) {
+        throw new Error("Réponse vide de Gemini");
+      }
+
+      if (mode === "svg") {
+        // Extraire le SVG
+        const svgMatch = responseText.match(/<svg[\s\S]*<\/svg>/i);
+        if (!svgMatch) {
+          throw new Error("Impossible d'extraire le SVG de la réponse");
+        }
+
+        const svgContent = svgMatch[0];
+
+        // Créer le blob et télécharger
+        const blob = new Blob([svgContent], { type: "image/svg+xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `schema-${Date.now()}.svg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        // Stocker le SVG pour l'aperçu
+        setGeneratedSvg(svgContent);
+
+        toast.success("SVG généré et téléchargé !");
+      } else if (mode === "dxf") {
+        // Parser le JSON et générer le DXF
+        const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
+        const dxfData = JSON.parse(cleanedResponse);
+
+        // Générer le fichier DXF
+        const dxfContent = generateDXF(dxfData);
+
+        const blob = new Blob([dxfContent], { type: "application/dxf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `schema-${Date.now()}.dxf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        toast.success("DXF généré et téléchargé !");
+      } else {
+        // Mode blocs - créer dans le chapitre
+        if (!activeChapterId) {
+          toast.error("Sélectionnez d'abord un chapitre");
+          return;
+        }
+
+        const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
+        const schema = JSON.parse(cleanedResponse);
+
+        if (!schema.blocks || !Array.isArray(schema.blocks)) {
+          throw new Error("Format de réponse invalide");
+        }
+
+        // Créer les blocs
+        const createdBlocks: { label: string; id: string }[] = [];
+        const startX = 100;
+        const startY = 100;
+        const blockWidth = 300;
+        const blockHeight = 150;
+        const gapX = 100;
+        const gapY = 50;
+        const blocksPerRow = 3;
+
+        for (let i = 0; i < schema.blocks.length; i++) {
+          const blockData = schema.blocks[i];
+          const row = Math.floor(i / blocksPerRow);
+          const col = i % blocksPerRow;
+
+          const position_x = startX + col * (blockWidth + gapX);
+          const position_y = startY + row * (blockHeight + gapY);
+
+          let content = blockData.content;
+          if (blockData.type === "checklist" && typeof content === "string") {
+            const lines = content.split(/[\n,•\-]/);
+            content = lines
+              .map((line) => line.trim())
+              .filter((line) => line)
+              .map((line) => `[] ${line}`)
+              .join("\n");
+          } else if (blockData.type === "list" && typeof content === "string") {
+            const lines = content.split(/[\n,]/);
+            content = lines
+              .map((line) => line.trim())
+              .filter((line) => line)
+              .map((line) => `• ${line.replace(/^[•\-]\s*/, "")}`)
+              .join("\n");
+          }
+
+          const { data: newBlock, error } = await (supabase as any)
+            .from("mechanical_blocks")
+            .insert({
+              chapter_id: activeChapterId,
+              type: blockData.type || "text",
+              content: content || "",
+              position_x,
+              position_y,
+              width: blockWidth,
+              height: blockHeight,
+              order_index: blocks.length + i,
+            })
+            .select()
+            .single();
+
+          if (!error) {
+            createdBlocks.push({ label: blockData.label || `Bloc ${i + 1}`, id: newBlock.id });
+          }
+        }
+
+        // Créer les connexions
+        if (schema.connections && Array.isArray(schema.connections)) {
+          for (const conn of schema.connections) {
+            const sourceBlock = createdBlocks.find((b) => b.label.toLowerCase() === conn.from?.toLowerCase());
+            const targetBlock = createdBlocks.find((b) => b.label.toLowerCase() === conn.to?.toLowerCase());
+
+            if (sourceBlock && targetBlock) {
+              await (supabase as any).from("mechanical_edges").insert({
+                chapter_id: activeChapterId,
+                source_block_id: sourceBlock.id,
+                target_block_id: targetBlock.id,
+                edge_type: "smoothstep",
+                animated: false,
+              });
+            }
+          }
+        }
+
+        await loadBlocks(activeChapterId);
+        toast.success(`${createdBlocks.length} blocs créés !`);
+        setTimeout(() => handleAutoLayout(), 500);
+      }
+
+      if (mode !== "svg") {
+        setIsSchemaImportDialogOpen(false);
+        setSchemaImportImage(null);
+      }
+    } catch (error: any) {
+      console.error("Erreur analyse schéma:", error);
+      toast.error(error.message || "Erreur lors de l'analyse");
+    } finally {
+      setSchemaImportLoading(false);
+    }
+  };
+
+  // Générer un fichier DXF à partir des entités
+  const generateDXF = (data: { entities: any[]; dimensions: { width: number; height: number } }): string => {
+    let dxf = `0
+SECTION
+2
+HEADER
+9
+$ACADVER
+1
+AC1014
+9
+$EXTMIN
+10
+0
+20
+0
+9
+$EXTMAX
+10
+${data.dimensions.width}
+20
+${data.dimensions.height}
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+`;
+
+    for (const entity of data.entities) {
+      switch (entity.type) {
+        case "LINE":
+          dxf += `0
+LINE
+8
+${entity.layer || "0"}
+10
+${entity.start[0]}
+20
+${entity.start[1]}
+11
+${entity.end[0]}
+21
+${entity.end[1]}
+`;
+          break;
+
+        case "CIRCLE":
+          dxf += `0
+CIRCLE
+8
+${entity.layer || "0"}
+10
+${entity.center[0]}
+20
+${entity.center[1]}
+40
+${entity.radius}
+`;
+          break;
+
+        case "ARC":
+          dxf += `0
+ARC
+8
+${entity.layer || "0"}
+10
+${entity.center[0]}
+20
+${entity.center[1]}
+40
+${entity.radius}
+50
+${entity.startAngle}
+51
+${entity.endAngle}
+`;
+          break;
+
+        case "TEXT":
+          dxf += `0
+TEXT
+8
+${entity.layer || "0"}
+10
+${entity.position[0]}
+20
+${entity.position[1]}
+40
+${entity.height || 10}
+1
+${entity.text}
+`;
+          break;
+
+        case "POLYLINE":
+          dxf += `0
+LWPOLYLINE
+8
+${entity.layer || "0"}
+90
+${entity.points.length}
+70
+${entity.closed ? 1 : 0}
+`;
+          for (const point of entity.points) {
+            dxf += `10
+${point[0]}
+20
+${point[1]}
+`;
+          }
+          break;
+      }
+    }
+
+    dxf += `0
+ENDSEC
+0
+EOF`;
+
+    return dxf;
+  };
+
   // Transcrire l'audio avec Gemini
   const handleTranscribeAudio = async (blockId: string) => {
     const block = blocks.find((b) => b.id === blockId);
@@ -2873,6 +3270,24 @@ ${block.content}`,
                 </Button>
               )}
 
+              {/* Séparateur */}
+              <div className="h-6 w-px bg-border mx-2" />
+
+              {/* Bouton IA - Schéma depuis image */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border-purple-200"
+                onClick={() => setIsSchemaImportDialogOpen(true)}
+                disabled={!activeChapterId}
+                title="Créer un schéma à partir d'un dessin"
+              >
+                <Sparkles className="h-4 w-4 mr-1 text-purple-500" />
+                <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent font-medium">
+                  Schéma depuis image
+                </span>
+              </Button>
+
               {activeChapterId && (
                 <span className="text-xs text-muted-foreground ml-auto">
                   💡 Double-clic pour éditer • Tirez depuis les points pour connecter
@@ -3232,6 +3647,220 @@ ${block.content}`,
               </Button>
               <Button onClick={handleSaveBlockEdit}>Enregistrer</Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog import schéma depuis image */}
+      <Dialog
+        open={isSchemaImportDialogOpen}
+        onOpenChange={(open) => {
+          setIsSchemaImportDialogOpen(open);
+          if (!open) {
+            setSchemaImportImage(null);
+            setGeneratedSvg(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-500" />
+              Transformer un dessin avec l'IA
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Uploadez une photo de croquis papier, un dessin iPad, ou n'importe quel schéma à main levée. L'IA va
+              l'analyser et le transformer en version propre.
+            </p>
+
+            {!schemaImportImage ? (
+              <label className="flex flex-col items-center justify-center h-48 border-2 border-dashed border-purple-300 rounded-lg cursor-pointer hover:bg-purple-50/50 transition-colors">
+                <Upload className="h-12 w-12 text-purple-400 mb-3" />
+                <span className="text-sm font-medium text-purple-600">Cliquez pour uploader une image</span>
+                <span className="text-xs text-muted-foreground mt-1">PNG, JPG, WEBP acceptés</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setSchemaImportImage(reader.result as string);
+                        setGeneratedSvg(null);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+              </label>
+            ) : (
+              <div className="space-y-4">
+                {/* Aperçu côte à côte */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Image originale */}
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium flex items-center gap-2">
+                      <Camera className="h-4 w-4" />
+                      Image originale
+                    </h4>
+                    <div className="relative rounded-lg overflow-hidden border bg-muted/20 h-48">
+                      <img src={schemaImportImage} alt="Dessin original" className="w-full h-full object-contain" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSchemaImportImage(null);
+                          setGeneratedSvg(null);
+                        }}
+                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Résultat SVG */}
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-purple-500" />
+                      Résultat IA
+                    </h4>
+                    <div className="relative rounded-lg overflow-hidden border bg-white h-48 flex items-center justify-center">
+                      {generatedSvg ? (
+                        <div
+                          className="w-full h-full flex items-center justify-center p-2"
+                          dangerouslySetInnerHTML={{ __html: generatedSvg }}
+                        />
+                      ) : (
+                        <div className="text-center text-muted-foreground">
+                          <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                          <p className="text-sm">Cliquez sur un bouton ci-dessous</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Options de transformation */}
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 rounded-lg p-4">
+                  <h4 className="font-medium mb-3">Choisissez le format de sortie :</h4>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* SVG */}
+                    <button
+                      type="button"
+                      onClick={() => handleAnalyzeSchema("svg")}
+                      disabled={schemaImportLoading}
+                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-purple-200 hover:border-purple-400 hover:shadow-md transition-all disabled:opacity-50"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                        <FileText className="h-6 w-6 text-purple-600" />
+                      </div>
+                      <span className="font-medium">SVG</span>
+                      <span className="text-xs text-muted-foreground text-center">
+                        Vectoriel web, éditable dans Illustrator
+                      </span>
+                    </button>
+
+                    {/* DXF */}
+                    <button
+                      type="button"
+                      onClick={() => handleAnalyzeSchema("dxf")}
+                      disabled={schemaImportLoading}
+                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-blue-200 hover:border-blue-400 hover:shadow-md transition-all disabled:opacity-50"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Box className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <span className="font-medium">DXF</span>
+                      <span className="text-xs text-muted-foreground text-center">
+                        AutoCAD, Fusion 360, découpe laser
+                      </span>
+                    </button>
+
+                    {/* Blocs */}
+                    <button
+                      type="button"
+                      onClick={() => handleAnalyzeSchema("blocks")}
+                      disabled={schemaImportLoading || !activeChapterId}
+                      className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-green-200 hover:border-green-400 hover:shadow-md transition-all disabled:opacity-50"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                        <LayoutGrid className="h-6 w-6 text-green-600" />
+                      </div>
+                      <span className="font-medium">Blocs</span>
+                      <span className="text-xs text-muted-foreground text-center">Organigramme avec connexions</span>
+                    </button>
+                  </div>
+
+                  {schemaImportLoading && (
+                    <div className="flex items-center justify-center gap-2 mt-4 text-purple-600">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Analyse en cours...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Conseils */}
+                <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-sm">
+                  <p className="font-medium text-blue-700 dark:text-blue-300 mb-1">💡 Conseils :</p>
+                  <ul className="text-blue-600 dark:text-blue-400 text-xs space-y-1">
+                    <li>
+                      • <strong>SVG</strong> : Idéal pour les schémas web, redimensionnable à l'infini
+                    </li>
+                    <li>
+                      • <strong>DXF</strong> : Pour importer dans Fusion 360, AutoCAD, ou découpe laser/CNC
+                    </li>
+                    <li>
+                      • <strong>Blocs</strong> : Crée un organigramme interactif dans le chapitre actuel
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Actions supplémentaires si SVG généré */}
+                {generatedSvg && (
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const blob = new Blob([generatedSvg], { type: "image/svg+xml" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `schema-${Date.now()}.svg`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Télécharger SVG
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedSvg);
+                        toast.success("SVG copié dans le presse-papier");
+                      }}
+                    >
+                      <Copy className="h-4 w-4 mr-1" />
+                      Copier le code
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSchemaImportDialogOpen(false)}>
+              Fermer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
