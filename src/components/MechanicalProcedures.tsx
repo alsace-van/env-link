@@ -473,8 +473,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
-  const onImageUpload = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-  const onAudioUpload = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
 
   if (!block) return null;
 
@@ -561,8 +559,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onImageUpload) {
-                      onImageUpload(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -585,8 +583,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onAudioUpload) {
-                      onAudioUpload(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -779,8 +777,6 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
@@ -2067,21 +2063,81 @@ Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explicatio
 
         const svgContent = svgMatch[0];
 
-        // Créer le blob et télécharger
-        const blob = new Blob([svgContent], { type: "image/svg+xml" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${mode === "sketch" ? "croquis" : "schema"}-${Date.now()}.svg`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-
         // Stocker le SVG pour l'aperçu
         setGeneratedSvg(svgContent);
 
-        toast.success(mode === "sketch" ? "Croquis généré !" : "SVG généré et téléchargé !");
+        // Si on a un chapitre actif, insérer comme bloc image
+        if (activeChapterId) {
+          try {
+            // Convertir le SVG en blob et uploader sur Supabase
+            const { data: userData } = await supabase.auth.getUser();
+            if (!userData.user) throw new Error("Non connecté");
+
+            const svgBlob = new Blob([svgContent], { type: "image/svg+xml" });
+            const fileName = `${userData.user.id}/${mode}-${Date.now()}.svg`;
+
+            const { error: uploadError } = await supabase.storage
+              .from("mechanical-images")
+              .upload(fileName, svgBlob, { contentType: "image/svg+xml" });
+
+            if (uploadError) throw uploadError;
+
+            const {
+              data: { publicUrl },
+            } = supabase.storage.from("mechanical-images").getPublicUrl(fileName);
+
+            // Créer un bloc image avec le SVG
+            const { error: blockError } = await (supabase as any).from("mechanical_blocks").insert({
+              chapter_id: activeChapterId,
+              type: "image",
+              content: mode === "sketch" ? "Croquis généré par IA" : "Schéma SVG généré par IA",
+              image_url: publicUrl,
+              position_x: 100,
+              position_y: 100 + blocks.length * 50,
+              width: 400,
+              height: 300,
+              order_index: blocks.length,
+            });
+
+            if (blockError) throw blockError;
+
+            // Recharger les blocs
+            await loadBlocks(activeChapterId);
+
+            toast.success(mode === "sketch" ? "Croquis inséré dans le chapitre !" : "SVG inséré dans le chapitre !");
+
+            // Fermer le dialog
+            setIsSchemaImportDialogOpen(false);
+            setSchemaImportImage(null);
+            setGeneratedSvg(null);
+          } catch (uploadError: any) {
+            console.error("Erreur insertion:", uploadError);
+            // Fallback : proposer le téléchargement
+            toast.error("Impossible d'insérer, téléchargement en cours...");
+            const blob = new Blob([svgContent], { type: "image/svg+xml" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${mode === "sketch" ? "croquis" : "schema"}-${Date.now()}.svg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
+        } else {
+          // Pas de chapitre actif, télécharger
+          const blob = new Blob([svgContent], { type: "image/svg+xml" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${mode === "sketch" ? "croquis" : "schema"}-${Date.now()}.svg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          toast.success("SVG téléchargé (sélectionnez un chapitre pour l'insérer directement)");
+        }
       } else if (mode === "dxf") {
         // Parser le JSON et générer le DXF
         const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
@@ -3839,14 +3895,14 @@ ${block.content}`,
                         ) : (
                           <>
                             <Pencil className="h-4 w-4 mr-2" />
-                            Générer le croquis SVG
+                            Générer et insérer dans le chapitre
                           </>
                         )}
                       </Button>
                     </div>
 
                     <p className="text-xs text-amber-700 dark:text-amber-300 mt-3">
-                      💡 L'IA va simplifier la photo en gardant uniquement les contours et éléments essentiels
+                      💡 Le croquis sera inséré comme bloc image dans le chapitre actif
                     </p>
                   </div>
                 ) : (
@@ -3904,39 +3960,10 @@ ${block.content}`,
                         <span>Transformation en cours...</span>
                       </div>
                     )}
-                  </div>
-                )}
 
-                {/* Actions si SVG généré */}
-                {generatedSvg && (
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const blob = new Blob([generatedSvg], { type: "image/svg+xml" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `${schemaImportMode === "sketch" ? "croquis" : "schema"}-${Date.now()}.svg`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                    >
-                      <FileText className="h-4 w-4 mr-1" />
-                      Télécharger SVG
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        navigator.clipboard.writeText(generatedSvg);
-                        toast.success("SVG copié dans le presse-papier");
-                      }}
-                    >
-                      <Copy className="h-4 w-4 mr-1" />
-                      Copier le code
-                    </Button>
+                    <p className="text-xs text-purple-700 dark:text-purple-300 mt-3">
+                      💡 SVG sera inséré dans le chapitre • DXF sera téléchargé • Blocs créeront un organigramme
+                    </p>
                   </div>
                 )}
               </div>
