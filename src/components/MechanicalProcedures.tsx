@@ -173,6 +173,7 @@ import {
   GitFork,
   LayoutDashboard,
   Unlink,
+  FileUp,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -567,9 +568,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    const uploadFn = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-                    if (file && uploadFn) {
-                      uploadFn(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -592,9 +592,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    const uploadFn = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
-                    if (file && uploadFn) {
-                      uploadFn(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -787,12 +786,16 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
   const [generatedSvg, setGeneratedSvg] = useState<string | null>(null);
+
+  // Import PDF
+  const [isPdfImportDialogOpen, setIsPdfImportDialogOpen] = useState(false);
+  const [pdfImportFile, setPdfImportFile] = useState<File | null>(null);
+  const [pdfImportLoading, setPdfImportLoading] = useState(false);
+  const [pdfImportProgress, setPdfImportProgress] = useState("");
 
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
@@ -2377,6 +2380,201 @@ EOF`;
     return dxf;
   };
 
+  // Importer un PDF et le transformer en gamme de montage
+  const handleImportPdf = async () => {
+    if (!pdfImportFile) return;
+
+    const apiKey = await getGeminiApiKey();
+    if (!apiKey) {
+      toast.error("Clé API Gemini non configurée. Allez dans Mon Compte > IA pour l'ajouter.");
+      return;
+    }
+
+    setPdfImportLoading(true);
+    setPdfImportProgress("Lecture du PDF...");
+
+    try {
+      // Convertir le PDF en base64
+      const base64Pdf = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(",")[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(pdfImportFile);
+      });
+
+      setPdfImportProgress("Analyse du document avec l'IA...");
+
+      // Analyser le PDF avec Gemini
+      const prompt = `Analyse ce document PDF qui est une gamme de montage / procédure technique.
+
+Extrais la structure complète et retourne un JSON avec ce format :
+{
+  "title": "Titre de la gamme",
+  "description": "Description générale",
+  "chapters": [
+    {
+      "title": "Titre du chapitre",
+      "blocks": [
+        {
+          "type": "text" | "checklist" | "list" | "warning" | "tip" | "tools",
+          "title": "Titre optionnel du bloc",
+          "content": "Contenu du bloc"
+        }
+      ]
+    }
+  ]
+}
+
+RÈGLES D'ANALYSE :
+- Chaque section principale = un chapitre
+- Les paragraphes de texte = blocs "text"
+- Les listes d'étapes numérotées = blocs "checklist" (format: "[] Étape 1\\n[] Étape 2")
+- Les listes à puces = blocs "list" (format: "• Item 1\\n• Item 2")
+- Les avertissements/dangers/attention = blocs "warning"
+- Les conseils/astuces/notes = blocs "tip"
+- Les listes d'outils/matériel = blocs "tools"
+- Si tu détectes une image/schéma, crée un bloc "text" avec "[IMAGE: description de l'image]"
+- Conserve tout le texte important, ne résume pas
+
+RÉPONDS UNIQUEMENT avec le JSON, sans markdown, sans backticks.`;
+
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: "application/pdf",
+                      data: base64Pdf,
+                    },
+                  },
+                  { text: prompt },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 32000,
+            },
+          }),
+        },
+      );
+
+      const data = await geminiResponse.json();
+
+      if (data.error) {
+        throw new Error(data.error.message || "Erreur API Gemini");
+      }
+
+      const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!responseText) {
+        throw new Error("Réponse vide de Gemini");
+      }
+
+      // Parser le JSON
+      const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, "").trim();
+      const pdfStructure = JSON.parse(cleanedResponse);
+
+      if (!pdfStructure.chapters || !Array.isArray(pdfStructure.chapters)) {
+        throw new Error("Structure invalide - pas de chapitres trouvés");
+      }
+
+      setPdfImportProgress("Création de la gamme...");
+
+      // Créer la gamme
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error("Non connecté");
+
+      const { data: newGammeData, error: gammeError } = await (supabase as any)
+        .from("mechanical_procedures")
+        .insert({
+          user_id: userData.user.id,
+          title: pdfStructure.title || pdfImportFile.name.replace(".pdf", ""),
+          description: pdfStructure.description || `Importé depuis ${pdfImportFile.name}`,
+          vehicle_brand: "",
+          vehicle_model: "",
+          status: "draft",
+        })
+        .select()
+        .single();
+
+      if (gammeError) throw gammeError;
+
+      setPdfImportProgress("Création des chapitres et blocs...");
+
+      // Créer les chapitres et blocs
+      for (let chapterIndex = 0; chapterIndex < pdfStructure.chapters.length; chapterIndex++) {
+        const chapter = pdfStructure.chapters[chapterIndex];
+
+        // Créer le chapitre
+        const { data: newChapterData, error: chapterError } = await (supabase as any)
+          .from("mechanical_chapters")
+          .insert({
+            procedure_id: newGammeData.id,
+            title: chapter.title || `Chapitre ${chapterIndex + 1}`,
+            order_index: chapterIndex,
+          })
+          .select()
+          .single();
+
+        if (chapterError) {
+          console.error("Erreur création chapitre:", chapterError);
+          continue;
+        }
+
+        // Créer les blocs du chapitre
+        if (chapter.blocks && Array.isArray(chapter.blocks)) {
+          for (let blockIndex = 0; blockIndex < chapter.blocks.length; blockIndex++) {
+            const block = chapter.blocks[blockIndex];
+
+            const row = Math.floor(blockIndex / 2);
+            const col = blockIndex % 2;
+
+            await (supabase as any).from("mechanical_blocks").insert({
+              chapter_id: newChapterData.id,
+              type: block.type || "text",
+              title: block.title || null,
+              content: block.content || "",
+              position_x: 50 + col * 450,
+              position_y: 50 + row * 200,
+              width: 400,
+              height: 150,
+              order_index: blockIndex,
+            });
+          }
+        }
+
+        setPdfImportProgress(`Chapitre ${chapterIndex + 1}/${pdfStructure.chapters.length} créé...`);
+      }
+
+      // Recharger les gammes
+      await loadGammes();
+
+      // Sélectionner la nouvelle gamme
+      setActiveGammeId(newGammeData.id);
+
+      setIsPdfImportDialogOpen(false);
+      setPdfImportFile(null);
+      setPdfImportProgress("");
+
+      toast.success(`Gamme créée avec ${pdfStructure.chapters.length} chapitres !`);
+    } catch (error: any) {
+      console.error("Erreur import PDF:", error);
+      toast.error(error.message || "Erreur lors de l'import du PDF");
+    } finally {
+      setPdfImportLoading(false);
+      setPdfImportProgress("");
+    }
+  };
+
   // Transcrire l'audio avec Gemini
   const handleTranscribeAudio = async (blockId: string) => {
     const block = blocks.find((b) => b.id === blockId);
@@ -3197,6 +3395,15 @@ ${block.content}`,
               <Plus className="h-4 w-4 mr-1" />
               Nouvelle gamme
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+              onClick={() => setIsPdfImportDialogOpen(true)}
+            >
+              <FileUp className="h-4 w-4 mr-1" />
+              Importer PDF
+            </Button>
           </div>
         </ScrollArea>
       </div>
@@ -3882,6 +4089,114 @@ ${block.content}`,
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSchemaImportDialogOpen(false)}>
               Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog import PDF */}
+      <Dialog
+        open={isPdfImportDialogOpen}
+        onOpenChange={(open) => {
+          setIsPdfImportDialogOpen(open);
+          if (!open) {
+            setPdfImportFile(null);
+            setPdfImportProgress("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileUp className="h-5 w-5 text-purple-500" />
+              Importer une gamme depuis un PDF
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Uploadez un PDF de gamme de montage ou procédure technique. L'IA va analyser le document et créer
+              automatiquement les chapitres et blocs.
+            </p>
+
+            {!pdfImportFile ? (
+              <label className="flex flex-col items-center justify-center h-40 border-2 border-dashed border-purple-300 rounded-lg cursor-pointer hover:bg-purple-50/50 transition-colors">
+                <FileUp className="h-12 w-12 text-purple-400 mb-3" />
+                <span className="text-sm font-medium text-purple-600">Cliquez pour sélectionner un PDF</span>
+                <span className="text-xs text-muted-foreground mt-1">Format PDF uniquement</span>
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setPdfImportFile(file);
+                    }
+                  }}
+                />
+              </label>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+                  <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded">
+                    <FileText className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{pdfImportFile.name}</p>
+                    <p className="text-xs text-muted-foreground">{(pdfImportFile.size / 1024 / 1024).toFixed(2)} Mo</p>
+                  </div>
+                  {!pdfImportLoading && (
+                    <button
+                      type="button"
+                      onClick={() => setPdfImportFile(null)}
+                      className="p-1.5 hover:bg-red-100 rounded text-red-500"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {pdfImportProgress && (
+                  <div className="flex items-center gap-2 text-sm text-purple-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>{pdfImportProgress}</span>
+                  </div>
+                )}
+
+                <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-sm">
+                  <p className="font-medium text-blue-700 dark:text-blue-300 mb-1">💡 Ce qui sera créé :</p>
+                  <ul className="text-blue-600 dark:text-blue-400 text-xs space-y-1">
+                    <li>• Une nouvelle gamme avec le titre du document</li>
+                    <li>• Un chapitre par section principale</li>
+                    <li>• Des blocs texte, checklist, warning selon le contenu</li>
+                    <li>• Tout est éditable après l'import</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPdfImportDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={handleImportPdf}
+              disabled={!pdfImportFile || pdfImportLoading}
+              className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+            >
+              {pdfImportLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Import en cours...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Analyser et importer
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
