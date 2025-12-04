@@ -152,6 +152,60 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
   const loadProduct = async () => {
     if (!productId) return;
 
+    // D'abord, essayer de charger depuis shop_custom_kits (pour les kits sur-mesure)
+    const { data: kitData, error: kitError } = await supabase
+      .from("shop_custom_kits")
+      .select("*")
+      .eq("id", productId)
+      .maybeSingle();
+
+    if (kitData && !kitError) {
+      // C'est un kit sur-mesure
+      setFormData({
+        nom: kitData.nom || "",
+        description: kitData.description || "",
+        product_type: "custom_kit",
+        category_id: "",
+        prix_base: kitData.prix_base || 0,
+        image_url: "",
+        is_active: kitData.is_active ?? true,
+        stock_quantity: 0,
+      });
+
+      // Charger les accessoires du kit groupés par catégorie
+      const { data: kitAccessories } = await supabase
+        .from("shop_custom_kit_accessories")
+        .select("accessory_id, accessories_catalog(category_id)")
+        .eq("custom_kit_id", productId);
+
+      if (kitAccessories && kitAccessories.length > 0) {
+        // Regrouper par catégorie
+        const sectionsMap = new Map<string, string[]>();
+
+        (kitAccessories as any[]).forEach((item) => {
+          const categoryId = item.accessories_catalog?.category_id;
+          if (!categoryId) return;
+
+          if (!sectionsMap.has(categoryId)) {
+            sectionsMap.set(categoryId, []);
+          }
+          sectionsMap.get(categoryId)!.push(item.accessory_id);
+        });
+
+        const loadedSections: KitSection[] = Array.from(sectionsMap.entries()).map(
+          ([categoryId, accessoryIds], index) => ({
+            id: `section-${categoryId}-${index}`,
+            category_id: categoryId,
+            selected_accessory_ids: accessoryIds,
+          }),
+        );
+
+        setKitSections(loadedSections);
+      }
+      return;
+    }
+
+    // Sinon, charger depuis shop_products (pour les produits simples/bundles)
     const { data: product } = await supabase
       .from("shop_products" as any)
       .select("*")
@@ -161,48 +215,14 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
     if (product) {
       setFormData(product as any);
 
-      // Pour les kits sur-mesure, charger depuis shop_custom_kits et shop_custom_kit_accessories
-      if ((product as any).product_type === "custom_kit") {
-        // Charger les accessoires du kit groupés par catégorie
-        const { data: kitAccessories } = await supabase
-          .from("shop_custom_kit_accessories" as any)
-          .select("accessory_id, accessories_catalog(category_id)")
-          .eq("custom_kit_id", productId);
+      // Charger les accessoires depuis shop_product_items
+      const { data: items } = await supabase
+        .from("shop_product_items" as any)
+        .select("*, accessory:accessories_catalog(*)")
+        .eq("shop_product_id", productId);
 
-        if (kitAccessories && kitAccessories.length > 0) {
-          // Regrouper par catégorie
-          const sectionsMap = new Map<string, string[]>();
-
-          (kitAccessories as any[]).forEach((item) => {
-            const categoryId = item.accessories_catalog?.category_id;
-            if (!categoryId) return;
-
-            if (!sectionsMap.has(categoryId)) {
-              sectionsMap.set(categoryId, []);
-            }
-            sectionsMap.get(categoryId)!.push(item.accessory_id);
-          });
-
-          const loadedSections: KitSection[] = Array.from(sectionsMap.entries()).map(
-            ([categoryId, accessoryIds], index) => ({
-              id: `section-${categoryId}-${index}`,
-              category_id: categoryId,
-              selected_accessory_ids: accessoryIds,
-            }),
-          );
-
-          setKitSections(loadedSections);
-        }
-      } else {
-        // Pour les autres types, charger depuis shop_product_items
-        const { data: items } = await supabase
-          .from("shop_product_items" as any)
-          .select("*, accessory:accessories_catalog(*)")
-          .eq("shop_product_id", productId);
-
-        if (items) {
-          setSelectedAccessories(items);
-        }
+      if (items) {
+        setSelectedAccessories(items);
       }
     }
   };
@@ -259,95 +279,108 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
 
     try {
       const { data: userData } = await supabase.auth.getUser();
-      let targetProductId = productId;
 
-      // Pour les kits sur-mesure, gérer différemment
+      if (!userData.user?.id) {
+        toast.error("Vous devez être connecté");
+        setLoading(false);
+        return;
+      }
+
+      // Pour les kits sur-mesure, utiliser shop_custom_kits (table séparée)
       if (formData.product_type === "custom_kit") {
         // Extraire les catégories uniques et tous les accessoires sélectionnés
         const uniqueCategoryIds = [...new Set(kitSections.map((s) => s.category_id).filter(Boolean))];
         const allAccessoryIds = kitSections.flatMap((s) => s.selected_accessory_ids);
 
+        if (allAccessoryIds.length === 0) {
+          toast.error("Veuillez sélectionner au moins un accessoire");
+          setLoading(false);
+          return;
+        }
+
+        let kitId = productId;
+
         if (productId) {
           // Mise à jour du kit existant
-          await supabase
-            .from("shop_products" as any)
-            .update({
-              ...formData,
-              allowed_category_ids: uniqueCategoryIds,
-            })
-            .eq("id", productId);
-
-          // Supprimer les anciens accessoires du kit
-          await supabase
-            .from("shop_custom_kit_accessories" as any)
-            .delete()
-            .eq("custom_kit_id", productId);
-
-          // Mettre à jour shop_custom_kits si existe
-          const { data: existingKit } = await supabase
+          const { error: updateError } = await supabase
             .from("shop_custom_kits")
-            .select("id")
-            .eq("id", productId)
-            .maybeSingle();
-
-          if (existingKit) {
-            await supabase
-              .from("shop_custom_kits")
-              .update({
-                nom: formData.nom,
-                description: formData.description,
-                prix_base: formData.prix_base,
-                is_active: formData.is_active,
-                allowed_category_ids: uniqueCategoryIds,
-              })
-              .eq("id", productId);
-          }
-        } else {
-          // Création d'un nouveau kit
-          const { data: newProduct } = await supabase
-            .from("shop_products" as any)
-            .insert({
-              ...formData,
-              user_id: userData.user?.id,
-              allowed_category_ids: uniqueCategoryIds,
-            })
-            .select()
-            .single();
-
-          targetProductId = (newProduct as any)?.id;
-
-          // Créer aussi dans shop_custom_kits
-          if (targetProductId) {
-            await supabase.from("shop_custom_kits").insert({
-              id: targetProductId,
-              user_id: userData.user?.id,
+            .update({
               nom: formData.nom,
               description: formData.description,
               prix_base: formData.prix_base,
               is_active: formData.is_active,
               allowed_category_ids: uniqueCategoryIds,
-            });
+            })
+            .eq("id", productId);
+
+          if (updateError) {
+            console.error("Erreur mise à jour kit:", updateError);
+            throw updateError;
           }
+
+          // Supprimer les anciens accessoires du kit
+          await supabase.from("shop_custom_kit_accessories").delete().eq("custom_kit_id", productId);
+        } else {
+          // Création d'un nouveau kit
+          const { data: newKit, error: insertError } = await supabase
+            .from("shop_custom_kits")
+            .insert({
+              user_id: userData.user.id,
+              nom: formData.nom,
+              description: formData.description,
+              prix_base: formData.prix_base,
+              is_active: formData.is_active,
+              allowed_category_ids: uniqueCategoryIds,
+            })
+            .select()
+            .single();
+
+          if (insertError) {
+            console.error("Erreur création kit:", insertError);
+            throw insertError;
+          }
+
+          kitId = newKit?.id;
         }
 
         // Insérer les accessoires du kit
-        if (targetProductId && allAccessoryIds.length > 0) {
+        if (kitId && allAccessoryIds.length > 0) {
           const kitAccessoriesData = allAccessoryIds.map((accId) => ({
-            custom_kit_id: targetProductId,
+            custom_kit_id: kitId,
             accessory_id: accId,
             default_quantity: 1,
           }));
 
-          await supabase.from("shop_custom_kit_accessories" as any).insert(kitAccessoriesData);
+          const { error: accError } = await supabase.from("shop_custom_kit_accessories").insert(kitAccessoriesData);
+
+          if (accError) {
+            console.error("Erreur insertion accessoires:", accError);
+            throw accError;
+          }
         }
+
+        toast.success(productId ? "Kit modifié avec succès" : "Kit créé avec succès");
       } else {
-        // Pour les produits simples et bundles (logique existante)
+        // Pour les produits simples et bundles, utiliser shop_products
+        let targetProductId = productId;
+
         if (productId) {
           // Mise à jour du produit existant
-          await supabase
+          const { error: updateError } = await supabase
             .from("shop_products" as any)
-            .update(formData)
+            .update({
+              nom: formData.nom,
+              description: formData.description,
+              product_type: formData.product_type,
+              prix_base: formData.prix_base,
+              image_url: formData.image_url,
+              is_active: formData.is_active,
+              category_id: formData.category_id,
+              stock_quantity: formData.stock_quantity,
+            })
             .eq("id", productId);
+
+          if (updateError) throw updateError;
 
           // Supprimer les anciens accessoires
           await supabase
@@ -356,17 +389,23 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
             .eq("shop_product_id", productId);
         } else {
           // Création d'un nouveau produit
-          const dataToSave = {
-            ...formData,
-            user_id: userData.user?.id,
-          };
-
-          const { data: newProduct } = await supabase
+          const { data: newProduct, error: insertError } = await supabase
             .from("shop_products" as any)
-            .insert(dataToSave)
+            .insert({
+              user_id: userData.user.id,
+              nom: formData.nom,
+              description: formData.description,
+              product_type: formData.product_type,
+              prix_base: formData.prix_base,
+              image_url: formData.image_url,
+              is_active: formData.is_active,
+              category_id: formData.category_id,
+              stock_quantity: formData.stock_quantity,
+            })
             .select()
             .single();
 
+          if (insertError) throw insertError;
           targetProductId = (newProduct as any)?.id;
         }
 
@@ -381,14 +420,15 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
 
           await supabase.from("shop_product_items" as any).insert(items);
         }
+
+        toast.success(productId ? "Produit modifié avec succès" : "Produit créé avec succès");
       }
 
-      toast.success(productId ? "Produit modifié" : "Produit créé");
       onSuccess();
       onClose();
-    } catch (error) {
-      console.error(error);
-      toast.error("Erreur lors de l'enregistrement");
+    } catch (error: any) {
+      console.error("Erreur:", error);
+      toast.error(`Erreur: ${error.message || "Erreur lors de l'enregistrement"}`);
     } finally {
       setLoading(false);
     }
