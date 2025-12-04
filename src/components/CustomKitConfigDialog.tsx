@@ -96,7 +96,71 @@ const CustomKitConfigDialog = ({
   const loadKitConfiguration = async () => {
     setLoading(true);
 
-    // Charger la configuration du kit avec les catégories autorisées
+    // D'abord, charger les accessoires spécifiques configurés pour ce kit
+    const { data: kitAccessoriesData, error: kitAccessoriesError } = await supabase
+      .from("shop_custom_kit_accessories")
+      .select(
+        "accessory_id, accessories_catalog(id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url)",
+      )
+      .eq("custom_kit_id", productId);
+
+    if (kitAccessoriesError) {
+      console.error("Erreur lors du chargement des accessoires du kit:", kitAccessoriesError);
+    }
+
+    // Si on a des accessoires configurés, les utiliser
+    if (kitAccessoriesData && kitAccessoriesData.length > 0) {
+      // Extraire les accessoires
+      const accessoriesData = kitAccessoriesData.map((ka: any) => ka.accessories_catalog).filter(Boolean);
+
+      // Déduire les catégories uniques depuis les accessoires
+      const categoryIdsFromAccessories = [...new Set(accessoriesData.map((a: any) => a.category_id).filter(Boolean))];
+
+      // Charger les infos des catégories
+      if (categoryIdsFromAccessories.length > 0) {
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from("categories")
+          .select("id, nom")
+          .in("id", categoryIdsFromAccessories);
+
+        if (categoriesError) {
+          console.error("Erreur lors du chargement des catégories:", categoriesError);
+        } else {
+          setCategories(categoriesData || []);
+        }
+      }
+
+      // Charger les options pour tous les accessoires
+      const accessoryIds = accessoriesData.map((a: any) => a.id);
+      const { data: optionsData } = await supabase
+        .from("accessory_options")
+        .select("*")
+        .in("accessory_id", accessoryIds);
+
+      // Grouper les accessoires par catégorie
+      const byCategory = new Map<string, Accessory[]>();
+      accessoriesData.forEach((accessory: any) => {
+        const catId = accessory.category_id;
+        if (!catId) return;
+
+        const options = (optionsData || []).filter((o: any) => o.accessory_id === accessory.id);
+        const accessoryWithOptions: Accessory = {
+          ...accessory,
+          options: options,
+        };
+
+        if (!byCategory.has(catId)) {
+          byCategory.set(catId, []);
+        }
+        byCategory.get(catId)!.push(accessoryWithOptions);
+      });
+
+      setAccessoriesByCategory(byCategory);
+      setLoading(false);
+      return;
+    }
+
+    // Fallback: utiliser allowed_category_ids si aucun accessoire n'est configuré
     const { data: kitData, error: kitError } = await supabase
       .from("shop_custom_kits")
       .select("allowed_category_ids")
@@ -133,81 +197,43 @@ const CustomKitConfigDialog = ({
 
     setCategories(categoriesData || []);
 
-    // Charger les accessoires spécifiques configurés pour ce kit
-    const { data: kitAccessoriesData, error: kitAccessoriesError } = await supabase
-      .from("shop_custom_kit_accessories")
-      .select("accessory_id")
-      .eq("custom_kit_id", productId);
+    // Charger tous les accessoires des catégories autorisées
+    const { data: accessoriesData, error: accessoriesError } = await supabase
+      .from("accessories_catalog")
+      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
+      .in("category_id", categoryIds)
+      .eq("available_in_shop", true);
 
-    if (kitAccessoriesError) {
-      console.error("Erreur lors du chargement des accessoires du kit:", kitAccessoriesError);
-    }
-
-    // Si des accessoires spécifiques sont configurés, ne charger que ceux-là
-    // Sinon, charger tous les accessoires des catégories autorisées (fallback)
-    const specificAccessoryIds = (kitAccessoriesData || []).map((ka: any) => ka.accessory_id);
-
-    let accessoriesData: any[] = [];
-
-    if (specificAccessoryIds.length > 0) {
-      // Charger uniquement les accessoires spécifiquement sélectionnés
-      const { data, error } = await supabase
-        .from("accessories_catalog")
-        .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
-        .in("id", specificAccessoryIds)
-        .eq("available_in_shop", true);
-
-      if (error) {
-        console.error("Erreur lors du chargement des accessoires:", error);
-        toast.error("Erreur lors du chargement des accessoires");
-        setLoading(false);
-        return;
-      }
-      accessoriesData = data || [];
-    } else {
-      // Fallback: charger tous les accessoires des catégories autorisées
-      const { data, error } = await supabase
-        .from("accessories_catalog")
-        .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
-        .in("category_id", categoryIds)
-        .eq("available_in_shop", true);
-
-      if (error) {
-        console.error("Erreur lors du chargement des accessoires:", error);
-        toast.error("Erreur lors du chargement des accessoires");
-        setLoading(false);
-        return;
-      }
-      accessoriesData = data || [];
+    if (accessoriesError) {
+      console.error("Erreur lors du chargement des accessoires:", accessoriesError);
+      toast.error("Erreur lors du chargement des accessoires");
+      setLoading(false);
+      return;
     }
 
     // Charger les options pour tous les accessoires
-    const accessoryIds = accessoriesData.map((a: any) => a.id);
+    const accessoryIds = (accessoriesData || []).map((a: any) => a.id);
     const { data: optionsData } = await supabase.from("accessory_options").select("*").in("accessory_id", accessoryIds);
 
-    // Regrouper les options par accessoire
-    const optionsByAccessory = new Map<string, AccessoryOption[]>();
-    (optionsData || []).forEach((option) => {
-      if (!optionsByAccessory.has(option.accessory_id)) {
-        optionsByAccessory.set(option.accessory_id, []);
-      }
-      optionsByAccessory.get(option.accessory_id)!.push(option);
-    });
+    // Grouper les accessoires par catégorie
+    const byCategory = new Map<string, Accessory[]>();
+    (accessoriesData || []).forEach((accessory: any) => {
+      const catId = accessory.category_id;
+      if (!catId) return;
 
-    // Regrouper les accessoires par catégorie avec leurs options
-    const accessoriesMap = new Map<string, Accessory[]>();
-    accessoriesData.forEach((accessory: any) => {
-      const categoryId = accessory.category_id;
-      if (!accessoriesMap.has(categoryId)) {
-        accessoriesMap.set(categoryId, []);
-      }
-      accessoriesMap.get(categoryId)!.push({
+      const options = (optionsData || []).filter((o: any) => o.accessory_id === accessory.id);
+      const accessoryWithOptions: Accessory = {
         ...accessory,
-        options: optionsByAccessory.get(accessory.id) || [],
-      });
+        options: options,
+      };
+
+      if (!byCategory.has(catId)) {
+        byCategory.set(catId, []);
+      }
+      byCategory.get(catId)!.push(accessoryWithOptions);
     });
 
-    setAccessoriesByCategory(accessoriesMap);
+    setAccessoriesByCategory(byCategory);
     setLoading(false);
   };
 
