@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShoppingCart, Package, Copy } from "lucide-react";
+import { ShoppingCart, Package, Copy, X, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCartContext } from "@/contexts/CartContext";
 import { toast } from "sonner";
@@ -94,7 +94,9 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
         const { data: accessoriesData, error: accessoriesError } = await supabase
           .from("accessories_catalog")
-          .select("id, nom, marque, prix_vente_ttc, description, image_url, category_id, promo_active, promo_price, promo_start_date, promo_end_date, couleur")
+          .select(
+            "id, nom, marque, prix_vente_ttc, description, image_url, category_id, promo_active, promo_price, promo_start_date, promo_end_date, couleur",
+          )
           .in("id", accessoryIds);
 
         if (accessoriesError) {
@@ -126,11 +128,14 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
             promo_start_date: acc.promo_start_date,
             promo_end_date: acc.promo_end_date,
             couleur: acc.couleur,
-            options: optionsData?.filter((opt) => opt.accessory_id === acc.id).map(opt => ({
-              id: opt.id,
-              nom: opt.nom,
-              prix_vente_ttc: opt.prix_vente_ttc || 0
-            })) || [],
+            options:
+              optionsData
+                ?.filter((opt) => opt.accessory_id === acc.id)
+                .map((opt) => ({
+                  id: opt.id,
+                  nom: opt.nom,
+                  prix_vente_ttc: opt.prix_vente_ttc || 0,
+                })) || [],
           }));
 
           setAccessories(accessoriesWithOptions);
@@ -173,22 +178,57 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
   };
 
   const updateSectionAccessory = (sectionId: string, accessoryId: string) => {
-    setSections(sections.map((s) => (s.id === sectionId ? { ...s, selectedAccessoryId: accessoryId } : s)));
+    setSections(
+      sections.map((s) => {
+        if (s.id === sectionId) {
+          // Si on sélectionne "none", on vide tout
+          if (accessoryId === "none") {
+            return {
+              ...s,
+              selectedAccessoryId: null,
+              selectedOptions: {},
+              selectedColors: {},
+            };
+          }
+          // Sinon on met à jour normalement
+          return { ...s, selectedAccessoryId: accessoryId };
+        }
+        return s;
+      }),
+    );
+  };
+
+  // NOUVELLE FONCTION : Vider la sélection d'un accessoire
+  const clearAccessorySelection = (sectionId: string) => {
+    setSections(
+      sections.map((s) => {
+        if (s.id === sectionId) {
+          return {
+            ...s,
+            selectedAccessoryId: null,
+            selectedOptions: {},
+            selectedColors: {},
+          };
+        }
+        return s;
+      }),
+    );
+    toast.info("Sélection effacée");
   };
 
   const updateSectionOptions = (sectionId: string, accessoryId: string, optionIds: string[]) => {
     setSections(
       sections.map((s) =>
-        s.id === sectionId ? { ...s, selectedOptions: { ...s.selectedOptions, [accessoryId]: optionIds } } : s
-      )
+        s.id === sectionId ? { ...s, selectedOptions: { ...s.selectedOptions, [accessoryId]: optionIds } } : s,
+      ),
     );
   };
 
   const updateSectionColor = (sectionId: string, accessoryId: string, color: string) => {
     setSections(
       sections.map((s) =>
-        s.id === sectionId ? { ...s, selectedColors: { ...s.selectedColors, [accessoryId]: color } } : s
-      )
+        s.id === sectionId ? { ...s, selectedColors: { ...s.selectedColors, [accessoryId]: color } } : s,
+      ),
     );
   };
 
@@ -226,6 +266,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
       return;
     }
     setSections(sections.filter((s) => s.id !== sectionId));
+    toast.success("Section supprimée");
   };
 
   const parseColors = (colorString: string | null): string[] => {
@@ -371,8 +412,8 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                       const selectedCount = section.selectedAccessoryId ? 1 : 0;
 
                       return (
-                        <AccordionItem 
-                          key={section.id} 
+                        <AccordionItem
+                          key={section.id}
                           value={section.id}
                           className="rounded-xl border-2 border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden"
                         >
@@ -385,14 +426,15 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                 <div className="text-left">
                                   <h3 className="font-bold text-base">{section.categoryName}</h3>
                                   <p className="text-xs text-muted-foreground">
-                                    {section.accessories.length} accessoire{section.accessories.length > 1 ? 's' : ''} disponible{section.accessories.length > 1 ? 's' : ''}
+                                    {section.accessories.length} accessoire{section.accessories.length > 1 ? "s" : ""}{" "}
+                                    disponible{section.accessories.length > 1 ? "s" : ""}
                                   </p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
                                 {selectedCount > 0 && (
                                   <Badge variant="default">
-                                    {selectedCount} sélectionné{selectedCount > 1 ? 's' : ''}
+                                    {selectedCount} sélectionné{selectedCount > 1 ? "s" : ""}
                                   </Badge>
                                 )}
                                 <Button
@@ -407,24 +449,55 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                 >
                                   <Copy className="h-4 w-4" />
                                 </Button>
+                                {sections.length > 1 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeSection(section.id);
+                                    }}
+                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    title="Supprimer cette section"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </AccordionTrigger>
-                          
+
                           <AccordionContent className="px-5 pb-5 pt-2">
                             <div className="space-y-4">
                               <div>
-                                <label className="text-sm font-semibold mb-3 block text-foreground">
-                                  Sélectionnez un accessoire
-                                </label>
+                                <div className="flex items-center justify-between mb-3">
+                                  <label className="text-sm font-semibold text-foreground">
+                                    Sélectionnez un accessoire
+                                  </label>
+                                  {section.selectedAccessoryId && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => clearAccessorySelection(section.id)}
+                                      className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                                    >
+                                      <X className="h-3 w-3 mr-1" />
+                                      Effacer
+                                    </Button>
+                                  )}
+                                </div>
                                 <Select
-                                  value={section.selectedAccessoryId || ""}
+                                  value={section.selectedAccessoryId || "none"}
                                   onValueChange={(value) => updateSectionAccessory(section.id, value)}
                                 >
                                   <SelectTrigger className="h-12 text-base">
                                     <SelectValue placeholder="Choisir un accessoire..." />
                                   </SelectTrigger>
                                   <SelectContent>
+                                    {/* CORRECTION DU BUG : Ajout d'une option vide */}
+                                    <SelectItem value="none">
+                                      <span className="text-muted-foreground italic">-- Aucun accessoire --</span>
+                                    </SelectItem>
                                     {section.accessories.map((accessory) => {
                                       const price = getAccessoryPrice(accessory);
                                       const isPromo = accessory.promo_active && price < accessory.prix_vente_ttc;
@@ -472,11 +545,15 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                         <div className="text-lg font-bold text-primary mt-2">
                                           {(() => {
                                             const price = getAccessoryPrice(selectedAccessory);
-                                            const isPromo = selectedAccessory.promo_active && price < selectedAccessory.prix_vente_ttc;
+                                            const isPromo =
+                                              selectedAccessory.promo_active &&
+                                              price < selectedAccessory.prix_vente_ttc;
                                             return (
                                               <>
                                                 {isPromo && (
-                                                  <Badge variant="destructive" className="mr-2 text-xs">PROMO</Badge>
+                                                  <Badge variant="destructive" className="mr-2 text-xs">
+                                                    PROMO
+                                                  </Badge>
                                                 )}
                                                 {isPromo && (
                                                   <span className="line-through text-muted-foreground text-sm mr-2">
@@ -497,14 +574,19 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                       <h4 className="font-semibold text-sm">Sélectionnez une couleur</h4>
                                       <div className="flex flex-wrap gap-3">
                                         {parseColors(selectedAccessory.couleur).map((color) => {
-                                          const isSelected = section.selectedColors[section.selectedAccessoryId!] === color;
+                                          const isSelected =
+                                            section.selectedColors[section.selectedAccessoryId!] === color;
                                           return (
                                             <button
                                               key={color}
-                                              onClick={() => updateSectionColor(section.id, section.selectedAccessoryId!, color)}
+                                              onClick={() =>
+                                                updateSectionColor(section.id, section.selectedAccessoryId!, color)
+                                              }
                                               className={cn(
                                                 "flex flex-col items-center gap-2 p-2 rounded-lg border-2 transition-all hover:scale-105",
-                                                isSelected ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"
+                                                isSelected
+                                                  ? "border-primary bg-primary/10"
+                                                  : "border-border hover:border-primary/50",
                                               )}
                                               title={color}
                                             >
@@ -512,10 +594,12 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                                 className="w-10 h-10 rounded-full border-2 border-border shadow-sm"
                                                 style={{ backgroundColor: getColorHex(color) }}
                                               />
-                                              <span className={cn(
-                                                "text-xs font-medium",
-                                                isSelected ? "text-primary" : "text-muted-foreground"
-                                              )}>
+                                              <span
+                                                className={cn(
+                                                  "text-xs font-medium",
+                                                  isSelected ? "text-primary" : "text-muted-foreground",
+                                                )}
+                                              >
                                                 {color}
                                               </span>
                                             </button>
@@ -529,14 +613,21 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                     <div className="space-y-3 bg-muted/30 rounded-lg p-4">
                                       <h4 className="font-semibold text-sm">Options disponibles</h4>
                                       {selectedAccessory.options.map((option) => {
-                                        const isSelected = (section.selectedOptions[section.selectedAccessoryId!] || []).includes(option.id);
+                                        const isSelected = (
+                                          section.selectedOptions[section.selectedAccessoryId!] || []
+                                        ).includes(option.id);
                                         return (
-                                          <div key={option.id} className="flex items-center justify-between p-3 rounded-lg border bg-background hover:border-primary/50 transition-colors">
+                                          <div
+                                            key={option.id}
+                                            className="flex items-center justify-between p-3 rounded-lg border bg-background hover:border-primary/50 transition-colors"
+                                          >
                                             <div className="flex items-center gap-3">
                                               <Checkbox
                                                 id={`option-${section.id}-${option.id}`}
                                                 checked={isSelected}
-                                                onCheckedChange={() => toggleOption(section.id, section.selectedAccessoryId!, option.id)}
+                                                onCheckedChange={() =>
+                                                  toggleOption(section.id, section.selectedAccessoryId!, option.id)
+                                                }
                                               />
                                               <label
                                                 htmlFor={`option-${section.id}-${option.id}`}
@@ -631,19 +722,11 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                 </div>
                 <Separator />
                 <div className="space-y-2">
-                  <Button
-                    onClick={handleAddToCart}
-                    className="w-full h-12 text-base font-semibold shadow-lg"
-                    size="lg"
-                  >
+                  <Button onClick={handleAddToCart} className="w-full h-12 text-base font-semibold shadow-lg" size="lg">
                     <ShoppingCart className="mr-2 h-5 w-5" />
                     Ajouter au panier
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={onClose}
-                    className="w-full"
-                  >
+                  <Button variant="outline" onClick={onClose} className="w-full">
                     Annuler
                   </Button>
                 </div>
