@@ -1,0 +1,394 @@
+/* Animations et styles personnalisés pour la boutique */
+
+/* Animation de pulse pour les badges "nouveau" */
+@keyframes pulse-badge {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.badge-pulse {
+  animation: pulse-badge 2s ease-in-out infinite;
+}
+
+/* Animation de slide-in pour les filtres */
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.filter-sidebar-enter {
+  animation: slide-in-left 0.3s ease-out;
+}
+
+/* Effet de brillance sur les cartes au hover */
+.product-card-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.product-card-shine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.product-card-shine:hover::before {
+  left: 100%;
+}
+
+/* Amélioration du slider de prix */
+.price-slider {
+  position: relative;
+}
+
+.price-slider .slider-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #10b981, #3b82f6);
+}
+
+.price-slider .slider-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid #3b82f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.price-slider .slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+/* Animation de fade-in pour les produits */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.product-fade-in {
+  animation: fade-in-up 0.4s ease-out forwards;
+}
+
+/* Décalage pour créer un effet d'apparition en cascade */
+.product-fade-in:nth-child(1) { animation-delay: 0.05s; }
+.product-fade-in:nth-child(2) { animation-delay: 0.1s; }
+.product-fade-in:nth-child(3) { animation-delay: 0.15s; }
+.product-fade-in:nth-child(4) { animation-delay: 0.2s; }
+.product-fade-in:nth-child(5) { animation-delay: 0.25s; }
+.product-fade-in:nth-child(6) { animation-delay: 0.3s; }
+
+/* Effet de zoom doux sur les images */
+.product-image-container {
+  overflow: hidden;
+}
+
+.product-image-zoom {
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.product-image-container:hover .product-image-zoom {
+  transform: scale(1.1);
+}
+
+/* Badge de réduction animé */
+@keyframes badge-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.discount-badge {
+  animation: badge-bounce 1s ease-in-out infinite;
+}
+
+/* Skeleton loader pour les produits en chargement */
+@keyframes skeleton-loading {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+}
+
+/* Badge de stock limité avec pulse */
+@keyframes pulse-warning {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(251, 146, 60, 0);
+  }
+}
+
+.low-stock-badge {
+  animation: pulse-warning 2s ease-in-out infinite;
+}
+
+/* Transition douce pour les changements de vue (grille/liste) */
+.view-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Amélioration du bouton "Ajouter au panier" */
+.add-to-cart-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.add-to-cart-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.add-to-cart-btn:active::after {
+  width: 300px;
+  height: 300px;
+}
+
+/* Style pour les filtres actifs */
+.active-filter-badge {
+  transition: all 0.2s ease;
+}
+
+.active-filter-badge:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Animation pour la pagination */
+.pagination-button {
+  transition: all 0.2s ease;
+}
+
+.pagination-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.pagination-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Effet de vague au clic */
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple-effect::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+}
+
+.ripple-effect:active::before {
+  animation: ripple 0.6s ease-out;
+}
+
+/* Badge "En stock" avec point clignotant */
+@keyframes blink-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.stock-indicator-dot {
+  animation: blink-dot 2s ease-in-out infinite;
+}
+
+/* Amélioration du dialog de vue rapide */
+.quick-view-dialog {
+  animation: fade-in-up 0.3s ease-out;
+}
+
+/* Hover effet sur les catégories de la sidebar */
+.category-item {
+  transition: all 0.2s ease;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.category-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  transform: translateX(4px);
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      #2a2a2a 25%,
+      #3a3a3a 50%,
+      #2a2a2a 75%
+    );
+    background-size: 200% 100%;
+  }
+
+  .category-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .product-card-shine::before {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .product-fade-in {
+    animation: none; /* Désactiver sur mobile pour les performances */
+  }
+
+  .product-image-zoom {
+    transition: none; /* Désactiver le zoom sur mobile */
+  }
+}
+
+/* Scrollbar personnalisée pour la sidebar */
+.filter-sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.filter-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.filter-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.filter-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Style pour le compteur du panier */
+.cart-counter {
+  animation: fade-in-up 0.3s ease-out;
+}
+
+@keyframes cart-bump {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cart-counter-bump {
+  animation: cart-bump 0.3s ease-out;
+}
+
+/* Gradient overlay pour les images */
+.image-gradient-overlay {
+  position: relative;
+}
+
+.image-gradient-overlay::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.5), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.image-gradient-overlay:hover::after {
+  opacity: 1;
+}
+
+/* Prix animé lors du hover */
+.price-highlight {
+  transition: all 0.3s ease;
+}
+
+.price-highlight:hover {
+  transform: scale(1.05);
+  color: #2563eb;
+}
