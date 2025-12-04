@@ -475,8 +475,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
-  const onImageUpload = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-  const onAudioUpload = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
 
   if (!block) return null;
 
@@ -570,8 +568,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onImageUpload) {
-                      onImageUpload(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -594,8 +592,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onAudioUpload) {
-                      onAudioUpload(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -787,8 +785,6 @@ const MechanicalProcedures = () => {
   const [isDeleteGammeDialogOpen, setIsDeleteGammeDialogOpen] = useState(false);
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
@@ -2537,19 +2533,34 @@ RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans tex
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Non connecté");
 
+      console.log("Création gamme avec:", {
+        user_id: userData.user.id,
+        title: pdfStructure.title || pdfImportFile.name.replace(".pdf", ""),
+        description: pdfStructure.description || `Importé depuis ${pdfImportFile.name}`,
+      });
+
       const { data: newGammeData, error: gammeError } = await (supabase as any)
         .from("mechanical_gammes")
         .insert({
           user_id: userData.user.id,
           title: pdfStructure.title || pdfImportFile.name.replace(".pdf", ""),
           description: pdfStructure.description || `Importé depuis ${pdfImportFile.name}`,
-          vehicle_brand: "",
-          vehicle_model: "",
         })
         .select()
         .single();
 
-      if (gammeError) throw gammeError;
+      console.log("Résultat création gamme:", { newGammeData, gammeError });
+
+      if (gammeError) {
+        console.error("Erreur création gamme:", JSON.stringify(gammeError, null, 2));
+        throw new Error(`Erreur création gamme: ${gammeError.message || JSON.stringify(gammeError)}`);
+      }
+
+      if (!newGammeData || !newGammeData.id) {
+        throw new Error("Gamme créée mais pas d'ID retourné");
+      }
+
+      console.log("Gamme créée avec ID:", newGammeData.id);
 
       setPdfImportProgress("Création des chapitres et blocs...");
 
