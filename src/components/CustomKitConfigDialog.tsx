@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -89,7 +96,7 @@ const CustomKitConfigDialog = ({
   const loadKitConfiguration = async () => {
     setLoading(true);
 
-    // Charger la configuration du kit
+    // Charger la configuration du kit avec les catégories autorisées
     const { data: kitData, error: kitError } = await supabase
       .from("shop_custom_kits")
       .select("allowed_category_ids")
@@ -126,26 +133,57 @@ const CustomKitConfigDialog = ({
 
     setCategories(categoriesData || []);
 
-    // Charger les accessoires disponibles pour chaque catégorie
-    const { data: accessoriesData, error: accessoriesError } = await supabase
-      .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
-      .in("category_id", categoryIds)
-      .eq("available_in_shop", true);
+    // Charger les accessoires spécifiques configurés pour ce kit
+    const { data: kitAccessoriesData, error: kitAccessoriesError } = await supabase
+      .from("shop_custom_kit_accessories")
+      .select("accessory_id")
+      .eq("custom_kit_id", productId);
 
-    if (accessoriesError) {
-      console.error("Erreur lors du chargement des accessoires:", accessoriesError);
-      toast.error("Erreur lors du chargement des accessoires");
-      setLoading(false);
-      return;
+    if (kitAccessoriesError) {
+      console.error("Erreur lors du chargement des accessoires du kit:", kitAccessoriesError);
+    }
+
+    // Si des accessoires spécifiques sont configurés, ne charger que ceux-là
+    // Sinon, charger tous les accessoires des catégories autorisées (fallback)
+    const specificAccessoryIds = (kitAccessoriesData || []).map((ka: any) => ka.accessory_id);
+
+    let accessoriesData: any[] = [];
+
+    if (specificAccessoryIds.length > 0) {
+      // Charger uniquement les accessoires spécifiquement sélectionnés
+      const { data, error } = await supabase
+        .from("accessories_catalog")
+        .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
+        .in("id", specificAccessoryIds)
+        .eq("available_in_shop", true);
+
+      if (error) {
+        console.error("Erreur lors du chargement des accessoires:", error);
+        toast.error("Erreur lors du chargement des accessoires");
+        setLoading(false);
+        return;
+      }
+      accessoriesData = data || [];
+    } else {
+      // Fallback: charger tous les accessoires des catégories autorisées
+      const { data, error } = await supabase
+        .from("accessories_catalog")
+        .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
+        .in("category_id", categoryIds)
+        .eq("available_in_shop", true);
+
+      if (error) {
+        console.error("Erreur lors du chargement des accessoires:", error);
+        toast.error("Erreur lors du chargement des accessoires");
+        setLoading(false);
+        return;
+      }
+      accessoriesData = data || [];
     }
 
     // Charger les options pour tous les accessoires
-    const accessoryIds = (accessoriesData || []).map((a: any) => a.id);
-    const { data: optionsData } = await supabase
-      .from("accessory_options")
-      .select("*")
-      .in("accessory_id", accessoryIds);
+    const accessoryIds = accessoriesData.map((a: any) => a.id);
+    const { data: optionsData } = await supabase.from("accessory_options").select("*").in("accessory_id", accessoryIds);
 
     // Regrouper les options par accessoire
     const optionsByAccessory = new Map<string, AccessoryOption[]>();
@@ -158,7 +196,7 @@ const CustomKitConfigDialog = ({
 
     // Regrouper les accessoires par catégorie avec leurs options
     const accessoriesMap = new Map<string, Accessory[]>();
-    (accessoriesData || []).forEach((accessory: any) => {
+    accessoriesData.forEach((accessory: any) => {
       const categoryId = accessory.category_id;
       if (!accessoriesMap.has(categoryId)) {
         accessoriesMap.set(categoryId, []);
@@ -176,12 +214,12 @@ const CustomKitConfigDialog = ({
   const handleAccessorySelect = (categoryId: string, categoryName: string, accessoryId: string) => {
     const accessories = accessoriesByCategory.get(categoryId) || [];
     const accessory = accessories.find((a) => a.id === accessoryId);
-    
+
     if (!accessory) return;
 
     const newSelected = new Map(selectedAccessories);
     const key = `${categoryId}-${accessoryId}`;
-    
+
     if (newSelected.has(key)) {
       newSelected.delete(key);
     } else {
@@ -195,14 +233,14 @@ const CustomKitConfigDialog = ({
         color: accessory.couleur,
       });
     }
-    
+
     setSelectedAccessories(newSelected);
   };
 
   const updateQuantity = (key: string, delta: number) => {
     const newSelected = new Map(selectedAccessories);
     const item = newSelected.get(key);
-    
+
     if (item) {
       const newQuantity = Math.max(1, item.quantity + delta);
       newSelected.set(key, { ...item, quantity: newQuantity });
@@ -213,12 +251,12 @@ const CustomKitConfigDialog = ({
   const toggleOption = (key: string, optionId: string) => {
     const newSelected = new Map(selectedAccessories);
     const item = newSelected.get(key);
-    
+
     if (item) {
       const selected_options = item.selected_options.includes(optionId)
         ? item.selected_options.filter((id) => id !== optionId)
         : [...item.selected_options, optionId];
-      
+
       newSelected.set(key, { ...item, selected_options });
       setSelectedAccessories(newSelected);
     }
@@ -227,7 +265,7 @@ const CustomKitConfigDialog = ({
   const updateColor = (key: string, color: string) => {
     const newSelected = new Map(selectedAccessories);
     const item = newSelected.get(key);
-    
+
     if (item) {
       newSelected.set(key, { ...item, color });
       setSelectedAccessories(newSelected);
@@ -236,19 +274,19 @@ const CustomKitConfigDialog = ({
 
   const calculateTotalPrice = () => {
     let total = 0;
-    
+
     selectedAccessories.forEach((item) => {
       let itemPrice = item.prix_unitaire;
-      
+
       // Ajouter le prix des options sélectionnées
       const categoryId = Array.from(selectedAccessories.entries())
         .find(([k, v]) => v === item)?.[0]
-        .split('-')[0];
-      
+        .split("-")[0];
+
       if (categoryId) {
         const accessories = accessoriesByCategory.get(categoryId) || [];
         const accessory = accessories.find((a) => a.id === item.accessory_id);
-        
+
         if (accessory?.options) {
           item.selected_options.forEach((optionId) => {
             const option = accessory.options?.find((o) => o.id === optionId);
@@ -258,10 +296,10 @@ const CustomKitConfigDialog = ({
           });
         }
       }
-      
+
       total += itemPrice * item.quantity;
     });
-    
+
     return total;
   };
 
@@ -273,7 +311,7 @@ const CustomKitConfigDialog = ({
 
     const configuration = Array.from(selectedAccessories.values());
     const totalPrice = calculateTotalPrice();
-    
+
     onAddToCart?.(configuration, totalPrice);
   };
 
@@ -294,9 +332,7 @@ const CustomKitConfigDialog = ({
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-2xl">Configurer : {productName}</DialogTitle>
-          <DialogDescription>
-            Sélectionnez les accessoires souhaités dans chaque catégorie
-          </DialogDescription>
+          <DialogDescription>Sélectionnez les accessoires souhaités dans chaque catégorie</DialogDescription>
         </DialogHeader>
 
         <ScrollArea className="flex-1 pr-4">
@@ -304,13 +340,13 @@ const CustomKitConfigDialog = ({
             <Accordion type="multiple" className="w-full">
               {categories.map((category) => {
                 const accessories = accessoriesByCategory.get(category.id) || [];
-                
+
                 return (
                   <AccordionItem key={category.id} value={category.id}>
                     <AccordionTrigger className="text-lg font-semibold">
                       {category.nom}
                       <Badge variant="secondary" className="ml-2">
-                        {accessories.length} article{accessories.length > 1 ? 's' : ''}
+                        {accessories.length} article{accessories.length > 1 ? "s" : ""}
                       </Badge>
                     </AccordionTrigger>
                     <AccordionContent>
@@ -324,7 +360,7 @@ const CustomKitConfigDialog = ({
                             <div
                               key={accessory.id}
                               className={`border rounded-lg p-4 transition-all ${
-                                isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                                isSelected ? "border-primary bg-primary/5" : "border-border"
                               }`}
                             >
                               <div className="flex items-start gap-4">
@@ -332,7 +368,7 @@ const CustomKitConfigDialog = ({
                                   checked={isSelected}
                                   onCheckedChange={() => handleAccessorySelect(category.id, category.nom, accessory.id)}
                                 />
-                                
+
                                 <div className="flex-1 space-y-3">
                                   <div>
                                     <h4 className="font-medium">{accessory.nom}</h4>
@@ -432,7 +468,8 @@ const CustomKitConfigDialog = ({
         <DialogFooter className="flex items-center justify-between border-t pt-4">
           <div className="flex items-center gap-4">
             <p className="text-sm text-muted-foreground">
-              {selectedAccessories.size} article{selectedAccessories.size > 1 ? 's' : ''} sélectionné{selectedAccessories.size > 1 ? 's' : ''}
+              {selectedAccessories.size} article{selectedAccessories.size > 1 ? "s" : ""} sélectionné
+              {selectedAccessories.size > 1 ? "s" : ""}
             </p>
             <div className="text-right">
               <p className="text-sm text-muted-foreground">Prix total :</p>
