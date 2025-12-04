@@ -66,7 +66,13 @@ interface ProductFormDialogProps {
   onClose?: () => void;
 }
 
-export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct, forceOpen, onClose }: ProductFormDialogProps) => {
+export const ShopProductFormDialog = ({
+  trigger,
+  onSuccess,
+  editProduct,
+  forceOpen,
+  onClose,
+}: ProductFormDialogProps) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [productType, setProductType] = useState<"simple" | "composed" | "custom_kit">("simple");
@@ -353,7 +359,14 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct, forceOp
             .delete()
             .eq("custom_kit_id", editProduct.id);
 
-          // Mettre à jour les infos du kit
+          // Extraire les catégories uniques des accessoires sélectionnés
+          const selectedAccessoryIds = kitAccessories.map((ka) => ka.id);
+          const selectedAccessoriesData = accessories.filter((a) => selectedAccessoryIds.includes(a.id));
+          const uniqueCategoryIds = [
+            ...new Set(selectedAccessoriesData.map((a) => a.category_id).filter(Boolean)),
+          ] as string[];
+
+          // Mettre à jour les infos du kit avec les catégories autorisées
           const { error: kitError } = await supabase
             .from("shop_custom_kits")
             .update({
@@ -361,6 +374,7 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct, forceOp
               description,
               prix_base: 0,
               is_active: isActive,
+              allowed_category_ids: uniqueCategoryIds, // Mettre à jour les catégories autorisées
             })
             .eq("id", editProduct.id);
 
@@ -415,6 +429,13 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct, forceOp
       } else {
         // Mode création
         if (productType === "custom_kit") {
+          // Extraire les catégories uniques des accessoires sélectionnés
+          const selectedAccessoryIds = kitAccessories.map((ka) => ka.id);
+          const selectedAccessoriesData = accessories.filter((a) => selectedAccessoryIds.includes(a.id));
+          const uniqueCategoryIds = [
+            ...new Set(selectedAccessoriesData.map((a) => a.category_id).filter(Boolean)),
+          ] as string[];
+
           // Pour les kits sur-mesure, créer directement dans shop_custom_kits
           const { data: kitData, error: kitError } = await supabase
             .from("shop_custom_kits")
@@ -424,6 +445,7 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct, forceOp
               description,
               prix_base: 0,
               is_active: isActive,
+              allowed_category_ids: uniqueCategoryIds, // Sauvegarder les catégories autorisées
             })
             .select()
             .maybeSingle();
@@ -710,7 +732,6 @@ export const ShopProductFormDialog = ({ trigger, onSuccess, editProduct, forceOp
               {/* Interface améliorée pour les kits sur-mesure */}
               {productType === "custom_kit" && (
                 <div className="space-y-4">
-
                   <div className="flex items-center justify-between">
                     <div>
                       <Label className="text-lg">Accessoires du kit</Label>
