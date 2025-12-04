@@ -76,15 +76,61 @@ export default function ShopPublic() {
       setCategories(categoriesData);
     }
 
-    const { data: productsData } = await supabase
+    // Charger les produits depuis shop_products (simple, bundle)
+    const { data: shopProductsData, error: shopError } = await supabase
       .from("shop_products" as any)
       .select("*")
       .eq("is_active", true);
 
-    if (productsData) {
-      setProducts(productsData);
+    if (shopError) {
+      console.error("Erreur chargement shop_products:", shopError);
     }
 
+    // Charger les kits sur-mesure depuis shop_custom_kits
+    const { data: customKitsData, error: kitsError } = await supabase
+      .from("shop_custom_kits")
+      .select("*")
+      .eq("is_active", true);
+
+    if (kitsError) {
+      console.error("Erreur chargement shop_custom_kits:", kitsError);
+    }
+
+    // Combiner les deux listes
+    const allProducts: any[] = [];
+
+    // Ajouter les produits normaux
+    if (shopProductsData) {
+      shopProductsData.forEach((p: any) => {
+        allProducts.push({
+          ...p,
+          nom: p.nom || p.name || "Sans nom",
+          prix_base: p.prix_base || p.price || 0,
+          product_type: p.product_type || p.type || "simple",
+          source: "shop_products",
+        });
+      });
+    }
+
+    // Ajouter les kits sur-mesure
+    if (customKitsData) {
+      customKitsData.forEach((k: any) => {
+        allProducts.push({
+          id: k.id,
+          nom: k.nom || "Sans nom",
+          description: k.description,
+          prix_base: k.prix_base || 0,
+          image_url: k.image_url,
+          product_type: "custom_kit",
+          is_active: k.is_active ?? true,
+          stock_quantity: 999, // Les kits n'ont pas de stock limité
+          created_at: k.created_at,
+          source: "shop_custom_kits",
+        });
+      });
+    }
+
+    setProducts(allProducts);
     setLoading(false);
   };
 
@@ -438,12 +484,12 @@ export default function ShopPublic() {
           setDetailProductId(id);
         }}
       />
-      <CustomKitConfigDialog 
-        productId={configKitId || ""} 
-        productName="" 
+      <CustomKitConfigDialog
+        productId={configKitId || ""}
+        productName=""
         basePrice={0}
-        open={!!configKitId} 
-        onOpenChange={(open) => !open && setConfigKitId(null)} 
+        open={!!configKitId}
+        onOpenChange={(open) => !open && setConfigKitId(null)}
       />
     </div>
   );
