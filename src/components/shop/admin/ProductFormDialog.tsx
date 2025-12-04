@@ -10,11 +10,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccessorySelector } from "./AccessorySelector";
-import { Plus, X } from "lucide-react";
+import { Plus, X, ChevronsUpDown } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface ProductFormDialogProps {
   productId: string | null;
@@ -544,193 +544,186 @@ export const ProductFormDialog = ({ productId, isOpen, onClose, onSuccess }: Pro
                 <Label>Produit actif</Label>
               </div>
 
-              {/* Section Kit Sur-Mesure avec dropdowns en cascade */}
+              {/* Section Kit Sur-Mesure avec dropdowns en cascade côte à côte */}
               {formData.product_type === "custom_kit" && (
                 <div className="border-t pt-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Configuration du kit sur-mesure</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addKitSection}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Ajouter une catégorie
-                    </Button>
-                  </div>
+                  <Label className="text-base font-semibold">Configuration du kit sur-mesure</Label>
 
-                  {catalogCategories.length === 0 && (
+                  {catalogCategories.length === 0 ? (
                     <div className="text-sm text-muted-foreground border rounded-lg p-4 text-center">
                       Aucune catégorie trouvée dans le catalogue. Créez des catégories d'abord.
                     </div>
-                  )}
-
-                  {kitSections.length === 0 ? (
-                    <Card>
-                      <CardContent className="p-6 text-center">
-                        <p className="text-sm text-muted-foreground mb-3">
-                          Aucune catégorie ajoutée. Cliquez sur "Ajouter une catégorie" pour commencer.
-                        </p>
-                      </CardContent>
-                    </Card>
                   ) : (
                     <div className="space-y-3">
+                      {/* Lignes de dropdowns */}
                       {kitSections.map((section, index) => {
                         const categoryAccessories = section.category_id
                           ? getAccessoriesForCategory(section.category_id)
                           : [];
 
                         return (
-                          <Card key={section.id}>
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex items-start gap-3">
-                                <Badge variant="outline" className="mt-1">
-                                  #{index + 1}
-                                </Badge>
+                          <div key={section.id} className="flex items-center gap-2">
+                            {/* Dropdown Catégorie */}
+                            <div className="w-1/3">
+                              <Select
+                                value={section.category_id}
+                                onValueChange={(value) => updateKitSectionCategory(section.id, value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Catégorie..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {catalogCategories.map((category) => {
+                                    const accessories = getAccessoriesForCategory(category.id);
+                                    return (
+                                      <SelectItem key={category.id} value={category.id}>
+                                        {category.nom} ({accessories.length})
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                                <div className="flex-1 space-y-3">
-                                  {/* Dropdown Catégorie */}
-                                  <div className="space-y-1.5">
-                                    <Label className="text-xs">Catégorie du catalogue</Label>
-                                    <Select
-                                      value={section.category_id}
-                                      onValueChange={(value) => updateKitSectionCategory(section.id, value)}
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Choisir une catégorie..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {catalogCategories.map((category) => {
-                                          const accessories = getAccessoriesForCategory(category.id);
-                                          return (
-                                            <SelectItem key={category.id} value={category.id}>
-                                              {category.nom} ({accessories.length} article
-                                              {accessories.length > 1 ? "s" : ""})
-                                            </SelectItem>
+                            {/* Dropdown Articles avec checkboxes */}
+                            <div className="flex-1">
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="w-full justify-between font-normal"
+                                    disabled={!section.category_id}
+                                  >
+                                    {section.category_id ? (
+                                      section.selected_accessory_ids.length > 0 ? (
+                                        <span className="truncate">
+                                          {section.selected_accessory_ids.length} article
+                                          {section.selected_accessory_ids.length > 1 ? "s" : ""} sélectionné
+                                          {section.selected_accessory_ids.length > 1 ? "s" : ""}
+                                        </span>
+                                      ) : (
+                                        <span className="text-muted-foreground">Sélectionner les articles...</span>
+                                      )
+                                    ) : (
+                                      <span className="text-muted-foreground">Choisir une catégorie d'abord</span>
+                                    )}
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 p-0" align="start">
+                                  <div className="p-2 border-b flex items-center justify-between">
+                                    <span className="text-sm font-medium">{getCategoryName(section.category_id)}</span>
+                                    {categoryAccessories.length > 0 && (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs"
+                                        onClick={() => {
+                                          const allIds = categoryAccessories.map((a) => a.id);
+                                          const allSelected = allIds.every((id) =>
+                                            section.selected_accessory_ids.includes(id),
                                           );
-                                        })}
-                                      </SelectContent>
-                                    </Select>
+                                          setKitSections(
+                                            kitSections.map((s) =>
+                                              s.id === section.id
+                                                ? {
+                                                    ...s,
+                                                    selected_accessory_ids: allSelected ? [] : allIds,
+                                                  }
+                                                : s,
+                                            ),
+                                          );
+                                        }}
+                                      >
+                                        {categoryAccessories.every((a) => section.selected_accessory_ids.includes(a.id))
+                                          ? "Tout décocher"
+                                          : "Tout cocher"}
+                                      </Button>
+                                    )}
                                   </div>
-
-                                  {/* Liste des accessoires avec checkboxes */}
-                                  {section.category_id && (
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between">
-                                        <Label className="text-xs">
-                                          Articles disponibles ({section.selected_accessory_ids.length} sélectionné
-                                          {section.selected_accessory_ids.length > 1 ? "s" : ""})
-                                        </Label>
-                                        {categoryAccessories.length > 0 && (
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 text-xs"
-                                            onClick={() => {
-                                              const allIds = categoryAccessories.map((a) => a.id);
-                                              const allSelected = allIds.every((id) =>
-                                                section.selected_accessory_ids.includes(id),
-                                              );
-                                              setKitSections(
-                                                kitSections.map((s) =>
-                                                  s.id === section.id
-                                                    ? {
-                                                        ...s,
-                                                        selected_accessory_ids: allSelected ? [] : allIds,
-                                                      }
-                                                    : s,
-                                                ),
-                                              );
-                                            }}
-                                          >
-                                            {categoryAccessories.every((a) =>
-                                              section.selected_accessory_ids.includes(a.id),
-                                            )
-                                              ? "Tout décocher"
-                                              : "Tout cocher"}
-                                          </Button>
-                                        )}
-                                      </div>
-
+                                  <ScrollArea className="h-64">
+                                    <div className="p-2 space-y-1">
                                       {categoryAccessories.length === 0 ? (
-                                        <div className="text-xs text-muted-foreground border rounded p-3 text-center">
-                                          Aucun accessoire disponible dans cette catégorie
+                                        <div className="text-sm text-muted-foreground text-center py-4">
+                                          Aucun accessoire dans cette catégorie
                                         </div>
                                       ) : (
-                                        <ScrollArea className="h-48 border rounded-lg">
-                                          <div className="p-2 space-y-1">
-                                            {categoryAccessories.map((accessory) => {
-                                              const isChecked = section.selected_accessory_ids.includes(accessory.id);
-
-                                              return (
-                                                <div
-                                                  key={accessory.id}
-                                                  className={`flex items-center gap-2 p-2 rounded hover:bg-muted/50 transition-colors cursor-pointer ${
-                                                    isChecked ? "bg-primary/5" : ""
-                                                  }`}
-                                                  onClick={() => toggleKitAccessory(section.id, accessory.id)}
-                                                >
-                                                  <Checkbox
-                                                    checked={isChecked}
-                                                    onCheckedChange={() => toggleKitAccessory(section.id, accessory.id)}
-                                                  />
-                                                  {accessory.image_url && (
-                                                    <img
-                                                      src={accessory.image_url}
-                                                      alt={accessory.nom}
-                                                      className="w-8 h-8 object-cover rounded border"
-                                                    />
-                                                  )}
-                                                  <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-medium truncate">{accessory.nom}</p>
-                                                    {accessory.marque && (
-                                                      <p className="text-xs text-muted-foreground">
-                                                        {accessory.marque}
-                                                      </p>
-                                                    )}
-                                                  </div>
-                                                  <p className="text-xs font-semibold text-primary">
-                                                    {(accessory.prix_vente_ttc || 0).toFixed(2)} €
-                                                  </p>
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        </ScrollArea>
+                                        categoryAccessories.map((accessory) => {
+                                          const isChecked = section.selected_accessory_ids.includes(accessory.id);
+                                          return (
+                                            <div
+                                              key={accessory.id}
+                                              className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-muted/50 ${
+                                                isChecked ? "bg-primary/10" : ""
+                                              }`}
+                                              onClick={() => toggleKitAccessory(section.id, accessory.id)}
+                                            >
+                                              <Checkbox checked={isChecked} />
+                                              <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium truncate">{accessory.nom}</p>
+                                                {accessory.marque && (
+                                                  <p className="text-xs text-muted-foreground">{accessory.marque}</p>
+                                                )}
+                                              </div>
+                                              <span className="text-sm font-semibold text-primary">
+                                                {(accessory.prix_vente_ttc || 0).toFixed(2)} €
+                                              </span>
+                                            </div>
+                                          );
+                                        })
                                       )}
                                     </div>
-                                  )}
-                                </div>
+                                  </ScrollArea>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
 
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                  onClick={() => removeKitSection(section.id)}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
+                            {/* Bouton supprimer */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => removeKitSection(section.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         );
                       })}
+
+                      {/* Bouton ajouter une ligne */}
+                      <Button type="button" variant="outline" size="sm" onClick={addKitSection} className="w-full">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Ajouter une catégorie
+                      </Button>
+
+                      {/* Résumé */}
+                      {kitSections.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
+                          <Badge variant="secondary">
+                            {kitSections.filter((s) => s.category_id).length} catégorie
+                            {kitSections.filter((s) => s.category_id).length > 1 ? "s" : ""}
+                          </Badge>
+                          <Badge variant="outline">
+                            {kitSections.reduce((total, section) => total + section.selected_accessory_ids.length, 0)}{" "}
+                            article
+                            {kitSections.reduce((total, section) => total + section.selected_accessory_ids.length, 0) >
+                            1
+                              ? "s"
+                              : ""}{" "}
+                            sélectionné
+                            {kitSections.reduce((total, section) => total + section.selected_accessory_ids.length, 0) >
+                            1
+                              ? "s"
+                              : ""}
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="secondary">
-                      {kitSections.length} section{kitSections.length > 1 ? "s" : ""}
-                    </Badge>
-                    <Badge variant="outline">
-                      {kitSections.reduce((total, section) => total + section.selected_accessory_ids.length, 0)} article
-                      {kitSections.reduce((total, section) => total + section.selected_accessory_ids.length, 0) > 1
-                        ? "s"
-                        : ""}{" "}
-                      sélectionné
-                      {kitSections.reduce((total, section) => total + section.selected_accessory_ids.length, 0) > 1
-                        ? "s"
-                        : ""}
-                    </Badge>
-                  </div>
                 </div>
               )}
             </TabsContent>
