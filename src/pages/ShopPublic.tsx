@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { CartSidebar } from "@/components/shop/CartSidebar";
 import { ProductDetailModal } from "@/components/shop/ProductDetailModal";
-import CustomKitConfigModal from "@/components/shop/CustomKitConfigModal";
+import CustomKitConfigDialog from "@/components/CustomKitConfigDialog";
 import { SearchWithSuggestions } from "@/components/shop/SearchWithSuggestions";
 import { ShopFilterSidebar } from "@/components/shop/ShopFilterSidebar";
 import { QuickViewModal } from "@/components/shop/QuickViewModal";
@@ -438,9 +438,10 @@ export default function ShopPublic() {
           setDetailProductId(id);
         }}
       />
-      <CustomKitConfigModal 
+      <CustomKitConfigDialog 
         productId={configKitId || ""} 
         productName="" 
+        basePrice={0}
         open={!!configKitId} 
         onOpenChange={(open) => !open && setConfigKitId(null)} 
       />
