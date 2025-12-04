@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ShoppingCart, Package, Copy, X, Trash2 } from "lucide-react";
+import { ShoppingCart, Package, Copy, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCartContext } from "@/contexts/CartContext";
 import { toast } from "sonner";
@@ -198,7 +198,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
     );
   };
 
-  // NOUVELLE FONCTION : Vider la sélection d'un accessoire
+  // Fonction pour vider UNIQUEMENT la sélection d'accessoire
   const clearAccessorySelection = (sectionId: string) => {
     setSections(
       sections.map((s) => {
@@ -258,15 +258,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
 
     setSections([...sections, newSection]);
     toast.success(`Catégorie "${sectionToDuplicate.categoryName}" dupliquée`);
-  };
-
-  const removeSection = (sectionId: string) => {
-    if (sections.length === 1) {
-      toast.error("Vous devez garder au moins une catégorie");
-      return;
-    }
-    setSections(sections.filter((s) => s.id !== sectionId));
-    toast.success("Section supprimée");
   };
 
   const parseColors = (colorString: string | null): string[] => {
@@ -449,20 +440,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                 >
                                   <Copy className="h-4 w-4" />
                                 </Button>
-                                {sections.length > 1 && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      removeSection(section.id);
-                                    }}
-                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    title="Supprimer cette section"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                )}
                               </div>
                             </div>
                           </AccordionTrigger>
@@ -479,7 +456,7 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => clearAccessorySelection(section.id)}
-                                      className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                                      className="h-7 text-xs text-muted-foreground hover:text-foreground"
                                     >
                                       <X className="h-3 w-3 mr-1" />
                                       Effacer
@@ -494,7 +471,6 @@ export const CustomKitConfigModal = ({ productId, onClose }: CustomKitConfigModa
                                     <SelectValue placeholder="Choisir un accessoire..." />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {/* CORRECTION DU BUG : Ajout d'une option vide */}
                                     <SelectItem value="none">
                                       <span className="text-muted-foreground italic">-- Aucun accessoire --</span>
                                     </SelectItem>
