@@ -475,8 +475,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
-  const onImageUpload = data.onImageUpload as ((blockId: string, file: File) => void) | undefined;
-  const onAudioUpload = data.onAudioUpload as ((blockId: string, file: File) => void) | undefined;
 
   if (!block) return null;
 
@@ -570,8 +568,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onImageUpload) {
-                      onImageUpload(block.id, file);
+                    if (file && data.onImageUpload) {
+                      data.onImageUpload(block.id, file);
                     }
                   }}
                 />
@@ -594,8 +592,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file && onAudioUpload) {
-                      onAudioUpload(block.id, file);
+                    if (file && data.onAudioUpload) {
+                      data.onAudioUpload(block.id, file);
                     }
                   }}
                 />
@@ -788,8 +786,6 @@ const MechanicalProcedures = () => {
   const [isDeleteChapterDialogOpen, setIsDeleteChapterDialogOpen] = useState(false);
   const [isEditGammeDialogOpen, setIsEditGammeDialogOpen] = useState(false);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
-  const [isEditBlockDialogOpen, setIsEditBlockDialogOpen] = useState(false);
-  const [editingBlock, setEditingBlock] = useState<ContentBlock | null>(null);
   const [isSchemaImportDialogOpen, setIsSchemaImportDialogOpen] = useState(false);
   const [schemaImportImage, setSchemaImportImage] = useState<string | null>(null);
   const [schemaImportLoading, setSchemaImportLoading] = useState(false);
@@ -2538,7 +2534,7 @@ RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans tex
       if (!userData.user) throw new Error("Non connecté");
 
       const { data: newGammeData, error: gammeError } = await (supabase as any)
-        .from("mechanical_procedures")
+        .from("mechanical_gammes")
         .insert({
           user_id: userData.user.id,
           title: pdfStructure.title || pdfImportFile.name.replace(".pdf", ""),
@@ -2573,7 +2569,10 @@ RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans tex
           .single();
 
         if (chapterError) {
-          console.error("Erreur création chapitre:", chapterError);
+          console.error("Erreur création chapitre - détails:", JSON.stringify(chapterError, null, 2));
+          toast.error(
+            `Erreur: ${chapterError.message || chapterError.details || chapterError.hint || JSON.stringify(chapterError)}`,
+          );
           continue;
         }
 
