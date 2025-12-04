@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ShoppingCart, Eye, Package, Zap, Star } from "lucide-react";
 import { useState } from "react";
 
-interface ProductCardProps {
+export interface ProductCardProps {
   product: any;
   onAddToCart: (productId: string, price: number) => void;
   onViewDetails: (productId: string) => void;
