@@ -12,9 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ShoppingCart, Plus, Minus, X, Copy, Info, Package, ChevronsUpDown } from "lucide-react";
+import { ShoppingCart, Plus, Minus, X, Copy, Info, Package, ChevronsUpDown, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface Category {
@@ -37,7 +36,7 @@ interface Accessory {
   category_id: string;
   description?: string;
   options?: AccessoryOption[];
-  couleur?: string;
+  couleur?: string; // JSON string: ["Noir", "Rouge"]
   image_url?: string;
 }
 
@@ -62,16 +61,59 @@ interface CustomKitConfigDialogProps {
   onAddToCart?: (configuration: any, totalPrice: number) => void;
 }
 
-const AVAILABLE_COLORS = [
-  { value: "noir", label: "Noir" },
-  { value: "blanc", label: "Blanc" },
-  { value: "gris", label: "Gris" },
-  { value: "rouge", label: "Rouge" },
-  { value: "bleu", label: "Bleu" },
-  { value: "vert", label: "Vert" },
-  { value: "jaune", label: "Jaune" },
-  { value: "orange", label: "Orange" },
-];
+// Mapping des noms de couleurs vers des codes CSS
+const COLOR_MAP: { [key: string]: string } = {
+  // Français
+  noir: "#1a1a1a",
+  blanc: "#ffffff",
+  gris: "#6b7280",
+  rouge: "#dc2626",
+  bleu: "#2563eb",
+  vert: "#16a34a",
+  jaune: "#eab308",
+  orange: "#ea580c",
+  rose: "#ec4899",
+  violet: "#8b5cf6",
+  marron: "#78350f",
+  beige: "#d4b896",
+  turquoise: "#14b8a6",
+  // English
+  black: "#1a1a1a",
+  white: "#ffffff",
+  gray: "#6b7280",
+  grey: "#6b7280",
+  red: "#dc2626",
+  blue: "#2563eb",
+  green: "#16a34a",
+  yellow: "#eab308",
+  pink: "#ec4899",
+  purple: "#8b5cf6",
+  brown: "#78350f",
+};
+
+// Fonction pour obtenir le code couleur CSS
+const getColorCode = (colorName: string): string => {
+  const normalized = colorName.toLowerCase().trim();
+  return COLOR_MAP[normalized] || "#9ca3af"; // Gris par défaut
+};
+
+// Fonction pour parser les couleurs depuis le JSON
+const parseColors = (couleurJson: string | undefined | null): string[] => {
+  if (!couleurJson) return [];
+  try {
+    const parsed = JSON.parse(couleurJson);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((c) => c && typeof c === "string" && c.trim());
+    }
+    return [];
+  } catch {
+    // Si ce n'est pas du JSON, c'est peut-être une couleur simple
+    if (couleurJson.trim()) {
+      return [couleurJson.trim()];
+    }
+    return [];
+  }
+};
 
 const CustomKitConfigDialog = ({
   productId,
@@ -210,24 +252,19 @@ const CustomKitConfigDialog = ({
     return accessories.find((a) => a.id === accessoryId);
   };
 
-  const duplicateLine = (categoryId: string, lineId: string) => {
-    const lines = selections[categoryId] || [];
-    const lineToDuplicate = lines.find((l) => l.id === lineId);
-
-    if (lineToDuplicate) {
-      setSelections((prev) => ({
-        ...prev,
-        [categoryId]: [
-          ...prev[categoryId],
-          {
-            id: crypto.randomUUID(),
-            accessory_id: "", // Ligne vide pour nouveau choix
-            quantity: 1,
-            selected_options: [],
-          },
-        ],
-      }));
-    }
+  const duplicateLine = (categoryId: string) => {
+    setSelections((prev) => ({
+      ...prev,
+      [categoryId]: [
+        ...(prev[categoryId] || []),
+        {
+          id: crypto.randomUUID(),
+          accessory_id: "",
+          quantity: 1,
+          selected_options: [],
+        },
+      ],
+    }));
   };
 
   const removeLine = (categoryId: string, lineId: string) => {
@@ -259,7 +296,6 @@ const CustomKitConfigDialog = ({
       selected_options: [],
       color: undefined,
     });
-    // Fermer le popover
     setOpenPopovers((prev) => {
       const newSet = new Set(prev);
       newSet.delete(lineId);
@@ -287,6 +323,10 @@ const CustomKitConfigDialog = ({
         return { ...line, selected_options: newOptions };
       }),
     }));
+  };
+
+  const selectColor = (categoryId: string, lineId: string, color: string) => {
+    updateLine(categoryId, lineId, { color });
   };
 
   const calculateTotalPrice = () => {
@@ -403,7 +443,8 @@ const CustomKitConfigDialog = ({
                           ? getAccessory(category.id, line.accessory_id)
                           : undefined;
 
-                        const hasColor = selectedAccessory?.couleur && selectedAccessory.couleur.trim() !== "";
+                        const availableColors = selectedAccessory ? parseColors(selectedAccessory.couleur) : [];
+                        const hasColors = availableColors.length > 0;
                         const hasOptions = selectedAccessory?.options && selectedAccessory.options.length > 0;
                         const isPopoverOpen = openPopovers.has(line.id);
 
@@ -547,7 +588,7 @@ const CustomKitConfigDialog = ({
                                 variant="ghost"
                                 size="icon"
                                 className="h-9 w-9 text-muted-foreground hover:text-primary"
-                                onClick={() => duplicateLine(category.id, line.id)}
+                                onClick={() => duplicateLine(category.id)}
                                 title="Ajouter une ligne"
                               >
                                 <Copy className="h-4 w-4" />
@@ -565,34 +606,51 @@ const CustomKitConfigDialog = ({
                             </div>
 
                             {/* Options supplémentaires si article sélectionné */}
-                            {selectedAccessory && (hasColor || hasOptions) && (
-                              <div className="ml-4 pl-4 border-l-2 border-muted space-y-2">
-                                {/* Couleur */}
-                                {hasColor && (
-                                  <div className="flex items-center gap-2">
-                                    <Label className="text-sm text-muted-foreground w-16">Couleur :</Label>
-                                    <Select
-                                      value={line.color || ""}
-                                      onValueChange={(value) => updateLine(category.id, line.id, { color: value })}
-                                    >
-                                      <SelectTrigger className="w-40 h-8">
-                                        <SelectValue placeholder="Choisir..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {AVAILABLE_COLORS.map((color) => (
-                                          <SelectItem key={color.value} value={color.value}>
-                                            {color.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
+                            {selectedAccessory && (hasColors || hasOptions) && (
+                              <div className="ml-4 pl-4 border-l-2 border-muted space-y-3">
+                                {/* Couleurs en pastilles */}
+                                {hasColors && (
+                                  <div className="flex items-center gap-3">
+                                    <Label className="text-sm text-muted-foreground">Couleur :</Label>
+                                    <div className="flex items-center gap-2">
+                                      {availableColors.map((colorName) => {
+                                        const isSelected = line.color === colorName;
+                                        const colorCode = getColorCode(colorName);
+                                        const isLight = colorCode === "#ffffff" || colorCode === "#d4b896";
+
+                                        return (
+                                          <button
+                                            key={colorName}
+                                            onClick={() => selectColor(category.id, line.id, colorName)}
+                                            className={`
+                                              relative w-8 h-8 rounded-full transition-all
+                                              ${isSelected ? "ring-2 ring-offset-2 ring-primary" : "hover:scale-110"}
+                                              ${isLight ? "border border-gray-300" : ""}
+                                            `}
+                                            style={{ backgroundColor: colorCode }}
+                                            title={colorName}
+                                          >
+                                            {isSelected && (
+                                              <Check
+                                                className={`absolute inset-0 m-auto h-4 w-4 ${
+                                                  isLight ? "text-gray-700" : "text-white"
+                                                }`}
+                                              />
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    {line.color && (
+                                      <span className="text-sm text-muted-foreground capitalize">({line.color})</span>
+                                    )}
                                   </div>
                                 )}
 
                                 {/* Options */}
                                 {hasOptions && (
-                                  <div className="flex items-start gap-2">
-                                    <Label className="text-sm text-muted-foreground w-16 pt-1">Options :</Label>
+                                  <div className="flex items-start gap-3">
+                                    <Label className="text-sm text-muted-foreground pt-1">Options :</Label>
                                     <div className="flex flex-wrap gap-1">
                                       {selectedAccessory.options?.map((option) => {
                                         const isSelected = line.selected_options.includes(option.id);
@@ -667,6 +725,24 @@ const CustomKitConfigDialog = ({
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-muted-foreground">{descriptionModal?.description}</p>
+
+            {/* Afficher les couleurs disponibles dans la modale */}
+            {descriptionModal && parseColors(descriptionModal.couleur).length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Couleurs disponibles :</span>
+                <div className="flex gap-1">
+                  {parseColors(descriptionModal.couleur).map((colorName) => (
+                    <div
+                      key={colorName}
+                      className="w-6 h-6 rounded-full border border-gray-300"
+                      style={{ backgroundColor: getColorCode(colorName) }}
+                      title={colorName}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between pt-4 border-t">
               <span className="text-2xl font-bold text-primary">
                 {(descriptionModal?.prix_vente_ttc || 0).toFixed(2)} €
