@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +32,21 @@ interface WishlistDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const STORAGE_KEY = "wishlist_items";
+
+const getStoredItems = (): WishlistItem[] => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveItems = (items: WishlistItem[]) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+};
+
 const formatDate = (dateString: string | null): string => {
   if (!dateString) return "";
   const date = new Date(dateString);
@@ -65,127 +79,82 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
     }
   }, [open]);
 
-  const loadItems = async () => {
+  const loadItems = () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("wishlist_items")
-      .select("*")
-      .order("status", { ascending: true })
-      .order("priority", { ascending: false })
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Erreur chargement wishlist:", error);
-      toast.error("Erreur lors du chargement de la liste");
-    } else {
-      setItems((data || []) as WishlistItem[]);
-    }
+    const storedItems = getStoredItems();
+    // Sort: by status, then priority, then created_at
+    storedItems.sort((a, b) => {
+      const statusOrder = { pending: 0, ordered: 1, received: 2 };
+      if (statusOrder[a.status] !== statusOrder[b.status]) {
+        return statusOrder[a.status] - statusOrder[b.status];
+      }
+      if (a.priority !== b.priority) {
+        return b.priority - a.priority;
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+    setItems(storedItems);
     setLoading(false);
   };
 
-  const addItem = async () => {
+  const addItem = () => {
     if (!newItemText.trim()) return;
 
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) {
-      toast.error("Vous devez être connecté");
-      return;
-    }
+    const newItem: WishlistItem = {
+      id: crypto.randomUUID(),
+      text: newItemText.trim(),
+      status: "pending",
+      priority: 0,
+      created_at: new Date().toISOString(),
+      ordered_at: null,
+      received_at: null,
+    };
 
-    const { data, error } = await supabase
-      .from("wishlist_items")
-      .insert({
-        text: newItemText.trim(),
-        user_id: userData.user.id,
-        status: "pending",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Erreur ajout:", error);
-      toast.error("Erreur lors de l'ajout");
-    } else {
-      setItems([data as WishlistItem, ...items]);
-      setNewItemText("");
-    }
+    const updatedItems = [newItem, ...items];
+    setItems(updatedItems);
+    saveItems(updatedItems);
+    setNewItemText("");
   };
 
-  const updateStatus = async (item: WishlistItem, newStatus: ItemStatus) => {
-    const updates: any = { status: newStatus };
+  const updateStatus = (item: WishlistItem, newStatus: ItemStatus) => {
+    const updates: Partial<WishlistItem> = { status: newStatus };
     
-    // Ajouter l'horodatage correspondant
     if (newStatus === "ordered" && !item.ordered_at) {
       updates.ordered_at = new Date().toISOString();
     } else if (newStatus === "received" && !item.received_at) {
       updates.received_at = new Date().toISOString();
     }
 
-    const { error } = await supabase
-      .from("wishlist_items")
-      .update(updates)
-      .eq("id", item.id);
-
-    if (error) {
-      console.error("Erreur mise à jour:", error);
-      toast.error("Erreur lors de la mise à jour");
-    } else {
-      setItems(
-        items.map((i) =>
-          i.id === item.id ? { ...i, ...updates } : i
-        )
-      );
-    }
+    const updatedItems = items.map((i) =>
+      i.id === item.id ? { ...i, ...updates } : i
+    );
+    setItems(updatedItems);
+    saveItems(updatedItems);
   };
 
-  const togglePriority = async (item: WishlistItem) => {
+  const togglePriority = (item: WishlistItem) => {
     const newPriority = item.priority === 1 ? 0 : 1;
-    const { error } = await supabase
-      .from("wishlist_items")
-      .update({ priority: newPriority })
-      .eq("id", item.id);
-
-    if (error) {
-      console.error("Erreur mise à jour:", error);
-    } else {
-      setItems(
-        items.map((i) =>
-          i.id === item.id ? { ...i, priority: newPriority } : i
-        )
-      );
-    }
+    const updatedItems = items.map((i) =>
+      i.id === item.id ? { ...i, priority: newPriority } : i
+    );
+    setItems(updatedItems);
+    saveItems(updatedItems);
   };
 
-  const deleteItem = async (id: string) => {
-    const { error } = await supabase
-      .from("wishlist_items")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      console.error("Erreur suppression:", error);
-      toast.error("Erreur lors de la suppression");
-    } else {
-      setItems(items.filter((i) => i.id !== id));
-    }
+  const deleteItem = (id: string) => {
+    const updatedItems = items.filter((i) => i.id !== id);
+    setItems(updatedItems);
+    saveItems(updatedItems);
   };
 
-  const clearReceived = async () => {
-    const receivedIds = items.filter((i) => i.status === "received").map((i) => i.id);
-    if (receivedIds.length === 0) return;
+  const clearReceived = () => {
+    const receivedCount = items.filter((i) => i.status === "received").length;
+    if (receivedCount === 0) return;
 
-    const { error } = await supabase
-      .from("wishlist_items")
-      .delete()
-      .in("id", receivedIds);
-
-    if (error) {
-      console.error("Erreur suppression:", error);
-      toast.error("Erreur lors de la suppression");
-    } else {
-      setItems(items.filter((i) => i.status !== "received"));
-      toast.success(`${receivedIds.length} élément(s) supprimé(s)`);
-    }
+    const updatedItems = items.filter((i) => i.status !== "received");
+    setItems(updatedItems);
+    saveItems(updatedItems);
+    toast.success(`${receivedCount} élément(s) supprimé(s)`);
   };
 
   const pendingItems = items.filter((i) => i.status === "pending");
@@ -236,7 +205,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
         }`}
       >
         <div className="flex items-start gap-2">
-          {/* Contenu principal */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {item.priority === 1 && item.status === "pending" && (
@@ -247,7 +215,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
               </span>
             </div>
             
-            {/* Horodatages */}
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span title={formatDate(item.created_at)}>
                 📝 Ajouté le {formatShortDate(item.created_at)}
@@ -265,9 +232,7 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            {/* Bouton urgent (seulement si pending) */}
             {item.status === "pending" && (
               <Button
                 variant="ghost"
@@ -282,7 +247,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
               </Button>
             )}
 
-            {/* Bouton passer au statut suivant */}
             {nextStatus && (
               <Button
                 variant="ghost"
@@ -305,7 +269,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
               </Button>
             )}
 
-            {/* Bouton supprimer */}
             <Button
               variant="ghost"
               size="icon"
@@ -330,7 +293,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
           </DialogTitle>
         </DialogHeader>
 
-        {/* Résumé */}
         <div className="flex gap-2 flex-wrap">
           <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
             <Clock className="h-3 w-3 mr-1" />
@@ -346,7 +308,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
           </Badge>
         </div>
 
-        {/* Formulaire d'ajout */}
         <div className="flex gap-2">
           <Input
             placeholder="Ajouter un article à commander..."
@@ -364,7 +325,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
           </Button>
         </div>
 
-        {/* Liste */}
         <ScrollArea className="flex-1 pr-4">
           {loading ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -378,7 +338,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Items à commander */}
               {pendingItems.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium flex items-center gap-2 text-yellow-700">
@@ -393,7 +352,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
                 </div>
               )}
 
-              {/* Items commandés */}
               {orderedItems.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium flex items-center gap-2 text-blue-700">
@@ -408,7 +366,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
                 </div>
               )}
 
-              {/* Items reçus */}
               {receivedItems.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium flex items-center gap-2 text-green-700">
@@ -426,7 +383,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
           )}
         </ScrollArea>
 
-        {/* Footer */}
         {receivedItems.length > 0 && (
           <div className="flex justify-end pt-2 border-t">
             <Button variant="ghost" size="sm" onClick={clearReceived}>
