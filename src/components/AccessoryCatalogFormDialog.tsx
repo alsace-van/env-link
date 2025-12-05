@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, X, ImagePlus, Trash2 } from "lucide-react";
+import { Plus, X, ImagePlus, Trash2, FileText } from "lucide-react";
+import DescriptionEditorDialog from "./DescriptionEditorDialog";
 
 interface Category {
   id: string;
@@ -31,6 +32,7 @@ interface AccessoryCatalogFormDialogProps {
     marge_nette?: number;
     fournisseur?: string;
     description?: string;
+    description_media?: any;
     url_produit?: string;
     type_electrique?: string | null;
     poids_kg?: number | null;
@@ -80,6 +82,10 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
   const [parentCategoryId, setParentCategoryId] = useState<string>("");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [descriptionEditorOpen, setDescriptionEditorOpen] = useState(false);
+  const [descriptionMedia, setDescriptionMedia] = useState<Array<{ type: "image" | "pdf"; url: string; name: string }>>(
+    [],
+  );
 
   // Options payantes
   const [options, setOptions] = useState<
@@ -149,6 +155,21 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           setCouleurs([]);
         }
 
+        // Charger les médias de description
+        if (accessory.description_media) {
+          try {
+            const parsedMedia =
+              typeof accessory.description_media === "string"
+                ? JSON.parse(accessory.description_media)
+                : accessory.description_media;
+            setDescriptionMedia(Array.isArray(parsedMedia) ? parsedMedia : []);
+          } catch {
+            setDescriptionMedia([]);
+          }
+        } else {
+          setDescriptionMedia([]);
+        }
+
         // Initialiser la catégorie parente si l'accessoire a une catégorie
         if (accessory.category_id) {
           const selectedCategory = categories.find((c) => c.id === accessory.category_id);
@@ -185,6 +206,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           volume_litres: "",
         });
         setCouleurs([]);
+        setDescriptionMedia([]);
         setParentCategoryId("");
         setImagePreview(null);
         setImageFile(null);
@@ -554,6 +576,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
           volume_litres: formData.volume_litres ? parseFloat(formData.volume_litres) : null,
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
+          description_media: descriptionMedia.length > 0 ? JSON.stringify(descriptionMedia) : null,
           image_url: imageUrl,
           needs_completion: false, // Marquer comme complété après édition
         })
@@ -590,6 +613,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
           volume_litres: formData.volume_litres ? parseFloat(formData.volume_litres) : null,
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
+          description_media: descriptionMedia.length > 0 ? JSON.stringify(descriptionMedia) : null,
           image_url: imageUrl,
           user_id: user.id,
         })
@@ -1271,15 +1295,31 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              onKeyDown={(e) => e.stopPropagation()}
-              rows={3}
-              placeholder="Caractéristiques techniques, notes..."
-            />
+            <div className="flex items-center justify-between">
+              <Label>Description</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDescriptionEditorOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                {formData.description ? "Modifier" : "Ajouter"}
+              </Button>
+            </div>
+            {formData.description ? (
+              <div
+                className="text-sm text-muted-foreground border rounded-md p-3 bg-muted/20 max-h-24 overflow-auto cursor-pointer hover:bg-muted/30 transition-colors"
+                onClick={() => setDescriptionEditorOpen(true)}
+              >
+                {formData.description.length > 200
+                  ? formData.description.substring(0, 200) + "..."
+                  : formData.description}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">Aucune description</p>
+            )}
           </div>
 
           <div className="flex gap-2 justify-end pt-4">
@@ -1291,6 +1331,20 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             </Button>
           </div>
         </form>
+
+        {/* Modale éditeur de description */}
+        <DescriptionEditorDialog
+          open={descriptionEditorOpen}
+          onOpenChange={setDescriptionEditorOpen}
+          value={formData.description}
+          media={descriptionMedia}
+          onSave={(value, media) => {
+            setFormData({ ...formData, description: value });
+            setDescriptionMedia(media);
+          }}
+          title={`Description - ${formData.nom || "Nouvel article"}`}
+          accessoryId={accessory?.id}
+        />
       </DialogContent>
     </Dialog>
   );
