@@ -11,15 +11,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2, Save, PackagePlus } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ShoppingCart, Plus, Minus, X, Copy, Info, Package, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
-import { Separator } from "@/components/ui/separator";
 
 interface Category {
   id: string;
   nom: string;
+}
+
+interface AccessoryOption {
+  id: string;
+  nom: string;
+  prix_vente_ttc: number;
+  accessory_id: string;
 }
 
 interface Accessory {
@@ -28,229 +35,336 @@ interface Accessory {
   marque?: string;
   prix_vente_ttc?: number;
   category_id: string;
+  description?: string;
+  options?: AccessoryOption[];
+  couleur?: string;
   image_url?: string;
 }
 
-interface KitSection {
-  id: string; // ID local temporaire
-  category_id: string;
-  category_name: string;
-  selected_accessory_ids: string[];
+interface SelectionLine {
+  id: string;
+  accessory_id: string;
+  quantity: number;
+  color?: string;
+  selected_options: string[];
 }
 
-interface KitProductConfigAdminProps {
+interface CategorySelections {
+  [categoryId: string]: SelectionLine[];
+}
+
+interface CustomKitConfigDialogProps {
   productId: string;
   productName: string;
+  basePrice: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave?: () => void;
+  onAddToCart?: (configuration: any, totalPrice: number) => void;
 }
 
-const KitProductConfigAdmin = ({ productId, productName, open, onOpenChange, onSave }: KitProductConfigAdminProps) => {
-  const [allCategories, setAllCategories] = useState<Category[]>([]);
-  const [allAccessories, setAllAccessories] = useState<Accessory[]>([]);
-  const [kitSections, setKitSections] = useState<KitSection[]>([]);
+const AVAILABLE_COLORS = [
+  { value: "noir", label: "Noir" },
+  { value: "blanc", label: "Blanc" },
+  { value: "gris", label: "Gris" },
+  { value: "rouge", label: "Rouge" },
+  { value: "bleu", label: "Bleu" },
+  { value: "vert", label: "Vert" },
+  { value: "jaune", label: "Jaune" },
+  { value: "orange", label: "Orange" },
+];
+
+const CustomKitConfigDialog = ({
+  productId,
+  productName,
+  basePrice,
+  open,
+  onOpenChange,
+  onAddToCart,
+}: CustomKitConfigDialogProps) => {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [accessoriesByCategory, setAccessoriesByCategory] = useState<Map<string, Accessory[]>>(new Map());
+  const [selections, setSelections] = useState<CategorySelections>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [descriptionModal, setDescriptionModal] = useState<Accessory | null>(null);
+  const [openPopovers, setOpenPopovers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open) {
-      loadData();
+      loadKitConfiguration();
+    } else {
+      setSelections({});
+      setOpenPopovers(new Set());
     }
   }, [open, productId]);
 
-  const loadData = async () => {
+  useEffect(() => {
+    if (categories.length > 0 && Object.keys(selections).length === 0) {
+      const initialSelections: CategorySelections = {};
+      categories.forEach((cat) => {
+        initialSelections[cat.id] = [{ id: crypto.randomUUID(), accessory_id: "", quantity: 1, selected_options: [] }];
+      });
+      setSelections(initialSelections);
+    }
+  }, [categories]);
+
+  const loadKitConfiguration = async () => {
     setLoading(true);
 
-    // Charger toutes les catégories disponibles
-    const { data: categoriesData, error: categoriesError } = await supabase
-      .from("categories")
-      .select("id, nom")
-      .order("nom");
+    const { data: kitAccessoriesData, error: kitAccessoriesError } = await supabase
+      .from("shop_custom_kit_accessories")
+      .select(
+        "accessory_id, accessories_catalog(id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url)",
+      )
+      .eq("custom_kit_id", productId);
 
-    if (categoriesError) {
-      console.error("Erreur chargement catégories:", categoriesError);
-      toast.error("Erreur lors du chargement des catégories");
-      setLoading(false);
-      return;
+    if (kitAccessoriesError) {
+      console.error("Erreur lors du chargement des accessoires du kit:", kitAccessoriesError);
     }
 
-    setAllCategories(categoriesData || []);
+    if (kitAccessoriesData && kitAccessoriesData.length > 0) {
+      const accessoriesData = kitAccessoriesData.map((ka: any) => ka.accessories_catalog).filter(Boolean);
 
-    // Charger tous les accessoires disponibles dans la boutique
-    const { data: accessoriesData, error: accessoriesError } = await supabase
-      .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, category_id, image_url")
-      .eq("available_in_shop", true)
-      .order("nom");
+      const categoryIdsFromAccessories = [...new Set(accessoriesData.map((a: any) => a.category_id).filter(Boolean))];
 
-    if (accessoriesError) {
-      console.error("Erreur chargement accessoires:", accessoriesError);
-      toast.error("Erreur lors du chargement des accessoires");
-      setLoading(false);
-      return;
-    }
+      if (categoryIdsFromAccessories.length > 0) {
+        const { data: categoriesData } = await supabase
+          .from("categories")
+          .select("id, nom")
+          .in("id", categoryIdsFromAccessories);
 
-    setAllAccessories(accessoriesData || []);
+        setCategories(categoriesData || []);
+      }
 
-    // Charger la configuration existante du kit
-    const { data: kitItemsData, error: kitItemsError } = await supabase
-      .from("shop_product_items")
-      .select("accessory_id, accessories_catalog(category_id, categories(nom))")
-      .eq("shop_product_id", productId);
+      const accessoryIds = accessoriesData.map((a: any) => a.id);
+      const { data: optionsData } = await supabase
+        .from("accessory_options")
+        .select("*")
+        .in("accessory_id", accessoryIds);
 
-    if (kitItemsError) {
-      console.error("Erreur chargement configuration kit:", kitItemsError);
-    }
+      const byCategory = new Map<string, Accessory[]>();
+      accessoriesData.forEach((accessory: any) => {
+        const catId = accessory.category_id;
+        if (!catId) return;
 
-    // Regrouper les accessoires par catégorie pour créer les sections
-    if (kitItemsData && kitItemsData.length > 0) {
-      const sectionsMap = new Map<string, KitSection>();
+        const options = (optionsData || []).filter((o: any) => o.accessory_id === accessory.id);
+        const accessoryWithOptions: Accessory = { ...accessory, options };
 
-      kitItemsData.forEach((item: any) => {
-        const categoryId = item.accessories_catalog?.category_id;
-        const categoryName = item.accessories_catalog?.categories?.nom;
-
-        if (!categoryId) return;
-
-        if (!sectionsMap.has(categoryId)) {
-          sectionsMap.set(categoryId, {
-            id: `section-${categoryId}-${Date.now()}`,
-            category_id: categoryId,
-            category_name: categoryName || "",
-            selected_accessory_ids: [],
-          });
+        if (!byCategory.has(catId)) {
+          byCategory.set(catId, []);
         }
-
-        sectionsMap.get(categoryId)!.selected_accessory_ids.push(item.accessory_id);
+        byCategory.get(catId)!.push(accessoryWithOptions);
       });
 
-      setKitSections(Array.from(sectionsMap.values()));
-    } else {
-      // Pas de configuration existante, créer une section vide
-      setKitSections([]);
+      setAccessoriesByCategory(byCategory);
+      setLoading(false);
+      return;
     }
 
+    const { data: kitData } = await supabase
+      .from("shop_custom_kits")
+      .select("allowed_category_ids")
+      .eq("id", productId)
+      .maybeSingle();
+
+    const categoryIds = kitData?.allowed_category_ids || [];
+
+    if (categoryIds.length === 0) {
+      toast.error("Aucune catégorie configurée pour ce kit");
+      setLoading(false);
+      return;
+    }
+
+    const { data: categoriesData } = await supabase.from("categories").select("id, nom").in("id", categoryIds);
+
+    setCategories(categoriesData || []);
+
+    const { data: accessoriesData } = await supabase
+      .from("accessories_catalog")
+      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
+      .in("category_id", categoryIds)
+      .eq("available_in_shop", true);
+
+    const accessoryIds = (accessoriesData || []).map((a: any) => a.id);
+    const { data: optionsData } = await supabase.from("accessory_options").select("*").in("accessory_id", accessoryIds);
+
+    const byCategory = new Map<string, Accessory[]>();
+    (accessoriesData || []).forEach((accessory: any) => {
+      const catId = accessory.category_id;
+      if (!catId) return;
+
+      const options = (optionsData || []).filter((o: any) => o.accessory_id === accessory.id);
+      const accessoryWithOptions: Accessory = { ...accessory, options };
+
+      if (!byCategory.has(catId)) {
+        byCategory.set(catId, []);
+      }
+      byCategory.get(catId)!.push(accessoryWithOptions);
+    });
+
+    setAccessoriesByCategory(byCategory);
     setLoading(false);
   };
 
-  const addNewSection = () => {
-    const newSection: KitSection = {
-      id: `section-new-${Date.now()}`,
-      category_id: "",
-      category_name: "",
-      selected_accessory_ids: [],
-    };
-    setKitSections([...kitSections, newSection]);
+  const getAccessory = (categoryId: string, accessoryId: string): Accessory | undefined => {
+    const accessories = accessoriesByCategory.get(categoryId) || [];
+    return accessories.find((a) => a.id === accessoryId);
   };
 
-  const removeSection = (sectionId: string) => {
-    setKitSections(kitSections.filter((s) => s.id !== sectionId));
+  const duplicateLine = (categoryId: string, lineId: string) => {
+    const lines = selections[categoryId] || [];
+    const lineToDuplicate = lines.find((l) => l.id === lineId);
+
+    if (lineToDuplicate) {
+      setSelections((prev) => ({
+        ...prev,
+        [categoryId]: [
+          ...prev[categoryId],
+          {
+            id: crypto.randomUUID(),
+            accessory_id: "", // Ligne vide pour nouveau choix
+            quantity: 1,
+            selected_options: [],
+          },
+        ],
+      }));
+    }
   };
 
-  const updateSectionCategory = (sectionId: string, categoryId: string) => {
-    const category = allCategories.find((c) => c.id === categoryId);
-    if (!category) return;
-
-    setKitSections(
-      kitSections.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              category_id: categoryId,
-              category_name: category.nom,
-              selected_accessory_ids: [], // Réinitialiser la sélection lors du changement de catégorie
-            }
-          : section,
-      ),
-    );
-  };
-
-  const toggleAccessory = (sectionId: string, accessoryId: string) => {
-    setKitSections(
-      kitSections.map((section) => {
-        if (section.id !== sectionId) return section;
-
-        const isSelected = section.selected_accessory_ids.includes(accessoryId);
+  const removeLine = (categoryId: string, lineId: string) => {
+    setSelections((prev) => {
+      const lines = prev[categoryId] || [];
+      if (lines.length <= 1) {
         return {
-          ...section,
-          selected_accessory_ids: isSelected
-            ? section.selected_accessory_ids.filter((id) => id !== accessoryId)
-            : [...section.selected_accessory_ids, accessoryId],
+          ...prev,
+          [categoryId]: [{ id: crypto.randomUUID(), accessory_id: "", quantity: 1, selected_options: [] }],
         };
-      }),
-    );
-  };
-
-  const getAccessoriesForCategory = (categoryId: string) => {
-    return allAccessories.filter((acc) => acc.category_id === categoryId);
-  };
-
-  const handleSave = async () => {
-    // Validation
-    if (kitSections.length === 0) {
-      toast.error("Veuillez ajouter au moins une section");
-      return;
-    }
-
-    const hasEmptySection = kitSections.some((s) => !s.category_id);
-    if (hasEmptySection) {
-      toast.error("Toutes les sections doivent avoir une catégorie sélectionnée");
-      return;
-    }
-
-    const hasNoAccessories = kitSections.some((s) => s.selected_accessory_ids.length === 0);
-    if (hasNoAccessories) {
-      toast.warning("Attention : certaines sections n'ont aucun accessoire sélectionné");
-    }
-
-    setSaving(true);
-
-    // Supprimer l'ancienne configuration
-    const { error: deleteError } = await supabase.from("shop_product_items").delete().eq("shop_product_id", productId);
-
-    if (deleteError) {
-      console.error("Erreur suppression ancienne config:", deleteError);
-      toast.error("Erreur lors de la sauvegarde");
-      setSaving(false);
-      return;
-    }
-
-    // Créer la nouvelle configuration
-    const itemsToInsert = kitSections.flatMap((section) =>
-      section.selected_accessory_ids.map((accessoryId) => ({
-        shop_product_id: productId,
-        accessory_id: accessoryId,
-      })),
-    );
-
-    if (itemsToInsert.length > 0) {
-      const { error: insertError } = await supabase.from("shop_product_items").insert(itemsToInsert);
-
-      if (insertError) {
-        console.error("Erreur insertion nouvelle config:", insertError);
-        toast.error("Erreur lors de la sauvegarde");
-        setSaving(false);
-        return;
       }
-    }
-
-    toast.success("Configuration du kit sauvegardée");
-    setSaving(false);
-    onSave?.();
-    onOpenChange(false);
+      return {
+        ...prev,
+        [categoryId]: lines.filter((l) => l.id !== lineId),
+      };
+    });
   };
 
-  const getTotalSelectedAccessories = () => {
-    return kitSections.reduce((total, section) => total + section.selected_accessory_ids.length, 0);
+  const updateLine = (categoryId: string, lineId: string, updates: Partial<SelectionLine>) => {
+    setSelections((prev) => ({
+      ...prev,
+      [categoryId]: (prev[categoryId] || []).map((line) => (line.id === lineId ? { ...line, ...updates } : line)),
+    }));
+  };
+
+  const selectAccessory = (categoryId: string, lineId: string, accessoryId: string) => {
+    updateLine(categoryId, lineId, {
+      accessory_id: accessoryId,
+      selected_options: [],
+      color: undefined,
+    });
+    // Fermer le popover
+    setOpenPopovers((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(lineId);
+      return newSet;
+    });
+  };
+
+  const updateQuantity = (categoryId: string, lineId: string, delta: number) => {
+    setSelections((prev) => ({
+      ...prev,
+      [categoryId]: (prev[categoryId] || []).map((line) =>
+        line.id === lineId ? { ...line, quantity: Math.max(1, line.quantity + delta) } : line,
+      ),
+    }));
+  };
+
+  const toggleOption = (categoryId: string, lineId: string, optionId: string) => {
+    setSelections((prev) => ({
+      ...prev,
+      [categoryId]: (prev[categoryId] || []).map((line) => {
+        if (line.id !== lineId) return line;
+        const newOptions = line.selected_options.includes(optionId)
+          ? line.selected_options.filter((id) => id !== optionId)
+          : [...line.selected_options, optionId];
+        return { ...line, selected_options: newOptions };
+      }),
+    }));
+  };
+
+  const calculateTotalPrice = () => {
+    let total = 0;
+
+    Object.entries(selections).forEach(([categoryId, lines]) => {
+      lines.forEach((line) => {
+        if (!line.accessory_id) return;
+
+        const accessory = getAccessory(categoryId, line.accessory_id);
+        if (!accessory) return;
+
+        let itemPrice = accessory.prix_vente_ttc || 0;
+
+        line.selected_options.forEach((optionId) => {
+          const option = accessory.options?.find((o) => o.id === optionId);
+          if (option) {
+            itemPrice += option.prix_vente_ttc;
+          }
+        });
+
+        total += itemPrice * line.quantity;
+      });
+    });
+
+    return total;
+  };
+
+  const getSelectedCount = () => {
+    let count = 0;
+    Object.values(selections).forEach((lines) => {
+      lines.forEach((line) => {
+        if (line.accessory_id) count++;
+      });
+    });
+    return count;
+  };
+
+  const handleAddToCart = () => {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
+      toast.error("Veuillez sélectionner au moins un accessoire");
+      return;
+    }
+
+    const configuration: any[] = [];
+
+    Object.entries(selections).forEach(([categoryId, lines]) => {
+      const category = categories.find((c) => c.id === categoryId);
+
+      lines.forEach((line) => {
+        if (!line.accessory_id) return;
+
+        const accessory = getAccessory(categoryId, line.accessory_id);
+        if (!accessory) return;
+
+        configuration.push({
+          accessory_id: line.accessory_id,
+          name: accessory.nom,
+          category_name: category?.nom || "",
+          quantity: line.quantity,
+          prix_unitaire: accessory.prix_vente_ttc || 0,
+          selected_options: line.selected_options,
+          color: line.color,
+        });
+      });
+    });
+
+    const totalPrice = calculateTotalPrice();
+    onAddToCart?.(configuration, totalPrice);
   };
 
   if (loading) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh]">
+        <DialogContent className="max-w-4xl max-h-[90vh]">
           <div className="flex items-center justify-center p-8">
-            <p className="text-muted-foreground">Chargement...</p>
+            <p className="text-muted-foreground">Chargement de la configuration...</p>
           </div>
         </DialogContent>
       </Dialog>
@@ -258,217 +372,314 @@ const KitProductConfigAdmin = ({ productId, productName, open, onOpenChange, onS
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="text-2xl flex items-center gap-2">
-            <PackagePlus className="h-6 w-6" />
-            Configuration du kit : {productName}
-          </DialogTitle>
-          <DialogDescription>
-            Ajoutez des catégories et sélectionnez les articles qui apparaîtront dans chaque dropdown du configurateur
-            client.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Configurer : {productName}</DialogTitle>
+            <DialogDescription>Sélectionnez les articles souhaités dans chaque catégorie</DialogDescription>
+          </DialogHeader>
 
-        <div className="flex items-center justify-between py-2 border-y">
-          <div className="flex items-center gap-4">
-            <Badge variant="secondary">
-              {kitSections.length} section{kitSections.length > 1 ? "s" : ""}
-            </Badge>
-            <Badge variant="outline">
-              {getTotalSelectedAccessories()} article{getTotalSelectedAccessories() > 1 ? "s" : ""} sélectionné
-              {getTotalSelectedAccessories() > 1 ? "s" : ""}
-            </Badge>
-          </div>
-          <Button onClick={addNewSection} variant="outline" size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Ajouter une catégorie
-          </Button>
-        </div>
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-6">
+              {categories.map((category) => {
+                const accessories = accessoriesByCategory.get(category.id) || [];
+                const lines = selections[category.id] || [];
 
-        <ScrollArea className="flex-1 pr-4">
-          <div className="space-y-4 py-4">
-            {kitSections.length === 0 ? (
-              <div className="text-center py-12 border-2 border-dashed rounded-lg">
-                <PackagePlus className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground mb-4">Aucune section configurée</p>
-                <Button onClick={addNewSection} variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Ajouter votre première catégorie
-                </Button>
-              </div>
-            ) : (
-              <Accordion type="multiple" className="w-full space-y-3">
-                {kitSections.map((section, index) => {
-                  const categoryAccessories = section.category_id ? getAccessoriesForCategory(section.category_id) : [];
+                return (
+                  <div key={category.id} className="space-y-3">
+                    {/* Header de catégorie */}
+                    <div className="flex items-center gap-2 pb-2 border-b">
+                      <h3 className="font-semibold text-lg">{category.nom}</h3>
+                      <Badge variant="secondary">
+                        {accessories.length} disponible{accessories.length > 1 ? "s" : ""}
+                      </Badge>
+                    </div>
 
-                  return (
-                    <AccordionItem key={section.id} value={section.id} className="border-2 rounded-lg px-4">
-                      <div className="flex items-center gap-3">
-                        <AccordionTrigger className="flex-1 hover:no-underline">
-                          <div className="flex items-center justify-between w-full pr-4">
-                            <div className="flex items-center gap-3">
-                              <Badge variant="outline">Section {index + 1}</Badge>
-                              <span className="font-semibold">
-                                {section.category_name || "Catégorie non sélectionnée"}
-                              </span>
-                            </div>
+                    {/* Lignes de sélection */}
+                    <div className="space-y-3">
+                      {lines.map((line) => {
+                        const selectedAccessory = line.accessory_id
+                          ? getAccessory(category.id, line.accessory_id)
+                          : undefined;
+
+                        const hasColor = selectedAccessory?.couleur && selectedAccessory.couleur.trim() !== "";
+                        const hasOptions = selectedAccessory?.options && selectedAccessory.options.length > 0;
+                        const isPopoverOpen = openPopovers.has(line.id);
+
+                        return (
+                          <div key={line.id} className="space-y-2">
+                            {/* Ligne principale */}
                             <div className="flex items-center gap-2">
-                              {section.selected_accessory_ids.length > 0 && (
-                                <Badge variant="default">
-                                  {section.selected_accessory_ids.length} article
-                                  {section.selected_accessory_ids.length > 1 ? "s" : ""}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </AccordionTrigger>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeSection(section.id)}
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-
-                      <AccordionContent className="pt-4">
-                        <div className="space-y-4">
-                          {/* Sélection de la catégorie */}
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium">Choisir la catégorie :</label>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                              {allCategories.map((category) => {
-                                const isSelected = section.category_id === category.id;
-                                const accessories = getAccessoriesForCategory(category.id);
-
-                                return (
-                                  <button
-                                    key={category.id}
-                                    onClick={() => updateSectionCategory(section.id, category.id)}
-                                    className={`p-3 rounded-lg border-2 text-left transition-all ${
-                                      isSelected
-                                        ? "border-primary bg-primary/10"
-                                        : "border-border hover:border-primary/50"
-                                    }`}
-                                  >
-                                    <div className="font-medium text-sm">{category.nom}</div>
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      {accessories.length} article{accessories.length > 1 ? "s" : ""}
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <Separator />
-
-                          {/* Sélection des articles */}
-                          {section.category_id ? (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <label className="text-sm font-medium">Articles à afficher dans le dropdown :</label>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    const allAccessoryIds = categoryAccessories.map((acc) => acc.id);
-                                    const allSelected = allAccessoryIds.every((id) =>
-                                      section.selected_accessory_ids.includes(id),
-                                    );
-
-                                    setKitSections(
-                                      kitSections.map((s) =>
-                                        s.id === section.id
-                                          ? {
-                                              ...s,
-                                              selected_accessory_ids: allSelected ? [] : allAccessoryIds,
-                                            }
-                                          : s,
-                                      ),
-                                    );
-                                  }}
-                                >
-                                  {categoryAccessories.every((acc) => section.selected_accessory_ids.includes(acc.id))
-                                    ? "Tout décocher"
-                                    : "Tout cocher"}
-                                </Button>
-                              </div>
-
-                              {categoryAccessories.length === 0 ? (
-                                <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg">
-                                  Aucun accessoire disponible dans cette catégorie
-                                </p>
-                              ) : (
-                                <div className="grid gap-2 max-h-96 overflow-y-auto pr-2">
-                                  {categoryAccessories.map((accessory) => {
-                                    const isChecked = section.selected_accessory_ids.includes(accessory.id);
-
-                                    return (
-                                      <div
-                                        key={accessory.id}
-                                        className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                                          isChecked
-                                            ? "border-primary bg-primary/5"
-                                            : "border-border hover:border-primary/50"
-                                        }`}
-                                      >
-                                        <Checkbox
-                                          checked={isChecked}
-                                          onCheckedChange={() => toggleAccessory(section.id, accessory.id)}
-                                        />
-                                        {accessory.image_url && (
+                              {/* Dropdown article avec miniatures */}
+                              <Popover
+                                open={isPopoverOpen}
+                                onOpenChange={(open) => {
+                                  setOpenPopovers((prev) => {
+                                    const newSet = new Set(prev);
+                                    if (open) {
+                                      newSet.add(line.id);
+                                    } else {
+                                      newSet.delete(line.id);
+                                    }
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                <PopoverTrigger asChild>
+                                  <Button variant="outline" className="flex-1 justify-between h-auto min-h-[40px] py-2">
+                                    {selectedAccessory ? (
+                                      <div className="flex items-center gap-3">
+                                        {selectedAccessory.image_url ? (
                                           <img
-                                            src={accessory.image_url}
-                                            alt={accessory.nom}
-                                            className="w-12 h-12 object-cover rounded border"
+                                            src={selectedAccessory.image_url}
+                                            alt={selectedAccessory.nom}
+                                            className="w-8 h-8 object-cover rounded"
                                           />
+                                        ) : (
+                                          <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
+                                            <Package className="w-4 h-4 text-muted-foreground" />
+                                          </div>
                                         )}
-                                        <div className="flex-1 min-w-0">
-                                          <p className="font-medium text-sm truncate">{accessory.nom}</p>
-                                          {accessory.marque && (
-                                            <p className="text-xs text-muted-foreground">{accessory.marque}</p>
+                                        <div className="text-left">
+                                          <p className="font-medium text-sm">{selectedAccessory.nom}</p>
+                                          {selectedAccessory.marque && (
+                                            <p className="text-xs text-muted-foreground">{selectedAccessory.marque}</p>
                                           )}
                                         </div>
-                                        <p className="text-sm font-semibold text-primary">
-                                          {(accessory.prix_vente_ttc || 0).toFixed(2)} €
-                                        </p>
                                       </div>
-                                    );
-                                  })}
+                                    ) : (
+                                      <span className="text-muted-foreground">Sélectionner un article...</span>
+                                    )}
+                                    <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 p-0" align="start">
+                                  <ScrollArea className="h-72">
+                                    <div className="p-1">
+                                      {accessories.map((acc) => (
+                                        <div
+                                          key={acc.id}
+                                          className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-muted/50 ${
+                                            line.accessory_id === acc.id ? "bg-primary/10" : ""
+                                          }`}
+                                        >
+                                          {/* Miniature */}
+                                          {acc.image_url ? (
+                                            <img
+                                              src={acc.image_url}
+                                              alt={acc.nom}
+                                              className="w-12 h-12 object-cover rounded"
+                                            />
+                                          ) : (
+                                            <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
+                                              <Package className="w-6 h-6 text-muted-foreground" />
+                                            </div>
+                                          )}
+
+                                          {/* Infos - cliquable pour sélectionner */}
+                                          <div
+                                            className="flex-1 min-w-0"
+                                            onClick={() => selectAccessory(category.id, line.id, acc.id)}
+                                          >
+                                            <p className="font-medium text-sm truncate">{acc.nom}</p>
+                                            {acc.marque && (
+                                              <p className="text-xs text-muted-foreground">{acc.marque}</p>
+                                            )}
+                                            <p className="text-sm font-semibold text-primary">
+                                              {(acc.prix_vente_ttc || 0).toFixed(2)} €
+                                            </p>
+                                          </div>
+
+                                          {/* Bouton description */}
+                                          {acc.description && (
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8 shrink-0"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDescriptionModal(acc);
+                                              }}
+                                            >
+                                              <Info className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                </PopoverContent>
+                              </Popover>
+
+                              {/* Quantité */}
+                              {line.accessory_id && (
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-9 w-9"
+                                    onClick={() => updateQuantity(category.id, line.id, -1)}
+                                  >
+                                    <Minus className="h-4 w-4" />
+                                  </Button>
+                                  <span className="w-8 text-center font-medium">{line.quantity}</span>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-9 w-9"
+                                    onClick={() => updateQuantity(category.id, line.id, 1)}
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               )}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground text-center py-8 border-2 border-dashed rounded-lg">
-                              👆 Sélectionnez d'abord une catégorie ci-dessus
-                            </p>
-                          )}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  );
-                })}
-              </Accordion>
-            )}
-          </div>
-        </ScrollArea>
 
-        <DialogFooter className="border-t pt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Annuler
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className="h-4 w-4 mr-2" />
-            {saving ? "Sauvegarde..." : "Sauvegarder la configuration"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                              {/* Prix unitaire */}
+                              {selectedAccessory && (
+                                <span className="text-primary font-bold whitespace-nowrap min-w-[80px] text-right">
+                                  {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €
+                                </span>
+                              )}
+
+                              {/* Bouton dupliquer */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-9 text-muted-foreground hover:text-primary"
+                                onClick={() => duplicateLine(category.id, line.id)}
+                                title="Ajouter une ligne"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+
+                              {/* Bouton supprimer */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeLine(category.id, line.id)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+
+                            {/* Options supplémentaires si article sélectionné */}
+                            {selectedAccessory && (hasColor || hasOptions) && (
+                              <div className="ml-4 pl-4 border-l-2 border-muted space-y-2">
+                                {/* Couleur */}
+                                {hasColor && (
+                                  <div className="flex items-center gap-2">
+                                    <Label className="text-sm text-muted-foreground w-16">Couleur :</Label>
+                                    <Select
+                                      value={line.color || ""}
+                                      onValueChange={(value) => updateLine(category.id, line.id, { color: value })}
+                                    >
+                                      <SelectTrigger className="w-40 h-8">
+                                        <SelectValue placeholder="Choisir..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {AVAILABLE_COLORS.map((color) => (
+                                          <SelectItem key={color.value} value={color.value}>
+                                            {color.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
+
+                                {/* Options */}
+                                {hasOptions && (
+                                  <div className="flex items-start gap-2">
+                                    <Label className="text-sm text-muted-foreground w-16 pt-1">Options :</Label>
+                                    <div className="flex flex-wrap gap-1">
+                                      {selectedAccessory.options?.map((option) => {
+                                        const isSelected = line.selected_options.includes(option.id);
+                                        return (
+                                          <Badge
+                                            key={option.id}
+                                            variant={isSelected ? "default" : "outline"}
+                                            className="cursor-pointer text-xs"
+                                            onClick={() => toggleOption(category.id, line.id, option.id)}
+                                          >
+                                            {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
+                                          </Badge>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+
+          <DialogFooter className="flex items-center justify-between border-t pt-4">
+            <div className="flex items-center gap-4">
+              <p className="text-sm text-muted-foreground">
+                {getSelectedCount()} article{getSelectedCount() > 1 ? "s" : ""} sélectionné
+                {getSelectedCount() > 1 ? "s" : ""}
+              </p>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Prix total :</p>
+                <p className="text-2xl font-bold text-primary">{calculateTotalPrice().toFixed(2)} €</p>
+              </div>
+            </div>
+            <Button onClick={handleAddToCart} size="lg" disabled={getSelectedCount() === 0}>
+              <ShoppingCart className="h-5 w-5 mr-2" />
+              Ajouter au panier
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modale description */}
+      <Dialog open={!!descriptionModal} onOpenChange={(open) => !open && setDescriptionModal(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              {descriptionModal?.image_url ? (
+                <img
+                  src={descriptionModal.image_url}
+                  alt={descriptionModal.nom}
+                  className="w-16 h-16 object-cover rounded"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-muted rounded flex items-center justify-center">
+                  <Package className="w-8 h-8 text-muted-foreground" />
+                </div>
+              )}
+              <div>
+                <p>{descriptionModal?.nom}</p>
+                {descriptionModal?.marque && (
+                  <p className="text-sm font-normal text-muted-foreground">{descriptionModal.marque}</p>
+                )}
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-muted-foreground">{descriptionModal?.description}</p>
+            <div className="flex items-center justify-between pt-4 border-t">
+              <span className="text-2xl font-bold text-primary">
+                {(descriptionModal?.prix_vente_ttc || 0).toFixed(2)} €
+              </span>
+              <Button variant="outline" onClick={() => setDescriptionModal(null)}>
+                Fermer
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
-export default KitProductConfigAdmin;
+export default CustomKitConfigDialog;
