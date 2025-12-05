@@ -414,284 +414,376 @@ const CustomKitConfigDialog = ({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-2xl">Configurer : {productName}</DialogTitle>
             <DialogDescription>Sélectionnez les articles souhaités dans chaque catégorie</DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-6">
-              {categories.map((category) => {
-                const accessories = accessoriesByCategory.get(category.id) || [];
-                const lines = selections[category.id] || [];
+          <div className="flex-1 overflow-hidden flex gap-4">
+            {/* Colonne gauche - Sélections */}
+            <ScrollArea className="flex-1 pr-4">
+              <div className="space-y-6">
+                {categories.map((category) => {
+                  const accessories = accessoriesByCategory.get(category.id) || [];
+                  const lines = selections[category.id] || [];
 
-                return (
-                  <div key={category.id} className="space-y-3">
-                    {/* Header de catégorie */}
-                    <div className="flex items-center gap-2 pb-2 border-b">
-                      <h3 className="font-semibold text-lg">{category.nom}</h3>
-                      <Badge variant="secondary">
-                        {accessories.length} disponible{accessories.length > 1 ? "s" : ""}
-                      </Badge>
-                    </div>
+                  return (
+                    <div key={category.id} className="space-y-3">
+                      {/* Header de catégorie */}
+                      <div className="flex items-center gap-2 pb-2 border-b">
+                        <h3 className="font-semibold text-lg">{category.nom}</h3>
+                        <Badge variant="secondary">
+                          {accessories.length} disponible{accessories.length > 1 ? "s" : ""}
+                        </Badge>
+                      </div>
 
-                    {/* Lignes de sélection */}
-                    <div className="space-y-3">
-                      {lines.map((line) => {
-                        const selectedAccessory = line.accessory_id
-                          ? getAccessory(category.id, line.accessory_id)
-                          : undefined;
+                      {/* Lignes de sélection */}
+                      <div className="space-y-3">
+                        {lines.map((line) => {
+                          const selectedAccessory = line.accessory_id
+                            ? getAccessory(category.id, line.accessory_id)
+                            : undefined;
 
-                        const availableColors = selectedAccessory ? parseColors(selectedAccessory.couleur) : [];
-                        const hasColors = availableColors.length > 0;
-                        const hasOptions = selectedAccessory?.options && selectedAccessory.options.length > 0;
-                        const isPopoverOpen = openPopovers.has(line.id);
+                          const availableColors = selectedAccessory ? parseColors(selectedAccessory.couleur) : [];
+                          const hasColors = availableColors.length > 0;
+                          const hasOptions = selectedAccessory?.options && selectedAccessory.options.length > 0;
+                          const isPopoverOpen = openPopovers.has(line.id);
 
-                        return (
-                          <div key={line.id} className="space-y-2">
-                            {/* Ligne principale */}
-                            <div className="flex items-center gap-2">
-                              {/* Dropdown article avec miniatures */}
-                              <Popover
-                                open={isPopoverOpen}
-                                onOpenChange={(open) => {
-                                  setOpenPopovers((prev) => {
-                                    const newSet = new Set(prev);
-                                    if (open) {
-                                      newSet.add(line.id);
-                                    } else {
-                                      newSet.delete(line.id);
-                                    }
-                                    return newSet;
-                                  });
-                                }}
-                              >
-                                <PopoverTrigger asChild>
-                                  <Button variant="outline" className="flex-1 justify-between h-auto min-h-[40px] py-2">
-                                    {selectedAccessory ? (
-                                      <div className="flex items-center gap-3">
-                                        {selectedAccessory.image_url ? (
-                                          <img
-                                            src={selectedAccessory.image_url}
-                                            alt={selectedAccessory.nom}
-                                            className="w-8 h-8 object-cover rounded"
-                                          />
-                                        ) : (
-                                          <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
-                                            <Package className="w-4 h-4 text-muted-foreground" />
-                                          </div>
-                                        )}
-                                        <div className="text-left">
-                                          <p className="font-medium text-sm">{selectedAccessory.nom}</p>
-                                          {selectedAccessory.marque && (
-                                            <p className="text-xs text-muted-foreground">{selectedAccessory.marque}</p>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <span className="text-muted-foreground">Sélectionner un article...</span>
-                                    )}
-                                    <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-80 p-0" align="start">
-                                  <ScrollArea className="h-72">
-                                    <div className="p-1">
-                                      {accessories.map((acc) => (
-                                        <div
-                                          key={acc.id}
-                                          className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-muted/50 ${
-                                            line.accessory_id === acc.id ? "bg-primary/10" : ""
-                                          }`}
-                                        >
-                                          {/* Miniature */}
-                                          {acc.image_url ? (
+                          return (
+                            <div key={line.id} className="space-y-2">
+                              {/* Ligne principale */}
+                              <div className="flex items-center gap-2">
+                                {/* Dropdown article avec miniatures */}
+                                <Popover
+                                  open={isPopoverOpen}
+                                  onOpenChange={(open) => {
+                                    setOpenPopovers((prev) => {
+                                      const newSet = new Set(prev);
+                                      if (open) {
+                                        newSet.add(line.id);
+                                      } else {
+                                        newSet.delete(line.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                >
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      className="flex-1 justify-between h-auto min-h-[40px] py-2"
+                                    >
+                                      {selectedAccessory ? (
+                                        <div className="flex items-center gap-3">
+                                          {selectedAccessory.image_url ? (
                                             <img
-                                              src={acc.image_url}
-                                              alt={acc.nom}
-                                              className="w-12 h-12 object-cover rounded"
+                                              src={selectedAccessory.image_url}
+                                              alt={selectedAccessory.nom}
+                                              className="w-8 h-8 object-cover rounded"
                                             />
                                           ) : (
-                                            <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
-                                              <Package className="w-6 h-6 text-muted-foreground" />
+                                            <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
+                                              <Package className="w-4 h-4 text-muted-foreground" />
                                             </div>
                                           )}
-
-                                          {/* Infos - cliquable pour sélectionner */}
-                                          <div
-                                            className="flex-1 min-w-0"
-                                            onClick={() => selectAccessory(category.id, line.id, acc.id)}
-                                          >
-                                            <p className="font-medium text-sm truncate">{acc.nom}</p>
-                                            {acc.marque && (
-                                              <p className="text-xs text-muted-foreground">{acc.marque}</p>
+                                          <div className="text-left">
+                                            <p className="font-medium text-sm">{selectedAccessory.nom}</p>
+                                            {selectedAccessory.marque && (
+                                              <p className="text-xs text-muted-foreground">
+                                                {selectedAccessory.marque}
+                                              </p>
                                             )}
-                                            <p className="text-sm font-semibold text-primary">
-                                              {(acc.prix_vente_ttc || 0).toFixed(2)} €
-                                            </p>
                                           </div>
-
-                                          {/* Bouton description */}
-                                          {acc.description && (
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-8 w-8 shrink-0"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setDescriptionModal(acc);
-                                              }}
-                                            >
-                                              <Info className="h-4 w-4" />
-                                            </Button>
-                                          )}
                                         </div>
-                                      ))}
-                                    </div>
-                                  </ScrollArea>
-                                </PopoverContent>
-                              </Popover>
+                                      ) : (
+                                        <span className="text-muted-foreground">Sélectionner un article...</span>
+                                      )}
+                                      <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-80 p-0" align="start">
+                                    <ScrollArea className="h-72">
+                                      <div className="p-1">
+                                        {accessories.map((acc) => (
+                                          <div
+                                            key={acc.id}
+                                            className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-muted/50 ${
+                                              line.accessory_id === acc.id ? "bg-primary/10" : ""
+                                            }`}
+                                          >
+                                            {/* Miniature */}
+                                            {acc.image_url ? (
+                                              <img
+                                                src={acc.image_url}
+                                                alt={acc.nom}
+                                                className="w-12 h-12 object-cover rounded"
+                                              />
+                                            ) : (
+                                              <div className="w-12 h-12 bg-muted rounded flex items-center justify-center">
+                                                <Package className="w-6 h-6 text-muted-foreground" />
+                                              </div>
+                                            )}
 
-                              {/* Quantité */}
-                              {line.accessory_id && (
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-9 w-9"
-                                    onClick={() => updateQuantity(category.id, line.id, -1)}
-                                  >
-                                    <Minus className="h-4 w-4" />
-                                  </Button>
-                                  <span className="w-8 text-center font-medium">{line.quantity}</span>
-                                  <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-9 w-9"
-                                    onClick={() => updateQuantity(category.id, line.id, 1)}
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
+                                            {/* Infos - cliquable pour sélectionner */}
+                                            <div
+                                              className="flex-1 min-w-0"
+                                              onClick={() => selectAccessory(category.id, line.id, acc.id)}
+                                            >
+                                              <p className="font-medium text-sm truncate">{acc.nom}</p>
+                                              {acc.marque && (
+                                                <p className="text-xs text-muted-foreground">{acc.marque}</p>
+                                              )}
+                                              <p className="text-sm font-semibold text-primary">
+                                                {(acc.prix_vente_ttc || 0).toFixed(2)} €
+                                              </p>
+                                            </div>
+
+                                            {/* Bouton description */}
+                                            {acc.description && (
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 shrink-0"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setDescriptionModal(acc);
+                                                }}
+                                              >
+                                                <Info className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </ScrollArea>
+                                  </PopoverContent>
+                                </Popover>
+
+                                {/* Quantité */}
+                                {line.accessory_id && (
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      onClick={() => updateQuantity(category.id, line.id, -1)}
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+                                    <span className="w-8 text-center font-medium">{line.quantity}</span>
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      className="h-9 w-9"
+                                      onClick={() => updateQuantity(category.id, line.id, 1)}
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {/* Bouton dupliquer */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 text-muted-foreground hover:text-primary"
+                                  onClick={() => duplicateLine(category.id)}
+                                  title="Ajouter une ligne"
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+
+                                {/* Bouton supprimer */}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                                  onClick={() => removeLine(category.id, line.id)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              {/* Options supplémentaires si article sélectionné */}
+                              {selectedAccessory && (hasColors || hasOptions) && (
+                                <div className="ml-4 pl-4 border-l-2 border-muted space-y-3">
+                                  {/* Couleurs en pastilles */}
+                                  {hasColors && (
+                                    <div className="flex items-center gap-3">
+                                      <Label className="text-sm text-muted-foreground">Couleur :</Label>
+                                      <div className="flex items-center gap-2">
+                                        {availableColors.map((colorName) => {
+                                          const isSelected = line.color === colorName;
+                                          const colorCode = getColorCode(colorName);
+                                          const isLight = colorCode === "#ffffff" || colorCode === "#d4b896";
+
+                                          return (
+                                            <button
+                                              key={colorName}
+                                              onClick={() => selectColor(category.id, line.id, colorName)}
+                                              className={`
+                                                relative w-8 h-8 rounded-full transition-all
+                                                ${isSelected ? "ring-2 ring-offset-2 ring-primary" : "hover:scale-110"}
+                                                ${isLight ? "border border-gray-300" : ""}
+                                              `}
+                                              style={{ backgroundColor: colorCode }}
+                                              title={colorName}
+                                            >
+                                              {isSelected && (
+                                                <Check
+                                                  className={`absolute inset-0 m-auto h-4 w-4 ${
+                                                    isLight ? "text-gray-700" : "text-white"
+                                                  }`}
+                                                />
+                                              )}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                      {line.color && (
+                                        <span className="text-sm text-muted-foreground capitalize">({line.color})</span>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Options */}
+                                  {hasOptions && (
+                                    <div className="flex items-start gap-3">
+                                      <Label className="text-sm text-muted-foreground pt-1">Options :</Label>
+                                      <div className="flex flex-wrap gap-1">
+                                        {selectedAccessory.options?.map((option) => {
+                                          const isSelected = line.selected_options.includes(option.id);
+                                          return (
+                                            <Badge
+                                              key={option.id}
+                                              variant={isSelected ? "default" : "outline"}
+                                              className="cursor-pointer text-xs"
+                                              onClick={() => toggleOption(category.id, line.id, option.id)}
+                                            >
+                                              {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
+                                            </Badge>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+
+            {/* Colonne droite - Récapitulatif */}
+            <div className="w-72 flex-shrink-0 border-l pl-4 flex flex-col">
+              <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4" />
+                Récapitulatif
+              </h4>
+
+              <ScrollArea className="flex-1">
+                {getSelectedCount() === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    <Package className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                    <p>Aucun article</p>
+                    <p className="text-xs">Sélectionnez des articles à gauche</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 pr-2">
+                    {Object.entries(selections).map(([categoryId, lines]) => {
+                      const category = categories.find((c) => c.id === categoryId);
+                      const selectedLines = lines.filter((l) => l.accessory_id);
+
+                      if (selectedLines.length === 0) return null;
+
+                      return selectedLines.map((line) => {
+                        const accessory = getAccessory(categoryId, line.accessory_id);
+                        if (!accessory) return null;
+
+                        let itemTotal = (accessory.prix_vente_ttc || 0) * line.quantity;
+
+                        line.selected_options.forEach((optionId) => {
+                          const option = accessory.options?.find((o) => o.id === optionId);
+                          if (option) {
+                            itemTotal += option.prix_vente_ttc * line.quantity;
+                          }
+                        });
+
+                        const selectedOptionNames = line.selected_options
+                          .map((optId) => accessory.options?.find((o) => o.id === optId)?.nom)
+                          .filter(Boolean);
+
+                        return (
+                          <div key={line.id} className="bg-muted/30 rounded-lg p-2 text-sm">
+                            <div className="flex items-start gap-2">
+                              {/* Miniature */}
+                              {accessory.image_url ? (
+                                <img
+                                  src={accessory.image_url}
+                                  alt={accessory.nom}
+                                  className="w-10 h-10 object-cover rounded flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-muted rounded flex items-center justify-center flex-shrink-0">
+                                  <Package className="w-5 h-5 text-muted-foreground" />
                                 </div>
                               )}
 
-                              {/* Prix unitaire */}
-                              {selectedAccessory && (
-                                <span className="text-primary font-bold whitespace-nowrap min-w-[80px] text-right">
-                                  {(selectedAccessory.prix_vente_ttc || 0).toFixed(2)} €
-                                </span>
-                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{accessory.nom}</p>
+                                <p className="text-xs text-muted-foreground">×{line.quantity}</p>
 
-                              {/* Bouton dupliquer */}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 text-muted-foreground hover:text-primary"
-                                onClick={() => duplicateLine(category.id)}
-                                title="Ajouter une ligne"
-                              >
-                                <Copy className="h-4 w-4" />
-                              </Button>
-
-                              {/* Bouton supprimer */}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                                onClick={() => removeLine(category.id, line.id)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-
-                            {/* Options supplémentaires si article sélectionné */}
-                            {selectedAccessory && (hasColors || hasOptions) && (
-                              <div className="ml-4 pl-4 border-l-2 border-muted space-y-3">
-                                {/* Couleurs en pastilles */}
-                                {hasColors && (
-                                  <div className="flex items-center gap-3">
-                                    <Label className="text-sm text-muted-foreground">Couleur :</Label>
-                                    <div className="flex items-center gap-2">
-                                      {availableColors.map((colorName) => {
-                                        const isSelected = line.color === colorName;
-                                        const colorCode = getColorCode(colorName);
-                                        const isLight = colorCode === "#ffffff" || colorCode === "#d4b896";
-
-                                        return (
-                                          <button
-                                            key={colorName}
-                                            onClick={() => selectColor(category.id, line.id, colorName)}
-                                            className={`
-                                              relative w-8 h-8 rounded-full transition-all
-                                              ${isSelected ? "ring-2 ring-offset-2 ring-primary" : "hover:scale-110"}
-                                              ${isLight ? "border border-gray-300" : ""}
-                                            `}
-                                            style={{ backgroundColor: colorCode }}
-                                            title={colorName}
-                                          >
-                                            {isSelected && (
-                                              <Check
-                                                className={`absolute inset-0 m-auto h-4 w-4 ${
-                                                  isLight ? "text-gray-700" : "text-white"
-                                                }`}
-                                              />
-                                            )}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                    {line.color && (
-                                      <span className="text-sm text-muted-foreground capitalize">({line.color})</span>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Options */}
-                                {hasOptions && (
-                                  <div className="flex items-start gap-3">
-                                    <Label className="text-sm text-muted-foreground pt-1">Options :</Label>
-                                    <div className="flex flex-wrap gap-1">
-                                      {selectedAccessory.options?.map((option) => {
-                                        const isSelected = line.selected_options.includes(option.id);
-                                        return (
-                                          <Badge
-                                            key={option.id}
-                                            variant={isSelected ? "default" : "outline"}
-                                            className="cursor-pointer text-xs"
-                                            onClick={() => toggleOption(category.id, line.id, option.id)}
-                                          >
-                                            {option.nom} (+{option.prix_vente_ttc.toFixed(2)} €)
-                                          </Badge>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
+                                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                  {line.color && (
+                                    <div
+                                      className="w-4 h-4 rounded-full border border-gray-300"
+                                      style={{ backgroundColor: getColorCode(line.color) }}
+                                      title={line.color}
+                                    />
+                                  )}
+                                  {selectedOptionNames.length > 0 && (
+                                    <span className="text-xs text-muted-foreground">
+                                      {selectedOptionNames.join(", ")}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            )}
+
+                              <span className="font-semibold text-primary text-sm whitespace-nowrap">
+                                {itemTotal.toFixed(2)} €
+                              </span>
+                            </div>
                           </div>
                         );
-                      })}
-                    </div>
+                      });
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </ScrollArea>
+                )}
+              </ScrollArea>
 
-          <DialogFooter className="flex items-center justify-between border-t pt-4">
-            <div className="flex items-center gap-4">
-              <p className="text-sm text-muted-foreground">
-                {getSelectedCount()} article{getSelectedCount() > 1 ? "s" : ""} sélectionné
-                {getSelectedCount() > 1 ? "s" : ""}
-              </p>
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">Prix total :</p>
-                <p className="text-2xl font-bold text-primary">{calculateTotalPrice().toFixed(2)} €</p>
+              {/* Total */}
+              <div className="border-t pt-3 mt-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm text-muted-foreground">
+                    {getSelectedCount()} article{getSelectedCount() > 1 ? "s" : ""}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Total :</span>
+                  <span className="text-xl font-bold text-primary">{calculateTotalPrice().toFixed(2)} €</span>
+                </div>
               </div>
             </div>
-            <Button onClick={handleAddToCart} size="lg" disabled={getSelectedCount() === 0}>
+          </div>
+
+          <DialogFooter className="border-t pt-4">
+            <Button onClick={handleAddToCart} size="lg" className="w-full" disabled={getSelectedCount() === 0}>
               <ShoppingCart className="h-5 w-5 mr-2" />
               Ajouter au panier
             </Button>
