@@ -23,6 +23,7 @@ import {
   ExternalLink,
   TrendingDown,
   TrendingUp,
+  ShoppingCart,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -43,6 +44,7 @@ import CategoryManagementDialog from "@/components/CategoryManagementDialog";
 import AccessoryImportExportDialog from "@/components/AccessoryImportExportDialog";
 import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
 import { NoticeSearchDialog } from "@/components/NoticeSearchDialog";
+import WishlistDialog from "@/components/WishlistDialog";
 
 interface Category {
   id: string;
@@ -121,6 +123,7 @@ const AccessoriesCatalogView = () => {
   const [selectedAccessoryForNotice, setSelectedAccessoryForNotice] = useState<Accessory | null>(null);
   const [activeTab, setActiveTab] = useState<string>("__all__");
   const [showNeedsCompletion, setShowNeedsCompletion] = useState(false);
+  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
 
   // Compter les articles à compléter
   const needsCompletionCount = accessories.filter((a) => a.needs_completion).length;
@@ -644,6 +647,14 @@ const AccessoriesCatalogView = () => {
                 </Badge>
               </Button>
             )}
+            <Button
+              onClick={() => setIsWishlistOpen(true)}
+              variant="outline"
+              className="border-green-400 text-green-600 hover:bg-green-50"
+            >
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Liste de souhaits
+            </Button>
             <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
               Import/Export
             </Button>
@@ -861,6 +872,9 @@ const AccessoriesCatalogView = () => {
               }}
             />
           )}
+
+          {/* Dialog wishlist */}
+          <WishlistDialog open={isWishlistOpen} onOpenChange={setIsWishlistOpen} />
 
           {/* Bouton rond fixe pour les frais de port */}
           <Button
