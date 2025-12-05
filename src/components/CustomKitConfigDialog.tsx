@@ -13,7 +13,19 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ShoppingCart, Plus, Minus, X, Copy, Info, Package, ChevronsUpDown, Check } from "lucide-react";
+import {
+  ShoppingCart,
+  Plus,
+  Minus,
+  X,
+  Copy,
+  Info,
+  Package,
+  ChevronsUpDown,
+  Check,
+  FileText,
+  ZoomIn,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface Category {
@@ -28,6 +40,12 @@ interface AccessoryOption {
   accessory_id: string;
 }
 
+interface MediaItem {
+  type: "image" | "pdf";
+  url: string;
+  name: string;
+}
+
 interface Accessory {
   id: string;
   nom: string;
@@ -35,6 +53,7 @@ interface Accessory {
   prix_vente_ttc?: number;
   category_id: string;
   description?: string;
+  description_media?: MediaItem[] | string;
   options?: AccessoryOption[];
   couleur?: string; // JSON string: ["Noir", "Rouge"]
   image_url?: string;
@@ -115,6 +134,46 @@ const parseColors = (couleurJson: string | undefined | null): string[] => {
   }
 };
 
+// Fonction simple pour convertir le markdown basique en HTML
+const renderMarkdown = (text: string): string => {
+  if (!text) return "";
+
+  let html = text
+    // Escape HTML
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    // Titres
+    .replace(/^### (.+)$/gm, "<h4 class='font-semibold text-base mt-3 mb-1'>$1</h4>")
+    .replace(/^## (.+)$/gm, "<h3 class='font-semibold text-lg mt-4 mb-2'>$1</h3>")
+    .replace(/^# (.+)$/gm, "<h2 class='font-bold text-xl mt-4 mb-2'>$1</h2>")
+    // Gras et italique
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    // Listes à puces
+    .replace(/^- (.+)$/gm, "<li class='ml-4'>• $1</li>")
+    .replace(/^\* (.+)$/gm, "<li class='ml-4'>• $1</li>")
+    // Listes numérotées
+    .replace(/^\d+\. (.+)$/gm, "<li class='ml-4 list-decimal'>$1</li>")
+    // Retours à la ligne
+    .replace(/\n\n/g, "</p><p class='mb-2'>")
+    .replace(/\n/g, "<br/>");
+
+  return `<p class='mb-2'>${html}</p>`;
+};
+
+// Fonction pour parser les médias depuis le JSON
+const parseMedia = (mediaJson: MediaItem[] | string | undefined | null): MediaItem[] => {
+  if (!mediaJson) return [];
+  if (Array.isArray(mediaJson)) return mediaJson;
+  try {
+    const parsed = JSON.parse(mediaJson);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 const CustomKitConfigDialog = ({
   productId,
   productName,
@@ -128,6 +187,7 @@ const CustomKitConfigDialog = ({
   const [selections, setSelections] = useState<CategorySelections>({});
   const [loading, setLoading] = useState(true);
   const [descriptionModal, setDescriptionModal] = useState<Accessory | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null);
   const [openPopovers, setOpenPopovers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -155,7 +215,7 @@ const CustomKitConfigDialog = ({
     const { data: kitAccessoriesData, error: kitAccessoriesError } = await supabase
       .from("shop_custom_kit_accessories")
       .select(
-        "accessory_id, accessories_catalog(id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url)",
+        "accessory_id, accessories_catalog(id, nom, marque, prix_vente_ttc, category_id, description, description_media, couleur, image_url)",
       )
       .eq("custom_kit_id", productId);
 
@@ -222,7 +282,7 @@ const CustomKitConfigDialog = ({
 
     const { data: accessoriesData } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, category_id, description, couleur, image_url")
+      .select("id, nom, marque, prix_vente_ttc, category_id, description, description_media, couleur, image_url")
       .in("category_id", categoryIds)
       .eq("available_in_shop", true);
 
@@ -816,7 +876,44 @@ const CustomKitConfigDialog = ({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-muted-foreground">{descriptionModal?.description}</p>
+            {/* Médias (images et PDFs) */}
+            {descriptionModal && parseMedia(descriptionModal.description_media).length > 0 && (
+              <div className="flex flex-wrap gap-3 pb-4 border-b">
+                {parseMedia(descriptionModal.description_media).map((item, index) => (
+                  <div key={index} className="relative group cursor-pointer" onClick={() => setPreviewMedia(item)}>
+                    {item.type === "image" ? (
+                      <div className="relative">
+                        <img
+                          src={item.url}
+                          alt={item.name}
+                          className="w-20 h-20 object-cover rounded-lg border hover:opacity-80 transition-opacity"
+                        />
+                        <div className="absolute bottom-1 right-1 p-1 bg-black/50 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                          <ZoomIn className="h-3 w-3" />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 flex flex-col items-center justify-center rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors p-2">
+                        <FileText className="h-6 w-6 text-red-500 mb-1" />
+                        <span className="text-xs text-center text-muted-foreground truncate w-full">PDF</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Description texte */}
+            {descriptionModal?.description ? (
+              <div
+                className="prose prose-sm max-w-none text-muted-foreground"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(descriptionModal.description) }}
+              />
+            ) : (
+              !parseMedia(descriptionModal?.description_media).length && (
+                <p className="text-muted-foreground italic">Aucune description</p>
+              )
+            )}
 
             {/* Afficher les couleurs disponibles dans la modale */}
             {descriptionModal && parseColors(descriptionModal.couleur).length > 0 && (
@@ -844,6 +941,43 @@ const CustomKitConfigDialog = ({
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modale de prévisualisation média */}
+      <Dialog open={!!previewMedia} onOpenChange={(open) => !open && setPreviewMedia(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {previewMedia?.type === "image" ? (
+                <Package className="h-5 w-5" />
+              ) : (
+                <FileText className="h-5 w-5 text-red-500" />
+              )}
+              {previewMedia?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto">
+            {previewMedia?.type === "image" ? (
+              <img
+                src={previewMedia.url}
+                alt={previewMedia.name}
+                className="max-w-full max-h-[70vh] mx-auto object-contain"
+              />
+            ) : previewMedia?.type === "pdf" ? (
+              <iframe src={previewMedia.url} className="w-full h-[70vh] border rounded" title={previewMedia.name} />
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => window.open(previewMedia?.url, "_blank")}>
+              Ouvrir dans un nouvel onglet
+            </Button>
+            <Button type="button" onClick={() => setPreviewMedia(null)}>
+              Fermer
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
