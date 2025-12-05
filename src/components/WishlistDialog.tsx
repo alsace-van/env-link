@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +8,6 @@ import {
   Trash2,
   AlertTriangle,
   ShoppingCart,
-  Clock,
   Package,
   PackageCheck,
   ChevronRight,
@@ -43,6 +41,11 @@ interface WishlistDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+const STORAGE_KEY_ITEMS = "wishlist_items";
+const STORAGE_KEY_CATEGORIES = "wishlist_categories";
+
+const generateId = () => crypto.randomUUID();
 
 const formatDate = (dateString: string | null): string => {
   if (!dateString) return "";
@@ -82,135 +85,96 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
     }
   }, [open]);
 
-  const loadData = async () => {
+  // Save to localStorage whenever data changes
+  useEffect(() => {
+    if (!loading) {
+      localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(items));
+    }
+  }, [items, loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(categories));
+    }
+  }, [categories, loading]);
+
+  const loadData = () => {
     setLoading(true);
 
-    // Charger les catégories
-    const { data: categoriesData, error: catError } = await supabase
-      .from("wishlist_categories")
-      .select("*")
-      .order("display_order", { ascending: true });
+    try {
+      const storedCategories = localStorage.getItem(STORAGE_KEY_CATEGORIES);
+      if (storedCategories) {
+        setCategories(JSON.parse(storedCategories));
+      }
 
-    if (catError) {
-      console.error("Erreur chargement catégories:", catError);
-    } else {
-      setCategories(categoriesData || []);
-    }
-
-    // Charger les items
-    const { data: itemsData, error: itemsError } = await supabase
-      .from("wishlist_items")
-      .select("*")
-      .order("status", { ascending: true })
-      .order("priority", { ascending: false })
-      .order("created_at", { ascending: false });
-
-    if (itemsError) {
-      console.error("Erreur chargement wishlist:", itemsError);
+      const storedItems = localStorage.getItem(STORAGE_KEY_ITEMS);
+      if (storedItems) {
+        setItems(JSON.parse(storedItems));
+      }
+    } catch (error) {
+      console.error("Erreur chargement wishlist:", error);
       toast.error("Erreur lors du chargement de la liste");
-    } else {
-      setItems((itemsData || []) as WishlistItem[]);
     }
 
     setLoading(false);
   };
 
-  const addCategory = async () => {
+  const addCategory = () => {
     if (!newCategoryName.trim()) return;
 
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) {
-      toast.error("Vous devez être connecté");
-      return;
-    }
+    const newCategory: WishlistCategory = {
+      id: generateId(),
+      name: newCategoryName.trim(),
+      display_order: categories.length,
+    };
 
-    const { data, error } = await supabase
-      .from("wishlist_categories")
-      .insert({
-        name: newCategoryName.trim(),
-        user_id: userData.user.id,
-        display_order: categories.length,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error("Erreur ajout catégorie:", error);
-      toast.error("Erreur lors de l'ajout");
-    } else {
-      setCategories([...categories, data]);
-      setNewCategoryName("");
-      setIsAddingCategory(false);
-      setActiveTab(data.id);
-      toast.success("Onglet créé");
-    }
+    setCategories([...categories, newCategory]);
+    setNewCategoryName("");
+    setIsAddingCategory(false);
+    setActiveTab(newCategory.id);
+    toast.success("Onglet créé");
   };
 
-  const updateCategory = async (id: string, name: string) => {
+  const updateCategory = (id: string, name: string) => {
     if (!name.trim()) return;
 
-    const { error } = await supabase.from("wishlist_categories").update({ name: name.trim() }).eq("id", id);
-
-    if (error) {
-      console.error("Erreur mise à jour:", error);
-    } else {
-      setCategories(categories.map((c) => (c.id === id ? { ...c, name: name.trim() } : c)));
-      setEditingCategoryId(null);
-    }
+    setCategories(categories.map((c) => (c.id === id ? { ...c, name: name.trim() } : c)));
+    setEditingCategoryId(null);
   };
 
-  const deleteCategory = async (id: string) => {
-    // Déplacer les items vers "sans catégorie"
-    await supabase.from("wishlist_items").update({ category_id: null }).eq("category_id", id);
-
-    const { error } = await supabase.from("wishlist_categories").delete().eq("id", id);
-
-    if (error) {
-      console.error("Erreur suppression:", error);
-      toast.error("Erreur lors de la suppression");
-    } else {
-      setCategories(categories.filter((c) => c.id !== id));
-      setItems(items.map((i) => (i.category_id === id ? { ...i, category_id: null } : i)));
-      if (activeTab === id) {
-        setActiveTab("__all__");
-      }
-      toast.success("Onglet supprimé");
+  const deleteCategory = (id: string) => {
+    // Move items to "no category"
+    setItems(items.map((i) => (i.category_id === id ? { ...i, category_id: null } : i)));
+    setCategories(categories.filter((c) => c.id !== id));
+    
+    if (activeTab === id) {
+      setActiveTab("__all__");
     }
+    toast.success("Onglet supprimé");
   };
 
-  const addItem = async () => {
+  const addItem = () => {
     if (!newItemText.trim()) return;
-
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) {
-      toast.error("Vous devez être connecté");
-      return;
-    }
 
     const categoryId = activeTab === "__all__" ? null : activeTab;
 
-    const { data, error } = await supabase
-      .from("wishlist_items")
-      .insert({
-        text: newItemText.trim(),
-        user_id: userData.user.id,
-        category_id: categoryId,
-        status: "pending",
-      })
-      .select()
-      .single();
+    const newItem: WishlistItem = {
+      id: generateId(),
+      text: newItemText.trim(),
+      category_id: categoryId,
+      status: "pending",
+      priority: 0,
+      created_at: new Date().toISOString(),
+      ordered_at: null,
+      received_at: null,
+    };
 
-    if (error) {
-      console.error("Erreur ajout:", error);
-      toast.error("Erreur lors de l'ajout");
-    } else {
-      setItems([data as WishlistItem, ...items]);
-      setNewItemText("");
-    }
+    setItems([newItem, ...items]);
+    setNewItemText("");
   };
 
-  const updateStatus = async (item: WishlistItem, newStatus: ItemStatus) => {
-    const updates: any = { status: newStatus };
+  const updateStatus = (item: WishlistItem, newStatus: ItemStatus) => {
+    const updates: Partial<WishlistItem> = { status: newStatus };
 
     if (newStatus === "ordered" && !item.ordered_at) {
       updates.ordered_at = new Date().toISOString();
@@ -218,52 +182,25 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
       updates.received_at = new Date().toISOString();
     }
 
-    const { error } = await supabase.from("wishlist_items").update(updates).eq("id", item.id);
-
-    if (error) {
-      console.error("Erreur mise à jour:", error);
-      toast.error("Erreur lors de la mise à jour");
-    } else {
-      setItems(items.map((i) => (i.id === item.id ? { ...i, ...updates } : i)));
-    }
+    setItems(items.map((i) => (i.id === item.id ? { ...i, ...updates } : i)));
   };
 
-  const togglePriority = async (item: WishlistItem) => {
+  const togglePriority = (item: WishlistItem) => {
     const newPriority = item.priority === 1 ? 0 : 1;
-    const { error } = await supabase.from("wishlist_items").update({ priority: newPriority }).eq("id", item.id);
-
-    if (error) {
-      console.error("Erreur mise à jour:", error);
-    } else {
-      setItems(items.map((i) => (i.id === item.id ? { ...i, priority: newPriority } : i)));
-    }
+    setItems(items.map((i) => (i.id === item.id ? { ...i, priority: newPriority } : i)));
   };
 
-  const deleteItem = async (id: string) => {
-    const { error } = await supabase.from("wishlist_items").delete().eq("id", id);
-
-    if (error) {
-      console.error("Erreur suppression:", error);
-      toast.error("Erreur lors de la suppression");
-    } else {
-      setItems(items.filter((i) => i.id !== id));
-    }
+  const deleteItem = (id: string) => {
+    setItems(items.filter((i) => i.id !== id));
   };
 
-  const clearReceived = async () => {
+  const clearReceived = () => {
     const filteredItems = getFilteredItems();
     const receivedIds = filteredItems.filter((i) => i.status === "received").map((i) => i.id);
     if (receivedIds.length === 0) return;
 
-    const { error } = await supabase.from("wishlist_items").delete().in("id", receivedIds);
-
-    if (error) {
-      console.error("Erreur suppression:", error);
-      toast.error("Erreur lors de la suppression");
-    } else {
-      setItems(items.filter((i) => !receivedIds.includes(i.id)));
-      toast.success(`${receivedIds.length} élément(s) supprimé(s)`);
-    }
+    setItems(items.filter((i) => !receivedIds.includes(i.id)));
+    toast.success(`${receivedIds.length} élément(s) supprimé(s)`);
   };
 
   const getFilteredItems = () => {
@@ -271,13 +208,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
       return items;
     }
     return items.filter((i) => i.category_id === activeTab);
-  };
-
-  const getItemCountForCategory = (categoryId: string | null) => {
-    if (categoryId === null) {
-      return items.length;
-    }
-    return items.filter((i) => i.category_id === categoryId).length;
   };
 
   const getPendingCountForCategory = (categoryId: string | null) => {
@@ -517,7 +447,7 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
             ) : (
               <button
                 onClick={() => setIsAddingCategory(true)}
-                className="px-3 py-2.5 text-sm text-muted-foreground hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="px-3 py-2.5 text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 title="Ajouter un onglet"
               >
                 <FolderPlus className="h-4 w-4" />
@@ -526,73 +456,56 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
           </div>
         </div>
 
-        {/* Résumé */}
-        <div className="flex gap-2 flex-wrap px-6 py-3 border-b flex-shrink-0">
-          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-300">
-            <Clock className="h-3 w-3 mr-1" />
-            {pendingItems.length} à commander
-          </Badge>
-          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
-            <Package className="h-3 w-3 mr-1" />
-            {orderedItems.length} en attente
-          </Badge>
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-            <PackageCheck className="h-3 w-3 mr-1" />
-            {receivedItems.length} reçu(s)
-          </Badge>
+        {/* Zone d'ajout */}
+        <div className="flex-shrink-0 px-6 py-3 border-b bg-muted/20">
+          <div className="flex gap-2">
+            <Input
+              value={newItemText}
+              onChange={(e) => setNewItemText(e.target.value)}
+              placeholder="Ajouter un élément..."
+              className="flex-1"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addItem();
+              }}
+            />
+            <Button onClick={addItem} disabled={!newItemText.trim()}>
+              <Plus className="h-4 w-4 mr-1" />
+              Ajouter
+            </Button>
+          </div>
         </div>
 
-        {/* Formulaire d'ajout */}
-        <div className="flex gap-2 px-6 py-3 border-b flex-shrink-0">
-          <Input
-            placeholder={`Ajouter un article${activeTab !== "__all__" ? ` à "${categories.find((c) => c.id === activeTab)?.name}"` : ""}...`}
-            value={newItemText}
-            onChange={(e) => setNewItemText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addItem();
-              }
-            }}
-          />
-          <Button onClick={addItem} disabled={!newItemText.trim()}>
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-
-        {/* Liste avec scrollbar */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+        {/* Liste des items */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {loading ? (
             <div className="text-center py-8 text-muted-foreground">Chargement...</div>
           ) : filteredItems.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <ShoppingCart className="h-12 w-12 mx-auto mb-2 opacity-30" />
-              <p>Aucun article dans cette liste</p>
-              <p className="text-sm">Ajoutez des consommables ou matériels à commander</p>
-            </div>
+            <div className="text-center py-8 text-muted-foreground">Aucun élément dans cette liste</div>
           ) : (
             <div className="space-y-6">
-              {/* Items à commander */}
+              {/* Items en attente */}
               {pendingItems.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium flex items-center gap-2 text-yellow-700 sticky top-0 bg-white py-1">
-                    <Clock className="h-4 w-4" />À commander ({pendingItems.length})
-                  </h4>
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <Package className="h-4 w-4" />À commander ({pendingItems.length})
+                  </h3>
                   <div className="space-y-2">
-                    {pendingItems.map((item) => (
-                      <ItemRow key={item.id} item={item} />
-                    ))}
+                    {pendingItems
+                      .sort((a, b) => b.priority - a.priority)
+                      .map((item) => (
+                        <ItemRow key={item.id} item={item} />
+                      ))}
                   </div>
                 </div>
               )}
 
               {/* Items commandés */}
               {orderedItems.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium flex items-center gap-2 text-blue-700 sticky top-0 bg-white py-1">
+                <div>
+                  <h3 className="text-sm font-medium text-blue-600 mb-2 flex items-center gap-2">
                     <Package className="h-4 w-4" />
-                    En attente de livraison ({orderedItems.length})
-                  </h4>
+                    Commandé ({orderedItems.length})
+                  </h3>
                   <div className="space-y-2">
                     {orderedItems.map((item) => (
                       <ItemRow key={item.id} item={item} />
@@ -603,11 +516,17 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
 
               {/* Items reçus */}
               {receivedItems.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium flex items-center gap-2 text-green-700 sticky top-0 bg-white py-1">
-                    <PackageCheck className="h-4 w-4" />
-                    Reçus ({receivedItems.length})
-                  </h4>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-green-600 flex items-center gap-2">
+                      <PackageCheck className="h-4 w-4" />
+                      Reçu ({receivedItems.length})
+                    </h3>
+                    <Button variant="ghost" size="sm" className="text-xs text-destructive" onClick={clearReceived}>
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Vider
+                    </Button>
+                  </div>
                   <div className="space-y-2">
                     {receivedItems.map((item) => (
                       <ItemRow key={item.id} item={item} />
@@ -618,16 +537,6 @@ const WishlistDialog = ({ open, onOpenChange }: WishlistDialogProps) => {
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        {receivedItems.length > 0 && (
-          <div className="flex justify-end px-6 py-3 border-t flex-shrink-0">
-            <Button variant="ghost" size="sm" onClick={clearReceived}>
-              <Trash2 className="h-4 w-4 mr-2" />
-              Supprimer les reçus ({receivedItems.length})
-            </Button>
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );
