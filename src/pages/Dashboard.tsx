@@ -10,6 +10,7 @@ import { BackupSettingsDialog } from "@/components/BackupSettingsDialog";
 import AIChatAssistant from "@/components/AIChatAssistant";
 import { Button } from "@/components/ui/button";
 import { ShoppingBag, Package, TrendingUp } from "lucide-react";
+import WishlistWidget from "@/components/WishlistWidget";
 import logo from "@/assets/logo.png";
 
 const Dashboard = () => {
@@ -20,8 +21,10 @@ const Dashboard = () => {
   useEffect(() => {
     checkUser();
     trackLogin();
-    
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
         navigate("/auth");
       } else {
@@ -33,13 +36,15 @@ const Dashboard = () => {
   }, [navigate]);
 
   const trackLogin = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
     if (session) {
       // Track login
       await supabase.from("user_logins").insert({
         user_id: session.user.id,
-        user_email: session.user.email || '',
+        user_email: session.user.email || "",
         ip_address: null,
         user_agent: navigator.userAgent,
       });
@@ -47,8 +52,10 @@ const Dashboard = () => {
   };
 
   const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
     if (!session) {
       navigate("/auth");
     } else {
@@ -74,36 +81,21 @@ const Dashboard = () => {
       <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center">
-            <img 
-              src={logo} 
-              alt="Alsace Van Création" 
-              className="h-24 w-auto object-contain"
-            />
+            <img src={logo} alt="Alsace Van Création" className="h-24 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-2">
             <BackupSettingsDialog userId={user?.id} />
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => navigate("/catalog")}
-            >
+            <Button variant="outline" size="sm" onClick={() => navigate("/catalog")}>
               <Package className="h-4 w-4 mr-2" />
               Catalogue
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => navigate("/bilan-comptable")}
-            >
+            <WishlistWidget />
+            <Button variant="outline" size="sm" onClick={() => navigate("/bilan-comptable")}>
               <TrendingUp className="h-4 w-4 mr-2" />
               Bilan Comptable
             </Button>
             <AIUsageWidget />
-            <Button 
-              variant="default" 
-              size="sm"
-              onClick={() => navigate("/shop")}
-            >
+            <Button variant="default" size="sm" onClick={() => navigate("/shop")}>
               <ShoppingBag className="h-4 w-4 mr-2" />
               Boutique
             </Button>
@@ -122,9 +114,7 @@ const Dashboard = () => {
           <div className="lg:col-span-2">
             <div className="mb-4">
               <h2 className="text-xl font-semibold mb-1">Mes Projets</h2>
-              <p className="text-sm text-muted-foreground">
-                Sélectionnez un projet pour voir les détails
-              </p>
+              <p className="text-sm text-muted-foreground">Sélectionnez un projet pour voir les détails</p>
             </div>
             <ProjectsList refresh={refreshKey} onProjectSelect={handleProjectSelect} />
           </div>
