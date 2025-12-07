@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingCart } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import WishlistDialog from "@/components/WishlistDialog";
 
 interface WishlistWidgetProps {
@@ -10,13 +11,6 @@ interface WishlistWidgetProps {
   showCount?: boolean;
 }
 
-interface WishlistItem {
-  id: string;
-  status: "pending" | "ordered" | "received";
-}
-
-const ITEMS_KEY = "wishlist_items";
-
 const WishlistWidget = ({ variant = "outline", size = "sm", showCount = true }: WishlistWidgetProps) => {
   const [open, setOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
@@ -24,38 +18,36 @@ const WishlistWidget = ({ variant = "outline", size = "sm", showCount = true }: 
 
   useEffect(() => {
     loadCounts();
-    
-    // Listen for storage changes
-    const handleStorageChange = () => loadCounts();
-    window.addEventListener("storage", handleStorageChange);
-    
+
+    // Écouter les changements en temps réel
+    const channel = supabase
+      .channel("wishlist_changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "wishlist_items" }, () => loadCounts())
+      .subscribe();
+
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
+      supabase.removeChannel(channel);
     };
   }, []);
 
-  // Reload when dialog closes
+  // Recharger quand le dialog se ferme
   useEffect(() => {
     if (!open) {
       loadCounts();
     }
   }, [open]);
 
-  const loadCounts = () => {
-    try {
-      const storedItems = localStorage.getItem(ITEMS_KEY);
-      if (storedItems) {
-        const items: WishlistItem[] = JSON.parse(storedItems);
-        setPendingCount(items.filter((i) => i.status === "pending").length);
-        setOrderedCount(items.filter((i) => i.status === "ordered").length);
-      } else {
-        setPendingCount(0);
-        setOrderedCount(0);
-      }
-    } catch (error) {
-      console.error("Error loading wishlist counts:", error);
-      setPendingCount(0);
-      setOrderedCount(0);
+  const loadCounts = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase.from("wishlist_items").select("status").eq("user_id", user.id);
+
+    if (data) {
+      setPendingCount(data.filter((i) => i.status === "pending").length);
+      setOrderedCount(data.filter((i) => i.status === "ordered").length);
     }
   };
 
