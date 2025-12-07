@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingCart } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import WishlistDialog from "@/components/WishlistDialog";
 
 interface WishlistWidgetProps {
@@ -10,6 +9,13 @@ interface WishlistWidgetProps {
   size?: "default" | "sm" | "lg" | "icon";
   showCount?: boolean;
 }
+
+interface WishlistItem {
+  id: string;
+  status: "pending" | "ordered" | "received";
+}
+
+const STORAGE_KEY_ITEMS = "wishlist_items";
 
 const WishlistWidget = ({ variant = "outline", size = "sm", showCount = true }: WishlistWidgetProps) => {
   const [open, setOpen] = useState(false);
@@ -19,35 +25,36 @@ const WishlistWidget = ({ variant = "outline", size = "sm", showCount = true }: 
   useEffect(() => {
     loadCounts();
 
-    // Écouter les changements en temps réel
-    const channel = supabase
-      .channel("wishlist_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "wishlist_items" }, () => loadCounts())
-      .subscribe();
+    // Listen for storage changes
+    const handleStorageChange = () => loadCounts();
+    window.addEventListener("storage", handleStorageChange);
 
     return () => {
-      supabase.removeChannel(channel);
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
-  // Recharger quand le dialog se ferme
+  // Reload when dialog closes
   useEffect(() => {
     if (!open) {
       loadCounts();
     }
   }, [open]);
 
-  const loadCounts = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data } = await supabase.from("wishlist_items").select("status").eq("user_id", user.id);
-
-    if (data) {
-      setPendingCount(data.filter((i) => i.status === "pending").length);
-      setOrderedCount(data.filter((i) => i.status === "ordered").length);
+  const loadCounts = () => {
+    try {
+      const storedItems = localStorage.getItem(STORAGE_KEY_ITEMS);
+      if (storedItems) {
+        const items: WishlistItem[] = JSON.parse(storedItems);
+        setPendingCount(items.filter((i) => i.status === "pending").length);
+        setOrderedCount(items.filter((i) => i.status === "ordered").length);
+      } else {
+        setPendingCount(0);
+        setOrderedCount(0);
+      }
+    } catch {
+      setPendingCount(0);
+      setOrderedCount(0);
     }
   };
 
