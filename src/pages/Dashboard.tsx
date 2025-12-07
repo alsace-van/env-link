@@ -85,7 +85,6 @@ const Dashboard = () => {
     setLeftSidebarOpen(false);
   };
 
-  // Fermer les sidebars en cliquant sur le backdrop
   const closeSidebars = () => {
     setLeftSidebarOpen(false);
     setRightSidebarOpen(false);
@@ -102,11 +101,11 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-background">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-40">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           {/* Gauche : Menu projets + Logo */}
           <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" onClick={() => setLeftSidebarOpen(true)} className="relative">
+            <Button variant="outline" size="icon" onClick={() => setLeftSidebarOpen(true)}>
               <FolderOpen className="h-5 w-5" />
             </Button>
 
@@ -118,12 +117,10 @@ const Dashboard = () => {
             />
           </div>
 
-          {/* Droite : Actions */}
+          {/* Droite : Actions (sans Wishlist, elle est dans la sidebar) */}
           <div className="flex items-center gap-2">
-            {/* Boutons visibles sur desktop */}
             <div className="hidden md:flex items-center gap-2">
               <BackupSettingsDialog userId={user?.id} />
-              <WishlistWidget />
               <AIUsageWidget />
             </div>
 
@@ -256,18 +253,14 @@ const Dashboard = () => {
                 <ChevronRight className="h-4 w-4 ml-auto" />
               </Button>
 
-              {/* Section Outils */}
+              {/* Section Outils - WISHLIST ICI UNIQUEMENT */}
               <div className="pt-4 border-t mt-4">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Outils</p>
 
                 <div className="space-y-2">
                   <WishlistWidget variant="ghost" size="default" />
-                  <div className="md:hidden">
-                    <BackupSettingsDialog userId={user?.id} />
-                  </div>
-                  <div className="md:hidden">
-                    <AIUsageWidget />
-                  </div>
+                  <BackupSettingsDialog userId={user?.id} />
+                  <AIUsageWidget />
                 </div>
               </div>
 
