@@ -57,6 +57,9 @@ interface WishlistDialogProps {
   initialProjectId?: string | null;
 }
 
+const STORAGE_KEY_CATEGORIES = "wishlist_categories";
+const STORAGE_KEY_ITEMS = "wishlist_items";
+
 const formatShortDate = (dateString: string | null): string => {
   if (!dateString) return "";
   const date = new Date(dateString);
@@ -85,7 +88,6 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     if (open) {
       loadData();
       loadProjects();
-      migrateFromLocalStorage();
     }
   }, [open]);
 
@@ -95,61 +97,6 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
       setNewItemProjectId(initialProjectId);
     }
   }, [initialProjectId]);
-
-  const migrateFromLocalStorage = async () => {
-    const MIGRATION_KEY = "wishlist_migrated_to_supabase";
-    if (localStorage.getItem(MIGRATION_KEY)) return;
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    try {
-      const storedCategories = localStorage.getItem("wishlist_categories");
-      const storedItems = localStorage.getItem("wishlist_items");
-
-      if (storedCategories || storedItems) {
-        if (storedCategories) {
-          const oldCategories = JSON.parse(storedCategories);
-          for (const cat of oldCategories) {
-            await supabase.from("wishlist_categories").insert({
-              id: cat.id,
-              user_id: user.id,
-              name: cat.name,
-              display_order: cat.display_order || 0,
-            });
-          }
-        }
-
-        if (storedItems) {
-          const oldItems = JSON.parse(storedItems);
-          for (const item of oldItems) {
-            await supabase.from("wishlist_items").insert({
-              id: item.id,
-              user_id: user.id,
-              category_id: item.category_id,
-              text: item.text,
-              status: item.status || "pending",
-              priority: item.priority || 0,
-              ordered_at: item.ordered_at,
-              received_at: item.received_at,
-              created_at: item.created_at || new Date().toISOString(),
-            });
-          }
-        }
-
-        toast.success("Wishlist migrée vers le cloud ☁️");
-        localStorage.removeItem("wishlist_categories");
-        localStorage.removeItem("wishlist_items");
-      }
-
-      localStorage.setItem(MIGRATION_KEY, "true");
-      loadData();
-    } catch (error) {
-      console.error("Erreur migration wishlist:", error);
-    }
-  };
 
   const loadProjects = async () => {
     const {
@@ -166,119 +113,88 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     if (data) setProjects(data);
   };
 
-  const loadData = async () => {
+  const loadData = () => {
     setLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-
     try {
-      const { data: categoriesData, error: catError } = await supabase
-        .from("wishlist_categories")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("display_order");
-
-      if (catError) throw catError;
-      setCategories(categoriesData || []);
-
-      const { data: itemsData, error: itemsError } = await supabase
-        .from("wishlist_items")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (itemsError) throw itemsError;
-      setItems(itemsData || []);
+      const storedCategories = localStorage.getItem(STORAGE_KEY_CATEGORIES);
+      const storedItems = localStorage.getItem(STORAGE_KEY_ITEMS);
+      
+      if (storedCategories) {
+        setCategories(JSON.parse(storedCategories));
+      }
+      if (storedItems) {
+        setItems(JSON.parse(storedItems));
+      }
     } catch (error) {
       console.error("Erreur chargement wishlist:", error);
-      toast.error("Erreur lors du chargement de la liste");
     }
     setLoading(false);
   };
 
-  const addCategory = async () => {
+  const saveCategories = (newCategories: WishlistCategory[]) => {
+    localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(newCategories));
+    setCategories(newCategories);
+  };
+
+  const saveItems = (newItems: WishlistItem[]) => {
+    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(newItems));
+    setItems(newItems);
+  };
+
+  const addCategory = () => {
     if (!newCategoryName.trim()) return;
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
 
-    const { data, error } = await supabase
-      .from("wishlist_categories")
-      .insert({ user_id: user.id, name: newCategoryName.trim(), display_order: categories.length })
-      .select()
-      .single();
+    const newCategory: WishlistCategory = {
+      id: crypto.randomUUID(),
+      name: newCategoryName.trim(),
+      display_order: categories.length,
+    };
 
-    if (error) {
-      toast.error("Erreur lors de la création");
-      return;
-    }
-
-    setCategories([...categories, data]);
+    const newCategories = [...categories, newCategory];
+    saveCategories(newCategories);
     setNewCategoryName("");
     setIsAddingCategory(false);
-    setActiveTab(data.id);
+    setActiveTab(newCategory.id);
     toast.success("Onglet créé");
   };
 
-  const updateCategory = async (id: string, name: string) => {
+  const updateCategory = (id: string, name: string) => {
     if (!name.trim()) return;
-    const { error } = await supabase.from("wishlist_categories").update({ name: name.trim() }).eq("id", id);
-    if (error) {
-      toast.error("Erreur lors de la modification");
-      return;
-    }
-    setCategories(categories.map((c) => (c.id === id ? { ...c, name: name.trim() } : c)));
+    const newCategories = categories.map((c) => (c.id === id ? { ...c, name: name.trim() } : c));
+    saveCategories(newCategories);
     setEditingCategoryId(null);
   };
 
-  const deleteCategory = async (id: string) => {
-    const { error } = await supabase.from("wishlist_categories").delete().eq("id", id);
-    if (error) {
-      toast.error("Erreur lors de la suppression");
-      return;
-    }
-    setCategories(categories.filter((c) => c.id !== id));
-    setItems(items.map((i) => (i.category_id === id ? { ...i, category_id: null } : i)));
+  const deleteCategory = (id: string) => {
+    const newCategories = categories.filter((c) => c.id !== id);
+    saveCategories(newCategories);
+    const newItems = items.map((i) => (i.category_id === id ? { ...i, category_id: null } : i));
+    saveItems(newItems);
     if (activeTab === id) setActiveTab("__all__");
     toast.success("Onglet supprimé");
   };
 
-  const addItem = async () => {
+  const addItem = () => {
     if (!newItemText.trim()) return;
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
 
     const categoryId = activeTab === "__all__" ? null : activeTab;
-    const { data, error } = await supabase
-      .from("wishlist_items")
-      .insert({
-        user_id: user.id,
-        text: newItemText.trim(),
-        category_id: categoryId,
-        project_id: newItemProjectId,
-        product_url: newItemUrl.trim() || null,
-        supplier: newItemSupplier.trim() || null,
-        estimated_price: newItemPrice ? parseFloat(newItemPrice) : null,
-        status: "pending",
-        priority: 0,
-      })
-      .select()
-      .single();
+    const newItem: WishlistItem = {
+      id: crypto.randomUUID(),
+      text: newItemText.trim(),
+      category_id: categoryId,
+      project_id: newItemProjectId,
+      product_url: newItemUrl.trim() || null,
+      supplier: newItemSupplier.trim() || null,
+      estimated_price: newItemPrice ? parseFloat(newItemPrice) : null,
+      status: "pending",
+      priority: 0,
+      created_at: new Date().toISOString(),
+      ordered_at: null,
+      received_at: null,
+    };
 
-    if (error) {
-      toast.error("Erreur lors de l'ajout");
-      return;
-    }
-
-    setItems([data, ...items]);
+    const newItems = [newItem, ...items];
+    saveItems(newItems);
     setNewItemText("");
     setNewItemUrl("");
     setNewItemSupplier("");
@@ -286,49 +202,33 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     setShowAdvancedAdd(false);
   };
 
-  const updateStatus = async (item: WishlistItem, newStatus: ItemStatus) => {
+  const updateStatus = (item: WishlistItem, newStatus: ItemStatus) => {
     const updates: Partial<WishlistItem> = { status: newStatus };
     if (newStatus === "ordered" && !item.ordered_at) updates.ordered_at = new Date().toISOString();
     else if (newStatus === "received" && !item.received_at) updates.received_at = new Date().toISOString();
 
-    const { error } = await supabase.from("wishlist_items").update(updates).eq("id", item.id);
-    if (error) {
-      toast.error("Erreur lors de la mise à jour");
-      return;
-    }
-    setItems(items.map((i) => (i.id === item.id ? { ...i, ...updates } : i)));
+    const newItems = items.map((i) => (i.id === item.id ? { ...i, ...updates } : i));
+    saveItems(newItems);
   };
 
-  const togglePriority = async (item: WishlistItem) => {
+  const togglePriority = (item: WishlistItem) => {
     const newPriority = item.priority === 1 ? 0 : 1;
-    const { error } = await supabase.from("wishlist_items").update({ priority: newPriority }).eq("id", item.id);
-    if (error) {
-      toast.error("Erreur lors de la mise à jour");
-      return;
-    }
-    setItems(items.map((i) => (i.id === item.id ? { ...i, priority: newPriority } : i)));
+    const newItems = items.map((i) => (i.id === item.id ? { ...i, priority: newPriority } : i));
+    saveItems(newItems);
   };
 
-  const deleteItem = async (id: string) => {
-    const { error } = await supabase.from("wishlist_items").delete().eq("id", id);
-    if (error) {
-      toast.error("Erreur lors de la suppression");
-      return;
-    }
-    setItems(items.filter((i) => i.id !== id));
+  const deleteItem = (id: string) => {
+    const newItems = items.filter((i) => i.id !== id);
+    saveItems(newItems);
   };
 
-  const clearReceived = async () => {
+  const clearReceived = () => {
     const receivedIds = getFilteredItems()
       .filter((i) => i.status === "received")
       .map((i) => i.id);
     if (receivedIds.length === 0) return;
-    const { error } = await supabase.from("wishlist_items").delete().in("id", receivedIds);
-    if (error) {
-      toast.error("Erreur lors de la suppression");
-      return;
-    }
-    setItems(items.filter((i) => !receivedIds.includes(i.id)));
+    const newItems = items.filter((i) => !receivedIds.includes(i.id));
+    saveItems(newItems);
     toast.success(`${receivedIds.length} élément(s) supprimé(s)`);
   };
 
@@ -490,19 +390,21 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
               onClick={() => setActiveTab("__all__")}
               className={`px-4 py-2.5 text-sm font-medium border-r whitespace-nowrap flex items-center gap-2 transition-colors ${activeTab === "__all__" ? "bg-white dark:bg-gray-900 text-primary border-b-2 border-b-primary" : "hover:bg-gray-100 dark:hover:bg-gray-800 text-muted-foreground"}`}
             >
-              📋 Tous
-              <Badge variant="secondary" className="text-xs">
-                {projectFilter ? items.filter((i) => i.project_id === projectFilter).length : items.length}
-              </Badge>
+              Tout
+              {getPendingCountForCategory(null) > 0 && (
+                <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-xs">
+                  {getPendingCountForCategory(null)}
+                </Badge>
+              )}
             </button>
 
             {categories.map((cat) => (
               <div
                 key={cat.id}
-                className={`flex items-center border-r ${activeTab === cat.id ? "bg-white dark:bg-gray-900 border-b-2 border-b-primary" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}
+                className={`flex items-center border-r group ${activeTab === cat.id ? "bg-white dark:bg-gray-900 border-b-2 border-b-primary" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}
               >
                 {editingCategoryId === cat.id ? (
-                  <div className="flex items-center px-2 py-1">
+                  <div className="flex items-center px-2 py-1.5 gap-1">
                     <Input
                       value={editingCategoryName}
                       onChange={(e) => setEditingCategoryName(e.target.value)}
@@ -510,61 +412,52 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                       autoFocus
                       onKeyDown={(e) => {
                         if (e.key === "Enter") updateCategory(cat.id, editingCategoryName);
-                        else if (e.key === "Escape") setEditingCategoryId(null);
+                        if (e.key === "Escape") setEditingCategoryId(null);
                       }}
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 ml-1"
-                      onClick={() => updateCategory(cat.id, editingCategoryName)}
-                    >
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateCategory(cat.id, editingCategoryName)}>
                       <Check className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingCategoryId(null)}>
+                      <X className="h-3 w-3" />
                     </Button>
                   </div>
                 ) : (
                   <>
                     <button
                       onClick={() => setActiveTab(cat.id)}
-                      className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap flex items-center gap-2 ${activeTab === cat.id ? "text-primary" : "text-muted-foreground"}`}
+                      className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap flex items-center gap-2 transition-colors ${activeTab === cat.id ? "text-primary" : "text-muted-foreground"}`}
                     >
                       {cat.name}
                       {getPendingCountForCategory(cat.id) > 0 && (
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="h-5 min-w-5 px-1.5 text-xs">
                           {getPendingCountForCategory(cat.id)}
                         </Badge>
                       )}
                     </button>
-                    {activeTab === cat.id && (
-                      <div className="flex items-center pr-2 gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => {
-                            setEditingCategoryId(cat.id);
-                            setEditingCategoryName(cat.name);
-                          }}
-                        >
-                          <Edit2 className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-destructive"
-                          onClick={() => deleteCategory(cat.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex items-center opacity-0 group-hover:opacity-100 pr-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => {
+                          setEditingCategoryId(cat.id);
+                          setEditingCategoryName(cat.name);
+                        }}
+                      >
+                        <Edit2 className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => deleteCategory(cat.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </>
                 )}
               </div>
             ))}
 
             {isAddingCategory ? (
-              <div className="flex items-center px-2 py-1">
+              <div className="flex items-center px-2 py-1.5 gap-1">
                 <Input
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
@@ -573,32 +466,20 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === "Enter") addCategory();
-                    else if (e.key === "Escape") {
-                      setIsAddingCategory(false);
-                      setNewCategoryName("");
-                    }
+                    if (e.key === "Escape") setIsAddingCategory(false);
                   }}
                 />
-                <Button variant="ghost" size="icon" className="h-6 w-6 ml-1" onClick={addCategory}>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={addCategory}>
                   <Check className="h-3 w-3" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => {
-                    setIsAddingCategory(false);
-                    setNewCategoryName("");
-                  }}
-                >
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setIsAddingCategory(false)}>
                   <X className="h-3 w-3" />
                 </Button>
               </div>
             ) : (
               <button
                 onClick={() => setIsAddingCategory(true)}
-                className="px-3 py-2.5 text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                title="Ajouter un onglet"
+                className="px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-1"
               >
                 <FolderPlus className="h-4 w-4" />
               </button>
@@ -606,86 +487,57 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
           </div>
         </div>
 
-        <div className="flex-shrink-0 px-6 py-3 border-b bg-muted/20">
-          <div className="flex gap-2">
-            <Input
-              value={newItemText}
-              onChange={(e) => setNewItemText(e.target.value)}
-              placeholder="Ajouter un élément..."
-              className="flex-1"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !showAdvancedAdd) addItem();
-              }}
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setShowAdvancedAdd(!showAdvancedAdd)}
-              title="Options avancées"
-            >
-              <Plus className={`h-4 w-4 transition-transform ${showAdvancedAdd ? "rotate-45" : ""}`} />
-            </Button>
-            <Button onClick={addItem} disabled={!newItemText.trim()}>
-              Ajouter
-            </Button>
-          </div>
-          {showAdvancedAdd && (
-            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-              <Input
-                value={newItemUrl}
-                onChange={(e) => setNewItemUrl(e.target.value)}
-                placeholder="URL du produit..."
-                className="text-sm"
-              />
-              <Input
-                value={newItemSupplier}
-                onChange={(e) => setNewItemSupplier(e.target.value)}
-                placeholder="Fournisseur..."
-                className="text-sm"
-              />
-              <Input
-                type="number"
-                step="0.01"
-                value={newItemPrice}
-                onChange={(e) => setNewItemPrice(e.target.value)}
-                placeholder="Prix estimé..."
-                className="text-sm"
-              />
-              <Select
-                value={newItemProjectId || "__none__"}
-                onValueChange={(value) => setNewItemProjectId(value === "__none__" ? null : value)}
-              >
-                <SelectTrigger className="text-sm">
-                  <SelectValue placeholder="Projet..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Aucun projet</SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.nom || project.nom_proprietaire}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Chargement...</div>
-          ) : filteredItems.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>Aucun élément dans cette liste</p>
-              <p className="text-sm mt-1">Ajoutez des articles à commander ci-dessus</p>
+            <div className="flex items-center justify-center h-32">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
           ) : (
             <div className="space-y-6">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Ajouter un article..."
+                    value={newItemText}
+                    onChange={(e) => setNewItemText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) addItem();
+                    }}
+                  />
+                </div>
+                <Button variant="outline" size="icon" onClick={() => setShowAdvancedAdd(!showAdvancedAdd)}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button onClick={addItem} disabled={!newItemText.trim()}>
+                  Ajouter
+                </Button>
+              </div>
+
+              {showAdvancedAdd && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 bg-muted/30 rounded-lg">
+                  <Input placeholder="URL du produit" value={newItemUrl} onChange={(e) => setNewItemUrl(e.target.value)} />
+                  <Input placeholder="Fournisseur" value={newItemSupplier} onChange={(e) => setNewItemSupplier(e.target.value)} />
+                  <Input placeholder="Prix estimé (€)" type="number" value={newItemPrice} onChange={(e) => setNewItemPrice(e.target.value)} />
+                  <Select value={newItemProjectId || "__none__"} onValueChange={(v) => setNewItemProjectId(v === "__none__" ? null : v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Projet" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sans projet</SelectItem>
+                      {projects.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nom || p.nom_proprietaire}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {pendingItems.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-                    <Package className="h-4 w-4" />À commander ({pendingItems.length})
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+                    <ShoppingCart className="h-4 w-4" />À commander ({pendingItems.length})
                   </h3>
                   <div className="space-y-2">
                     {pendingItems
@@ -696,11 +548,12 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                   </div>
                 </div>
               )}
+
               {orderedItems.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-blue-600 mb-2 flex items-center gap-2">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium flex items-center gap-2 text-blue-600">
                     <Package className="h-4 w-4" />
-                    Commandé ({orderedItems.length})
+                    En attente de livraison ({orderedItems.length})
                   </h3>
                   <div className="space-y-2">
                     {orderedItems.map((item) => (
@@ -709,14 +562,15 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                   </div>
                 </div>
               )}
+
               {receivedItems.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-green-600 flex items-center gap-2">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium flex items-center gap-2 text-green-600">
                       <PackageCheck className="h-4 w-4" />
                       Reçu ({receivedItems.length})
                     </h3>
-                    <Button variant="ghost" size="sm" className="text-xs text-destructive" onClick={clearReceived}>
+                    <Button variant="ghost" size="sm" onClick={clearReceived} className="text-xs text-muted-foreground">
                       <Trash2 className="h-3 w-3 mr-1" />
                       Vider
                     </Button>
@@ -726,6 +580,14 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                       <ItemRow key={item.id} item={item} />
                     ))}
                   </div>
+                </div>
+              )}
+
+              {filteredItems.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>Aucun article dans cette liste</p>
+                  <p className="text-sm mt-1">Ajoutez des articles à commander</p>
                 </div>
               )}
             </div>
