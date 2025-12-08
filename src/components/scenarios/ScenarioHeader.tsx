@@ -1,5 +1,6 @@
 // components/scenarios/ScenarioHeader.tsx
 // Header d'un scénario avec nom, badge principal et menu actions
+// ✅ AJOUT: Bouton Export vers Evoliz
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -14,15 +15,18 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings, Star, Copy, FileText, Trash2, Palette, Lock, Unlock, History } from "lucide-react";
+import { Settings, Star, Copy, FileText, Trash2, Palette, Lock, Unlock, History, Send } from "lucide-react";
 import { useScenarios } from "@/hooks/useScenarios";
 import { toast } from "sonner";
 import type { Scenario } from "@/types/scenarios";
+import ExportToEvolizDialog from "./ExportToEvolizDialog";
 
 interface ScenarioHeaderProps {
   scenario: Scenario;
   onScenarioChange: () => void;
   isLocked: boolean;
+  projectName?: string;
+  clientName?: string;
 }
 
 const COULEURS_PREDEFINES = [
@@ -36,11 +40,12 @@ const COULEURS_PREDEFINES = [
 
 const ICONES_PREDEFINIES = ["🔒", "📋", "⚡", "💰", "🎯", "⭐", "🚀", "💡"];
 
-const ScenarioHeader = ({ scenario, onScenarioChange, isLocked }: ScenarioHeaderProps) => {
+const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, clientName }: ScenarioHeaderProps) => {
   const { updateScenario, deleteScenario, promoteScenario, duplicateScenario, unlockScenario, clearDevisHistory } =
     useScenarios(scenario.project_id);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isCustomizeDialogOpen, setIsCustomizeDialogOpen] = useState(false);
+  const [isExportEvolizOpen, setIsExportEvolizOpen] = useState(false);
   const [newName, setNewName] = useState(scenario.nom);
   const [selectedCouleur, setSelectedCouleur] = useState(scenario.couleur);
   const [selectedIcone, setSelectedIcone] = useState(scenario.icone);
@@ -145,6 +150,19 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked }: ScenarioHeader
           </div>
         </div>
 
+        {/* Bouton Export Evoliz - visible seulement pour le scénario principal */}
+        {scenario.est_principal && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsExportEvolizOpen(true)}
+            className="mr-2 gap-2 border-blue-300 text-blue-600 hover:bg-blue-50"
+          >
+            <Send className="h-4 w-4" />
+            <span className="hidden sm:inline">Evoliz</span>
+          </Button>
+        )}
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">
@@ -165,6 +183,12 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked }: ScenarioHeader
             <DropdownMenuItem onClick={handleDuplicate}>
               <Copy className="h-4 w-4 mr-2" />
               Dupliquer
+            </DropdownMenuItem>
+
+            {/* Export Evoliz dans le menu aussi */}
+            <DropdownMenuItem onClick={() => setIsExportEvolizOpen(true)}>
+              <Send className="h-4 w-4 mr-2" />
+              Exporter vers Evoliz
             </DropdownMenuItem>
 
             {!scenario.est_principal && (
@@ -285,6 +309,17 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked }: ScenarioHeader
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog Export Evoliz */}
+      <ExportToEvolizDialog
+        isOpen={isExportEvolizOpen}
+        onClose={() => setIsExportEvolizOpen(false)}
+        scenarioId={scenario.id}
+        scenarioName={scenario.nom}
+        projectId={scenario.project_id}
+        projectName={projectName}
+        clientName={clientName}
+      />
     </>
   );
 };
