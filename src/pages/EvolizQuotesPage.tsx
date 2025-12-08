@@ -3,17 +3,36 @@
 // Basé sur la vraie structure API Evoliz
 // ============================================
 
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useEvolizConfig } from "@/hooks/useEvolizConfig";
-import { useEvolizQuotes } from "@/hooks/useEvolizQuotes";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useEvolizConfig } from '@/hooks/useEvolizConfig';
+import { useEvolizQuotes } from '@/hooks/useEvolizQuotes';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   ArrowLeft,
   Home,
@@ -25,27 +44,27 @@ import {
   Eye,
   AlertCircle,
   Settings,
-} from "lucide-react";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+} from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 // Helper pour formater les montants
-function formatAmount(value: any, currency = "EUR"): string {
-  const num = typeof value === "number" ? value : parseFloat(value) || 0;
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
+function formatAmount(value: any, currency = 'EUR'): string {
+  const num = typeof value === 'number' ? value : parseFloat(value) || 0;
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
     currency: currency,
   }).format(num);
 }
 
 // Helper pour formater la date
 function formatDate(dateString: string | null | undefined): string {
-  if (!dateString) return "-";
+  if (!dateString) return '-';
   try {
-    return new Date(dateString).toLocaleDateString("fr-FR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
     });
   } catch {
     return dateString;
@@ -54,25 +73,22 @@ function formatDate(dateString: string | null | undefined): string {
 
 // Badge de statut - adapté aux vrais statuts Evoliz
 function StatusBadge({ status }: { status: string }) {
-  const statusConfig: Record<
-    string,
-    { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }
-  > = {
-    draft: { label: "Brouillon", variant: "secondary" },
-    pending: { label: "En attente", variant: "outline" },
-    sent: { label: "Envoyé", variant: "default" },
-    accept: { label: "Accepté", variant: "default", className: "bg-green-500 text-white" },
-    accepted: { label: "Accepté", variant: "default", className: "bg-green-500 text-white" },
-    wait: { label: "En attente", variant: "outline" },
-    reject: { label: "Refusé", variant: "destructive" },
-    refused: { label: "Refusé", variant: "destructive" },
-    invoice: { label: "Facturé", variant: "default", className: "bg-blue-500 text-white" },
-    invoiced: { label: "Facturé", variant: "default", className: "bg-blue-500 text-white" },
-    close: { label: "Clôturé", variant: "secondary" },
-    order: { label: "Commandé", variant: "default" },
+  const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; className?: string }> = {
+    draft: { label: 'Brouillon', variant: 'secondary' },
+    pending: { label: 'En attente', variant: 'outline' },
+    sent: { label: 'Envoyé', variant: 'default' },
+    accept: { label: 'Accepté', variant: 'default', className: 'bg-green-500 text-white' },
+    accepted: { label: 'Accepté', variant: 'default', className: 'bg-green-500 text-white' },
+    wait: { label: 'En attente', variant: 'outline' },
+    reject: { label: 'Refusé', variant: 'destructive' },
+    refused: { label: 'Refusé', variant: 'destructive' },
+    invoice: { label: 'Facturé', variant: 'default', className: 'bg-blue-500 text-white' },
+    invoiced: { label: 'Facturé', variant: 'default', className: 'bg-blue-500 text-white' },
+    close: { label: 'Clôturé', variant: 'secondary' },
+    order: { label: 'Commandé', variant: 'default' },
   };
 
-  const config = statusConfig[status?.toLowerCase()] || { label: status || "Inconnu", variant: "secondary" as const };
+  const config = statusConfig[status?.toLowerCase()] || { label: status || 'Inconnu', variant: 'secondary' as const };
 
   return (
     <Badge variant={config.variant} className={config.className}>
@@ -84,10 +100,15 @@ function StatusBadge({ status }: { status: string }) {
 export default function EvolizQuotesPage() {
   const navigate = useNavigate();
   const { isConfigured, isLoading: configLoading } = useEvolizConfig();
-  const { quotes, isLoading, error, fetchQuotes } = useEvolizQuotes();
+  const { 
+    quotes, 
+    isLoading, 
+    error, 
+    fetchQuotes,
+  } = useEvolizQuotes();
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
 
   // Charger les devis au montage
@@ -98,14 +119,16 @@ export default function EvolizQuotesPage() {
   }, [isConfigured, fetchQuotes]);
 
   // Filtrer les devis
-  const filteredQuotes = quotes.filter((quote) => {
-    const matchesSearch =
+  const filteredQuotes = quotes.filter(quote => {
+    const matchesSearch = 
       !searchTerm ||
       quote.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       quote.object?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       quote.client?.name?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus = statusFilter === "all" || quote.status?.toLowerCase() === statusFilter.toLowerCase();
+    
+    const matchesStatus = 
+      statusFilter === 'all' || 
+      quote.status?.toLowerCase() === statusFilter.toLowerCase();
 
     return matchesSearch && matchesStatus;
   });
@@ -113,8 +136,8 @@ export default function EvolizQuotesPage() {
   // Calculer les stats
   const stats = {
     total: quotes.length,
-    accepted: quotes.filter((q) => q.status?.toLowerCase() === "accept").length,
-    pending: quotes.filter((q) => ["pending", "sent", "wait"].includes(q.status?.toLowerCase())).length,
+    accepted: quotes.filter(q => q.status?.toLowerCase() === 'accept').length,
+    pending: quotes.filter(q => ['pending', 'sent', 'wait'].includes(q.status?.toLowerCase())).length,
     totalAmount: quotes.reduce((sum, q) => sum + (q.total?.vat_include || 0), 0),
   };
 
@@ -133,7 +156,7 @@ export default function EvolizQuotesPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="flex items-center justify-between">
             <span>Evoliz n'est pas configuré. Configurez vos clés API pour accéder aux devis.</span>
-            <Button size="sm" onClick={() => navigate("/settings/evoliz")}>
+            <Button size="sm" onClick={() => navigate('/settings/evoliz')}>
               <Settings className="h-4 w-4 mr-2" />
               Configurer
             </Button>
@@ -152,7 +175,7 @@ export default function EvolizQuotesPage() {
           Retour
         </Button>
         <Separator orientation="vertical" className="h-6" />
-        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')} className="gap-2">
           <Home className="h-4 w-4" />
           Tableau de bord
         </Button>
@@ -165,10 +188,16 @@ export default function EvolizQuotesPage() {
             <FileText className="h-8 w-8" />
             Devis Evoliz
           </h1>
-          <p className="text-muted-foreground mt-2">{quotes.length} devis trouvés</p>
+          <p className="text-muted-foreground mt-2">
+            {quotes.length} devis trouvés
+          </p>
         </div>
         <Button onClick={() => fetchQuotes()} disabled={isLoading}>
-          {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
           Actualiser
         </Button>
       </div>
@@ -244,7 +273,9 @@ export default function EvolizQuotesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Liste des devis</CardTitle>
-          <CardDescription>{filteredQuotes.length} devis affichés</CardDescription>
+          <CardDescription>
+            {filteredQuotes.length} devis affichés
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -252,7 +283,9 @@ export default function EvolizQuotesPage() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : filteredQuotes.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">Aucun devis trouvé</div>
+            <div className="text-center py-12 text-muted-foreground">
+              Aucun devis trouvé
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -270,10 +303,18 @@ export default function EvolizQuotesPage() {
               <TableBody>
                 {filteredQuotes.map((quote) => (
                   <TableRow key={quote.quoteid}>
-                    <TableCell className="font-medium">{quote.document_number || quote.quoteid}</TableCell>
-                    <TableCell>{quote.client?.name || "-"}</TableCell>
-                    <TableCell className="max-w-xs truncate">{quote.object || "-"}</TableCell>
-                    <TableCell>{formatDate(quote.documentdate)}</TableCell>
+                    <TableCell className="font-medium">
+                      {quote.document_number || quote.quoteid}
+                    </TableCell>
+                    <TableCell>
+                      {quote.client?.name || '-'}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {quote.object || '-'}
+                    </TableCell>
+                    <TableCell>
+                      {formatDate(quote.documentdate)}
+                    </TableCell>
                     <TableCell>
                       <StatusBadge status={quote.status} />
                     </TableCell>
@@ -284,7 +325,11 @@ export default function EvolizQuotesPage() {
                       {formatAmount(quote.total?.vat_include, quote.default_currency?.code)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => setSelectedQuote(quote)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setSelectedQuote(quote)}
+                      >
                         <Eye className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -300,8 +345,12 @@ export default function EvolizQuotesPage() {
       <Dialog open={!!selectedQuote} onOpenChange={() => setSelectedQuote(null)}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Devis {selectedQuote?.document_number}</DialogTitle>
-            <DialogDescription>{selectedQuote?.client?.name}</DialogDescription>
+            <DialogTitle>
+              Devis {selectedQuote?.document_number}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedQuote?.client?.name}
+            </DialogDescription>
           </DialogHeader>
 
           {selectedQuote && (
@@ -309,16 +358,20 @@ export default function EvolizQuotesPage() {
               {/* Infos générales */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Date :</span> {formatDate(selectedQuote.documentdate)}
+                  <span className="text-muted-foreground">Date :</span>{' '}
+                  {formatDate(selectedQuote.documentdate)}
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Validité :</span> {selectedQuote.validity} jours
+                  <span className="text-muted-foreground">Validité :</span>{' '}
+                  {selectedQuote.validity} jours
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Statut :</span> <StatusBadge status={selectedQuote.status} />
+                  <span className="text-muted-foreground">Statut :</span>{' '}
+                  <StatusBadge status={selectedQuote.status} />
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Paiement :</span> {selectedQuote.term?.payterm?.label || "-"}
+                  <span className="text-muted-foreground">Paiement :</span>{' '}
+                  {selectedQuote.term?.payterm?.label || '-'}
                 </div>
               </div>
 
@@ -326,7 +379,9 @@ export default function EvolizQuotesPage() {
               {selectedQuote.object && (
                 <div>
                   <h4 className="font-medium mb-2">Objet</h4>
-                  <p className="text-sm text-muted-foreground">{selectedQuote.object}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedQuote.object}
+                  </p>
                 </div>
               )}
 
@@ -347,18 +402,21 @@ export default function EvolizQuotesPage() {
                       {selectedQuote.items.map((item: any, index: number) => (
                         <TableRow key={item.itemid || index}>
                           <TableCell>
-                            <div
+                            <div 
                               className="text-sm"
-                              dangerouslySetInnerHTML={{
-                                __html: (item.designation_clean || item.designation || "-").replace(/\n/g, "<br/>"),
-                              }}
+                              dangerouslySetInnerHTML={{ 
+                                __html: (item.designation_clean || item.designation || '-')
+                                  .replace(/\n/g, '<br/>') 
+                              }} 
                             />
                             {item.reference && (
-                              <div className="text-xs text-muted-foreground mt-1">Réf: {item.reference}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Réf: {item.reference}
+                              </div>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            {item.quantity} {item.unit || ""}
+                            {item.quantity} {item.unit || ''}
                           </TableCell>
                           <TableCell className="text-right">
                             {formatAmount(item.unit_price_vat_exclude, selectedQuote.default_currency?.code)}
@@ -392,10 +450,7 @@ export default function EvolizQuotesPage() {
                   {selectedQuote.total?.margin && (
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>Marge</span>
-                      <span>
-                        {formatAmount(selectedQuote.total.margin.amount)} (
-                        {selectedQuote.total.margin.percent?.toFixed(1)}%)
-                      </span>
+                      <span>{formatAmount(selectedQuote.total.margin.amount)} ({selectedQuote.total.margin.percent?.toFixed(1)}%)</span>
                     </div>
                   )}
                 </div>
@@ -405,14 +460,20 @@ export default function EvolizQuotesPage() {
               {selectedQuote.comment_clean && (
                 <div>
                   <h4 className="font-medium mb-2">Commentaire</h4>
-                  <p className="text-sm text-muted-foreground whitespace-pre-line">{selectedQuote.comment_clean}</p>
+                  <p className="text-sm text-muted-foreground whitespace-pre-line">
+                    {selectedQuote.comment_clean}
+                  </p>
                 </div>
               )}
 
               {/* Actions */}
               <div className="flex gap-2 pt-4">
                 <Button variant="outline" asChild className="flex-1">
-                  <a href={selectedQuote.webdoc} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={selectedQuote.webdoc}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Voir le PDF
                   </a>
