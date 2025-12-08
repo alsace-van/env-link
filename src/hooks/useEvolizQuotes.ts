@@ -31,9 +31,20 @@ interface UseEvolizQuotesReturn {
   getQuoteById: (quoteId: number) => EvolizQuote | undefined;
 }
 
-// Helper pour accéder aux tables Evoliz (non typées dans Supabase)
-const getEvolizTable = (tableName: string) => {
-  return (supabase as any).from(tableName);
+// LocalStorage keys
+const QUOTES_CACHE_KEY = "evoliz_quotes_cache";
+
+const loadCacheFromStorage = (userId: string): EvolizQuoteCache[] => {
+  try {
+    const stored = localStorage.getItem(`${QUOTES_CACHE_KEY}_${userId}`);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveCacheToStorage = (userId: string, cache: EvolizQuoteCache[]) => {
+  localStorage.setItem(`${QUOTES_CACHE_KEY}_${userId}`, JSON.stringify(cache));
 };
 
 export function useEvolizQuotes(): UseEvolizQuotesReturn {
@@ -224,14 +235,15 @@ export function useEvolizQuotes(): UseEvolizQuotesReturn {
     [fetchQuote, toast],
   );
 
-  // Synchroniser les devis vers le cache Supabase
+  // Synchroniser les devis vers le cache localStorage
   const syncQuotesToCache = useCallback(async () => {
     if (!userId || quotes.length === 0) return;
 
     setIsSyncing(true);
 
     try {
-      const cacheEntries = quotes.map((quote) => ({
+      const cacheEntries: EvolizQuoteCache[] = quotes.map((quote) => ({
+        id: `${userId}_${quote.quoteid}`,
         user_id: userId,
         evoliz_quote_id: quote.quoteid,
         evoliz_client_id: quote.clientid,
@@ -245,22 +257,17 @@ export function useEvolizQuotes(): UseEvolizQuotesReturn {
         validity_date: quote.duedate,
         raw_data: quote,
         synced_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }));
 
-      // Upsert pour éviter les doublons
-      const { error } = await getEvolizTable("evoliz_quotes_cache").upsert(cacheEntries, {
-        onConflict: "user_id,evoliz_quote_id",
-      });
-
-      if (error) throw error;
+      saveCacheToStorage(userId, cacheEntries);
+      setCachedQuotes(cacheEntries);
 
       toast({
         title: "Synchronisation terminée",
         description: `${quotes.length} devis synchronisés`,
       });
-
-      // Recharger le cache
-      await getCachedQuotes();
     } catch (err) {
       console.error("Erreur sync:", err);
       toast({
@@ -273,23 +280,19 @@ export function useEvolizQuotes(): UseEvolizQuotesReturn {
     }
   }, [userId, quotes, toast]);
 
-  // Récupérer les devis en cache (Supabase)
+  // Récupérer les devis en cache (localStorage)
   const getCachedQuotes = useCallback(async () => {
     if (!userId) return;
-
-    try {
-      const { data, error } = await getEvolizTable("evoliz_quotes_cache")
-        .select("*")
-        .eq("user_id", userId)
-        .order("issue_date", { ascending: false });
-
-      if (error) throw error;
-
-      setCachedQuotes((data || []) as EvolizQuoteCache[]);
-    } catch (err) {
-      console.error("Erreur chargement cache:", err);
-    }
+    const storedCache = loadCacheFromStorage(userId);
+    setCachedQuotes(storedCache);
   }, [userId]);
+
+  // Charger le cache au démarrage
+  useEffect(() => {
+    if (userId) {
+      getCachedQuotes();
+    }
+  }, [userId, getCachedQuotes]);
 
   // Lier un devis à un projet VPB
   const linkQuoteToProject = useCallback(
@@ -297,15 +300,13 @@ export function useEvolizQuotes(): UseEvolizQuotesReturn {
       if (!userId) return false;
 
       try {
-        const { error } = await getEvolizTable("evoliz_quotes_cache")
-          .update({ project_id: projectId })
-          .eq("user_id", userId)
-          .eq("evoliz_quote_id", quoteId);
+        const currentCache = loadCacheFromStorage(userId);
+        const updatedCache = currentCache.map((q) =>
+          q.evoliz_quote_id === quoteId ? { ...q, project_id: projectId } : q
+        );
 
-        if (error) throw error;
-
-        // Rafraîchir le cache
-        await getCachedQuotes();
+        saveCacheToStorage(userId, updatedCache);
+        setCachedQuotes(updatedCache);
 
         toast({
           title: "Succès",
@@ -323,7 +324,7 @@ export function useEvolizQuotes(): UseEvolizQuotesReturn {
         return false;
       }
     },
-    [userId, getCachedQuotes, toast],
+    [userId, toast],
   );
 
   // Helper pour trouver un devis

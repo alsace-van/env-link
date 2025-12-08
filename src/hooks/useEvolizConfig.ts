@@ -1,6 +1,6 @@
 // ============================================
 // HOOK useEvolizConfig
-// Gestion des credentials Evoliz
+// Gestion des credentials Evoliz (localStorage)
 // ============================================
 
 import { useState, useEffect, useCallback } from "react";
@@ -21,9 +21,24 @@ interface UseEvolizConfigReturn {
   refreshCredentials: () => Promise<void>;
 }
 
-// Helper pour accéder aux tables Evoliz (non typées dans Supabase)
-const getEvolizTable = (tableName: string) => {
-  return (supabase as any).from(tableName);
+// LocalStorage key
+const CREDENTIALS_STORAGE_KEY = "evoliz_credentials";
+
+const loadCredentialsFromStorage = (userId: string): EvolizCredentials | null => {
+  try {
+    const stored = localStorage.getItem(`${CREDENTIALS_STORAGE_KEY}_${userId}`);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveCredentialsToStorage = (userId: string, credentials: EvolizCredentials) => {
+  localStorage.setItem(`${CREDENTIALS_STORAGE_KEY}_${userId}`, JSON.stringify(credentials));
+};
+
+const deleteCredentialsFromStorage = (userId: string) => {
+  localStorage.removeItem(`${CREDENTIALS_STORAGE_KEY}_${userId}`);
 };
 
 export function useEvolizConfig(): UseEvolizConfigReturn {
@@ -62,21 +77,12 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
     }
 
     try {
-      const { data, error } = await getEvolizTable("evoliz_credentials")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("is_active", true)
-        .single();
+      const storedCredentials = loadCredentialsFromStorage(userId);
 
-      if (error && error.code !== "PGRST116") {
-        // PGRST116 = no rows found, c'est OK
-        console.error("Erreur chargement credentials Evoliz:", error);
-      }
-
-      if (data) {
-        setCredentials(data as EvolizCredentials);
+      if (storedCredentials) {
+        setCredentials(storedCredentials);
         // Initialiser le service API
-        initializeEvolizApi(data as EvolizCredentials);
+        initializeEvolizApi(storedCredentials);
       }
     } catch (err) {
       console.error("Erreur:", err);
@@ -108,25 +114,20 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
       setIsLoading(true);
 
       try {
-        // Désactiver les anciens credentials
-        await getEvolizTable("evoliz_credentials").update({ is_active: false }).eq("user_id", userId);
+        const newCredentials: EvolizCredentials = {
+          id: `${userId}_credentials`,
+          user_id: userId,
+          company_id: input.company_id,
+          public_key: input.public_key,
+          secret_key: input.secret_key,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
 
-        // Créer les nouveaux
-        const { data, error } = await getEvolizTable("evoliz_credentials")
-          .insert({
-            user_id: userId,
-            company_id: input.company_id,
-            public_key: input.public_key,
-            secret_key: input.secret_key,
-            is_active: true,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        setCredentials(data as EvolizCredentials);
-        initializeEvolizApi(data as EvolizCredentials);
+        saveCredentialsToStorage(userId, newCredentials);
+        setCredentials(newCredentials);
+        initializeEvolizApi(newCredentials);
 
         toast({
           title: "Succès",
@@ -163,14 +164,15 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
       const result = await evolizApi.testConnection();
       setTestResult(result);
 
-      // Mettre à jour le statut du test en base
-      if (credentials?.id) {
-        await getEvolizTable("evoliz_credentials")
-          .update({
-            last_test_at: new Date().toISOString(),
-            last_test_success: result.success,
-          })
-          .eq("id", credentials.id);
+      // Mettre à jour le statut du test en localStorage
+      if (credentials && userId) {
+        const updatedCredentials = {
+          ...credentials,
+          last_test_at: new Date().toISOString(),
+          last_test_success: result.success,
+        };
+        saveCredentialsToStorage(userId, updatedCredentials);
+        setCredentials(updatedCredentials);
       }
 
       if (result.success) {
@@ -199,17 +201,14 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
     } finally {
       setIsTesting(false);
     }
-  }, [credentials?.id, toast]);
+  }, [credentials, userId, toast]);
 
   // Supprimer les credentials
   const deleteCredentials = useCallback(async (): Promise<boolean> => {
-    if (!credentials?.id) return false;
+    if (!userId) return false;
 
     try {
-      const { error } = await getEvolizTable("evoliz_credentials").delete().eq("id", credentials.id);
-
-      if (error) throw error;
-
+      deleteCredentialsFromStorage(userId);
       setCredentials(null);
       evolizApi.clearConfig();
       setTestResult(null);
@@ -229,7 +228,7 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
       });
       return false;
     }
-  }, [credentials?.id, toast]);
+  }, [userId, toast]);
 
   return {
     credentials,
