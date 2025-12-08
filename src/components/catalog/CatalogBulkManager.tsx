@@ -431,8 +431,8 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
 
       {/* Dialog confirmation suppression */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="h-5 w-5" />
               Confirmer la suppression
@@ -443,21 +443,23 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground">Articles sélectionnés :</p>
-            <ul className="mt-2 max-h-[300px] overflow-y-auto text-sm space-y-1 border rounded-lg p-3 bg-muted/30">
-              {filteredItems
-                .filter((item) => selectedIds.has(item.id))
-                .map((item) => (
-                  <li key={item.id} className="flex items-center gap-2">
-                    <span className="text-red-500">•</span>
-                    <span className="truncate flex-1">{item.nom}</span>
-                  </li>
-                ))}
-            </ul>
+          <div className="flex-1 overflow-hidden py-4">
+            <p className="text-sm text-muted-foreground mb-2">Articles sélectionnés :</p>
+            <div className="max-h-[250px] overflow-y-auto overflow-x-auto border rounded-lg p-3 bg-muted/30">
+              <ul className="text-sm space-y-1 min-w-0">
+                {filteredItems
+                  .filter((item) => selectedIds.has(item.id))
+                  .map((item) => (
+                    <li key={item.id} className="flex items-center gap-2">
+                      <span className="text-red-500 flex-shrink-0">•</span>
+                      <span className="whitespace-nowrap">{item.nom}</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex-shrink-0 border-t pt-4">
             <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
               Annuler
             </Button>
@@ -470,7 +472,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
               ) : (
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Supprimer définitivement
+                  Supprimer ({selectedIds.size})
                 </>
               )}
             </Button>
