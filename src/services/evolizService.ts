@@ -243,6 +243,56 @@ class EvolizApiService {
     });
   }
 
+  async createArticle(article: {
+    reference: string;
+    designation: string;
+    unit_price_vat_exclude: number;
+    vat_rate?: number;
+    unit?: string;
+    comment?: string | null;
+  }): Promise<EvolizArticle> {
+    debugLog("Création article Evoliz:", article);
+    return this.callProxy<EvolizArticle>({
+      endpoint: "/articles",
+      method: "POST",
+      body: {
+        reference: article.reference,
+        designation: article.designation,
+        unit_price_vat_exclude: article.unit_price_vat_exclude,
+        vat_rate: article.vat_rate || 20,
+        unit: article.unit || "u",
+        comment: article.comment || null,
+      },
+    });
+  }
+
+  async updateArticle(
+    articleId: number,
+    article: {
+      reference?: string;
+      designation?: string;
+      unit_price_vat_exclude?: number;
+      vat_rate?: number;
+      unit?: string;
+      comment?: string | null;
+    },
+  ): Promise<EvolizArticle> {
+    debugLog("Mise à jour article Evoliz:", articleId, article);
+    return this.callProxy<EvolizArticle>({
+      endpoint: `/articles/${articleId}`,
+      method: "PUT",
+      body: article,
+    });
+  }
+
+  async deleteArticle(articleId: number): Promise<void> {
+    debugLog("Suppression article Evoliz:", articleId);
+    await this.callProxy<void>({
+      endpoint: `/articles/${articleId}`,
+      method: "DELETE",
+    });
+  }
+
   // --- SUPPLIERS ---
 
   async getSuppliers(params?: {
@@ -287,6 +337,9 @@ class EvolizApiService {
     });
   }
 
+  // Note: uploadBuyAttachment nécessiterait une gestion spéciale des fichiers
+  // Pour l'instant, on ne le supporte pas via le proxy
+
   // --- CLASSIFICATIONS ---
 
   async getSaleClassifications(): Promise<EvolizApiResponse<EvolizSaleClassification[]>> {
@@ -327,9 +380,6 @@ export class EvolizError extends Error {
 // --- SINGLETON INSTANCE ---
 
 export const evolizApi = new EvolizApiService();
-
-// ✅ ALIAS pour compatibilité avec les imports existants
-export const evolizService = evolizApi;
 
 // --- HELPER FUNCTIONS ---
 
