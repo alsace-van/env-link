@@ -32,11 +32,13 @@ import {
   ExternalLink,
   AlertCircle,
   Check,
+  BookPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
 import { useEvolizQuotes } from "@/hooks/useEvolizQuotes";
 import { useHourlyRate } from "@/hooks/useHourlyRate";
+import { Label } from "@/components/ui/label";
 
 type LineDestination = "scenario" | "travaux" | "ignore";
 
@@ -97,6 +99,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
   const [lines, setLines] = useState<QuoteLine[]>([]);
+  const [addToCatalog, setAddToCatalog] = useState(true); // Ajouter au catalogue par défaut
 
   // Charger les devis quand on ouvre
   useEffect(() => {
@@ -173,7 +176,50 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
-      // 1. Importer matériel dans project_expenses
+      // 1. Ajouter au catalogue si option activée (seulement les lignes matériel)
+      let catalogItemsCreated = 0;
+      if (addToCatalog && scenarioLines.length > 0) {
+        // Récupérer les noms des articles existants dans le catalogue
+        const { data: existingItems } = await (supabase as any)
+          .from("accessories_catalog")
+          .select("nom")
+          .eq("user_id", user.id);
+
+        const existingNames = new Set((existingItems || []).map((item: any) => item.nom.toLowerCase().trim()));
+
+        // Filtrer les articles qui n'existent pas encore
+        const newCatalogItems = scenarioLines
+          .filter((line) => {
+            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
+            return !existingNames.has(cleanName.toLowerCase());
+          })
+          .map((line) => {
+            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
+            const prixVenteTTC = line.unit_price_vat_exclude * 1.2;
+            return {
+              user_id: user.id,
+              nom: cleanName,
+              prix_vente_ttc: prixVenteTTC,
+              prix_reference: line.unit_price_vat_exclude, // Prix HT comme référence
+              description: `Importé depuis devis Evoliz ${selectedQuote.document_number}`,
+              fournisseur: "Import Evoliz",
+              available_in_shop: false,
+            };
+          });
+
+        if (newCatalogItems.length > 0) {
+          const { error: catalogError } = await (supabase as any).from("accessories_catalog").insert(newCatalogItems);
+
+          if (catalogError) {
+            console.warn("Erreur ajout catalogue:", catalogError);
+            // On continue quand même l'import
+          } else {
+            catalogItemsCreated = newCatalogItems.length;
+          }
+        }
+      }
+
+      // 2. Importer matériel dans project_expenses
       if (scenarioLines.length > 0) {
         const expenses = scenarioLines.map((line) => ({
           project_id: projectId,
@@ -258,14 +304,19 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         lignes_importees: selectedLines.length,
       });
 
-      return { scenarioCount: scenarioLines.length, travauxCount: travauxLines.length };
+      return { scenarioCount: scenarioLines.length, travauxCount: travauxLines.length, catalogItemsCreated };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
       queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
       queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["accessories-catalog"] });
 
-      toast.success(`Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`);
+      let message = `Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`;
+      if (result.catalogItemsCreated > 0) {
+        message += ` • ${result.catalogItemsCreated} ajouté(s) au catalogue`;
+      }
+      toast.success(message);
 
       handleClose();
       onImportComplete?.();
@@ -466,6 +517,22 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                   </div>
                 </div>
               </div>
+
+              {/* Option ajout au catalogue */}
+              {scenarioLines.length > 0 && (
+                <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Checkbox
+                    id="add-to-catalog"
+                    checked={addToCatalog}
+                    onCheckedChange={(checked) => setAddToCatalog(checked as boolean)}
+                  />
+                  <Label htmlFor="add-to-catalog" className="flex items-center gap-2 cursor-pointer text-sm">
+                    <BookPlus className="h-4 w-4 text-blue-600" />
+                    <span>Ajouter les nouveaux articles au catalogue</span>
+                    <span className="text-xs text-muted-foreground">(articles matériel uniquement)</span>
+                  </Label>
+                </div>
+              )}
 
               {selectedLines.length === 0 && (
                 <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
