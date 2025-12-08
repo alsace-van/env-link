@@ -1,6 +1,6 @@
 // ============================================
-// TYPES EVOLIZ API
-// Types pour l'intégration avec l'API Evoliz
+// TYPES EVOLIZ API - CORRIGÉS
+// Basés sur la vraie structure de l'API Evoliz
 // ============================================
 
 // --- CREDENTIALS ---
@@ -46,31 +46,34 @@ export interface EvolizApiError {
 
 export interface EvolizClient {
   clientid: number;
+  code?: string;
   civility: string | null;
   name: string;
-  address: {
+  contact?: string | null;
+  address?: {
     postcode: string;
     town: string;
     country: string;
-    iso2: string;
+    iso2?: string;
     addr: string;
   };
-  email: string | null;
-  phone: string | null;
-  mobile: string | null;
-  type: "Professionnel" | "Particulier";
-  siret: string | null;
-  vat_number: string | null;
-  comment: string | null;
-  payment_term: number;
-  created_at: string;
-  updated_at: string;
+  delivery_address?: any | null;
+  email?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  type?: "Professionnel" | "Particulier";
+  siret?: string | null;
+  vat_number?: string | null;
+  comment?: string | null;
+  payment_term?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface EvolizClientInput {
   civility?: string;
   name: string;
-  type: "Professionnel" | "Particulier";
+  type?: "Professionnel" | "Particulier";
   addr?: string;
   postcode?: string;
   town?: string;
@@ -99,70 +102,159 @@ export interface EvolizContact {
   comment: string | null;
 }
 
-// --- QUOTES (DEVIS) ---
+// --- CURRENCY ---
+
+export interface EvolizCurrency {
+  code: string;
+  conversion: number;
+  symbol: string;
+}
+
+// --- TOTAL STRUCTURE (vraie structure Evoliz) ---
+
+export interface EvolizTotal {
+  rebate?: {
+    amount_vat_exclude: number;
+  };
+  vat_exclude: number; // Total HT
+  vat: number; // Montant TVA
+  vat_include: number; // Total TTC
+  // Anciens champs pour compatibilité
+  totalht?: number;
+  totaltax?: number;
+  totalttc?: number;
+  net_to_pay?: number;
+  margin?: {
+    purchase_price_vat_exclude?: number;
+    percent?: number;
+    margin_percent?: number;
+    markup_percent?: number;
+    amount?: number;
+  };
+}
+
+// --- QUOTES (DEVIS) - Structure réelle ---
 
 export interface EvolizQuote {
   quoteid: number;
-  documentid: string; // Ex: "DE-2024-0001"
-  clientid: number;
-  client: EvolizClient;
-  label: string | null;
-  object: string | null;
-  status: EvolizQuoteStatus;
-  execdate: string | null; // Date d'exécution prévue
-  duedate: string | null; // Date de validité
-  documentdate: string; // Date du devis
-  currency: string;
-  total: {
-    totalht: number;
-    totaltax: number;
-    totalttc: number;
+  document_number: string; // Ex: "D-20250000066"
+  documentid?: string; // Ancien format pour compatibilité
+  userid?: number;
+  prospect?: any | null;
+  organization?: string;
+  clientid?: number;
+  client: {
+    clientid: number;
+    code?: string;
+    name: string;
+    civility?: string;
+    contact?: string | null;
+    delivery_address?: any | null;
   };
+  default_currency?: EvolizCurrency;
+  document_currency?: any | null;
+  total: EvolizTotal;
+  currency_total?: any | null;
+  status_code?: number;
+  status: string; // "draft", "sent", "accept", "reject", "invoice", etc.
+  status_dates?: {
+    create?: string;
+    sent?: string;
+    accept?: string;
+    wait?: string;
+    reject?: string;
+    order?: string;
+    pack?: string;
+    invoice?: string;
+    close?: string;
+  };
+  label?: string | null;
+  object?: string | null;
+  documentdate: string;
+  duedate?: string | null;
+  execdate?: string | null;
+  delivery_date?: string | null;
+  validity?: number;
+  term?: {
+    penalty?: number;
+    nopenalty?: boolean;
+    recovery_indemnity?: boolean;
+    discount_term?: number;
+    no_discount_term?: boolean;
+    paytype?: {
+      paytypeid: number;
+      label: string;
+    };
+    payterm?: {
+      paytermid: number;
+      label: string;
+    };
+  };
+  comment?: string | null;
+  comment_clean?: string | null;
+  external_document_number?: string | null;
+  enabled?: boolean;
+  file?: string;
+  links?: string;
+  webdoc?: string;
   items: EvolizQuoteItem[];
-  comment: string | null;
-  comment_internal: string | null;
-  term: {
-    paytermid: number;
+  prices_include_vat?: boolean;
+  template?: {
+    templateid: number;
     label: string;
-    days: number;
-  } | null;
-  created_at: string;
-  updated_at: string;
+  };
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type EvolizQuoteStatus =
   | "draft" // Brouillon
   | "sent" // Envoyé
-  | "accepted" // Accepté
-  | "refused" // Refusé
-  | "invoiced"; // Facturé
+  | "wait" // En attente
+  | "accept" // Accepté
+  | "accepted" // Accepté (alias)
+  | "reject" // Refusé
+  | "refused" // Refusé (alias)
+  | "order" // Commandé
+  | "invoice" // Facturé
+  | "invoiced" // Facturé (alias)
+  | "close"; // Clôturé
 
 export interface EvolizQuoteItem {
   itemid: number;
-  quoteid: number;
-  articleid: number | null;
+  articleid?: number | null;
+  reference?: string;
+  reference_clean?: string;
   designation: string;
+  designation_clean?: string;
   quantity: number;
-  unit: string | null;
+  type?: string;
+  unit?: string;
   unit_price_vat_exclude: number;
-  discount_percent: number;
-  vat_rate: number;
-  total_vat_exclude: number;
-  classification: {
-    saleclassificationid: number;
+  unit_price_vat_exclude_currency?: number | null;
+  vat?: number;
+  total: EvolizTotal;
+  currency_total?: any | null;
+  sale_classification?: {
+    id: number;
     code: string;
     label: string;
-  } | null;
-  sort_order: number;
+  };
+  // Anciens champs pour compatibilité
+  discount_percent?: number;
+  vat_rate?: number;
+  total_vat_exclude?: number;
+  sort_order?: number;
 }
 
 export interface EvolizQuoteInput {
   clientid: number;
   label?: string;
   object?: string;
-  documentdate?: string; // Format YYYY-MM-DD
+  documentdate?: string;
   duedate?: string;
   execdate?: string;
+  validity?: number;
   currency?: string;
   comment?: string;
   comment_internal?: string;
@@ -177,6 +269,7 @@ export interface EvolizQuoteItemInput {
   unit?: string;
   unit_price_vat_exclude: number;
   discount_percent?: number;
+  vat?: number;
   vat_rate?: number;
   saleclassificationid?: number;
 }
@@ -188,16 +281,18 @@ export interface EvolizArticle {
   reference: string;
   designation: string;
   unit_price_vat_exclude: number;
-  vat_rate: number;
+  vat_rate?: number;
+  vat?: number;
   unit: string | null;
-  classification: {
-    saleclassificationid: number;
+  classification?: {
+    saleclassificationid?: number;
+    id?: number;
     code: string;
     label: string;
   } | null;
   comment: string | null;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // --- SUPPLIERS (FOURNISSEURS) ---
@@ -205,17 +300,17 @@ export interface EvolizArticle {
 export interface EvolizSupplier {
   supplierid: number;
   name: string;
-  address: {
+  address?: {
     postcode: string;
     town: string;
     country: string;
     addr: string;
   };
-  email: string | null;
-  phone: string | null;
-  siret: string | null;
-  vat_number: string | null;
-  comment: string | null;
+  email?: string | null;
+  phone?: string | null;
+  siret?: string | null;
+  vat_number?: string | null;
+  comment?: string | null;
 }
 
 // --- BUYS (ACHATS/DÉPENSES) ---
@@ -223,30 +318,28 @@ export interface EvolizSupplier {
 export interface EvolizBuy {
   buyid: number;
   supplierid: number;
-  supplier: EvolizSupplier;
-  external_document_number: string | null;
+  supplier?: EvolizSupplier;
+  external_document_number?: string | null;
   documentdate: string;
-  duedate: string | null;
-  label: string | null;
-  total: {
-    totalht: number;
-    totaltax: number;
-    totalttc: number;
-  };
-  currency: string;
-  status: "draft" | "validated" | "paid";
-  items: EvolizBuyItem[];
-  created_at: string;
-  updated_at: string;
+  duedate?: string | null;
+  label?: string | null;
+  total: EvolizTotal;
+  currency?: string;
+  status?: "draft" | "validated" | "paid";
+  items?: EvolizBuyItem[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface EvolizBuyItem {
   designation: string;
   quantity: number;
   unit_price_vat_exclude: number;
-  vat_rate: number;
-  classification: {
-    purchaseclassificationid: number;
+  vat_rate?: number;
+  vat?: number;
+  classification?: {
+    purchaseclassificationid?: number;
+    id?: number;
     code: string;
     label: string;
   } | null;
@@ -267,33 +360,36 @@ export interface EvolizBuyItemInput {
   quantity: number;
   unit_price_vat_exclude: number;
   vat_rate?: number;
+  vat?: number;
   purchaseclassificationid?: number;
 }
 
 // --- CLASSIFICATIONS ---
 
 export interface EvolizSaleClassification {
-  saleclassificationid: number;
+  saleclassificationid?: number;
+  id?: number;
   code: string;
   label: string;
-  enabled: boolean;
+  enabled?: boolean;
 }
 
 export interface EvolizPurchaseClassification {
-  purchaseclassificationid: number;
+  purchaseclassificationid?: number;
+  id?: number;
   code: string;
   label: string;
-  enabled: boolean;
+  enabled?: boolean;
 }
 
 // --- PAYMENT TERMS ---
 
 export interface EvolizPaymentTerm {
   paytermid: number;
-  code: string;
+  code?: string;
   label: string;
-  days: number;
-  end_month: boolean;
+  days?: number;
+  end_month?: boolean;
 }
 
 // --- CACHE TYPES (pour Supabase) ---
@@ -334,18 +430,30 @@ export interface EvolizClientMapping {
 
 // --- HELPERS ---
 
-export const EVOLIZ_QUOTE_STATUS_LABELS: Record<EvolizQuoteStatus, string> = {
+export const EVOLIZ_QUOTE_STATUS_LABELS: Record<string, string> = {
   draft: "Brouillon",
   sent: "Envoyé",
+  wait: "En attente",
+  accept: "Accepté",
   accepted: "Accepté",
+  reject: "Refusé",
   refused: "Refusé",
+  order: "Commandé",
+  invoice: "Facturé",
   invoiced: "Facturé",
+  close: "Clôturé",
 };
 
-export const EVOLIZ_QUOTE_STATUS_COLORS: Record<EvolizQuoteStatus, string> = {
+export const EVOLIZ_QUOTE_STATUS_COLORS: Record<string, string> = {
   draft: "gray",
   sent: "blue",
+  wait: "orange",
+  accept: "green",
   accepted: "green",
+  reject: "red",
   refused: "red",
-  invoiced: "purple",
+  order: "purple",
+  invoice: "indigo",
+  invoiced: "indigo",
+  close: "gray",
 };
