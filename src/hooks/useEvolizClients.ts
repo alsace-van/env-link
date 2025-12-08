@@ -34,20 +34,9 @@ interface UseEvolizClientsReturn {
   getMappingByVPBId: (vpbClientId: string) => EvolizClientMapping | undefined;
 }
 
-// LocalStorage keys
-const MAPPINGS_STORAGE_KEY = "evoliz_clients_mapping";
-
-const loadMappingsFromStorage = (userId: string): EvolizClientMapping[] => {
-  try {
-    const stored = localStorage.getItem(`${MAPPINGS_STORAGE_KEY}_${userId}`);
-    return stored ? JSON.parse(stored) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveMappingsToStorage = (userId: string, mappings: EvolizClientMapping[]) => {
-  localStorage.setItem(`${MAPPINGS_STORAGE_KEY}_${userId}`, JSON.stringify(mappings));
+// Helper pour accéder aux tables Evoliz (non typées dans Supabase)
+const getEvolizTable = (tableName: string) => {
+  return (supabase as any).from(tableName);
 };
 
 export function useEvolizClients(): UseEvolizClientsReturn {
@@ -234,19 +223,20 @@ export function useEvolizClients(): UseEvolizClientsReturn {
     [toast],
   );
 
-  // Récupérer les mappings VPB <-> Evoliz (localStorage)
+  // Récupérer les mappings VPB <-> Evoliz
   const getMappings = useCallback(async () => {
     if (!userId) return;
-    const storedMappings = loadMappingsFromStorage(userId);
-    setMappings(storedMappings);
-  }, [userId]);
 
-  // Charger les mappings au démarrage
-  useEffect(() => {
-    if (userId) {
-      getMappings();
+    try {
+      const { data, error } = await getEvolizTable("evoliz_clients_mapping").select("*").eq("user_id", userId);
+
+      if (error) throw error;
+
+      setMappings((data || []) as EvolizClientMapping[]);
+    } catch (err) {
+      console.error("Erreur chargement mappings:", err);
     }
-  }, [userId, getMappings]);
+  }, [userId]);
 
   // Lier un client Evoliz à un client VPB existant
   const linkClientToVPB = useCallback(
@@ -256,30 +246,24 @@ export function useEvolizClients(): UseEvolizClientsReturn {
       const evolizClient = clients.find((c) => c.clientid === evolizClientId);
 
       try {
-        const newMapping: EvolizClientMapping = {
-          id: `${userId}_${evolizClientId}`,
-          user_id: userId,
-          vpb_client_id: vpbClientId,
-          evoliz_client_id: evolizClientId,
-          evoliz_client_name: evolizClient?.name,
-          evoliz_client_email: evolizClient?.email,
-          sync_direction: "both",
-          last_synced_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
+        const { error } = await getEvolizTable("evoliz_clients_mapping").upsert(
+          {
+            user_id: userId,
+            vpb_client_id: vpbClientId,
+            evoliz_client_id: evolizClientId,
+            evoliz_client_name: evolizClient?.name,
+            evoliz_client_email: evolizClient?.email,
+            sync_direction: "both",
+            last_synced_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id,evoliz_client_id",
+          },
+        );
 
-        const currentMappings = loadMappingsFromStorage(userId);
-        const existingIndex = currentMappings.findIndex((m) => m.evoliz_client_id === evolizClientId);
-        
-        if (existingIndex >= 0) {
-          currentMappings[existingIndex] = newMapping;
-        } else {
-          currentMappings.push(newMapping);
-        }
+        if (error) throw error;
 
-        saveMappingsToStorage(userId, currentMappings);
-        setMappings(currentMappings);
+        await getMappings();
 
         toast({
           title: "Succès",
@@ -297,7 +281,7 @@ export function useEvolizClients(): UseEvolizClientsReturn {
         return false;
       }
     },
-    [userId, clients, toast],
+    [userId, clients, getMappings, toast],
   );
 
   // Délier un client
@@ -306,11 +290,14 @@ export function useEvolizClients(): UseEvolizClientsReturn {
       if (!userId) return false;
 
       try {
-        const currentMappings = loadMappingsFromStorage(userId);
-        const updatedMappings = currentMappings.filter((m) => m.evoliz_client_id !== evolizClientId);
-        
-        saveMappingsToStorage(userId, updatedMappings);
-        setMappings(updatedMappings);
+        const { error } = await getEvolizTable("evoliz_clients_mapping")
+          .delete()
+          .eq("user_id", userId)
+          .eq("evoliz_client_id", evolizClientId);
+
+        if (error) throw error;
+
+        await getMappings();
 
         toast({
           title: "Succès",
@@ -323,7 +310,7 @@ export function useEvolizClients(): UseEvolizClientsReturn {
         return false;
       }
     },
-    [userId, toast],
+    [userId, getMappings, toast],
   );
 
   // Importer un client Evoliz dans VPB
