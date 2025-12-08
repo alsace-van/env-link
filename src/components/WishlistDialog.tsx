@@ -118,7 +118,7 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     try {
       const storedCategories = localStorage.getItem(STORAGE_KEY_CATEGORIES);
       const storedItems = localStorage.getItem(STORAGE_KEY_ITEMS);
-      
+
       if (storedCategories) {
         setCategories(JSON.parse(storedCategories));
       }
@@ -351,7 +351,7 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 py-4 border-b flex-shrink-0">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between pr-8">
             <DialogTitle className="flex items-center gap-2">
               <ShoppingCart className="h-5 w-5" />
               Liste de souhaits
@@ -367,17 +367,22 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                 value={projectFilter || "__all__"}
                 onValueChange={(value) => setProjectFilter(value === "__all__" ? null : value)}
               >
-                <SelectTrigger className="w-[200px] h-8">
+                <SelectTrigger className="w-[180px] h-8">
                   <SelectValue placeholder="Tous les projets" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all__">Tous les projets</SelectItem>
                   <SelectItem value="__none__">Sans projet</SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.nom || project.nom_proprietaire}
-                    </SelectItem>
-                  ))}
+                  {projects.length > 0 && (
+                    <>
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground border-t mt-1">Projets</div>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          📁 {project.nom || project.nom_proprietaire}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -415,7 +420,12 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                         if (e.key === "Escape") setEditingCategoryId(null);
                       }}
                     />
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateCategory(cat.id, editingCategoryName)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => updateCategory(cat.id, editingCategoryName)}
+                    >
                       <Check className="h-3 w-3" />
                     </Button>
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingCategoryId(null)}>
@@ -447,7 +457,12 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                       >
                         <Edit2 className="h-3 w-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => deleteCategory(cat.id)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-destructive"
+                        onClick={() => deleteCategory(cat.id)}
+                      >
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
@@ -515,10 +530,26 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
 
               {showAdvancedAdd && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-3 bg-muted/30 rounded-lg">
-                  <Input placeholder="URL du produit" value={newItemUrl} onChange={(e) => setNewItemUrl(e.target.value)} />
-                  <Input placeholder="Fournisseur" value={newItemSupplier} onChange={(e) => setNewItemSupplier(e.target.value)} />
-                  <Input placeholder="Prix estimé (€)" type="number" value={newItemPrice} onChange={(e) => setNewItemPrice(e.target.value)} />
-                  <Select value={newItemProjectId || "__none__"} onValueChange={(v) => setNewItemProjectId(v === "__none__" ? null : v)}>
+                  <Input
+                    placeholder="URL du produit"
+                    value={newItemUrl}
+                    onChange={(e) => setNewItemUrl(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Fournisseur"
+                    value={newItemSupplier}
+                    onChange={(e) => setNewItemSupplier(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Prix estimé (€)"
+                    type="number"
+                    value={newItemPrice}
+                    onChange={(e) => setNewItemPrice(e.target.value)}
+                  />
+                  <Select
+                    value={newItemProjectId || "__none__"}
+                    onValueChange={(v) => setNewItemProjectId(v === "__none__" ? null : v)}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Projet" />
                     </SelectTrigger>
