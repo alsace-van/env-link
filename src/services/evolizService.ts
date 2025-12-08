@@ -1,6 +1,7 @@
 // ============================================
 // SERVICE API EVOLIZ
 // Gestion des appels à l'API Evoliz
+// CORRIGÉ : Authentification JWT
 // ============================================
 
 import type {
@@ -27,31 +28,79 @@ interface EvolizAuthConfig {
   secretKey: string;
 }
 
+interface EvolizToken {
+  accessToken: string;
+  expiresAt: number; // timestamp en ms
+}
+
 class EvolizApiService {
   private config: EvolizAuthConfig | null = null;
+  private token: EvolizToken | null = null;
 
   // --- CONFIGURATION ---
 
   setConfig(config: EvolizAuthConfig) {
     this.config = config;
+    this.token = null; // Reset token when config changes
   }
 
   clearConfig() {
     this.config = null;
+    this.token = null;
   }
 
   hasConfig(): boolean {
     return this.config !== null;
   }
 
-  // --- PRIVATE METHODS ---
+  // --- AUTHENTICATION ---
 
-  private getAuthHeader(): string {
+  private async authenticate(): Promise<string> {
     if (!this.config) {
       throw new Error("Evoliz API non configurée. Veuillez saisir vos clés API.");
     }
-    const credentials = btoa(`${this.config.publicKey}:${this.config.secretKey}`);
-    return `Basic ${credentials}`;
+
+    // Vérifier si le token est encore valide (avec 1 minute de marge)
+    if (this.token && this.token.expiresAt > Date.now() + 60000) {
+      return this.token.accessToken;
+    }
+
+    // Obtenir un nouveau token
+    const loginUrl = `${EVOLIZ_API_BASE}/login`;
+
+    const response = await fetch(loginUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        public_key: this.config.publicKey,
+        secret_key: this.config.secretKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        throw new EvolizError("Clés API invalides", 401, errorData);
+      }
+      throw new EvolizError(
+        errorData.message || `Erreur d'authentification: ${response.status}`,
+        response.status,
+        errorData,
+      );
+    }
+
+    const data = await response.json();
+
+    // Le token expire après 15 minutes selon la doc
+    this.token = {
+      accessToken: data.access_token || data.token,
+      expiresAt: Date.now() + 14 * 60 * 1000, // 14 minutes pour être safe
+    };
+
+    return this.token.accessToken;
   }
 
   private getBaseUrl(): string {
@@ -62,12 +111,13 @@ class EvolizApiService {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const accessToken = await this.authenticate();
     const url = `${this.getBaseUrl()}${endpoint}`;
 
     const response = await fetch(url, {
       ...options,
       headers: {
-        Authorization: this.getAuthHeader(),
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
         Accept: "application/json",
         ...options.headers,
@@ -75,6 +125,12 @@ class EvolizApiService {
     });
 
     if (!response.ok) {
+      // Si token expiré, réessayer une fois
+      if (response.status === 401 && this.token) {
+        this.token = null;
+        return this.request<T>(endpoint, options);
+      }
+
       const errorData = await response.json().catch(() => ({}));
       throw new EvolizError(errorData.message || `Erreur API Evoliz: ${response.status}`, response.status, errorData);
     }
@@ -86,8 +142,12 @@ class EvolizApiService {
 
   async testConnection(): Promise<{ success: boolean; message: string; companyName?: string }> {
     try {
-      // On utilise l'endpoint /clients avec limit=1 pour tester
+      // D'abord tester l'authentification
+      await this.authenticate();
+
+      // Ensuite tester un appel API simple
       const response = await this.request<EvolizApiResponse<EvolizClient[]>>("/clients?per_page=1");
+
       return {
         success: true,
         message: "Connexion réussie à Evoliz",
@@ -102,7 +162,10 @@ class EvolizApiService {
         }
         return { success: false, message: error.message };
       }
-      return { success: false, message: "Erreur de connexion" };
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Erreur de connexion",
+      };
     }
   }
 
@@ -254,6 +317,7 @@ class EvolizApiService {
   }
 
   async uploadBuyAttachment(buyId: number, file: File): Promise<{ success: boolean }> {
+    const accessToken = await this.authenticate();
     const formData = new FormData();
     formData.append("file", file);
 
@@ -261,7 +325,7 @@ class EvolizApiService {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: this.getAuthHeader(),
+        Authorization: `Bearer ${accessToken}`,
       },
       body: formData,
     });
