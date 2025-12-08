@@ -45,6 +45,7 @@ import AccessoryImportExportDialog from "@/components/AccessoryImportExportDialo
 import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
 import { NoticeSearchDialog } from "@/components/NoticeSearchDialog";
 import WishlistDialog from "@/components/WishlistDialog";
+import { CatalogBulkManager } from "@/components/catalog/CatalogBulkManager";
 
 interface Category {
   id: string;
@@ -655,6 +656,7 @@ const AccessoriesCatalogView = () => {
               <ShoppingCart className="h-4 w-4 mr-2" />
               Liste de souhaits
             </Button>
+            <CatalogBulkManager onComplete={() => loadAccessories()} />
             <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
               Import/Export
             </Button>
