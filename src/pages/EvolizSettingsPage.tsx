@@ -53,7 +53,7 @@ const STATUS_VARIANTS: Record<EvolizQuoteStatus, "default" | "secondary" | "dest
   invoiced: "outline",
 };
 
-export default function EvolizQuotesPage() {
+export default function EvolizSettingsPage() {
   const { isConfigured, isLoading: configLoading } = useEvolizConfig();
   const { quotes, isLoading, isSyncing, error, fetchQuotes, syncQuotesToCache, fetchQuote } = useEvolizQuotes();
   const { clients, fetchClients } = useEvolizClients();
