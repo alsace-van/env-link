@@ -1,20 +1,20 @@
 // components/scenarios/ScenarioManager.tsx
 // Gestionnaire principal de la vue en colonnes avec scénarios
-// ✅ AMÉLIORATIONS: Colonnes plus larges + Carrousel + Checkboxes visibilité
-// ✅ FIX: Correction de l'erreur useState ligne 66
+// ✅ AJOUT: Bouton Import devis Evoliz
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Plus, Table2, History, Lock, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { Plus, Table2, History, Lock, ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
 import { useScenarios } from "@/hooks/useScenarios";
 import ScenarioColumn from "./ScenarioColumn";
 import CreateScenarioDialog from "./CreateScenarioDialog";
 import ComparisonTable from "./ComparisonTable";
 import ExpensesHistory from "./ExpensesHistory";
 import LockProjectDialog from "./LockProjectDialog";
+import { ImportEvolizButton } from "@/components/evoliz/ImportEvolizButton";
 import type { ProjectWithStatus } from "@/types/scenarios";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -33,10 +33,10 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
   const [isLockDialogOpen, setIsLockDialogOpen] = useState(false);
   const [modificationsCount, setModificationsCount] = useState(0);
 
-  // ✅ Gestion de la visibilité des scénarios
+  // Gestion de la visibilité des scénarios
   const [visibleScenarios, setVisibleScenarios] = useState<Record<string, boolean>>({});
 
-  // ✅ Référence pour le carrousel
+  // Référence pour le carrousel
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isLocked =
@@ -44,7 +44,7 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
     project?.statut_financier === "en_cours" ||
     project?.statut_financier === "termine";
 
-  // ✅ FIX: Utiliser useEffect au lieu de useState pour mettre à jour la visibilité
+  // Mettre à jour la visibilité quand les scénarios changent
   useEffect(() => {
     if (scenarios.length > 0) {
       setVisibleScenarios((prev) => {
@@ -59,7 +59,7 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
     }
   }, [scenarios]);
 
-  // ✅ Fonctions de navigation du carrousel
+  // Fonctions de navigation du carrousel
   const scrollLeft = () => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollBy({ left: -470, behavior: "smooth" });
@@ -72,12 +72,18 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
     }
   };
 
-  // ✅ Toggle visibilité d'un scénario
+  // Toggle visibilité d'un scénario
   const toggleVisibility = (scenarioId: string) => {
     setVisibleScenarios((prev) => ({
       ...prev,
       [scenarioId]: !prev[scenarioId],
     }));
+  };
+
+  // Callback après import Evoliz
+  const handleImportComplete = () => {
+    reloadScenarios();
+    onExpenseChange?.();
   };
 
   // Filtrer les scénarios visibles
@@ -120,7 +126,7 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {/* ✅ Bouton visibilité des scénarios */}
+          {/* Bouton visibilité des scénarios */}
           {scenarios.length > 1 && (
             <Popover>
               <PopoverTrigger asChild>
@@ -191,6 +197,13 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
             Tableau comparatif
           </Button>
 
+          {/* ✅ NOUVEAU: Bouton Import Evoliz */}
+          <ImportEvolizButton
+            projectId={projectId}
+            scenarioId={principalScenario?.id}
+            onImportComplete={handleImportComplete}
+          />
+
           <Button size="sm" onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" />
             Nouveau scénario
@@ -198,7 +211,7 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
         </div>
       </div>
 
-      {/* ✅ Vue en carrousel avec navigation */}
+      {/* Vue en carrousel avec navigation */}
       <div className="relative">
         {/* Boutons de navigation */}
         {displayedScenarios.length > 2 && (
