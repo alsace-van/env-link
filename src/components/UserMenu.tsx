@@ -9,10 +9,13 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { User as UserIcon, Settings, LogOut, Shield, Moon, Sun, Monitor } from "lucide-react";
+import { User as UserIcon, Settings, LogOut, Shield, Moon, Sun, Monitor, FileText, Users, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
 
@@ -43,11 +46,7 @@ const UserMenu = ({ user }: UserMenuProps) => {
   };
 
   const loadUserProfile = async () => {
-    const { data } = await (supabase as any)
-      .from("profiles")
-      .select("display_name")
-      .eq("id", user.id)
-      .maybeSingle();
+    const { data } = await (supabase as any).from("profiles").select("display_name").eq("id", user.id).maybeSingle();
 
     if ((data as any)?.display_name) {
       setDisplayName((data as any).display_name);
@@ -97,25 +96,19 @@ const UserMenu = ({ user }: UserMenuProps) => {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar>
-            <AvatarFallback className="bg-primary text-primary-foreground">
-              {getInitials()}
-            </AvatarFallback>
+            <AvatarFallback className="bg-primary text-primary-foreground">{getInitials()}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-64" align="end">
         <DropdownMenuLabel>
           <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">
-              {displayName || "Utilisateur"}
-            </p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {user.email}
-            </p>
+            <p className="text-sm font-medium leading-none">{displayName || "Utilisateur"}</p>
+            <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        
+
         <DropdownMenuItem onClick={() => navigate("/account")}>
           <UserIcon className="h-4 w-4 mr-2" />
           Mon Compte
@@ -129,33 +122,55 @@ const UserMenu = ({ user }: UserMenuProps) => {
         )}
 
         <DropdownMenuSeparator />
-        
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Thème
-        </DropdownMenuLabel>
-        
+
+        {/* Sous-menu Evoliz */}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Link2 className="h-4 w-4 mr-2" />
+            Evoliz
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem onClick={() => navigate("/settings/evoliz")}>
+              <Settings className="h-4 w-4 mr-2" />
+              Configuration
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/evoliz/quotes")}>
+              <FileText className="h-4 w-4 mr-2" />
+              Devis
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => navigate("/evoliz/clients")}>
+              <Users className="h-4 w-4 mr-2" />
+              Clients
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuLabel className="text-xs text-muted-foreground">Thème</DropdownMenuLabel>
+
         <DropdownMenuItem onClick={() => setTheme("light")}>
           <Sun className="h-4 w-4 mr-2" />
           Clair
         </DropdownMenuItem>
-        
+
         <DropdownMenuItem onClick={() => setTheme("dark")}>
           <Moon className="h-4 w-4 mr-2" />
           Sombre
         </DropdownMenuItem>
-        
+
         <DropdownMenuItem onClick={() => setTheme("system")}>
           <Monitor className="h-4 w-4 mr-2" />
           Système
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
-        
+
         <DropdownMenuItem onClick={handleDeleteAccount} className="text-destructive">
           <Settings className="h-4 w-4 mr-2" />
           Supprimer le compte
         </DropdownMenuItem>
-        
+
         <DropdownMenuItem onClick={handleLogout}>
           <LogOut className="h-4 w-4 mr-2" />
           Déconnexion
