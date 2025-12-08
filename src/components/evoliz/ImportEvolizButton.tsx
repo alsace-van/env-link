@@ -17,17 +17,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   Loader2,
   Download,
@@ -95,11 +87,7 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge className={c.className}>{c.label}</Badge>;
 }
 
-export function ImportEvolizButton({
-  projectId,
-  scenarioId,
-  onImportComplete,
-}: ImportEvolizButtonProps) {
+export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: ImportEvolizButtonProps) {
   const queryClient = useQueryClient();
   const { isConfigured } = useEvolizConfig();
   const { quotes, isLoading: loadingQuotes, fetchQuotes } = useEvolizQuotes();
@@ -130,7 +118,7 @@ export function ImportEvolizButton({
           total_vat_exclude: item.total?.vat_exclude || item.unit_price_vat_exclude * item.quantity || 0,
           selected: true,
           destination: "scenario" as LineDestination,
-        }))
+        })),
       );
     }
   }, [selectedQuote]);
@@ -151,16 +139,12 @@ export function ImportEvolizButton({
 
   // Toggle sélection ligne
   const toggleLine = (itemid: string) => {
-    setLines((prev) =>
-      prev.map((l) => (l.itemid === itemid ? { ...l, selected: !l.selected } : l))
-    );
+    setLines((prev) => prev.map((l) => (l.itemid === itemid ? { ...l, selected: !l.selected } : l)));
   };
 
   // Changer destination
   const setDestination = (itemid: string, dest: LineDestination) => {
-    setLines((prev) =>
-      prev.map((l) => (l.itemid === itemid ? { ...l, destination: dest } : l))
-    );
+    setLines((prev) => prev.map((l) => (l.itemid === itemid ? { ...l, destination: dest } : l)));
   };
 
   // Tout sélectionner/désélectionner
@@ -177,14 +161,16 @@ export function ImportEvolizButton({
   const selectedLines = lines.filter((l) => l.selected);
   const scenarioLines = selectedLines.filter((l) => l.destination === "scenario");
   const travauxLines = selectedLines.filter((l) => l.destination === "travaux");
-  
+
   const totalScenario = scenarioLines.reduce((sum, l) => sum + l.total_vat_exclude, 0);
   const totalTravaux = travauxLines.reduce((sum, l) => sum + l.total_vat_exclude, 0);
 
   // Mutation import
   const importMutation = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
       // 1. Importer matériel dans project_expenses
@@ -203,9 +189,7 @@ export function ImportEvolizButton({
           evoliz_item_id: line.itemid,
         }));
 
-        const { error } = await (supabase as any)
-          .from("project_expenses")
-          .insert(expenses);
+        const { error } = await (supabase as any).from("project_expenses").insert(expenses);
 
         if (error) throw error;
       }
@@ -258,9 +242,7 @@ export function ImportEvolizButton({
           };
         });
 
-        const { error } = await (supabase as any)
-          .from("project_todos")
-          .insert(todos);
+        const { error } = await (supabase as any).from("project_todos").insert(todos);
 
         if (error) throw error;
       }
@@ -283,10 +265,8 @@ export function ImportEvolizButton({
       queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
       queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
 
-      toast.success(
-        `Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`
-      );
-      
+      toast.success(`Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`);
+
       handleClose();
       onImportComplete?.();
     },
@@ -323,7 +303,7 @@ export function ImportEvolizButton({
 
           {/* ÉTAPE 1 : Liste des devis */}
           {step === 1 && (
-            <ScrollArea className="flex-1 max-h-[500px]">
+            <div className="flex-1 overflow-y-auto max-h-[500px] pr-2">
               {loadingQuotes ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -350,16 +330,12 @@ export function ImportEvolizButton({
                           {quote.client?.name || "Client inconnu"} • {formatDate(quote.documentdate)}
                         </div>
                         {quote.object && (
-                          <div className="text-sm text-muted-foreground truncate max-w-md">
-                            {quote.object}
-                          </div>
+                          <div className="text-sm text-muted-foreground truncate max-w-md">{quote.object}</div>
                         )}
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <div className="font-semibold">
-                            {formatAmount(quote.total?.vat_include || 0)}
-                          </div>
+                          <div className="font-semibold">{formatAmount(quote.total?.vat_include || 0)}</div>
                           <div className="text-xs text-muted-foreground">TTC</div>
                         </div>
                         <ChevronRight className="h-5 w-5 text-muted-foreground" />
@@ -368,7 +344,7 @@ export function ImportEvolizButton({
                   ))}
                 </div>
               )}
-            </ScrollArea>
+            </div>
           )}
 
           {/* ÉTAPE 2 : Lignes du devis */}
@@ -393,19 +369,14 @@ export function ImportEvolizButton({
                 </div>
               </div>
 
-              <ScrollArea className="flex-1 max-h-[350px] border rounded-lg">
+              <div className="flex-1 overflow-y-auto max-h-[350px] border rounded-lg">
                 <div className="divide-y">
                   {lines.map((line) => (
                     <div
                       key={line.itemid}
-                      className={`flex items-center gap-3 p-3 ${
-                        !line.selected ? "opacity-50 bg-muted/30" : ""
-                      }`}
+                      className={`flex items-center gap-3 p-3 ${!line.selected ? "opacity-50 bg-muted/30" : ""}`}
                     >
-                      <Checkbox
-                        checked={line.selected}
-                        onCheckedChange={() => toggleLine(line.itemid)}
-                      />
+                      <Checkbox checked={line.selected} onCheckedChange={() => toggleLine(line.itemid)} />
 
                       <div className="flex-1 min-w-0">
                         <div
@@ -419,9 +390,7 @@ export function ImportEvolizButton({
                         </div>
                       </div>
 
-                      <div className="text-sm font-medium w-24 text-right">
-                        {formatAmount(line.total_vat_exclude)}
-                      </div>
+                      <div className="text-sm font-medium w-24 text-right">{formatAmount(line.total_vat_exclude)}</div>
 
                       {line.selected && (
                         <Select
@@ -450,7 +419,7 @@ export function ImportEvolizButton({
                     </div>
                   ))}
                 </div>
-              </ScrollArea>
+              </div>
 
               {/* Récap */}
               <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
