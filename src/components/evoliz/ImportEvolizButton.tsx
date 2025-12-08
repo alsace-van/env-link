@@ -39,11 +39,13 @@ import { useEvolizConfig } from "@/hooks/useEvolizConfig";
 import { useEvolizQuotes } from "@/hooks/useEvolizQuotes";
 import { useHourlyRate } from "@/hooks/useHourlyRate";
 import { Label } from "@/components/ui/label";
+import { evolizApi } from "@/services/evolizService";
 
 type LineDestination = "scenario" | "travaux" | "ignore";
 
 interface QuoteLine {
   itemid: string;
+  articleid?: number | null; // ID de l'article dans le catalogue Evoliz
   designation: string;
   quantity: number;
   unit?: string;
@@ -51,9 +53,13 @@ interface QuoteLine {
   total_vat_exclude: number;
   selected: boolean;
   destination: LineDestination;
-  // Champs de marge Evoliz
+  // Champs de marge Evoliz (enrichis depuis le catalogue)
   purchase_unit_price_vat_exclude?: number | null;
   margin_percent?: number | null;
+  // Champs supplémentaires du catalogue
+  reference?: string | null;
+  supplier_name?: string | null;
+  catalog_enriched?: boolean; // Indique si les données ont été enrichies
 }
 
 interface ImportEvolizButtonProps {
@@ -111,39 +117,94 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
     }
   }, [open, isConfigured]);
 
-  // Quand on sélectionne un devis, préparer les lignes
+  // État pour l'enrichissement
+  const [isEnriching, setIsEnriching] = useState(false);
+
+  // Quand on sélectionne un devis, préparer les lignes et enrichir depuis le catalogue
   useEffect(() => {
     if (selectedQuote?.items) {
-      console.log("📦 Items Evoliz bruts:", selectedQuote.items);
-      setLines(
-        selectedQuote.items.map((item: any) => {
-          // Récupérer le prix d'achat depuis Evoliz (peut être null)
-          const rawPurchasePrice =
-            item.purchase_unit_price_vat_exclude || item.margin?.purchase_unit_price_vat_exclude || null;
-          const salePrice = item.unit_price_vat_exclude || 0;
+      // 1. Créer les lignes de base
+      const baseLines = selectedQuote.items.map((item: any) => {
+        const salePrice = item.unit_price_vat_exclude || 0;
 
-          // Ne garder le prix d'achat que s'il est différent du prix de vente (sinon c'est une erreur)
-          const purchasePrice = rawPurchasePrice && rawPurchasePrice !== salePrice ? rawPurchasePrice : null;
+        return {
+          itemid: item.itemid || crypto.randomUUID(),
+          articleid: item.articleid || null,
+          designation: item.designation || item.designation_clean || "",
+          quantity: item.quantity || 1,
+          unit: item.unit || "",
+          unit_price_vat_exclude: salePrice,
+          total_vat_exclude: item.total?.vat_exclude || salePrice * item.quantity || 0,
+          selected: true,
+          destination: "scenario" as LineDestination,
+          // Sera enrichi depuis le catalogue
+          purchase_unit_price_vat_exclude: null as number | null,
+          margin_percent: null as number | null,
+          reference: item.reference || null,
+          supplier_name: null as string | null,
+          catalog_enriched: false,
+        };
+      });
 
-          console.log(
-            `  - ${item.designation}: vente=${salePrice}, achat brut=${rawPurchasePrice}, achat final=${purchasePrice}`,
+      setLines(baseLines);
+
+      // 2. Enrichir les lignes qui ont un articleid depuis le catalogue Evoliz
+      const enrichLines = async () => {
+        const articleIds = baseLines.filter((line) => line.articleid).map((line) => line.articleid as number);
+
+        if (articleIds.length === 0) {
+          return; // Pas d'articles à enrichir, on continue silencieusement
+        }
+
+        setIsEnriching(true);
+
+        try {
+          // Récupérer les détails de chaque article (silencieusement)
+          const articlePromises = [...new Set(articleIds)].map(async (articleId) => {
+            try {
+              const article = (await evolizApi.getArticle(articleId)) as any;
+              return article;
+            } catch {
+              // Article pas trouvé dans le catalogue Evoliz - pas grave, on continue
+              return null;
+            }
+          });
+
+          const articles = await Promise.all(articlePromises);
+          const articleMap = new Map<number, any>(articles.filter(Boolean).map((a: any) => [a.articleid, a]));
+
+          // Mettre à jour les lignes avec les données du catalogue
+          setLines((prevLines) =>
+            prevLines.map((line) => {
+              if (!line.articleid) return line;
+
+              const catalogArticle = articleMap.get(line.articleid);
+              if (!catalogArticle) return line; // Pas trouvé, on garde la ligne telle quelle
+
+              const purchasePrice = catalogArticle.purchase_unit_price_vat_exclude || null;
+              let marginPercent: number | null = null;
+
+              if (purchasePrice && purchasePrice > 0 && line.unit_price_vat_exclude > 0) {
+                marginPercent = ((line.unit_price_vat_exclude - purchasePrice) / line.unit_price_vat_exclude) * 100;
+              }
+
+              return {
+                ...line,
+                purchase_unit_price_vat_exclude: purchasePrice,
+                margin_percent: marginPercent,
+                reference: catalogArticle.reference || line.reference,
+                catalog_enriched: purchasePrice !== null,
+              };
+            }),
           );
+        } catch {
+          // Erreur globale - on continue sans enrichissement
+        } finally {
+          setIsEnriching(false);
+        }
+      };
 
-          return {
-            itemid: item.itemid || crypto.randomUUID(),
-            designation: item.designation || item.designation_clean || "",
-            quantity: item.quantity || 1,
-            unit: item.unit || "",
-            unit_price_vat_exclude: salePrice,
-            total_vat_exclude: item.total?.vat_exclude || salePrice * item.quantity || 0,
-            selected: true,
-            destination: "scenario" as LineDestination,
-            // Champs de marge Evoliz - seulement si différent du prix de vente
-            purchase_unit_price_vat_exclude: purchasePrice,
-            margin_percent: item.margin?.margin_percent || null,
-          };
-        }),
-      );
+      enrichLines();
     }
   }, [selectedQuote]);
 
@@ -200,19 +261,37 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
       // 1. Ajouter au catalogue si option activée (seulement les lignes matériel)
       let catalogItemsCreated = 0;
       if (addToCatalog && scenarioLines.length > 0) {
-        // Récupérer les noms des articles existants dans le catalogue
+        // Récupérer les articles existants dans le catalogue (nom et référence)
         const { data: existingItems } = await (supabase as any)
           .from("accessories_catalog")
-          .select("nom")
+          .select("nom, reference")
           .eq("user_id", user.id);
 
-        const existingNames = new Set((existingItems || []).map((item: any) => item.nom.toLowerCase().trim()));
+        // Créer des sets pour vérification rapide des doublons
+        const existingNames = new Set(
+          (existingItems || []).map((item: any) => item.nom?.toLowerCase().trim()).filter(Boolean),
+        );
+        const existingRefs = new Set(
+          (existingItems || []).map((item: any) => item.reference?.toLowerCase().trim()).filter(Boolean),
+        );
 
-        // Filtrer les articles qui n'existent pas encore
+        // Filtrer les articles qui n'existent pas encore (par nom OU par référence)
         const newCatalogItems = scenarioLines
           .filter((line) => {
             const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
-            return !existingNames.has(cleanName.toLowerCase());
+            const ref = line.reference?.trim();
+
+            // Vérifier si l'article existe déjà par nom
+            if (existingNames.has(cleanName.toLowerCase())) {
+              return false;
+            }
+
+            // Vérifier si l'article existe déjà par référence (si référence fournie)
+            if (ref && existingRefs.has(ref.toLowerCase())) {
+              return false;
+            }
+
+            return true;
           })
           .map((line) => {
             const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
@@ -225,20 +304,19 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             let margeNette: number | null = null;
 
             if (prixAchatHT && prixAchatHT > 0) {
-              // Marge = (Prix vente HT - Prix achat HT) / Prix vente HT * 100
               margePourcent = ((prixVenteHT - prixAchatHT) / prixVenteHT) * 100;
               margeNette = prixVenteHT - prixAchatHT;
             } else if (line.margin_percent) {
-              // Si on a directement le % de marge depuis Evoliz
               margePourcent = line.margin_percent;
             }
 
             return {
               user_id: user.id,
               nom: cleanName,
-              prix_vente_ttc: prixVenteTTC, // Prix de vente TTC au client
-              prix_public_ttc: prixVenteTTC, // Prix public = prix de vente
-              prix_reference: prixAchatHT, // Prix d'achat HT (depuis Evoliz)
+              reference: line.reference || null, // Ajouter la référence si disponible
+              prix_vente_ttc: prixVenteTTC,
+              prix_public_ttc: prixVenteTTC,
+              prix_reference: prixAchatHT,
               marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
               marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
               description: `Importé depuis devis Evoliz ${selectedQuote.document_number}`,
@@ -458,12 +536,21 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 </div>
               </div>
 
+              {/* Indicateur d'enrichissement */}
+              {isEnriching && (
+                <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded-lg mb-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Récupération des prix d'achat depuis le catalogue Evoliz...
+                </div>
+              )}
+
               {/* En-tête tableau */}
-              <div className="grid grid-cols-[auto_1fr_50px_80px_80px_90px_90px_110px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border rounded-t-lg">
+              <div className="grid grid-cols-[auto_1fr_50px_80px_80px_80px_90px_90px_110px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border rounded-t-lg">
                 <div></div>
                 <div>Désignation</div>
                 <div className="text-center">Qté</div>
                 <div className="text-right">PU HT</div>
+                <div className="text-right">Achat HT</div>
                 <div className="text-right">PU TTC</div>
                 <div className="text-right">Total HT</div>
                 <div className="text-right">Total TTC</div>
@@ -475,23 +562,38 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                   {lines.map((line) => (
                     <div
                       key={line.itemid}
-                      className={`grid grid-cols-[auto_1fr_50px_80px_80px_90px_90px_110px] gap-2 items-center px-3 py-2 ${
+                      className={`grid grid-cols-[auto_1fr_50px_80px_80px_80px_90px_90px_110px] gap-2 items-center px-3 py-2 ${
                         !line.selected ? "opacity-50 bg-muted/30" : "hover:bg-muted/20"
                       }`}
                     >
                       <Checkbox checked={line.selected} onCheckedChange={() => toggleLine(line.itemid)} />
 
-                      <div
-                        className="text-sm truncate"
-                        title={line.designation.replace(/<[^>]*>/g, "")}
-                        dangerouslySetInnerHTML={{
-                          __html: line.designation.replace(/\n/g, " "),
-                        }}
-                      />
+                      <div className="flex items-center gap-1 min-w-0">
+                        <div
+                          className="text-sm truncate"
+                          title={line.designation.replace(/<[^>]*>/g, "")}
+                          dangerouslySetInnerHTML={{
+                            __html: line.designation.replace(/\n/g, " "),
+                          }}
+                        />
+                        {line.catalog_enriched && (
+                          <Check className="h-3 w-3 text-green-600 flex-shrink-0" title="Prix d'achat récupéré" />
+                        )}
+                      </div>
 
                       <div className="text-sm text-center">{line.quantity}</div>
 
                       <div className="text-sm text-right">{formatAmount(line.unit_price_vat_exclude)}</div>
+
+                      <div className="text-sm text-right">
+                        {line.purchase_unit_price_vat_exclude ? (
+                          <span className="text-green-600 font-medium">
+                            {formatAmount(line.purchase_unit_price_vat_exclude)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
 
                       <div className="text-sm text-right text-muted-foreground">
                         {formatAmount(line.unit_price_vat_exclude * 1.2)}
