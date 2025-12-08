@@ -21,6 +21,11 @@ interface UseEvolizConfigReturn {
   refreshCredentials: () => Promise<void>;
 }
 
+// Helper pour accéder aux tables Evoliz (non typées dans Supabase)
+const getEvolizTable = (tableName: string) => {
+  return (supabase as any).from(tableName);
+};
+
 export function useEvolizConfig(): UseEvolizConfigReturn {
   const { toast } = useToast();
 
@@ -57,8 +62,7 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
     }
 
     try {
-      const { data, error } = await supabase
-        .from("evoliz_credentials")
+      const { data, error } = await getEvolizTable("evoliz_credentials")
         .select("*")
         .eq("user_id", userId)
         .eq("is_active", true)
@@ -84,6 +88,8 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
   useEffect(() => {
     if (userId) {
       loadCredentials();
+    } else {
+      setIsLoading(false);
     }
   }, [userId, loadCredentials]);
 
@@ -103,11 +109,10 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
 
       try {
         // Désactiver les anciens credentials
-        await supabase.from("evoliz_credentials").update({ is_active: false }).eq("user_id", userId);
+        await getEvolizTable("evoliz_credentials").update({ is_active: false }).eq("user_id", userId);
 
         // Créer les nouveaux
-        const { data, error } = await supabase
-          .from("evoliz_credentials")
+        const { data, error } = await getEvolizTable("evoliz_credentials")
           .insert({
             user_id: userId,
             company_id: input.company_id,
@@ -160,8 +165,7 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
 
       // Mettre à jour le statut du test en base
       if (credentials?.id) {
-        await supabase
-          .from("evoliz_credentials")
+        await getEvolizTable("evoliz_credentials")
           .update({
             last_test_at: new Date().toISOString(),
             last_test_success: result.success,
@@ -202,7 +206,7 @@ export function useEvolizConfig(): UseEvolizConfigReturn {
     if (!credentials?.id) return false;
 
     try {
-      const { error } = await supabase.from("evoliz_credentials").delete().eq("id", credentials.id);
+      const { error } = await getEvolizTable("evoliz_credentials").delete().eq("id", credentials.id);
 
       if (error) throw error;
 
