@@ -16,7 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -101,7 +107,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
   const [filterFournisseur, setFilterFournisseur] = useState<string>("all");
   const [filterDate, setFilterDate] = useState<string>("all");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
+  
   // État pour l'édition des prix d'achat
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState<string>("");
@@ -118,7 +124,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
       // Calculer la marge si on a les deux prix
       let margePourcent: number | null = null;
       let margeNette: number | null = null;
-
+      
       if (newPrice !== null && newPrice > 0 && item.prix_vente_ttc) {
         const prixVenteHT = item.prix_vente_ttc / 1.2;
         margePourcent = ((prixVenteHT - newPrice) / prixVenteHT) * 100;
@@ -145,8 +151,8 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                 prix_reference: newPrice,
                 marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
               }
-            : i,
-        ),
+            : i
+        )
       );
 
       toast.success("Prix d'achat mis à jour");
@@ -210,7 +216,11 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
       if (error) throw error;
 
       // Mettre à jour localement
-      setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, [field]: value || null } : i)));
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === itemId ? { ...i, [field]: value || null } : i
+        )
+      );
     } catch (error: any) {
       console.error(`Erreur mise à jour ${field}:`, error);
       toast.error("Erreur lors de la mise à jour");
@@ -225,7 +235,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
   // Appliquer le fournisseur aux articles sélectionnés
   const applyBulkFournisseur = async () => {
     if (selectedIds.size === 0) return;
-
+    
     setSavingBulk(true);
     try {
       const ids = Array.from(selectedIds);
@@ -238,7 +248,9 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
 
       // Mettre à jour localement
       setItems((prev) =>
-        prev.map((i) => (selectedIds.has(i.id) ? { ...i, fournisseur: bulkFournisseurValue || null } : i)),
+        prev.map((i) =>
+          selectedIds.has(i.id) ? { ...i, fournisseur: bulkFournisseurValue || null } : i
+        )
       );
 
       toast.success(`Fournisseur mis à jour sur ${ids.length} article(s)`);
@@ -256,16 +268,12 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
   const loadItems = async () => {
     setLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await supabase
         .from("accessories_catalog")
-        .select(
-          "id, nom, prix_vente_ttc, prix_reference, marge_pourcent, fournisseur, created_at, description, category_id, type_electrique, marque, puissance_watts, capacite_ah, reference_fabricant",
-        )
+        .select("id, nom, prix_vente_ttc, prix_reference, marge_pourcent, fournisseur, created_at, description, category_id, type_electrique, marque, puissance_watts, capacite_ah, reference_fabricant")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -386,7 +394,10 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
       const idsToDelete = Array.from(selectedIds);
       if (idsToDelete.length === 0) return 0;
 
-      const { error } = await supabase.from("accessories_catalog").delete().in("id", idsToDelete);
+      const { error } = await supabase
+        .from("accessories_catalog")
+        .delete()
+        .in("id", idsToDelete);
 
       if (error) throw error;
       return idsToDelete.length;
@@ -424,7 +435,9 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
               <Package className="h-5 w-5" />
               Gestion du catalogue ({items.length} articles)
             </DialogTitle>
-            <DialogDescription>Sélectionnez les articles à gérer ou supprimer en masse</DialogDescription>
+            <DialogDescription>
+              Sélectionnez les articles à gérer ou supprimer en masse
+            </DialogDescription>
           </DialogHeader>
 
           {/* Datalist pour autocomplétion fournisseurs */}
@@ -550,7 +563,11 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                   </Button>
                 )}
 
-                <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(true)}
+                >
                   <Trash2 className="h-4 w-4 mr-1" />
                   Supprimer ({selectedIds.size})
                 </Button>
@@ -614,7 +631,11 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                           )}
                         </button>
 
-                        <div className="truncate text-sm" title={item.nom} onClick={() => toggleSelect(item.id)}>
+                        <div 
+                          className="truncate text-sm" 
+                          title={item.nom}
+                          onClick={() => toggleSelect(item.id)}
+                        >
                           {item.nom}
                         </div>
 
@@ -642,7 +663,9 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                               onClick={() => {
                                 setEditingPriceId(item.id);
                                 setEditingPriceValue(
-                                  item.prix_reference !== null ? item.prix_reference.toString().replace(".", ",") : "",
+                                  item.prix_reference !== null
+                                    ? item.prix_reference.toString().replace(".", ",")
+                                    : ""
                                 );
                               }}
                               className={`hover:bg-muted px-1 py-0.5 rounded transition-colors text-xs ${
@@ -652,7 +675,9 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                               }`}
                               title="Cliquer pour modifier"
                             >
-                              {item.prix_reference !== null ? formatAmount(item.prix_reference) : "Saisir..."}
+                              {item.prix_reference !== null
+                                ? formatAmount(item.prix_reference)
+                                : "Saisir..."}
                             </button>
                           )}
                         </div>
@@ -665,8 +690,8 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                                 item.marge_pourcent >= 30
                                   ? "text-green-600 border-green-300"
                                   : item.marge_pourcent >= 15
-                                    ? "text-orange-600 border-orange-300"
-                                    : "text-red-600 border-red-300"
+                                  ? "text-orange-600 border-orange-300"
+                                  : "text-red-600 border-red-300"
                               }`}
                             >
                               {item.marge_pourcent.toFixed(0)}%
@@ -682,10 +707,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                             value={item.type_electrique || ""}
                             onChange={(e) => updateField(item.id, "type_electrique", e.target.value)}
                             className="text-xs bg-transparent border-0 p-0 cursor-pointer hover:bg-muted rounded w-full focus:ring-0 focus:outline-none text-center"
-                            title={
-                              typeElectriqueOptions.find((o) => o.value === (item.type_electrique || ""))?.title ||
-                              "Type électrique"
-                            }
+                            title={typeElectriqueOptions.find(o => o.value === (item.type_electrique || ""))?.title || "Type électrique"}
                           >
                             {typeElectriqueOptions.map((opt) => (
                               <option key={opt.value} value={opt.value} title={opt.title}>
@@ -743,13 +765,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                               <Input
                                 type="number"
                                 defaultValue={item.puissance_watts || ""}
-                                onBlur={(e) =>
-                                  updateField(
-                                    item.id,
-                                    "puissance_watts",
-                                    e.target.value ? parseFloat(e.target.value) : null,
-                                  )
-                                }
+                                onBlur={(e) => updateField(item.id, "puissance_watts", e.target.value ? parseFloat(e.target.value) : null)}
                                 className="h-8 text-sm mt-1"
                                 placeholder="0"
                               />
@@ -761,13 +777,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                               <Input
                                 type="number"
                                 defaultValue={item.capacite_ah || ""}
-                                onBlur={(e) =>
-                                  updateField(
-                                    item.id,
-                                    "capacite_ah",
-                                    e.target.value ? parseFloat(e.target.value) : null,
-                                  )
-                                }
+                                onBlur={(e) => updateField(item.id, "capacite_ah", e.target.value ? parseFloat(e.target.value) : null)}
                                 className="h-8 text-sm mt-1"
                                 placeholder="0"
                               />
@@ -807,13 +817,15 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
               Confirmer la suppression
             </DialogTitle>
             <DialogDescription>
-              Vous êtes sur le point de supprimer <strong>{selectedIds.size} article(s)</strong> du catalogue. Cette
-              action est irréversible.
+              Vous êtes sur le point de supprimer <strong>{selectedIds.size} article(s)</strong> du catalogue.
+              Cette action est irréversible.
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-hidden py-4">
-            <p className="text-sm text-muted-foreground mb-2">Articles sélectionnés :</p>
+            <p className="text-sm text-muted-foreground mb-2">
+              Articles sélectionnés :
+            </p>
             <div className="max-h-[250px] overflow-y-auto overflow-x-auto border rounded-lg p-3 bg-muted/30">
               <ul className="text-sm space-y-1 min-w-0">
                 {filteredItems
@@ -832,7 +844,11 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
             <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
               Annuler
             </Button>
-            <Button variant="destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+            <Button
+              variant="destructive"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+            >
               {deleteMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
