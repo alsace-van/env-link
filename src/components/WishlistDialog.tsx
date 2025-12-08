@@ -27,7 +27,9 @@ type ItemStatus = "pending" | "ordered" | "received";
 interface WishlistCategory {
   id: string;
   name: string;
-  display_order: number;
+  display_order: number | null;
+  user_id?: string;
+  created_at?: string;
 }
 
 interface WishlistItem {
@@ -35,14 +37,16 @@ interface WishlistItem {
   category_id: string | null;
   project_id: string | null;
   text: string;
-  status: ItemStatus;
-  priority: number;
+  status: string;
+  priority: number | null;
   product_url: string | null;
   supplier: string | null;
   estimated_price: number | null;
   created_at: string;
   ordered_at: string | null;
   received_at: string | null;
+  user_id?: string;
+  updated_at?: string;
 }
 
 interface Project {
@@ -56,9 +60,6 @@ interface WishlistDialogProps {
   onOpenChange: (open: boolean) => void;
   initialProjectId?: string | null;
 }
-
-const STORAGE_KEY_CATEGORIES = "wishlist_categories";
-const STORAGE_KEY_ITEMS = "wishlist_items";
 
 const formatShortDate = (dateString: string | null): string => {
   if (!dateString) return "";
@@ -83,6 +84,7 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState("");
   const [showAdvancedAdd, setShowAdvancedAdd] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -123,17 +125,43 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     if (data) setProjects(data);
   };
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const storedCategories = localStorage.getItem(STORAGE_KEY_CATEGORIES);
-      const storedItems = localStorage.getItem(STORAGE_KEY_ITEMS);
-
-      if (storedCategories) {
-        setCategories(JSON.parse(storedCategories));
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        console.log("❌ Wishlist: Pas d'utilisateur connecté");
+        setLoading(false);
+        return;
       }
-      if (storedItems) {
-        setItems(JSON.parse(storedItems));
+      setUserId(user.id);
+
+      // Charger les catégories
+      const { data: categoriesData, error: catError } = await supabase
+        .from("wishlist_categories")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("display_order", { ascending: true });
+
+      if (catError) {
+        console.error("Erreur chargement catégories:", catError);
+      } else {
+        setCategories(categoriesData || []);
+      }
+
+      // Charger les items
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("wishlist_items")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (itemsError) {
+        console.error("Erreur chargement items:", itemsError);
+      } else {
+        setItems(itemsData || []);
       }
     } catch (error) {
       console.error("Erreur chargement wishlist:", error);
@@ -141,55 +169,68 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     setLoading(false);
   };
 
-  const saveCategories = (newCategories: WishlistCategory[]) => {
-    localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(newCategories));
-    setCategories(newCategories);
-  };
+  const addCategory = async () => {
+    if (!newCategoryName.trim() || !userId) return;
 
-  const saveItems = (newItems: WishlistItem[]) => {
-    localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(newItems));
-    setItems(newItems);
-  };
-
-  const addCategory = () => {
-    if (!newCategoryName.trim()) return;
-
-    const newCategory: WishlistCategory = {
-      id: crypto.randomUUID(),
+    const newCategory = {
       name: newCategoryName.trim(),
       display_order: categories.length,
+      user_id: userId,
     };
 
-    const newCategories = [...categories, newCategory];
-    saveCategories(newCategories);
+    const { data, error } = await supabase.from("wishlist_categories").insert(newCategory).select().single();
+
+    if (error) {
+      console.error("Erreur création catégorie:", error);
+      toast.error("Erreur lors de la création");
+      return;
+    }
+
+    setCategories([...categories, data]);
     setNewCategoryName("");
     setIsAddingCategory(false);
-    setActiveTab(newCategory.id);
+    setActiveTab(data.id);
     toast.success("Onglet créé");
   };
 
-  const updateCategory = (id: string, name: string) => {
+  const updateCategory = async (id: string, name: string) => {
     if (!name.trim()) return;
-    const newCategories = categories.map((c) => (c.id === id ? { ...c, name: name.trim() } : c));
-    saveCategories(newCategories);
+
+    const { error } = await supabase.from("wishlist_categories").update({ name: name.trim() }).eq("id", id);
+
+    if (error) {
+      console.error("Erreur mise à jour catégorie:", error);
+      toast.error("Erreur lors de la mise à jour");
+      return;
+    }
+
+    setCategories(categories.map((c) => (c.id === id ? { ...c, name: name.trim() } : c)));
     setEditingCategoryId(null);
   };
 
-  const deleteCategory = (id: string) => {
-    const newCategories = categories.filter((c) => c.id !== id);
-    saveCategories(newCategories);
-    const newItems = items.map((i) => (i.category_id === id ? { ...i, category_id: null } : i));
-    saveItems(newItems);
+  const deleteCategory = async (id: string) => {
+    // D'abord, mettre à null les items de cette catégorie
+    await supabase.from("wishlist_items").update({ category_id: null }).eq("category_id", id);
+
+    const { error } = await supabase.from("wishlist_categories").delete().eq("id", id);
+
+    if (error) {
+      console.error("Erreur suppression catégorie:", error);
+      toast.error("Erreur lors de la suppression");
+      return;
+    }
+
+    setCategories(categories.filter((c) => c.id !== id));
+    setItems(items.map((i) => (i.category_id === id ? { ...i, category_id: null } : i)));
     if (activeTab === id) setActiveTab("__all__");
     toast.success("Onglet supprimé");
   };
 
-  const addItem = () => {
-    if (!newItemText.trim()) return;
+  const addItem = async () => {
+    if (!newItemText.trim() || !userId) return;
 
     const categoryId = activeTab === "__all__" ? null : activeTab;
-    const newItem: WishlistItem = {
-      id: crypto.randomUUID(),
+    const newItem = {
       text: newItemText.trim(),
       category_id: categoryId,
       project_id: newItemProjectId,
@@ -198,13 +239,18 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
       estimated_price: newItemPrice ? parseFloat(newItemPrice) : null,
       status: "pending",
       priority: 0,
-      created_at: new Date().toISOString(),
-      ordered_at: null,
-      received_at: null,
+      user_id: userId,
     };
 
-    const newItems = [newItem, ...items];
-    saveItems(newItems);
+    const { data, error } = await supabase.from("wishlist_items").insert(newItem).select().single();
+
+    if (error) {
+      console.error("Erreur création item:", error);
+      toast.error("Erreur lors de l'ajout");
+      return;
+    }
+
+    setItems([data, ...items]);
     setNewItemText("");
     setNewItemUrl("");
     setNewItemSupplier("");
@@ -212,34 +258,58 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     setShowAdvancedAdd(false);
   };
 
-  const updateStatus = (item: WishlistItem, newStatus: ItemStatus) => {
+  const updateStatus = async (item: WishlistItem, newStatus: ItemStatus) => {
     const updates: Partial<WishlistItem> = { status: newStatus };
     if (newStatus === "ordered" && !item.ordered_at) updates.ordered_at = new Date().toISOString();
     else if (newStatus === "received" && !item.received_at) updates.received_at = new Date().toISOString();
 
-    const newItems = items.map((i) => (i.id === item.id ? { ...i, ...updates } : i));
-    saveItems(newItems);
+    const { error } = await supabase.from("wishlist_items").update(updates).eq("id", item.id);
+
+    if (error) {
+      console.error("Erreur mise à jour status:", error);
+      return;
+    }
+
+    setItems(items.map((i) => (i.id === item.id ? { ...i, ...updates } : i)));
   };
 
-  const togglePriority = (item: WishlistItem) => {
-    const newPriority = item.priority === 1 ? 0 : 1;
-    const newItems = items.map((i) => (i.id === item.id ? { ...i, priority: newPriority } : i));
-    saveItems(newItems);
+  const deleteItem = async (id: string) => {
+    const { error } = await supabase.from("wishlist_items").delete().eq("id", id);
+
+    if (error) {
+      console.error("Erreur suppression item:", error);
+      return;
+    }
+
+    setItems(items.filter((i) => i.id !== id));
   };
 
-  const deleteItem = (id: string) => {
-    const newItems = items.filter((i) => i.id !== id);
-    saveItems(newItems);
-  };
-
-  const clearReceived = () => {
-    const receivedIds = getFilteredItems()
-      .filter((i) => i.status === "received")
-      .map((i) => i.id);
+  const clearReceived = async () => {
+    const receivedIds = items.filter((i) => i.status === "received").map((i) => i.id);
     if (receivedIds.length === 0) return;
-    const newItems = items.filter((i) => !receivedIds.includes(i.id));
-    saveItems(newItems);
-    toast.success(`${receivedIds.length} élément(s) supprimé(s)`);
+
+    const { error } = await supabase.from("wishlist_items").delete().in("id", receivedIds);
+
+    if (error) {
+      console.error("Erreur suppression items reçus:", error);
+      return;
+    }
+
+    setItems(items.filter((i) => i.status !== "received"));
+    toast.success("Articles reçus supprimés");
+  };
+
+  const togglePriority = async (item: WishlistItem) => {
+    const newPriority = (item.priority || 0) === 1 ? 0 : 1;
+
+    const { error } = await supabase.from("wishlist_items").update({ priority: newPriority }).eq("id", item.id);
+
+    if (error) {
+      console.error("Erreur mise à jour priorité:", error);
+      return;
+    }
+
+    setItems(items.map((i) => (i.id === item.id ? { ...i, priority: newPriority } : i)));
   };
 
   const getFilteredItems = () => {
@@ -582,7 +652,7 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
                   </h3>
                   <div className="space-y-2">
                     {pendingItems
-                      .sort((a, b) => b.priority - a.priority)
+                      .sort((a, b) => (b.priority || 0) - (a.priority || 0))
                       .map((item) => (
                         <ItemRow key={item.id} item={item} />
                       ))}
