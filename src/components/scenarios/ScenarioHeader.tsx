@@ -20,6 +20,7 @@ import { useScenarios } from "@/hooks/useScenarios";
 import { toast } from "sonner";
 import type { Scenario } from "@/types/scenarios";
 import ExportToEvolizDialog from "./ExportToEvolizDialog";
+import { ScenarioExpensesBulkManager } from "./ScenarioExpensesBulkManager";
 
 interface ScenarioHeaderProps {
   scenario: Scenario;
@@ -190,6 +191,13 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, cli
               <Send className="h-4 w-4 mr-2" />
               Exporter vers Evoliz
             </DropdownMenuItem>
+
+            {/* Gestion en masse des articles */}
+            <ScenarioExpensesBulkManager
+              scenarioId={scenario.id}
+              projectId={scenario.project_id}
+              onComplete={onScenarioChange}
+            />
 
             {!scenario.est_principal && (
               <>
