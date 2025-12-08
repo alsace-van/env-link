@@ -46,6 +46,30 @@ import { toast } from "sonner";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
 import { evolizApi } from "@/services/evolizService";
 
+// Fonction pour nettoyer le HTML des textes Evoliz
+const cleanHtmlText = (text: string | null | undefined): string => {
+  if (!text) return "";
+  return (
+    text
+      // Remplacer les entités HTML courantes
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&apos;/gi, "'")
+      // Supprimer les balises HTML
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<\/p>/gi, " ")
+      .replace(/<p>/gi, "")
+      .replace(/<[^>]*>/g, "")
+      // Nettoyer les espaces multiples
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+};
+
 // Types
 interface LocalCatalogItem {
   id: string;
@@ -99,7 +123,8 @@ function formatAmount(value: number | null | undefined): string {
 // Normaliser une chaîne pour comparaison
 function normalize(str: string | null | undefined): string {
   if (!str) return "";
-  return str.toLowerCase().trim().replace(/\s+/g, " ");
+  // Nettoyer le HTML d'abord, puis normaliser
+  return cleanHtmlText(str).toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
@@ -335,9 +360,11 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter((item) => {
         const localName = item.localItem?.nom?.toLowerCase() || "";
-        const evolizName = item.evolizItem?.designation?.toLowerCase() || "";
+        const evolizName = cleanHtmlText(item.evolizItem?.designation)?.toLowerCase() || "";
         const reference =
-          item.localItem?.reference_fabricant?.toLowerCase() || item.evolizItem?.reference?.toLowerCase() || "";
+          item.localItem?.reference_fabricant?.toLowerCase() ||
+          cleanHtmlText(item.evolizItem?.reference)?.toLowerCase() ||
+          "";
         return localName.includes(search) || evolizName.includes(search) || reference.includes(search);
       });
     }
@@ -404,7 +431,8 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
       for (let i = 0; i < toImport.length; i++) {
         const item = toImport[i];
         const evolizArticle = item.evolizItem!;
-        setSyncMessage(`Import: ${evolizArticle.designation}`);
+        const cleanedDesignation = cleanHtmlText(evolizArticle.designation);
+        setSyncMessage(`Import: ${cleanedDesignation}`);
 
         try {
           const prixVenteHT = evolizArticle.unit_price_vat_exclude;
@@ -423,14 +451,14 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
             // Nouvel article
             const catalogData = {
               user_id: user.id,
-              nom: evolizArticle.designation,
-              reference_fabricant: evolizArticle.reference || null,
+              nom: cleanedDesignation,
+              reference_fabricant: cleanHtmlText(evolizArticle.reference) || null,
               prix_vente_ttc: prixVenteTTC,
               prix_public_ttc: prixVenteTTC,
               prix_reference: prixAchatHT,
               marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
               marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
-              description: evolizArticle.comment || null,
+              description: cleanHtmlText(evolizArticle.comment) || null,
               fournisseur: "Import Evoliz",
             };
 
@@ -814,10 +842,12 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
 
                           <div className="min-w-0">
                             <div className="text-sm font-medium truncate">
-                              {item.localItem?.nom || item.evolizItem?.designation}
+                              {item.localItem?.nom || cleanHtmlText(item.evolizItem?.designation)}
                             </div>
                             <div className="text-xs text-muted-foreground truncate">
-                              {item.localItem?.reference_fabricant || item.evolizItem?.reference || "Sans référence"}
+                              {item.localItem?.reference_fabricant ||
+                                cleanHtmlText(item.evolizItem?.reference) ||
+                                "Sans référence"}
                             </div>
                           </div>
 
