@@ -16,31 +16,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Loader2,
-  Trash2,
-  Search,
-  Package,
-  Calendar,
-  Filter,
-  CheckSquare,
-  Square,
-  AlertTriangle,
-  ListChecks,
-} from "lucide-react";
+import { Loader2, Trash2, Search, Package, Calendar, Filter, CheckSquare, Square, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface ExpenseItem {
@@ -57,6 +37,8 @@ interface ExpenseItem {
 interface ScenarioExpensesBulkManagerProps {
   scenarioId: string;
   projectId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onComplete?: () => void;
 }
 
@@ -89,14 +71,15 @@ function formatDate(dateString: string): string {
   });
 }
 
-export function ScenarioExpensesBulkManager({ 
-  scenarioId, 
+export function ScenarioExpensesBulkManager({
+  scenarioId,
   projectId,
-  onComplete 
+  open,
+  onOpenChange,
+  onComplete,
 }: ScenarioExpensesBulkManagerProps) {
   const queryClient = useQueryClient();
 
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<ExpenseItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -133,6 +116,7 @@ export function ScenarioExpensesBulkManager({
       setSearchTerm("");
       setFilterCategorie("all");
       setFilterDate("all");
+      setShowDeleteConfirm(false);
     }
   }, [open, scenarioId]);
 
@@ -233,10 +217,7 @@ export function ScenarioExpensesBulkManager({
       const idsToDelete = Array.from(selectedIds);
       if (idsToDelete.length === 0) return 0;
 
-      const { error } = await supabase
-        .from("project_expenses")
-        .delete()
-        .in("id", idsToDelete);
+      const { error } = await supabase.from("project_expenses").delete().in("id", idsToDelete);
 
       if (error) throw error;
       return idsToDelete.length;
@@ -256,11 +237,6 @@ export function ScenarioExpensesBulkManager({
     },
   });
 
-  const handleClose = () => {
-    setOpen(false);
-    setShowDeleteConfirm(false);
-  };
-
   // Calcul du total sélectionné
   const totalSelected = useMemo(() => {
     return filteredItems
@@ -270,21 +246,14 @@ export function ScenarioExpensesBulkManager({
 
   return (
     <>
-      <DropdownMenuItem onClick={() => setOpen(true)}>
-        <ListChecks className="h-4 w-4 mr-2" />
-        Gérer les articles
-      </DropdownMenuItem>
-
-      <Dialog open={open} onOpenChange={handleClose}>
+      <Dialog open={open && !showDeleteConfirm} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
               Gestion du scénario ({items.length} articles)
             </DialogTitle>
-            <DialogDescription>
-              Sélectionnez les articles à gérer ou supprimer en masse
-            </DialogDescription>
+            <DialogDescription>Sélectionnez les articles à gérer ou supprimer en masse</DialogDescription>
           </DialogHeader>
 
           {/* Barre de filtres */}
@@ -312,11 +281,13 @@ export function ScenarioExpensesBulkManager({
                 <SelectItem value="all">Toutes catégories</SelectItem>
                 <SelectItem value="none">Sans catégorie</SelectItem>
                 <SelectItem value="evoliz">Import Evoliz</SelectItem>
-                {uniqueCategories.filter(c => c !== "Import Evoliz").map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
+                {uniqueCategories
+                  .filter((c) => c !== "Import Evoliz")
+                  .map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
 
@@ -357,11 +328,7 @@ export function ScenarioExpensesBulkManager({
             </div>
 
             {selectedIds.size > 0 && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setShowDeleteConfirm(true)}
-              >
+              <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
                 <Trash2 className="h-4 w-4 mr-1" />
                 Supprimer ({selectedIds.size})
               </Button>
@@ -419,21 +386,13 @@ export function ScenarioExpensesBulkManager({
                         )}
                       </div>
 
-                      <div className="text-sm text-center">
-                        {item.quantite}
-                      </div>
+                      <div className="text-sm text-center">{item.quantite}</div>
 
-                      <div className="text-sm text-right text-muted-foreground">
-                        {formatAmount(item.prix)}
-                      </div>
+                      <div className="text-sm text-right text-muted-foreground">{formatAmount(item.prix)}</div>
 
-                      <div className="text-sm text-right font-medium">
-                        {formatAmount(item.prix_vente_ttc)}
-                      </div>
+                      <div className="text-sm text-right font-medium">{formatAmount(item.prix_vente_ttc)}</div>
 
-                      <div className="text-xs text-muted-foreground">
-                        {formatDateTime(item.created_at)}
-                      </div>
+                      <div className="text-xs text-muted-foreground">{formatDateTime(item.created_at)}</div>
 
                       <div className="text-xs truncate" title={item.categorie || ""}>
                         {item.categorie || "-"}
@@ -446,7 +405,7 @@ export function ScenarioExpensesBulkManager({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={handleClose}>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               Fermer
             </Button>
           </DialogFooter>
@@ -462,16 +421,13 @@ export function ScenarioExpensesBulkManager({
               Confirmer la suppression
             </DialogTitle>
             <DialogDescription>
-              Vous êtes sur le point de supprimer <strong>{selectedIds.size} article(s)</strong> du scénario
-              pour un total de <strong>{formatAmount(totalSelected)}</strong>.
-              Cette action est irréversible.
+              Vous êtes sur le point de supprimer <strong>{selectedIds.size} article(s)</strong> du scénario pour un
+              total de <strong>{formatAmount(totalSelected)}</strong>. Cette action est irréversible.
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex-1 overflow-hidden py-4">
-            <p className="text-sm text-muted-foreground mb-2">
-              Articles sélectionnés :
-            </p>
+            <p className="text-sm text-muted-foreground mb-2">Articles sélectionnés :</p>
             <div className="max-h-[250px] overflow-y-auto overflow-x-auto border rounded-lg p-3 bg-muted/30">
               <ul className="text-sm space-y-1 min-w-0">
                 {filteredItems
@@ -491,11 +447,7 @@ export function ScenarioExpensesBulkManager({
             <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
               Annuler
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-            >
+            <Button variant="destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
