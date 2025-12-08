@@ -459,7 +459,7 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
               marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
               marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
               description: cleanHtmlText(evolizArticle.comment) || null,
-              fournisseur: "Import Evoliz",
+              fournisseur: null, // Non disponible dans l'API Evoliz
             };
 
             const { error } = await (supabase as any).from("accessories_catalog").insert({
