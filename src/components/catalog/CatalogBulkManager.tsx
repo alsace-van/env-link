@@ -16,13 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -101,7 +95,9 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
   const loadItems = async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await supabase
@@ -227,10 +223,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
       const idsToDelete = Array.from(selectedIds);
       if (idsToDelete.length === 0) return 0;
 
-      const { error } = await supabase
-        .from("accessories_catalog")
-        .delete()
-        .in("id", idsToDelete);
+      const { error } = await supabase.from("accessories_catalog").delete().in("id", idsToDelete);
 
       if (error) throw error;
       return idsToDelete.length;
@@ -268,9 +261,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
               <Package className="h-5 w-5" />
               Gestion du catalogue ({items.length} articles)
             </DialogTitle>
-            <DialogDescription>
-              Sélectionnez les articles à gérer ou supprimer en masse
-            </DialogDescription>
+            <DialogDescription>Sélectionnez les articles à gérer ou supprimer en masse</DialogDescription>
           </DialogHeader>
 
           {/* Barre de filtres */}
@@ -342,11 +333,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
             </div>
 
             {selectedIds.size > 0 && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setShowDeleteConfirm(true)}
-              >
+              <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
                 <Trash2 className="h-4 w-4 mr-1" />
                 Supprimer ({selectedIds.size})
               </Button>
@@ -397,9 +384,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                         {item.nom}
                       </div>
 
-                      <div className="text-sm text-right">
-                        {formatAmount(item.prix_vente_ttc)}
-                      </div>
+                      <div className="text-sm text-right">{formatAmount(item.prix_vente_ttc)}</div>
 
                       <div className="text-sm text-right text-muted-foreground">
                         {formatAmount(item.prix_reference)}
@@ -413,8 +398,8 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                               item.marge_pourcent >= 30
                                 ? "text-green-600 border-green-300"
                                 : item.marge_pourcent >= 15
-                                ? "text-orange-600 border-orange-300"
-                                : "text-red-600 border-red-300"
+                                  ? "text-orange-600 border-orange-300"
+                                  : "text-red-600 border-red-300"
                             }
                           >
                             {item.marge_pourcent.toFixed(1)}%
@@ -424,9 +409,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                         )}
                       </div>
 
-                      <div className="text-xs text-muted-foreground">
-                        {formatDateTime(item.created_at)}
-                      </div>
+                      <div className="text-xs text-muted-foreground">{formatDateTime(item.created_at)}</div>
 
                       <div className="text-xs truncate" title={item.fournisseur || ""}>
                         {item.fournisseur || "-"}
@@ -448,49 +431,37 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
 
       {/* Dialog confirmation suppression */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="h-5 w-5" />
               Confirmer la suppression
             </DialogTitle>
             <DialogDescription>
-              Vous êtes sur le point de supprimer <strong>{selectedIds.size} article(s)</strong> du catalogue.
-              Cette action est irréversible.
+              Vous êtes sur le point de supprimer <strong>{selectedIds.size} article(s)</strong> du catalogue. Cette
+              action est irréversible.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4">
-            <p className="text-sm text-muted-foreground">
-              Articles sélectionnés :
-            </p>
-            <ul className="mt-2 max-h-[200px] overflow-y-auto text-sm space-y-1">
+            <p className="text-sm text-muted-foreground">Articles sélectionnés :</p>
+            <ul className="mt-2 max-h-[300px] overflow-y-auto text-sm space-y-1 border rounded-lg p-3 bg-muted/30">
               {filteredItems
                 .filter((item) => selectedIds.has(item.id))
-                .slice(0, 10)
                 .map((item) => (
                   <li key={item.id} className="flex items-center gap-2">
                     <span className="text-red-500">•</span>
-                    <span className="truncate">{item.nom}</span>
+                    <span className="truncate flex-1">{item.nom}</span>
                   </li>
                 ))}
-              {selectedIds.size > 10 && (
-                <li className="text-muted-foreground italic">
-                  ... et {selectedIds.size - 10} autre(s)
-                </li>
-              )}
             </ul>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
               Annuler
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-            >
+            <Button variant="destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
               {deleteMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
