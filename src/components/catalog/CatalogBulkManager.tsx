@@ -91,6 +91,89 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
   const [filterDate, setFilterDate] = useState<string>("all");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // État pour l'édition des prix d'achat
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState<string>("");
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null);
+
+  // Sauvegarder le prix d'achat et recalculer la marge
+  const savePurchasePrice = async (itemId: string, newPrice: number | null) => {
+    setSavingPriceId(itemId);
+    try {
+      // Trouver l'article pour récupérer le prix de vente
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+
+      // Calculer la marge si on a les deux prix
+      let margePourcent: number | null = null;
+      let margeNette: number | null = null;
+
+      if (newPrice !== null && newPrice > 0 && item.prix_vente_ttc) {
+        const prixVenteHT = item.prix_vente_ttc / 1.2;
+        margePourcent = ((prixVenteHT - newPrice) / prixVenteHT) * 100;
+        margeNette = prixVenteHT - newPrice;
+      }
+
+      const { error } = await supabase
+        .from("accessories_catalog")
+        .update({
+          prix_reference: newPrice,
+          marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
+          marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
+        })
+        .eq("id", itemId);
+
+      if (error) throw error;
+
+      // Mettre à jour localement
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === itemId
+            ? {
+                ...i,
+                prix_reference: newPrice,
+                marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
+              }
+            : i,
+        ),
+      );
+
+      toast.success("Prix d'achat mis à jour");
+    } catch (error: any) {
+      console.error("Erreur mise à jour prix:", error);
+      toast.error("Erreur lors de la mise à jour");
+    } finally {
+      setSavingPriceId(null);
+      setEditingPriceId(null);
+    }
+  };
+
+  // Gérer la validation de l'édition
+  const handlePriceKeyDown = (e: React.KeyboardEvent, itemId: string) => {
+    if (e.key === "Enter") {
+      const value = editingPriceValue.replace(",", ".").trim();
+      const numValue = value === "" ? null : parseFloat(value);
+      if (value !== "" && isNaN(numValue as number)) {
+        toast.error("Veuillez entrer un nombre valide");
+        return;
+      }
+      savePurchasePrice(itemId, numValue);
+    } else if (e.key === "Escape") {
+      setEditingPriceId(null);
+    }
+  };
+
+  // Gérer le blur (perte de focus)
+  const handlePriceBlur = (itemId: string) => {
+    const value = editingPriceValue.replace(",", ".").trim();
+    const numValue = value === "" ? null : parseFloat(value);
+    if (value !== "" && isNaN(numValue as number)) {
+      setEditingPriceId(null);
+      return;
+    }
+    savePurchasePrice(itemId, numValue);
+  };
+
   // Charger les articles
   const loadItems = async () => {
     setLoading(true);
@@ -358,7 +441,7 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                   <div></div>
                   <div>Nom</div>
                   <div className="text-right">Vente TTC</div>
-                  <div className="text-right">Achat HT</div>
+                  <div className="text-right">Achat HT ✏️</div>
                   <div className="text-right">Marge</div>
                   <div>Ajouté le</div>
                   <div>Fournisseur</div>
@@ -386,8 +469,39 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
 
                       <div className="text-sm text-right">{formatAmount(item.prix_vente_ttc)}</div>
 
-                      <div className="text-sm text-right text-muted-foreground">
-                        {formatAmount(item.prix_reference)}
+                      {/* Prix d'achat éditable */}
+                      <div className="text-sm text-right" onClick={(e) => e.stopPropagation()}>
+                        {editingPriceId === item.id ? (
+                          <Input
+                            type="text"
+                            value={editingPriceValue}
+                            onChange={(e) => setEditingPriceValue(e.target.value)}
+                            onKeyDown={(e) => handlePriceKeyDown(e, item.id)}
+                            onBlur={() => handlePriceBlur(item.id)}
+                            className="h-7 w-20 text-right text-sm px-2"
+                            placeholder="0.00"
+                            autoFocus
+                          />
+                        ) : savingPriceId === item.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin ml-auto" />
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditingPriceId(item.id);
+                              setEditingPriceValue(
+                                item.prix_reference !== null ? item.prix_reference.toString().replace(".", ",") : "",
+                              );
+                            }}
+                            className={`hover:bg-muted px-2 py-1 rounded transition-colors ${
+                              item.prix_reference !== null
+                                ? "text-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                            title="Cliquer pour modifier"
+                          >
+                            {item.prix_reference !== null ? formatAmount(item.prix_reference) : "Saisir..."}
+                          </button>
+                        )}
                       </div>
 
                       <div className="text-sm text-right">
