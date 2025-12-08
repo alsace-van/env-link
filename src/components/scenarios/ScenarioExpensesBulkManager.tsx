@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Loader2, Trash2, Search, Package, Calendar, Filter, CheckSquare, Square, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +30,6 @@ interface ExpenseItem {
   prix_vente_ttc: number | null;
   categorie: string | null;
   created_at: string;
-  imported_from_evoliz?: boolean;
 }
 
 interface ScenarioExpensesBulkManagerProps {
@@ -94,7 +92,7 @@ export function ScenarioExpensesBulkManager({
     try {
       const { data, error } = await supabase
         .from("project_expenses")
-        .select("id, nom_accessoire, quantite, prix, prix_vente_ttc, categorie, created_at, imported_from_evoliz")
+        .select("id, nom_accessoire, quantite, prix, prix_vente_ttc, categorie, created_at")
         .eq("scenario_id", scenarioId)
         .order("created_at", { ascending: false });
 
@@ -158,8 +156,6 @@ export function ScenarioExpensesBulkManager({
       if (filterCategorie !== "all") {
         if (filterCategorie === "none") {
           if (item.categorie) return false;
-        } else if (filterCategorie === "evoliz") {
-          if (!item.imported_from_evoliz) return false;
         } else {
           if (item.categorie !== filterCategorie) return false;
         }
@@ -280,14 +276,11 @@ export function ScenarioExpensesBulkManager({
               <SelectContent>
                 <SelectItem value="all">Toutes catégories</SelectItem>
                 <SelectItem value="none">Sans catégorie</SelectItem>
-                <SelectItem value="evoliz">Import Evoliz</SelectItem>
-                {uniqueCategories
-                  .filter((c) => c !== "Import Evoliz")
-                  .map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
+                {uniqueCategories.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -379,11 +372,6 @@ export function ScenarioExpensesBulkManager({
                         <span className="truncate text-sm" title={item.nom_accessoire}>
                           {item.nom_accessoire}
                         </span>
-                        {item.imported_from_evoliz && (
-                          <Badge variant="outline" className="text-xs shrink-0">
-                            Evoliz
-                          </Badge>
-                        )}
                       </div>
 
                       <div className="text-sm text-center">{item.quantite}</div>
