@@ -58,7 +58,7 @@ export interface EvolizClient {
   email: string | null;
   phone: string | null;
   mobile: string | null;
-  type: 'Professionnel' | 'Particulier';
+  type: "Professionnel" | "Particulier";
   siret: string | null;
   vat_number: string | null;
   comment: string | null;
@@ -70,7 +70,7 @@ export interface EvolizClient {
 export interface EvolizClientInput {
   civility?: string;
   name: string;
-  type: 'Professionnel' | 'Particulier';
+  type: "Professionnel" | "Particulier";
   addr?: string;
   postcode?: string;
   town?: string;
@@ -130,12 +130,12 @@ export interface EvolizQuote {
   updated_at: string;
 }
 
-export type EvolizQuoteStatus = 
-  | 'draft'      // Brouillon
-  | 'sent'       // Envoyé
-  | 'accepted'   // Accepté
-  | 'refused'    // Refusé
-  | 'invoiced';  // Facturé
+export type EvolizQuoteStatus =
+  | "draft" // Brouillon
+  | "sent" // Envoyé
+  | "accepted" // Accepté
+  | "refused" // Refusé
+  | "invoiced"; // Facturé
 
 export interface EvolizQuoteItem {
   itemid: number;
@@ -234,7 +234,7 @@ export interface EvolizBuy {
     totalttc: number;
   };
   currency: string;
-  status: 'draft' | 'validated' | 'paid';
+  status: "draft" | "validated" | "paid";
   items: EvolizBuyItem[];
   created_at: string;
   updated_at: string;
@@ -326,7 +326,7 @@ export interface EvolizClientMapping {
   evoliz_client_id: number;
   evoliz_client_name?: string;
   evoliz_client_email?: string;
-  sync_direction: 'to_evoliz' | 'from_evoliz' | 'both';
+  sync_direction: "to_evoliz" | "from_evoliz" | "both";
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
@@ -335,17 +335,17 @@ export interface EvolizClientMapping {
 // --- HELPERS ---
 
 export const EVOLIZ_QUOTE_STATUS_LABELS: Record<EvolizQuoteStatus, string> = {
-  draft: 'Brouillon',
-  sent: 'Envoyé',
-  accepted: 'Accepté',
-  refused: 'Refusé',
-  invoiced: 'Facturé',
+  draft: "Brouillon",
+  sent: "Envoyé",
+  accepted: "Accepté",
+  refused: "Refusé",
+  invoiced: "Facturé",
 };
 
 export const EVOLIZ_QUOTE_STATUS_COLORS: Record<EvolizQuoteStatus, string> = {
-  draft: 'gray',
-  sent: 'blue',
-  accepted: 'green',
-  refused: 'red',
-  invoiced: 'purple',
+  draft: "gray",
+  sent: "blue",
+  accepted: "green",
+  refused: "red",
+  invoiced: "purple",
 };
