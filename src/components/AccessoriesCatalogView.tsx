@@ -46,6 +46,7 @@ import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
 import { NoticeSearchDialog } from "@/components/NoticeSearchDialog";
 import WishlistDialog from "@/components/WishlistDialog";
 import { CatalogBulkManager } from "@/components/catalog/CatalogBulkManager";
+import { CatalogSyncManager } from "@/components/catalog/CatalogSyncManager";
 
 interface Category {
   id: string;
@@ -657,6 +658,7 @@ const AccessoriesCatalogView = () => {
               Liste de souhaits
             </Button>
             <CatalogBulkManager onComplete={() => loadAccessories()} />
+            <CatalogSyncManager onComplete={() => loadAccessories()} />
             <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
               Import/Export
             </Button>
