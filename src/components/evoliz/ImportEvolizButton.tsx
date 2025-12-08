@@ -269,7 +269,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         // Récupérer les articles existants dans le catalogue (nom et référence)
         const { data: existingItems } = await (supabase as any)
           .from("accessories_catalog")
-          .select("nom, reference")
+          .select("nom, reference_fabricant")
           .eq("user_id", user.id);
 
         // Créer des sets pour vérification rapide des doublons
@@ -277,7 +277,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           (existingItems || []).map((item: any) => item.nom?.toLowerCase().trim()).filter(Boolean),
         );
         const existingRefs = new Set(
-          (existingItems || []).map((item: any) => item.reference?.toLowerCase().trim()).filter(Boolean),
+          (existingItems || []).map((item: any) => item.reference_fabricant?.toLowerCase().trim()).filter(Boolean),
         );
 
         // Filtrer les articles qui n'existent pas encore (par nom OU par référence)
@@ -318,7 +318,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             return {
               user_id: user.id,
               nom: cleanName,
-              reference: line.reference || null, // Ajouter la référence si disponible
+              reference_fabricant: line.reference || null, // Référence Evoliz
               prix_vente_ttc: prixVenteTTC,
               prix_public_ttc: prixVenteTTC,
               prix_reference: prixAchatHT,
@@ -330,15 +330,20 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             };
           });
 
+        console.log("📦 Articles à ajouter au catalogue:", newCatalogItems);
+
         if (newCatalogItems.length > 0) {
           const { error: catalogError } = await (supabase as any).from("accessories_catalog").insert(newCatalogItems);
 
           if (catalogError) {
-            console.warn("Erreur ajout catalogue:", catalogError);
+            console.error("❌ Erreur ajout catalogue:", catalogError);
             // On continue quand même l'import
           } else {
+            console.log("✅ Catalogue mis à jour:", catalogItemsCreated, "articles");
             catalogItemsCreated = newCatalogItems.length;
           }
+        } else {
+          console.log("ℹ️ Aucun nouvel article à ajouter (tous existent déjà)");
         }
       }
 
