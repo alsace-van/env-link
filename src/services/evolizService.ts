@@ -17,9 +17,9 @@ import type {
   EvolizPurchaseClassification,
   EvolizPaymentTerm,
   EvolizApiResponse,
-} from '@/types/evoliz.types';
+} from "@/types/evoliz.types";
 
-const EVOLIZ_API_BASE = 'https://www.evoliz.io/api/v1';
+const EVOLIZ_API_BASE = "https://www.evoliz.io/api/v1";
 
 interface EvolizAuthConfig {
   companyId: string;
@@ -48,7 +48,7 @@ class EvolizApiService {
 
   private getAuthHeader(): string {
     if (!this.config) {
-      throw new Error('Evoliz API non configurée. Veuillez saisir vos clés API.');
+      throw new Error("Evoliz API non configurée. Veuillez saisir vos clés API.");
     }
     const credentials = btoa(`${this.config.publicKey}:${this.config.secretKey}`);
     return `Basic ${credentials}`;
@@ -56,34 +56,27 @@ class EvolizApiService {
 
   private getBaseUrl(): string {
     if (!this.config) {
-      throw new Error('Evoliz API non configurée.');
+      throw new Error("Evoliz API non configurée.");
     }
     return `${EVOLIZ_API_BASE}/companies/${this.config.companyId}`;
   }
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.getBaseUrl()}${endpoint}`;
-    
+
     const response = await fetch(url, {
       ...options,
       headers: {
-        'Authorization': this.getAuthHeader(),
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Authorization: this.getAuthHeader(),
+        "Content-Type": "application/json",
+        Accept: "application/json",
         ...options.headers,
       },
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new EvolizError(
-        errorData.message || `Erreur API Evoliz: ${response.status}`,
-        response.status,
-        errorData
-      );
+      throw new EvolizError(errorData.message || `Erreur API Evoliz: ${response.status}`, response.status, errorData);
     }
 
     return response.json();
@@ -94,22 +87,22 @@ class EvolizApiService {
   async testConnection(): Promise<{ success: boolean; message: string; companyName?: string }> {
     try {
       // On utilise l'endpoint /clients avec limit=1 pour tester
-      const response = await this.request<EvolizApiResponse<EvolizClient[]>>('/clients?per_page=1');
+      const response = await this.request<EvolizApiResponse<EvolizClient[]>>("/clients?per_page=1");
       return {
         success: true,
-        message: 'Connexion réussie à Evoliz',
+        message: "Connexion réussie à Evoliz",
       };
     } catch (error) {
       if (error instanceof EvolizError) {
         if (error.status === 401) {
-          return { success: false, message: 'Clés API invalides' };
+          return { success: false, message: "Clés API invalides" };
         }
         if (error.status === 404) {
-          return { success: false, message: 'Company ID invalide' };
+          return { success: false, message: "Company ID invalide" };
         }
         return { success: false, message: error.message };
       }
-      return { success: false, message: 'Erreur de connexion' };
+      return { success: false, message: "Erreur de connexion" };
     }
   }
 
@@ -121,14 +114,12 @@ class EvolizApiService {
     search?: string;
   }): Promise<EvolizApiResponse<EvolizClient[]>> {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
-    if (params?.search) searchParams.set('search', params.search);
-    
+    if (params?.page) searchParams.set("page", params.page.toString());
+    if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
+    if (params?.search) searchParams.set("search", params.search);
+
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizClient[]>>(
-      `/clients${query ? `?${query}` : ''}`
-    );
+    return this.request<EvolizApiResponse<EvolizClient[]>>(`/clients${query ? `?${query}` : ""}`);
   }
 
   async getClient(clientId: number): Promise<EvolizClient> {
@@ -136,15 +127,15 @@ class EvolizApiService {
   }
 
   async createClient(data: EvolizClientInput): Promise<EvolizClient> {
-    return this.request<EvolizClient>('/clients', {
-      method: 'POST',
+    return this.request<EvolizClient>("/clients", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   }
 
   async updateClient(clientId: number, data: Partial<EvolizClientInput>): Promise<EvolizClient> {
     return this.request<EvolizClient>(`/clients/${clientId}`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   }
@@ -158,15 +149,13 @@ class EvolizApiService {
     clientid?: number;
   }): Promise<EvolizApiResponse<EvolizQuote[]>> {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
-    if (params?.status) searchParams.set('status', params.status);
-    if (params?.clientid) searchParams.set('clientid', params.clientid.toString());
-    
+    if (params?.page) searchParams.set("page", params.page.toString());
+    if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
+    if (params?.status) searchParams.set("status", params.status);
+    if (params?.clientid) searchParams.set("clientid", params.clientid.toString());
+
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizQuote[]>>(
-      `/quotes${query ? `?${query}` : ''}`
-    );
+    return this.request<EvolizApiResponse<EvolizQuote[]>>(`/quotes${query ? `?${query}` : ""}`);
   }
 
   async getQuote(quoteId: number): Promise<EvolizQuote> {
@@ -174,34 +163,34 @@ class EvolizApiService {
   }
 
   async createQuote(data: EvolizQuoteInput): Promise<EvolizQuote> {
-    return this.request<EvolizQuote>('/quotes', {
-      method: 'POST',
+    return this.request<EvolizQuote>("/quotes", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   }
 
   async sendQuote(quoteId: number, email?: string): Promise<{ success: boolean }> {
     return this.request<{ success: boolean }>(`/quotes/${quoteId}/send`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(email ? { email } : {}),
     });
   }
 
   async acceptQuote(quoteId: number): Promise<EvolizQuote> {
     return this.request<EvolizQuote>(`/quotes/${quoteId}/accept`, {
-      method: 'POST',
+      method: "POST",
     });
   }
 
   async refuseQuote(quoteId: number): Promise<EvolizQuote> {
     return this.request<EvolizQuote>(`/quotes/${quoteId}/refuse`, {
-      method: 'POST',
+      method: "POST",
     });
   }
 
   async convertQuoteToInvoice(quoteId: number): Promise<{ invoiceid: number }> {
     return this.request<{ invoiceid: number }>(`/quotes/${quoteId}/invoice`, {
-      method: 'POST',
+      method: "POST",
     });
   }
 
@@ -213,14 +202,12 @@ class EvolizApiService {
     search?: string;
   }): Promise<EvolizApiResponse<EvolizArticle[]>> {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
-    if (params?.search) searchParams.set('search', params.search);
-    
+    if (params?.page) searchParams.set("page", params.page.toString());
+    if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
+    if (params?.search) searchParams.set("search", params.search);
+
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizArticle[]>>(
-      `/articles${query ? `?${query}` : ''}`
-    );
+    return this.request<EvolizApiResponse<EvolizArticle[]>>(`/articles${query ? `?${query}` : ""}`);
   }
 
   async getArticle(articleId: number): Promise<EvolizArticle> {
@@ -235,14 +222,12 @@ class EvolizApiService {
     search?: string;
   }): Promise<EvolizApiResponse<EvolizSupplier[]>> {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
-    if (params?.search) searchParams.set('search', params.search);
-    
+    if (params?.page) searchParams.set("page", params.page.toString());
+    if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
+    if (params?.search) searchParams.set("search", params.search);
+
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizSupplier[]>>(
-      `/suppliers${query ? `?${query}` : ''}`
-    );
+    return this.request<EvolizApiResponse<EvolizSupplier[]>>(`/suppliers${query ? `?${query}` : ""}`);
   }
 
   // --- BUYS (ACHATS/DÉPENSES) ---
@@ -253,38 +238,36 @@ class EvolizApiService {
     supplierid?: number;
   }): Promise<EvolizApiResponse<EvolizBuy[]>> {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.per_page) searchParams.set('per_page', params.per_page.toString());
-    if (params?.supplierid) searchParams.set('supplierid', params.supplierid.toString());
-    
+    if (params?.page) searchParams.set("page", params.page.toString());
+    if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
+    if (params?.supplierid) searchParams.set("supplierid", params.supplierid.toString());
+
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizBuy[]>>(
-      `/buys${query ? `?${query}` : ''}`
-    );
+    return this.request<EvolizApiResponse<EvolizBuy[]>>(`/buys${query ? `?${query}` : ""}`);
   }
 
   async createBuy(data: EvolizBuyInput): Promise<EvolizBuy> {
-    return this.request<EvolizBuy>('/buys', {
-      method: 'POST',
+    return this.request<EvolizBuy>("/buys", {
+      method: "POST",
       body: JSON.stringify(data),
     });
   }
 
   async uploadBuyAttachment(buyId: number, file: File): Promise<{ success: boolean }> {
     const formData = new FormData();
-    formData.append('file', file);
-    
+    formData.append("file", file);
+
     const url = `${this.getBaseUrl()}/buys/${buyId}/attachments`;
     const response = await fetch(url, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': this.getAuthHeader(),
+        Authorization: this.getAuthHeader(),
       },
       body: formData,
     });
 
     if (!response.ok) {
-      throw new EvolizError('Erreur upload fichier', response.status);
+      throw new EvolizError("Erreur upload fichier", response.status);
     }
 
     return { success: true };
@@ -293,17 +276,17 @@ class EvolizApiService {
   // --- CLASSIFICATIONS ---
 
   async getSaleClassifications(): Promise<EvolizApiResponse<EvolizSaleClassification[]>> {
-    return this.request<EvolizApiResponse<EvolizSaleClassification[]>>('/sale-classifications');
+    return this.request<EvolizApiResponse<EvolizSaleClassification[]>>("/sale-classifications");
   }
 
   async getPurchaseClassifications(): Promise<EvolizApiResponse<EvolizPurchaseClassification[]>> {
-    return this.request<EvolizApiResponse<EvolizPurchaseClassification[]>>('/purchase-classifications');
+    return this.request<EvolizApiResponse<EvolizPurchaseClassification[]>>("/purchase-classifications");
   }
 
   // --- PAYMENT TERMS ---
 
   async getPaymentTerms(): Promise<EvolizApiResponse<EvolizPaymentTerm[]>> {
-    return this.request<EvolizApiResponse<EvolizPaymentTerm[]>>('/payterms');
+    return this.request<EvolizApiResponse<EvolizPaymentTerm[]>>("/payterms");
   }
 }
 
@@ -315,7 +298,7 @@ export class EvolizError extends Error {
 
   constructor(message: string, status: number, data?: unknown) {
     super(message);
-    this.name = 'EvolizError';
+    this.name = "EvolizError";
     this.status = status;
     this.data = data;
   }
@@ -335,17 +318,17 @@ export function initializeEvolizApi(credentials: EvolizCredentials) {
   });
 }
 
-export function formatEvolizAmount(amount: number, currency = 'EUR'): string {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
+export function formatEvolizAmount(amount: number, currency = "EUR"): string {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
     currency,
   }).format(amount);
 }
 
 export function formatEvolizDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+  return new Date(dateString).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   });
 }
