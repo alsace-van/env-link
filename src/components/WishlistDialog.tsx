@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,16 +69,20 @@ const formatShortDate = (dateString: string | null): string => {
 };
 
 const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: WishlistDialogProps) => {
+  // Récupérer le projectId depuis l'URL si on est sur une page projet
+  const { projectId: urlProjectId } = useParams<{ projectId?: string }>();
+  const effectiveProjectId = initialProjectId || urlProjectId || null;
+
   const [categories, setCategories] = useState<WishlistCategory[]>([]);
   const [items, setItems] = useState<WishlistItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeTab, setActiveTab] = useState<string>("__all__");
-  const [projectFilter, setProjectFilter] = useState<string | null>(initialProjectId);
+  const [projectFilter, setProjectFilter] = useState<string | null>(effectiveProjectId);
   const [newItemText, setNewItemText] = useState("");
   const [newItemUrl, setNewItemUrl] = useState("");
   const [newItemSupplier, setNewItemSupplier] = useState("");
   const [newItemPrice, setNewItemPrice] = useState("");
-  const [newItemProjectId, setNewItemProjectId] = useState<string | null>(initialProjectId);
+  const [newItemProjectId, setNewItemProjectId] = useState<string | null>(effectiveProjectId);
   const [loading, setLoading] = useState(true);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -90,8 +95,11 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     if (open) {
       loadData();
       loadProjects();
+      // Mettre à jour le filtre et le projet par défaut quand on ouvre
+      setProjectFilter(effectiveProjectId);
+      setNewItemProjectId(effectiveProjectId);
     }
-  }, [open]);
+  }, [open, effectiveProjectId]);
 
   useEffect(() => {
     if (initialProjectId) {
@@ -314,14 +322,24 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
 
   const getFilteredItems = () => {
     let filtered = items;
-    if (projectFilter) filtered = filtered.filter((i) => i.project_id === projectFilter);
+    if (projectFilter === "__none__") {
+      // Filtre "Sans projet" - seulement les items sans projet
+      filtered = filtered.filter((i) => i.project_id === null);
+    } else if (projectFilter) {
+      // Filtre par projet spécifique
+      filtered = filtered.filter((i) => i.project_id === projectFilter);
+    }
     if (activeTab !== "__all__") filtered = filtered.filter((i) => i.category_id === activeTab);
     return filtered;
   };
 
   const getPendingCountForCategory = (categoryId: string | null) => {
     let filtered = items;
-    if (projectFilter) filtered = filtered.filter((i) => i.project_id === projectFilter);
+    if (projectFilter === "__none__") {
+      filtered = filtered.filter((i) => i.project_id === null);
+    } else if (projectFilter) {
+      filtered = filtered.filter((i) => i.project_id === projectFilter);
+    }
     if (categoryId === null) return filtered.filter((i) => i.status === "pending").length;
     return filtered.filter((i) => i.category_id === categoryId && i.status === "pending").length;
   };
@@ -435,9 +453,14 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
             <DialogTitle className="flex items-center gap-2">
               <ShoppingCart className="h-5 w-5" />
               Liste de souhaits
-              {projectFilter && (
+              {projectFilter && projectFilter !== "__none__" && (
                 <Badge variant="secondary" className="ml-2">
                   📁 {getProjectName(projectFilter)}
+                </Badge>
+              )}
+              {projectFilter === "__none__" && (
+                <Badge variant="outline" className="ml-2">
+                  Sans projet
                 </Badge>
               )}
             </DialogTitle>
@@ -445,7 +468,14 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
               <Filter className="h-4 w-4 text-muted-foreground" />
               <Select
                 value={projectFilter || "__all__"}
-                onValueChange={(value) => setProjectFilter(value === "__all__" ? null : value)}
+                onValueChange={(value) => {
+                  const newProjectId = value === "__all__" ? null : value === "__none__" ? null : value;
+                  setProjectFilter(value === "__all__" ? null : value);
+                  // Synchroniser le projet pour les nouveaux articles (sauf "Sans projet")
+                  if (value !== "__none__") {
+                    setNewItemProjectId(newProjectId);
+                  }
+                }}
               >
                 <SelectTrigger className="w-[180px] h-8">
                   <SelectValue placeholder="Tous les projets" />
