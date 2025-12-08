@@ -102,13 +102,23 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      console.log("❌ Wishlist: Pas d'utilisateur connecté");
+      return;
+    }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("projects")
       .select("id, nom, nom_proprietaire")
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
+
+    console.log("📁 Wishlist projets:", { data, error, count: data?.length });
+
+    if (error) {
+      console.error("❌ Erreur chargement projets:", error);
+      return;
+    }
 
     if (data) setProjects(data);
   };
