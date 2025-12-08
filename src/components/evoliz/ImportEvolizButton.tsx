@@ -51,6 +51,9 @@ interface QuoteLine {
   total_vat_exclude: number;
   selected: boolean;
   destination: LineDestination;
+  // Champs de marge Evoliz
+  purchase_unit_price_vat_exclude?: number | null;
+  margin_percent?: number | null;
 }
 
 interface ImportEvolizButtonProps {
@@ -111,17 +114,35 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
   // Quand on sélectionne un devis, préparer les lignes
   useEffect(() => {
     if (selectedQuote?.items) {
+      console.log("📦 Items Evoliz bruts:", selectedQuote.items);
       setLines(
-        selectedQuote.items.map((item: any) => ({
-          itemid: item.itemid || crypto.randomUUID(),
-          designation: item.designation || item.designation_clean || "",
-          quantity: item.quantity || 1,
-          unit: item.unit || "",
-          unit_price_vat_exclude: item.unit_price_vat_exclude || 0,
-          total_vat_exclude: item.total?.vat_exclude || item.unit_price_vat_exclude * item.quantity || 0,
-          selected: true,
-          destination: "scenario" as LineDestination,
-        })),
+        selectedQuote.items.map((item: any) => {
+          // Récupérer le prix d'achat depuis Evoliz (peut être null)
+          const rawPurchasePrice =
+            item.purchase_unit_price_vat_exclude || item.margin?.purchase_unit_price_vat_exclude || null;
+          const salePrice = item.unit_price_vat_exclude || 0;
+
+          // Ne garder le prix d'achat que s'il est différent du prix de vente (sinon c'est une erreur)
+          const purchasePrice = rawPurchasePrice && rawPurchasePrice !== salePrice ? rawPurchasePrice : null;
+
+          console.log(
+            `  - ${item.designation}: vente=${salePrice}, achat brut=${rawPurchasePrice}, achat final=${purchasePrice}`,
+          );
+
+          return {
+            itemid: item.itemid || crypto.randomUUID(),
+            designation: item.designation || item.designation_clean || "",
+            quantity: item.quantity || 1,
+            unit: item.unit || "",
+            unit_price_vat_exclude: salePrice,
+            total_vat_exclude: item.total?.vat_exclude || salePrice * item.quantity || 0,
+            selected: true,
+            destination: "scenario" as LineDestination,
+            // Champs de marge Evoliz - seulement si différent du prix de vente
+            purchase_unit_price_vat_exclude: purchasePrice,
+            margin_percent: item.margin?.margin_percent || null,
+          };
+        }),
       );
     }
   }, [selectedQuote]);
@@ -195,12 +216,31 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           })
           .map((line) => {
             const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
-            const prixVenteTTC = line.unit_price_vat_exclude * 1.2;
+            const prixVenteHT = line.unit_price_vat_exclude;
+            const prixVenteTTC = prixVenteHT * 1.2;
+            const prixAchatHT = line.purchase_unit_price_vat_exclude || null;
+
+            // Calculer la marge si on a le prix d'achat
+            let margePourcent: number | null = null;
+            let margeNette: number | null = null;
+
+            if (prixAchatHT && prixAchatHT > 0) {
+              // Marge = (Prix vente HT - Prix achat HT) / Prix vente HT * 100
+              margePourcent = ((prixVenteHT - prixAchatHT) / prixVenteHT) * 100;
+              margeNette = prixVenteHT - prixAchatHT;
+            } else if (line.margin_percent) {
+              // Si on a directement le % de marge depuis Evoliz
+              margePourcent = line.margin_percent;
+            }
+
             return {
               user_id: user.id,
               nom: cleanName,
-              prix_vente_ttc: prixVenteTTC,
-              prix_reference: line.unit_price_vat_exclude, // Prix HT comme référence
+              prix_vente_ttc: prixVenteTTC, // Prix de vente TTC au client
+              prix_public_ttc: prixVenteTTC, // Prix public = prix de vente
+              prix_reference: prixAchatHT, // Prix d'achat HT (depuis Evoliz)
+              marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
+              marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
               description: `Importé depuis devis Evoliz ${selectedQuote.document_number}`,
               fournisseur: "Import Evoliz",
               available_in_shop: false,
@@ -226,13 +266,11 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           scenario_id: scenarioId || null,
           user_id: user.id,
           nom_accessoire: line.designation.replace(/<[^>]*>/g, "").trim(), // Nettoyer HTML
-          quantite: line.quantity,
+          quantite: Math.round(line.quantity), // Forcer en entier
           prix: line.unit_price_vat_exclude,
           prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
           categorie: "Import Evoliz",
           statut_paiement: "payé",
-          imported_from_evoliz: true,
-          evoliz_item_id: line.itemid,
         }));
 
         const { error } = await (supabase as any).from("project_expenses").insert(expenses);
