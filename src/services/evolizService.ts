@@ -1,9 +1,9 @@
 // ============================================
 // SERVICE API EVOLIZ
-// Gestion des appels à l'API Evoliz
-// CORRIGÉ : Authentification JWT
+// Utilise l'Edge Function comme proxy pour éviter CORS
 // ============================================
 
+import { supabase } from "@/integrations/supabase/client";
 import type {
   EvolizCredentials,
   EvolizClient,
@@ -20,7 +20,13 @@ import type {
   EvolizApiResponse,
 } from "@/types/evoliz.types";
 
-const EVOLIZ_API_BASE = "https://www.evoliz.io/api/v1";
+const DEBUG = true;
+
+function debugLog(...args: any[]) {
+  if (DEBUG) {
+    console.log("[EVOLIZ]", ...args);
+  }
+}
 
 interface EvolizAuthConfig {
   companyId: string;
@@ -28,143 +34,84 @@ interface EvolizAuthConfig {
   secretKey: string;
 }
 
-interface EvolizToken {
-  accessToken: string;
-  expiresAt: number; // timestamp en ms
-}
-
 class EvolizApiService {
   private config: EvolizAuthConfig | null = null;
-  private token: EvolizToken | null = null;
 
   // --- CONFIGURATION ---
 
   setConfig(config: EvolizAuthConfig) {
+    debugLog("Configuration définie:", {
+      companyId: config.companyId,
+      publicKey: config.publicKey.substring(0, 10) + "...",
+    });
     this.config = config;
-    this.token = null; // Reset token when config changes
   }
 
   clearConfig() {
+    debugLog("Configuration effacée");
     this.config = null;
-    this.token = null;
   }
 
   hasConfig(): boolean {
     return this.config !== null;
   }
 
-  // --- AUTHENTICATION ---
+  // --- PROXY CALL ---
 
-  private async authenticate(): Promise<string> {
+  private async callProxy<T>(params: { endpoint?: string; method?: string; body?: any; action?: string }): Promise<T> {
     if (!this.config) {
-      throw new Error("Evoliz API non configurée. Veuillez saisir vos clés API.");
+      throw new Error("Evoliz API non configurée");
     }
 
-    // Vérifier si le token est encore valide (avec 1 minute de marge)
-    if (this.token && this.token.expiresAt > Date.now() + 60000) {
-      return this.token.accessToken;
-    }
+    debugLog("Appel proxy:", params);
 
-    // Obtenir un nouveau token
-    const loginUrl = `${EVOLIZ_API_BASE}/login`;
-
-    const response = await fetch(loginUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
+    const { data, error } = await supabase.functions.invoke("evoliz-proxy", {
+      body: {
+        company_id: this.config.companyId,
         public_key: this.config.publicKey,
         secret_key: this.config.secretKey,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      if (response.status === 401) {
-        throw new EvolizError("Clés API invalides", 401, errorData);
-      }
-      throw new EvolizError(
-        errorData.message || `Erreur d'authentification: ${response.status}`,
-        response.status,
-        errorData,
-      );
-    }
-
-    const data = await response.json();
-
-    // Le token expire après 15 minutes selon la doc
-    this.token = {
-      accessToken: data.access_token || data.token,
-      expiresAt: Date.now() + 14 * 60 * 1000, // 14 minutes pour être safe
-    };
-
-    return this.token.accessToken;
-  }
-
-  private getBaseUrl(): string {
-    if (!this.config) {
-      throw new Error("Evoliz API non configurée.");
-    }
-    return `${EVOLIZ_API_BASE}/companies/${this.config.companyId}`;
-  }
-
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const accessToken = await this.authenticate();
-    const url = `${this.getBaseUrl()}${endpoint}`;
-
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...options.headers,
+        endpoint: params.endpoint,
+        method: params.method || "GET",
+        body: params.body,
+        action: params.action,
       },
     });
 
-    if (!response.ok) {
-      // Si token expiré, réessayer une fois
-      if (response.status === 401 && this.token) {
-        this.token = null;
-        return this.request<T>(endpoint, options);
-      }
+    debugLog("Réponse proxy:", { data, error });
 
-      const errorData = await response.json().catch(() => ({}));
-      throw new EvolizError(errorData.message || `Erreur API Evoliz: ${response.status}`, response.status, errorData);
+    if (error) {
+      throw new EvolizError(error.message || "Erreur proxy", 500, error);
     }
 
-    return response.json();
+    return data as T;
   }
 
   // --- TEST CONNECTION ---
 
-  async testConnection(): Promise<{ success: boolean; message: string; companyName?: string }> {
+  async testConnection(): Promise<{ success: boolean; message: string; details?: string }> {
+    debugLog("=== TEST DE CONNEXION ===");
+
     try {
-      // D'abord tester l'authentification
-      await this.authenticate();
+      const result = await this.callProxy<{ success: boolean; message: string }>({
+        action: "test",
+      });
 
-      // Ensuite tester un appel API simple
-      const response = await this.request<EvolizApiResponse<EvolizClient[]>>("/clients?per_page=1");
-
-      return {
-        success: true,
-        message: "Connexion réussie à Evoliz",
-      };
+      debugLog("Résultat test:", result);
+      return result;
     } catch (error) {
+      debugLog("Erreur test:", error);
+
       if (error instanceof EvolizError) {
-        if (error.status === 401) {
-          return { success: false, message: "Clés API invalides" };
-        }
-        if (error.status === 404) {
-          return { success: false, message: "Company ID invalide" };
-        }
-        return { success: false, message: error.message };
+        return {
+          success: false,
+          message: error.message,
+          details: JSON.stringify(error.data),
+        };
       }
+
       return {
         success: false,
-        message: error instanceof Error ? error.message : "Erreur de connexion",
+        message: error instanceof Error ? error.message : "Erreur inconnue",
       };
     }
   }
@@ -182,24 +129,30 @@ class EvolizApiService {
     if (params?.search) searchParams.set("search", params.search);
 
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizClient[]>>(`/clients${query ? `?${query}` : ""}`);
+    return this.callProxy<EvolizApiResponse<EvolizClient[]>>({
+      endpoint: `/clients${query ? `?${query}` : ""}`,
+    });
   }
 
   async getClient(clientId: number): Promise<EvolizClient> {
-    return this.request<EvolizClient>(`/clients/${clientId}`);
+    return this.callProxy<EvolizClient>({
+      endpoint: `/clients/${clientId}`,
+    });
   }
 
   async createClient(data: EvolizClientInput): Promise<EvolizClient> {
-    return this.request<EvolizClient>("/clients", {
+    return this.callProxy<EvolizClient>({
+      endpoint: "/clients",
       method: "POST",
-      body: JSON.stringify(data),
+      body: data,
     });
   }
 
   async updateClient(clientId: number, data: Partial<EvolizClientInput>): Promise<EvolizClient> {
-    return this.request<EvolizClient>(`/clients/${clientId}`, {
+    return this.callProxy<EvolizClient>({
+      endpoint: `/clients/${clientId}`,
       method: "PATCH",
-      body: JSON.stringify(data),
+      body: data,
     });
   }
 
@@ -218,41 +171,50 @@ class EvolizApiService {
     if (params?.clientid) searchParams.set("clientid", params.clientid.toString());
 
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizQuote[]>>(`/quotes${query ? `?${query}` : ""}`);
+    return this.callProxy<EvolizApiResponse<EvolizQuote[]>>({
+      endpoint: `/quotes${query ? `?${query}` : ""}`,
+    });
   }
 
   async getQuote(quoteId: number): Promise<EvolizQuote> {
-    return this.request<EvolizQuote>(`/quotes/${quoteId}`);
+    return this.callProxy<EvolizQuote>({
+      endpoint: `/quotes/${quoteId}`,
+    });
   }
 
   async createQuote(data: EvolizQuoteInput): Promise<EvolizQuote> {
-    return this.request<EvolizQuote>("/quotes", {
+    return this.callProxy<EvolizQuote>({
+      endpoint: "/quotes",
       method: "POST",
-      body: JSON.stringify(data),
+      body: data,
     });
   }
 
   async sendQuote(quoteId: number, email?: string): Promise<{ success: boolean }> {
-    return this.request<{ success: boolean }>(`/quotes/${quoteId}/send`, {
+    return this.callProxy<{ success: boolean }>({
+      endpoint: `/quotes/${quoteId}/send`,
       method: "POST",
-      body: JSON.stringify(email ? { email } : {}),
+      body: email ? { email } : {},
     });
   }
 
   async acceptQuote(quoteId: number): Promise<EvolizQuote> {
-    return this.request<EvolizQuote>(`/quotes/${quoteId}/accept`, {
+    return this.callProxy<EvolizQuote>({
+      endpoint: `/quotes/${quoteId}/accept`,
       method: "POST",
     });
   }
 
   async refuseQuote(quoteId: number): Promise<EvolizQuote> {
-    return this.request<EvolizQuote>(`/quotes/${quoteId}/refuse`, {
+    return this.callProxy<EvolizQuote>({
+      endpoint: `/quotes/${quoteId}/refuse`,
       method: "POST",
     });
   }
 
   async convertQuoteToInvoice(quoteId: number): Promise<{ invoiceid: number }> {
-    return this.request<{ invoiceid: number }>(`/quotes/${quoteId}/invoice`, {
+    return this.callProxy<{ invoiceid: number }>({
+      endpoint: `/quotes/${quoteId}/invoice`,
       method: "POST",
     });
   }
@@ -270,14 +232,18 @@ class EvolizApiService {
     if (params?.search) searchParams.set("search", params.search);
 
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizArticle[]>>(`/articles${query ? `?${query}` : ""}`);
+    return this.callProxy<EvolizApiResponse<EvolizArticle[]>>({
+      endpoint: `/articles${query ? `?${query}` : ""}`,
+    });
   }
 
   async getArticle(articleId: number): Promise<EvolizArticle> {
-    return this.request<EvolizArticle>(`/articles/${articleId}`);
+    return this.callProxy<EvolizArticle>({
+      endpoint: `/articles/${articleId}`,
+    });
   }
 
-  // --- SUPPLIERS (FOURNISSEURS) ---
+  // --- SUPPLIERS ---
 
   async getSuppliers(params?: {
     page?: number;
@@ -290,10 +256,12 @@ class EvolizApiService {
     if (params?.search) searchParams.set("search", params.search);
 
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizSupplier[]>>(`/suppliers${query ? `?${query}` : ""}`);
+    return this.callProxy<EvolizApiResponse<EvolizSupplier[]>>({
+      endpoint: `/suppliers${query ? `?${query}` : ""}`,
+    });
   }
 
-  // --- BUYS (ACHATS/DÉPENSES) ---
+  // --- BUYS ---
 
   async getBuys(params?: {
     page?: number;
@@ -306,51 +274,42 @@ class EvolizApiService {
     if (params?.supplierid) searchParams.set("supplierid", params.supplierid.toString());
 
     const query = searchParams.toString();
-    return this.request<EvolizApiResponse<EvolizBuy[]>>(`/buys${query ? `?${query}` : ""}`);
+    return this.callProxy<EvolizApiResponse<EvolizBuy[]>>({
+      endpoint: `/buys${query ? `?${query}` : ""}`,
+    });
   }
 
   async createBuy(data: EvolizBuyInput): Promise<EvolizBuy> {
-    return this.request<EvolizBuy>("/buys", {
+    return this.callProxy<EvolizBuy>({
+      endpoint: "/buys",
       method: "POST",
-      body: JSON.stringify(data),
+      body: data,
     });
   }
 
-  async uploadBuyAttachment(buyId: number, file: File): Promise<{ success: boolean }> {
-    const accessToken = await this.authenticate();
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const url = `${this.getBaseUrl()}/buys/${buyId}/attachments`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new EvolizError("Erreur upload fichier", response.status);
-    }
-
-    return { success: true };
-  }
+  // Note: uploadBuyAttachment nécessiterait une gestion spéciale des fichiers
+  // Pour l'instant, on ne le supporte pas via le proxy
 
   // --- CLASSIFICATIONS ---
 
   async getSaleClassifications(): Promise<EvolizApiResponse<EvolizSaleClassification[]>> {
-    return this.request<EvolizApiResponse<EvolizSaleClassification[]>>("/sale-classifications");
+    return this.callProxy<EvolizApiResponse<EvolizSaleClassification[]>>({
+      endpoint: "/sale-classifications",
+    });
   }
 
   async getPurchaseClassifications(): Promise<EvolizApiResponse<EvolizPurchaseClassification[]>> {
-    return this.request<EvolizApiResponse<EvolizPurchaseClassification[]>>("/purchase-classifications");
+    return this.callProxy<EvolizApiResponse<EvolizPurchaseClassification[]>>({
+      endpoint: "/purchase-classifications",
+    });
   }
 
   // --- PAYMENT TERMS ---
 
   async getPaymentTerms(): Promise<EvolizApiResponse<EvolizPaymentTerm[]>> {
-    return this.request<EvolizApiResponse<EvolizPaymentTerm[]>>("/payterms");
+    return this.callProxy<EvolizApiResponse<EvolizPaymentTerm[]>>({
+      endpoint: "/payterms",
+    });
   }
 }
 
