@@ -15,7 +15,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings, Star, Copy, FileText, Trash2, Palette, Lock, Unlock, History, Send } from "lucide-react";
+import { Settings, Star, Copy, FileText, Trash2, Palette, Lock, Unlock, History, Send, ListChecks } from "lucide-react";
 import { useScenarios } from "@/hooks/useScenarios";
 import { toast } from "sonner";
 import type { Scenario } from "@/types/scenarios";
@@ -47,6 +47,7 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, cli
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isCustomizeDialogOpen, setIsCustomizeDialogOpen] = useState(false);
   const [isExportEvolizOpen, setIsExportEvolizOpen] = useState(false);
+  const [isBulkManagerOpen, setIsBulkManagerOpen] = useState(false);
   const [newName, setNewName] = useState(scenario.nom);
   const [selectedCouleur, setSelectedCouleur] = useState(scenario.couleur);
   const [selectedIcone, setSelectedIcone] = useState(scenario.icone);
@@ -193,11 +194,10 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, cli
             </DropdownMenuItem>
 
             {/* Gestion en masse des articles */}
-            <ScenarioExpensesBulkManager
-              scenarioId={scenario.id}
-              projectId={scenario.project_id}
-              onComplete={onScenarioChange}
-            />
+            <DropdownMenuItem onClick={() => setIsBulkManagerOpen(true)}>
+              <ListChecks className="h-4 w-4 mr-2" />
+              Gérer les articles
+            </DropdownMenuItem>
 
             {!scenario.est_principal && (
               <>
@@ -327,6 +327,15 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, cli
         projectId={scenario.project_id}
         projectName={projectName}
         clientName={clientName}
+      />
+
+      {/* Dialog Gestion en masse des articles */}
+      <ScenarioExpensesBulkManager
+        scenarioId={scenario.id}
+        projectId={scenario.project_id}
+        open={isBulkManagerOpen}
+        onOpenChange={setIsBulkManagerOpen}
+        onComplete={onScenarioChange}
       />
     </>
   );
