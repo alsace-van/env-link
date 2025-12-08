@@ -150,7 +150,12 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
 
       // 2. Enrichir les lignes qui ont un articleid depuis le catalogue Evoliz
       const enrichLines = async () => {
-        const articleIds = baseLines.filter((line) => line.articleid).map((line) => line.articleid as number);
+        const articleIds: number[] = baseLines
+          .filter(
+            (line): line is typeof line & { articleid: number } =>
+              line.articleid !== null && line.articleid !== undefined,
+          )
+          .map((line) => line.articleid);
 
         if (articleIds.length === 0) {
           return; // Pas d'articles à enrichir, on continue silencieusement
@@ -577,7 +582,9 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                           }}
                         />
                         {line.catalog_enriched && (
-                          <Check className="h-3 w-3 text-green-600 flex-shrink-0" title="Prix d'achat récupéré" />
+                          <span title="Prix d'achat récupéré">
+                            <Check className="h-3 w-3 text-green-600 flex-shrink-0" />
+                          </span>
                         )}
                       </div>
 
