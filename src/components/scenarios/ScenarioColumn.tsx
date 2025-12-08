@@ -2,13 +2,13 @@
 // Colonne de scénario avec liste compacte optimisée pour 450px
 // ✅ MODIFIÉ: Passe projectName et clientName à ScenarioHeader pour export Evoliz
 
-import { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { supabase } from '@/integrations/supabase/client';
-import ScenarioHeader from './ScenarioHeader';
-import CompactExpensesList from './CompactExpensesList';
-import type { Scenario } from '@/types/scenarios';
+import { useState, useEffect } from "react";
+import { Card } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { supabase } from "@/integrations/supabase/client";
+import ScenarioHeader from "./ScenarioHeader";
+import CompactExpensesList from "./CompactExpensesList";
+import type { Scenario } from "@/types/scenarios";
 
 interface ScenarioColumnProps {
   scenario: Scenario;
@@ -32,70 +32,61 @@ interface Totaux {
   nombre_articles: number;
 }
 
-const ScenarioColumn = ({ 
-  scenario, 
-  projectId, 
-  isLocked,
-  onExpenseChange,
-  onScenarioChange 
-}: ScenarioColumnProps) => {
+const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScenarioChange }: ScenarioColumnProps) => {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [bilanEnergie, setBilanEnergie] = useState<BilanEnergie | null>(null);
   const [totaux, setTotaux] = useState<Totaux>({
     total_achat: 0,
     total_vente: 0,
     marge_pourcent: 0,
-    nombre_articles: 0
+    nombre_articles: 0,
   });
-  
+
   // ✅ NOUVEAU: Infos projet pour export Evoliz
   const [projectInfo, setProjectInfo] = useState<{
     projectName: string;
     clientName: string;
-  }>({ projectName: '', clientName: '' });
+  }>({ projectName: "", clientName: "" });
 
   // ✅ NOUVEAU: Charger les infos du projet
   const loadProjectInfo = async () => {
     try {
       const { data, error } = await supabase
-        .from('projects')
-        .select('nom_proprietaire, vehicule, marque_vehicule, modele_vehicule')
-        .eq('id', projectId)
+        .from("projects")
+        .select("nom_proprietaire, nom, marque_vehicule, modele_vehicule, denomination_commerciale")
+        .eq("id", projectId)
         .single();
 
       if (error) {
-        console.error('Erreur chargement projet:', error);
+        console.error("Erreur chargement projet:", error);
         return;
       }
 
       if (data) {
         // Construire le nom du projet
-        const vehicleInfo = [data.marque_vehicule, data.modele_vehicule, data.vehicule]
+        const vehicleInfo = [data.marque_vehicule, data.modele_vehicule, data.denomination_commerciale]
           .filter(Boolean)
-          .join(' ');
-        const projectName = vehicleInfo || 'Aménagement fourgon';
-        
+          .join(" ");
+        const projectName = vehicleInfo || data.nom || "Aménagement fourgon";
+
         setProjectInfo({
           projectName,
-          clientName: data.nom_proprietaire || '',
+          clientName: data.nom_proprietaire || "",
         });
       }
     } catch (err) {
-      console.error('Erreur chargement infos projet:', err);
+      console.error("Erreur chargement infos projet:", err);
     }
   };
 
   const loadExpenses = async () => {
     try {
-      const result: any = await (supabase as any)
-        .from('project_expenses')
-        .select('*')
-        .eq('scenario_id', scenario.id);
-      
+      const result: any = await (supabase as any).from("project_expenses").select("*").eq("scenario_id", scenario.id);
+
       const { data, error } = result;
 
       if (error) {
-        console.error('Erreur chargement dépenses:', error);
+        console.error("Erreur chargement dépenses:", error);
         return;
       }
 
@@ -104,59 +95,61 @@ const ScenarioColumn = ({
       calculateTotaux(filteredData);
       calculateBilanEnergie(filteredData);
     } catch (err) {
-      console.error('Erreur chargement dépenses:', err);
+      console.error("Erreur chargement dépenses:", err);
     }
   };
 
   const calculateTotaux = (expenses: any[]) => {
-    const total_achat = expenses.reduce((sum, exp) => sum + (exp.prix * exp.quantite), 0);
-    const total_vente = expenses.reduce((sum, exp) => sum + ((exp.prix_vente_ttc || 0) * exp.quantite), 0);
-    const marge_pourcent = total_achat > 0 ? ((total_vente - total_achat) / total_achat * 100) : 0;
+    const total_achat = expenses.reduce((sum, exp) => sum + exp.prix * exp.quantite, 0);
+    const total_vente = expenses.reduce((sum, exp) => sum + (exp.prix_vente_ttc || 0) * exp.quantite, 0);
+    const marge_pourcent = total_achat > 0 ? ((total_vente - total_achat) / total_achat) * 100 : 0;
 
     setTotaux({
       total_achat,
       total_vente,
       marge_pourcent,
-      nombre_articles: expenses.length
+      nombre_articles: expenses.length,
     });
   };
 
   const calculateBilanEnergie = (expenses: any[]) => {
     // Calculer la production solaire
     const production = expenses
-      .filter(e => e.categorie?.toLowerCase().includes('électrique') || 
-                   e.categorie?.toLowerCase().includes('panneau') ||
-                   e.nom_accessoire?.toLowerCase().includes('panneau'))
+      .filter(
+        (e) =>
+          e.categorie?.toLowerCase().includes("électrique") ||
+          e.categorie?.toLowerCase().includes("panneau") ||
+          e.nom_accessoire?.toLowerCase().includes("panneau"),
+      )
       .reduce((sum, e) => {
         const match = e.nom_accessoire?.match(/(\d+)\s*w/i);
         if (match) {
-          return sum + (parseInt(match[1]) * e.quantite);
+          return sum + parseInt(match[1]) * e.quantite;
         }
         return sum;
       }, 0);
 
     // Calculer le stockage batterie
     const stockage_ah = expenses
-      .filter(e => e.nom_accessoire?.toLowerCase().includes('batterie'))
+      .filter((e) => e.nom_accessoire?.toLowerCase().includes("batterie"))
       .reduce((sum, e) => {
         const match = e.nom_accessoire?.match(/(\d+)\s*ah/i);
         if (match) {
-          return sum + (parseInt(match[1]) * e.quantite);
+          return sum + parseInt(match[1]) * e.quantite;
         }
         return sum;
       }, 0);
 
     const stockage_wh = stockage_ah * 12;
-    const autonomie_jours = production > 0 && stockage_wh > 0 
-      ? Math.round((stockage_wh / (production * 5)) * 10) / 10
-      : 0;
+    const autonomie_jours =
+      production > 0 && stockage_wh > 0 ? Math.round((stockage_wh / (production * 5)) * 10) / 10 : 0;
 
     if (production > 0 || stockage_ah > 0) {
       setBilanEnergie({
         production_w: production,
         stockage_ah,
         stockage_wh,
-        autonomie_jours
+        autonomie_jours,
       });
     } else {
       setBilanEnergie(null);
@@ -169,11 +162,11 @@ const ScenarioColumn = ({
   }, [scenario.id, projectId]);
 
   return (
-    <Card 
+    <Card
       className="h-full flex flex-col"
-      style={{ 
+      style={{
         borderColor: scenario.couleur,
-        borderWidth: scenario.est_principal ? '3px' : '1px'
+        borderWidth: scenario.est_principal ? "3px" : "1px",
       }}
     >
       {/* Header du scénario - avec infos projet pour export Evoliz */}
@@ -186,7 +179,7 @@ const ScenarioColumn = ({
       />
 
       {/* Corps avec scroll */}
-      <ScrollArea className="flex-1" style={{ height: 'calc(100vh - 400px)' }}>
+      <ScrollArea className="flex-1" style={{ height: "calc(100vh - 400px)" }}>
         <div className="p-3 space-y-3">
           {/* ✅ NOUVEAU: Liste compacte au lieu de ExpensesList */}
           <CompactExpensesList
@@ -206,9 +199,7 @@ const ScenarioColumn = ({
         {/* Bilan énergétique */}
         {bilanEnergie && (
           <Card className="p-2.5 bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
-            <h4 className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-              ⚡ Bilan Énergétique
-            </h4>
+            <h4 className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">⚡ Bilan Énergétique</h4>
             <div className="grid grid-cols-2 gap-1.5 text-xs">
               <div>
                 <span className="text-muted-foreground">Production:</span>
@@ -230,9 +221,7 @@ const ScenarioColumn = ({
 
         {/* Totaux */}
         <Card className="p-2.5 bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800">
-          <h4 className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
-            💰 Totaux
-          </h4>
+          <h4 className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">💰 Totaux</h4>
           <div className="space-y-0.5 text-xs">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Articles:</span>
