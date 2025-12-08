@@ -281,6 +281,7 @@ export interface EvolizArticle {
   reference: string;
   designation: string;
   unit_price_vat_exclude: number;
+  purchase_unit_price_vat_exclude?: number | null;
   vat_rate?: number;
   vat?: number;
   unit: string | null;
@@ -293,6 +294,17 @@ export interface EvolizArticle {
   comment: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface EvolizArticleInput {
+  reference: string;
+  designation: string;
+  unit_price_vat_exclude: number;
+  purchase_unit_price_vat_exclude?: number | null;
+  vat_rate?: number;
+  unit?: string;
+  comment?: string | null;
+  saleclassificationid?: number;
 }
 
 // --- SUPPLIERS (FOURNISSEURS) ---
