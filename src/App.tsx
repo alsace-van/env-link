@@ -20,6 +20,10 @@ import BilanComptable from "./pages/BilanComptable";
 import PhotoTemplates from "./pages/PhotoTemplates";
 import PhotoTemplateDetail from "./pages/PhotoTemplateDetail";
 import Downloads from "./pages/Downloads";
+// Evoliz Integration
+import EvolizSettingsPage from "./pages/EvolizSettingsPage";
+import EvolizQuotesPage from "./pages/EvolizQuotesPage";
+import EvolizClientsPage from "./pages/EvolizClientsPage";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +54,11 @@ const App = () => (
 
                 {/* Page outils/téléchargements */}
                 <Route path="/downloads" element={<Downloads />} />
+
+                {/* Routes Evoliz */}
+                <Route path="/settings/evoliz" element={<EvolizSettingsPage />} />
+                <Route path="/evoliz/quotes" element={<EvolizQuotesPage />} />
+                <Route path="/evoliz/clients" element={<EvolizClientsPage />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
