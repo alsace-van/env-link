@@ -2,10 +2,10 @@
 // TransformerSettings.tsx
 // Paramètres de l'entreprise du professionnel
 // Accessible via Settings > Mon entreprise
+// + Taux horaire pour calcul forfaits
 // ============================================
 
 import { useState, useEffect } from "react";
-// Force recompile
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Building2, User, MapPin, Phone, Mail, Save, Loader2 } from "lucide-react";
+import { Building2, User, MapPin, Phone, Save, Loader2, Clock, Calculator } from "lucide-react";
 
 interface TransformerSettingsData {
   id?: string;
@@ -34,6 +34,8 @@ interface TransformerSettingsData {
   default_motif: string;
   ape_code: string;
   certification_number: string;
+  // Nouveau : taux horaire
+  hourly_rate_ttc: number;
 }
 
 const EMPTY_SETTINGS: TransformerSettingsData = {
@@ -54,6 +56,7 @@ const EMPTY_SETTINGS: TransformerSettingsData = {
   default_motif: "Transformation VASP Caravane",
   ape_code: "",
   certification_number: "",
+  hourly_rate_ttc: 60,
 };
 
 const LEGAL_FORMS = [
@@ -104,7 +107,11 @@ export default function TransformerSettings() {
       }
 
       if (data) {
-        setSettings(data as TransformerSettingsData);
+        setSettings({
+          ...EMPTY_SETTINGS,
+          ...data,
+          hourly_rate_ttc: data.hourly_rate_ttc || 60,
+        });
       }
     } catch (error) {
       console.error("Erreur chargement paramètres:", error);
@@ -113,7 +120,7 @@ export default function TransformerSettings() {
     }
   };
 
-  const handleChange = (field: keyof TransformerSettingsData, value: string) => {
+  const handleChange = (field: keyof TransformerSettingsData, value: string | number) => {
     setSettings((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -164,6 +171,11 @@ export default function TransformerSettings() {
     return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/, "$1 $2 $3 $4").trim();
   };
 
+  // Calcul exemples tarifs
+  const hourlyHT = settings.hourly_rate_ttc / 1.2;
+  const halfDayTTC = settings.hourly_rate_ttc * 3.5;
+  const dayTTC = settings.hourly_rate_ttc * 7;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -180,6 +192,66 @@ export default function TransformerSettings() {
           Ces informations seront utilisées pour pré-remplir les documents DREAL
         </p>
       </div>
+
+      {/* Tarification - NOUVEAU */}
+      <Card className="border-blue-200 bg-blue-50/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-blue-600" />
+            Tarification main d'œuvre
+          </CardTitle>
+          <CardDescription>
+            Taux horaire interne pour calculer vos forfaits (non visible par le client)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="hourly_rate_ttc" className="text-base font-medium">
+                Taux horaire TTC
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="hourly_rate_ttc"
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={settings.hourly_rate_ttc}
+                  onChange={(e) => handleChange("hourly_rate_ttc", parseFloat(e.target.value) || 0)}
+                  className="w-32 text-lg font-semibold"
+                />
+                <span className="text-lg">€ TTC/h</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Soit {hourlyHT.toFixed(2)} € HT/h
+              </p>
+            </div>
+
+            <div className="space-y-3 bg-white/50 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Calculator className="h-4 w-4" />
+                Équivalences
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Demi-journée (3.5h)</span>
+                  <span className="font-medium">{halfDayTTC.toFixed(0)} € TTC</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Journée (7h)</span>
+                  <span className="font-medium">{dayTTC.toFixed(0)} € TTC</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-sm text-muted-foreground bg-amber-50 border border-amber-200 rounded-lg p-3">
+            💡 <strong>Usage :</strong> Ce taux est utilisé pour calculer automatiquement 
+            le forfait suggéré quand vous estimez le temps d'une tâche. 
+            Seul le forfait apparaît sur le devis client, jamais les heures.
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Identité entreprise */}
       <Card>
