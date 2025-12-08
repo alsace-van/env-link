@@ -111,7 +111,7 @@ const WishlistDialog = ({ open, onOpenChange, initialProjectId = null }: Wishlis
       .from("projects")
       .select("id, nom, nom_proprietaire")
       .eq("user_id", user.id)
-      .order("updated_at", { ascending: false });
+      .order("created_at", { ascending: false });
 
     console.log("📁 Wishlist projets:", { data, error, count: data?.length });
 
