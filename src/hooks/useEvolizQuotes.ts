@@ -1,6 +1,7 @@
 // ============================================
 // HOOK useEvolizQuotes
 // Gestion des devis Evoliz
+// ✅ CORRIGÉ: Utilise la vraie structure API Evoliz
 // ============================================
 
 import { useState, useEffect, useCallback } from "react";
@@ -34,6 +35,30 @@ interface UseEvolizQuotesReturn {
 // Helper pour accéder aux tables Evoliz (non typées dans Supabase)
 const getEvolizTable = (tableName: string) => {
   return (supabase as any).from(tableName);
+};
+
+// Helper pour obtenir le total HT (supporte les deux formats)
+const getTotalHT = (quote: EvolizQuote): number => {
+  if (quote.total.vat_exclude !== undefined) return quote.total.vat_exclude;
+  if (quote.total.totalht !== undefined) return quote.total.totalht;
+  return 0;
+};
+
+// Helper pour obtenir le total TTC (supporte les deux formats)
+const getTotalTTC = (quote: EvolizQuote): number => {
+  if (quote.total.vat_include !== undefined) return quote.total.vat_include;
+  if (quote.total.totalttc !== undefined) return quote.total.totalttc;
+  return 0;
+};
+
+// Helper pour obtenir le numéro de document
+const getQuoteNumber = (quote: EvolizQuote): string => {
+  return quote.document_number || quote.documentid || `Q-${quote.quoteid}`;
+};
+
+// Helper pour obtenir la devise
+const getCurrency = (quote: EvolizQuote): string => {
+  return quote.default_currency?.code || "EUR";
 };
 
 export function useEvolizQuotes(): UseEvolizQuotesReturn {
@@ -168,7 +193,7 @@ export function useEvolizQuotes(): UseEvolizQuotesReturn {
 
         toast({
           title: "Succès",
-          description: `Devis ${quote.documentid} créé`,
+          description: `Devis ${getQuoteNumber(quote)} créé`,
         });
 
         return quote;
@@ -235,12 +260,12 @@ export function useEvolizQuotes(): UseEvolizQuotesReturn {
         user_id: userId,
         evoliz_quote_id: quote.quoteid,
         evoliz_client_id: quote.clientid,
-        quote_number: quote.documentid,
+        quote_number: getQuoteNumber(quote),
         title: quote.object || quote.label,
         status: quote.status,
-        total_ht: quote.total.totalht,
-        total_ttc: quote.total.totalttc,
-        currency: quote.currency,
+        total_ht: getTotalHT(quote),
+        total_ttc: getTotalTTC(quote),
+        currency: getCurrency(quote),
         issue_date: quote.documentdate,
         validity_date: quote.duedate,
         raw_data: quote,
