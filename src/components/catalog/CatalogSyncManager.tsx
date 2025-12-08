@@ -135,17 +135,17 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // @ts-ignore - evoliz_article_id peut ne pas exister dans les types générés
+      // Note: evoliz_article_id existe dans la DB mais peut ne pas être dans les types générés
       const { data: localData, error: localError } = await supabase
         .from("accessories_catalog")
         .select(
-          "id, nom, reference_fabricant, prix_vente_ttc, prix_reference, marge_pourcent, fournisseur, description, created_at, evoliz_article_id",
+          "id, nom, reference_fabricant, prix_vente_ttc, prix_reference, marge_pourcent, fournisseur, description, created_at",
         )
         .eq("user_id", user.id)
         .order("nom");
 
       if (localError) throw localError;
-      setLocalItems((localData || []) as LocalCatalogItem[]);
+      setLocalItems((localData || []) as unknown as LocalCatalogItem[]);
 
       // Charger le catalogue Evoliz (toutes les pages)
       if (isConfigured) {
@@ -172,7 +172,7 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
         setEvolizItems(allEvolizItems);
 
         // Analyser et matcher les articles
-        analyzeSync((localData || []) as LocalCatalogItem[], allEvolizItems);
+        analyzeSync((localData || []) as unknown as LocalCatalogItem[], allEvolizItems);
       }
     } catch (error: any) {
       console.error("Erreur chargement données:", error);
@@ -421,8 +421,7 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
 
           if (item.status === "evoliz_only") {
             // Nouvel article
-            // @ts-ignore - evoliz_article_id peut ne pas exister dans les types générés
-            const catalogData: any = {
+            const catalogData = {
               user_id: user.id,
               nom: evolizArticle.designation,
               reference_fabricant: evolizArticle.reference || null,
@@ -433,10 +432,12 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
               marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
               description: evolizArticle.comment || null,
               fournisseur: "Import Evoliz",
-              evoliz_article_id: linkOnSync ? evolizArticle.articleid : null,
             };
 
-            const { error } = await supabase.from("accessories_catalog").insert(catalogData);
+            const { error } = await (supabase as any).from("accessories_catalog").insert({
+              ...catalogData,
+              evoliz_article_id: linkOnSync ? evolizArticle.articleid : null,
+            });
 
             if (error) throw error;
             imported++;
@@ -457,7 +458,7 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
               updateData.evoliz_article_id = evolizArticle.articleid;
             }
 
-            const { error } = await supabase.from("accessories_catalog").update(updateData).eq("id", item.localItem.id);
+            const { error } = await (supabase as any).from("accessories_catalog").update(updateData).eq("id", item.localItem.id);
 
             if (error) throw error;
             updated++;
@@ -529,8 +530,7 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
 
             // Lier l'article local à Evoliz
             if (linkOnSync && result?.articleid) {
-              // @ts-ignore - evoliz_article_id peut ne pas exister dans les types générés
-              await supabase
+              await (supabase as any)
                 .from("accessories_catalog")
                 .update({ evoliz_article_id: result.articleid })
                 .eq("id", localArticle.id);
