@@ -381,6 +381,9 @@ export class EvolizError extends Error {
 
 export const evolizApi = new EvolizApiService();
 
+// Alias pour compatibilité avec l'ancien code
+export const evolizService = evolizApi;
+
 // --- HELPER FUNCTIONS ---
 
 export function initializeEvolizApi(credentials: EvolizCredentials) {
