@@ -1,5 +1,6 @@
 // components/scenarios/ScenarioColumn.tsx
 // Colonne de scénario avec liste compacte optimisée pour 450px
+// ✅ MODIFIÉ: Passe projectName et clientName à ScenarioHeader pour export Evoliz
 
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
@@ -46,6 +47,43 @@ const ScenarioColumn = ({
     marge_pourcent: 0,
     nombre_articles: 0
   });
+  
+  // ✅ NOUVEAU: Infos projet pour export Evoliz
+  const [projectInfo, setProjectInfo] = useState<{
+    projectName: string;
+    clientName: string;
+  }>({ projectName: '', clientName: '' });
+
+  // ✅ NOUVEAU: Charger les infos du projet
+  const loadProjectInfo = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('nom_proprietaire, vehicule, marque_vehicule, modele_vehicule')
+        .eq('id', projectId)
+        .single();
+
+      if (error) {
+        console.error('Erreur chargement projet:', error);
+        return;
+      }
+
+      if (data) {
+        // Construire le nom du projet
+        const vehicleInfo = [data.marque_vehicule, data.modele_vehicule, data.vehicule]
+          .filter(Boolean)
+          .join(' ');
+        const projectName = vehicleInfo || 'Aménagement fourgon';
+        
+        setProjectInfo({
+          projectName,
+          clientName: data.nom_proprietaire || '',
+        });
+      }
+    } catch (err) {
+      console.error('Erreur chargement infos projet:', err);
+    }
+  };
 
   const loadExpenses = async () => {
     try {
@@ -127,7 +165,8 @@ const ScenarioColumn = ({
 
   useEffect(() => {
     loadExpenses();
-  }, [scenario.id]);
+    loadProjectInfo();
+  }, [scenario.id, projectId]);
 
   return (
     <Card 
@@ -137,11 +176,13 @@ const ScenarioColumn = ({
         borderWidth: scenario.est_principal ? '3px' : '1px'
       }}
     >
-      {/* Header du scénario */}
+      {/* Header du scénario - avec infos projet pour export Evoliz */}
       <ScenarioHeader
         scenario={scenario}
         onScenarioChange={onScenarioChange}
         isLocked={isLocked}
+        projectName={projectInfo.projectName}
+        clientName={projectInfo.clientName}
       />
 
       {/* Corps avec scroll */}
