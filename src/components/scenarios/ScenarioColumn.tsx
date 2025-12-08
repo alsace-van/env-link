@@ -42,16 +42,16 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
     nombre_articles: 0,
   });
 
-  // ✅ NOUVEAU: Infos projet pour export Evoliz
+  // ✅ Infos projet pour export Evoliz
   const [projectInfo, setProjectInfo] = useState<{
     projectName: string;
     clientName: string;
   }>({ projectName: "", clientName: "" });
 
-  // ✅ NOUVEAU: Charger les infos du projet
+  // ✅ Charger les infos du projet (avec cast any pour éviter erreurs TS)
   const loadProjectInfo = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("projects")
         .select("nom_proprietaire, nom, marque_vehicule, modele_vehicule, denomination_commerciale")
         .eq("id", projectId)
@@ -100,8 +100,8 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
   };
 
   const calculateTotaux = (expenses: any[]) => {
-    const total_achat = expenses.reduce((sum, exp) => sum + exp.prix * exp.quantite, 0);
-    const total_vente = expenses.reduce((sum, exp) => sum + (exp.prix_vente_ttc || 0) * exp.quantite, 0);
+    const total_achat = expenses.reduce((sum, exp) => sum + (exp.prix || 0) * (exp.quantite || 1), 0);
+    const total_vente = expenses.reduce((sum, exp) => sum + (exp.prix_vente_ttc || 0) * (exp.quantite || 1), 0);
     const marge_pourcent = total_achat > 0 ? ((total_vente - total_achat) / total_achat) * 100 : 0;
 
     setTotaux({
@@ -124,7 +124,7 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
       .reduce((sum, e) => {
         const match = e.nom_accessoire?.match(/(\d+)\s*w/i);
         if (match) {
-          return sum + parseInt(match[1]) * e.quantite;
+          return sum + parseInt(match[1]) * (e.quantite || 1);
         }
         return sum;
       }, 0);
@@ -135,7 +135,7 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
       .reduce((sum, e) => {
         const match = e.nom_accessoire?.match(/(\d+)\s*ah/i);
         if (match) {
-          return sum + parseInt(match[1]) * e.quantite;
+          return sum + parseInt(match[1]) * (e.quantite || 1);
         }
         return sum;
       }, 0);
@@ -181,7 +181,6 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
       {/* Corps avec scroll */}
       <ScrollArea className="flex-1" style={{ height: "calc(100vh - 400px)" }}>
         <div className="p-3 space-y-3">
-          {/* ✅ NOUVEAU: Liste compacte au lieu de ExpensesList */}
           <CompactExpensesList
             projectId={projectId}
             scenarioId={scenario.id}
