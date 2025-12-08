@@ -1,14 +1,26 @@
+// ============================================
+// WorkTaskItem.tsx
+// Affichage d'une tâche de travail
+// + Forfait client avec calcul suggéré
+// ============================================
+
 import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Clock, User, Calendar, BookOpen, AlertCircle, Trash2, Plus, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Clock, Calendar, BookOpen, AlertCircle, Trash2, Plus, X, Euro, Calculator, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { CompleteTaskDialog } from "./CompleteTaskDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
+import { useHourlyRate } from "@/hooks/useHourlyRate";
 import type { ProjectTodoSubtask } from "@/types/subtasks";
 
 interface WorkTaskItemProps {
@@ -24,21 +36,42 @@ interface WorkTaskItemProps {
     scheduled_date?: string;
     template_id?: string;
     blocked_reason?: string;
+    forfait_ttc?: number;
   };
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
   onEditTime: (taskId: string) => void;
   onDelete: (taskId: string) => void;
+  onForfaitChange?: (taskId: string, forfait: number | null) => void;
 }
 
-export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: WorkTaskItemProps) => {
+export const WorkTaskItem = ({ 
+  task, 
+  onToggleComplete, 
+  onEditTime, 
+  onDelete,
+  onForfaitChange 
+}: WorkTaskItemProps) => {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [subtasks, setSubtasks] = useState<ProjectTodoSubtask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
   const [showSubtaskInput, setShowSubtaskInput] = useState(false);
+  const [showForfaitPopover, setShowForfaitPopover] = useState(false);
+  const [forfaitInput, setForfaitInput] = useState<string>("");
+
+  const { hourlyRateTTC, calculateForfait } = useHourlyRate();
+
+  // Calcul du forfait suggéré
+  const suggestedForfait = task.estimated_hours 
+    ? calculateForfait(task.estimated_hours) 
+    : null;
 
   useEffect(() => {
     loadSubtasks();
   }, [task.id]);
+
+  useEffect(() => {
+    setForfaitInput(task.forfait_ttc?.toString() || "");
+  }, [task.forfait_ttc]);
 
   const loadSubtasks = async () => {
     const { data, error } = await supabase
@@ -100,6 +133,29 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
     }
   };
 
+  const saveForfait = async () => {
+    const forfait = forfaitInput ? parseFloat(forfaitInput) : null;
+    
+    const { error } = await (supabase as any)
+      .from("project_todos")
+      .update({ forfait_ttc: forfait })
+      .eq("id", task.id);
+
+    if (error) {
+      toast.error("Erreur lors de la sauvegarde");
+    } else {
+      toast.success("Forfait enregistré");
+      setShowForfaitPopover(false);
+      onForfaitChange?.(task.id, forfait);
+    }
+  };
+
+  const applySuggestedForfait = () => {
+    if (suggestedForfait) {
+      setForfaitInput(suggestedForfait.toString());
+    }
+  };
+
   const completedSubtasks = subtasks.filter(s => s.completed).length;
   const totalSubtasks = subtasks.length;
 
@@ -107,7 +163,6 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
     if (checked && !task.completed) {
       setShowCompleteDialog(true);
     } else if (!checked && task.completed) {
-      // Uncheck - just toggle back
       onToggleComplete(task.id, null);
     }
   };
@@ -118,6 +173,11 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
 
   const isOverdue = task.scheduled_date && !task.completed && 
     new Date(task.scheduled_date) < new Date();
+
+  // Calcul rentabilité si terminé
+  const rentabilite = task.completed && task.actual_hours && task.forfait_ttc
+    ? task.forfait_ttc / task.actual_hours
+    : null;
 
   return (
     <>
@@ -199,6 +259,119 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTime, onDelete }: W
                   </Badge>
                 )}
               </>
+            )}
+
+            {/* Forfait */}
+            {task.forfait_ttc ? (
+              <Popover open={showForfaitPopover} onOpenChange={setShowForfaitPopover}>
+                <PopoverTrigger asChild>
+                  <Badge 
+                    variant="secondary" 
+                    className="gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100 cursor-pointer hover:bg-emerald-200"
+                  >
+                    <Euro className="h-3 w-3" />
+                    {task.forfait_ttc}€ TTC
+                    {rentabilite && (
+                      <span className={rentabilite >= hourlyRateTTC ? "text-green-600" : "text-orange-600"}>
+                        ({rentabilite.toFixed(0)}€/h)
+                      </span>
+                    )}
+                  </Badge>
+                </PopoverTrigger>
+                <PopoverContent className="w-72">
+                  <div className="space-y-3">
+                    <div className="font-medium">Modifier le forfait</div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        value={forfaitInput}
+                        onChange={(e) => setForfaitInput(e.target.value)}
+                        placeholder="0"
+                        className="flex-1"
+                      />
+                      <span className="flex items-center text-sm text-muted-foreground">€ TTC</span>
+                    </div>
+                    {suggestedForfait && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={applySuggestedForfait}
+                      >
+                        <Calculator className="h-3 w-3 mr-1" />
+                        Suggéré: {task.estimated_hours}h × {hourlyRateTTC}€ = {suggestedForfait}€
+                      </Button>
+                    )}
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveForfait} className="flex-1">
+                        Enregistrer
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => setShowForfaitPopover(false)}
+                      >
+                        Annuler
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Popover open={showForfaitPopover} onOpenChange={setShowForfaitPopover}>
+                <PopoverTrigger asChild>
+                  <Badge 
+                    variant="outline" 
+                    className="gap-1 cursor-pointer hover:bg-muted border-dashed"
+                  >
+                    <Euro className="h-3 w-3" />
+                    Définir forfait
+                  </Badge>
+                </PopoverTrigger>
+                <PopoverContent className="w-72">
+                  <div className="space-y-3">
+                    <div className="font-medium">Définir le forfait client</div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        value={forfaitInput}
+                        onChange={(e) => setForfaitInput(e.target.value)}
+                        placeholder="0"
+                        className="flex-1"
+                      />
+                      <span className="flex items-center text-sm text-muted-foreground">€ TTC</span>
+                    </div>
+                    {suggestedForfait && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                        onClick={applySuggestedForfait}
+                      >
+                        <Calculator className="h-3 w-3 mr-1" />
+                        Suggéré: {task.estimated_hours}h × {hourlyRateTTC}€ = {suggestedForfait}€
+                      </Button>
+                    )}
+                    {!task.estimated_hours && (
+                      <p className="text-xs text-muted-foreground">
+                        💡 Ajoutez un temps estimé pour avoir une suggestion de forfait
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={saveForfait} className="flex-1">
+                        Enregistrer
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => setShowForfaitPopover(false)}
+                      >
+                        Annuler
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             )}
 
             {task.blocked_reason && (
