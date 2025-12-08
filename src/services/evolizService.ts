@@ -287,9 +287,6 @@ class EvolizApiService {
     });
   }
 
-  // Note: uploadBuyAttachment nécessiterait une gestion spéciale des fichiers
-  // Pour l'instant, on ne le supporte pas via le proxy
-
   // --- CLASSIFICATIONS ---
 
   async getSaleClassifications(): Promise<EvolizApiResponse<EvolizSaleClassification[]>> {
@@ -330,6 +327,9 @@ export class EvolizError extends Error {
 // --- SINGLETON INSTANCE ---
 
 export const evolizApi = new EvolizApiService();
+
+// ✅ ALIAS pour compatibilité avec les imports existants
+export const evolizService = evolizApi;
 
 // --- HELPER FUNCTIONS ---
 
