@@ -1,16 +1,18 @@
 // ============================================
-// PAGE CONFIGURATION EVOLIZ
-// Saisie et test des clés API
+// PAGE CONFIGURATION EVOLIZ - VERSION AMÉLIORÉE
+// Statut visible, actions claires, bouton retour
 // ============================================
 
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -31,9 +33,16 @@ import {
   ExternalLink,
   RefreshCw,
   AlertCircle,
+  Wifi,
+  WifiOff,
+  HelpCircle,
+  ArrowLeft,
+  Home,
 } from "lucide-react";
 
 export default function EvolizSettingsPage() {
+  const navigate = useNavigate();
+
   const {
     credentials,
     isLoading,
@@ -51,34 +60,52 @@ export default function EvolizSettingsPage() {
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Charger les credentials existants
   useEffect(() => {
     if (credentials) {
       setCompanyId(credentials.company_id);
       setPublicKey(credentials.public_key);
-      // Ne pas afficher le secret key existant pour des raisons de sécurité
       setSecretKey("");
     }
   }, [credentials]);
 
   const handleSave = async () => {
-    if (!companyId || !publicKey || (!secretKey && !credentials)) {
+    setSaveError(null);
+
+    if (!companyId.trim()) {
+      setSaveError("Le Company ID est requis");
+      return;
+    }
+    if (!publicKey.trim()) {
+      setSaveError("La Public Key est requise");
+      return;
+    }
+    if (!secretKey.trim() && !credentials) {
+      setSaveError("La Secret Key est requise");
       return;
     }
 
     setIsSaving(true);
-    const success = await saveCredentials({
-      company_id: companyId,
-      public_key: publicKey,
-      secret_key: secretKey || credentials?.secret_key || "",
-    });
+    try {
+      const success = await saveCredentials({
+        company_id: companyId.trim(),
+        public_key: publicKey.trim(),
+        secret_key: secretKey.trim() || credentials?.secret_key || "",
+      });
 
-    if (success) {
-      // Tester automatiquement après sauvegarde
-      await testConnection();
+      if (success) {
+        // Tester automatiquement après sauvegarde
+        await testConnection();
+      } else {
+        setSaveError("Erreur lors de la sauvegarde. Vérifiez vos informations.");
+      }
+    } catch (err) {
+      setSaveError("Erreur lors de la sauvegarde");
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handleDelete = async () => {
@@ -88,6 +115,27 @@ export default function EvolizSettingsPage() {
     setSecretKey("");
     setShowDeleteDialog(false);
   };
+
+  const handleTest = async () => {
+    setSaveError(null);
+    await testConnection();
+  };
+
+  // Déterminer le statut global
+  const getConnectionStatus = () => {
+    if (!isConfigured) {
+      return { status: "not_configured", label: "Non configuré", color: "secondary", icon: WifiOff };
+    }
+    if (testResult?.success) {
+      return { status: "connected", label: "Connecté", color: "default", icon: Wifi };
+    }
+    if (testResult?.success === false) {
+      return { status: "error", label: "Erreur", color: "destructive", icon: XCircle };
+    }
+    return { status: "configured", label: "Configuré (non testé)", color: "outline", icon: AlertCircle };
+  };
+
+  const connectionStatus = getConnectionStatus();
 
   if (isLoading) {
     return (
@@ -99,6 +147,20 @@ export default function EvolizSettingsPage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-2xl">
+      {/* ====== BARRE DE NAVIGATION ====== */}
+      <div className="flex items-center gap-2 mb-6">
+        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Retour
+        </Button>
+        <Separator orientation="vertical" className="h-6" />
+        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="gap-2">
+          <Home className="h-4 w-4" />
+          Tableau de bord
+        </Button>
+      </div>
+
+      {/* En-tête */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold flex items-center gap-3">
           <Settings className="h-8 w-8" />
@@ -109,60 +171,118 @@ export default function EvolizSettingsPage() {
         </p>
       </div>
 
-      {/* Statut actuel */}
+      {/* ====== STATUT DE CONNEXION ====== */}
       <Card className="mb-6">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Statut de connexion</CardTitle>
-            <Badge variant={isConfigured ? "default" : "secondary"}>
-              {isConfigured ? (
-                <>
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Configuré
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Non configuré
-                </>
-              )}
+            <CardTitle className="text-lg flex items-center gap-2">
+              <connectionStatus.icon
+                className={`h-5 w-5 ${
+                  connectionStatus.status === "connected"
+                    ? "text-green-500"
+                    : connectionStatus.status === "error"
+                      ? "text-red-500"
+                      : "text-muted-foreground"
+                }`}
+              />
+              Statut de connexion
+            </CardTitle>
+            <Badge
+              variant={connectionStatus.color as any}
+              className={`text-sm px-3 py-1 ${
+                connectionStatus.status === "connected"
+                  ? "bg-green-500 text-white"
+                  : connectionStatus.status === "error"
+                    ? "bg-red-500 text-white"
+                    : ""
+              }`}
+            >
+              {connectionStatus.label}
             </Badge>
           </div>
         </CardHeader>
-        {isConfigured && credentials && (
-          <CardContent className="pt-0">
-            <div className="text-sm text-muted-foreground space-y-1">
-              <p>
-                <span className="font-medium">Company ID:</span> {credentials.company_id}
-              </p>
+        <CardContent className="pt-0">
+          {isConfigured && credentials && (
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium">Company ID :</span> {credentials.company_id}
+              </div>
+
               {credentials.last_test_at && (
-                <p>
-                  <span className="font-medium">Dernier test:</span>{" "}
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <span className="font-medium">Dernier test :</span>
                   {new Date(credentials.last_test_at).toLocaleString("fr-FR")}
                   {credentials.last_test_success ? (
-                    <CheckCircle2 className="h-4 w-4 inline ml-2 text-green-500" />
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
                   ) : (
-                    <XCircle className="h-4 w-4 inline ml-2 text-red-500" />
+                    <XCircle className="h-4 w-4 text-red-500" />
                   )}
-                </p>
+                </div>
               )}
+
+              {/* Boutons d'action quand configuré */}
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={handleTest} disabled={isTesting}>
+                  {isTesting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  Tester la connexion
+                </Button>
+
+                <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </Button>
+              </div>
             </div>
-          </CardContent>
-        )}
+          )}
+
+          {!isConfigured && (
+            <p className="text-sm text-muted-foreground">
+              Aucune configuration enregistrée. Remplissez le formulaire ci-dessous.
+            </p>
+          )}
+        </CardContent>
       </Card>
 
-      {/* Formulaire */}
+      {/* ====== RÉSULTAT DU TEST ====== */}
+      {testResult && (
+        <Alert
+          variant={testResult.success ? "default" : "destructive"}
+          className={`mb-6 ${testResult.success ? "border-green-500 bg-green-50 dark:bg-green-950" : ""}`}
+        >
+          {testResult.success ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4" />}
+          <AlertTitle>{testResult.success ? "Connexion réussie !" : "Échec de connexion"}</AlertTitle>
+          <AlertDescription>{testResult.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* ====== FORMULAIRE ====== */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
-            Clés API Evoliz
+            {isConfigured ? "Modifier les clés API" : "Saisir les clés API"}
           </CardTitle>
-          <CardDescription>Récupérez vos clés API depuis votre espace Evoliz → Paramètres → API</CardDescription>
+          <CardDescription>Récupérez vos clés depuis Evoliz → Applications → Evoliz API</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Erreur de sauvegarde */}
+          {saveError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{saveError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Company ID */}
           <div className="space-y-2">
-            <Label htmlFor="companyId">Company ID</Label>
+            <Label htmlFor="companyId" className="flex items-center gap-2">
+              Company ID
+              <span className="text-xs text-muted-foreground">(numéro avant le tiret dans ?)</span>
+            </Label>
             <Input
               id="companyId"
               placeholder="Ex: 12345"
@@ -171,6 +291,7 @@ export default function EvolizSettingsPage() {
             />
           </div>
 
+          {/* Public Key */}
           <div className="space-y-2">
             <Label htmlFor="publicKey">Public Key</Label>
             <Input
@@ -181,11 +302,12 @@ export default function EvolizSettingsPage() {
             />
           </div>
 
+          {/* Secret Key */}
           <div className="space-y-2">
             <Label htmlFor="secretKey">
               Secret Key
               {credentials && (
-                <span className="text-muted-foreground font-normal ml-2">(laisser vide pour conserver l'actuel)</span>
+                <span className="text-muted-foreground font-normal ml-2">(laisser vide pour garder l'actuelle)</span>
               )}
             </Label>
             <div className="relative">
@@ -212,78 +334,92 @@ export default function EvolizSettingsPage() {
             </div>
           </div>
 
-          {/* Résultat du test */}
-          {testResult && (
-            <Alert variant={testResult.success ? "default" : "destructive"}>
-              {testResult.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-              <AlertDescription>{testResult.message}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Actions */}
-          <div className="flex gap-3 pt-4">
-            <Button
-              onClick={handleSave}
-              disabled={isSaving || !companyId || !publicKey || (!secretKey && !credentials)}
-              className="flex-1"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Enregistrement...
-                </>
-              ) : (
-                "Enregistrer"
-              )}
-            </Button>
-
-            {isConfigured && (
+          {/* Bouton sauvegarder */}
+          <Button
+            onClick={handleSave}
+            disabled={isSaving || !companyId || !publicKey || (!secretKey && !credentials)}
+            className="w-full mt-4"
+            size="lg"
+          >
+            {isSaving ? (
               <>
-                <Button variant="outline" onClick={testConnection} disabled={isTesting}>
-                  {isTesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                </Button>
-
-                <Button variant="destructive" size="icon" onClick={() => setShowDeleteDialog(true)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Enregistrement...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Enregistrer et tester
               </>
             )}
-          </div>
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Instructions */}
+      {/* ====== AIDE ====== */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle className="text-base">Comment obtenir vos clés API ?</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <HelpCircle className="h-5 w-5" />
+            Comment trouver ces informations ?
+          </CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <ol className="list-decimal list-inside space-y-2">
-            <li>Connectez-vous à votre compte Evoliz</li>
-            <li>Allez dans Paramètres → API</li>
-            <li>Cliquez sur "Créer une nouvelle clé API"</li>
-            <li>Nommez-la "Van Project Buddy"</li>
-            <li>Copiez le Company ID, la Public Key et la Secret Key</li>
-          </ol>
-          <div className="pt-4">
+        <CardContent className="text-sm space-y-4">
+          <div>
+            <p className="font-medium mb-2">📍 Company ID :</p>
+            <p className="text-muted-foreground">
+              Dans Evoliz, cliquez sur le <strong>? (point d'interrogation)</strong> en haut à droite. Vous verrez un
+              numéro comme "12345-XX". Le Company ID est la partie <strong>avant le tiret</strong> (12345).
+            </p>
+          </div>
+
+          <Separator />
+
+          <div>
+            <p className="font-medium mb-2">🔑 Clés API :</p>
+            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+              <li>Connectez-vous à Evoliz</li>
+              <li>
+                Cliquez sur <strong>Applications</strong> (en haut à droite)
+              </li>
+              <li>
+                Dans "Connecteurs disponibles", filtrez par tag <strong>API</strong>
+              </li>
+              <li>
+                Activez <strong>Evoliz API</strong>
+              </li>
+              <li>
+                Cliquez sur <strong>Créer une clé</strong>
+              </li>
+              <li>Copiez la Public Key et la Secret Key</li>
+            </ol>
+            <p className="text-orange-600 dark:text-orange-400 mt-2 text-xs">
+              ⚠️ La Secret Key n'est affichée qu'une seule fois !
+            </p>
+          </div>
+
+          <div className="pt-2">
             <Button variant="outline" size="sm" asChild>
-              <a href="https://www.evoliz.com/connexion" target="_blank" rel="noopener noreferrer">
+              <a
+                href="https://www.evoliz.com/aide/applications/624-evoliz-comment-creer-cle-api.html"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Ouvrir Evoliz
+                Voir le guide Evoliz
               </a>
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Dialog de confirmation de suppression */}
+      {/* ====== DIALOG SUPPRESSION ====== */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Supprimer la configuration ?</DialogTitle>
             <DialogDescription>
-              Cette action supprimera définitivement vos clés API Evoliz. Vous devrez les saisir à nouveau pour utiliser
-              l'intégration.
+              Cette action supprimera vos clés API Evoliz. Vous devrez les saisir à nouveau pour utiliser l'intégration.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
