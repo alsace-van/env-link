@@ -288,7 +288,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
       </Button>
 
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+        <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Download className="h-5 w-5" />
@@ -369,52 +369,74 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto max-h-[350px] border rounded-lg">
+              {/* En-tête tableau */}
+              <div className="grid grid-cols-[auto_1fr_50px_80px_80px_90px_90px_110px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border rounded-t-lg">
+                <div></div>
+                <div>Désignation</div>
+                <div className="text-center">Qté</div>
+                <div className="text-right">PU HT</div>
+                <div className="text-right">PU TTC</div>
+                <div className="text-right">Total HT</div>
+                <div className="text-right">Total TTC</div>
+                <div className="text-center">Destination</div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto max-h-[300px] border border-t-0 rounded-b-lg">
                 <div className="divide-y">
                   {lines.map((line) => (
                     <div
                       key={line.itemid}
-                      className={`flex items-center gap-3 p-3 ${!line.selected ? "opacity-50 bg-muted/30" : ""}`}
+                      className={`grid grid-cols-[auto_1fr_50px_80px_80px_90px_90px_110px] gap-2 items-center px-3 py-2 ${
+                        !line.selected ? "opacity-50 bg-muted/30" : "hover:bg-muted/20"
+                      }`}
                     >
                       <Checkbox checked={line.selected} onCheckedChange={() => toggleLine(line.itemid)} />
 
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className="text-sm font-medium truncate"
-                          dangerouslySetInnerHTML={{
-                            __html: line.designation.replace(/\n/g, " "),
-                          }}
-                        />
-                        <div className="text-xs text-muted-foreground">
-                          {line.quantity} {line.unit} × {formatAmount(line.unit_price_vat_exclude)}
-                        </div>
+                      <div
+                        className="text-sm truncate"
+                        title={line.designation.replace(/<[^>]*>/g, "")}
+                        dangerouslySetInnerHTML={{
+                          __html: line.designation.replace(/\n/g, " "),
+                        }}
+                      />
+
+                      <div className="text-sm text-center">{line.quantity}</div>
+
+                      <div className="text-sm text-right">{formatAmount(line.unit_price_vat_exclude)}</div>
+
+                      <div className="text-sm text-right text-muted-foreground">
+                        {formatAmount(line.unit_price_vat_exclude * 1.2)}
                       </div>
 
-                      <div className="text-sm font-medium w-24 text-right">{formatAmount(line.total_vat_exclude)}</div>
+                      <div className="text-sm text-right">{formatAmount(line.total_vat_exclude)}</div>
 
-                      {line.selected && (
+                      <div className="text-sm text-right font-medium">{formatAmount(line.total_vat_exclude * 1.2)}</div>
+
+                      {line.selected ? (
                         <Select
                           value={line.destination}
                           onValueChange={(v) => setDestination(line.itemid, v as LineDestination)}
                         >
-                          <SelectTrigger className="w-32 h-8">
+                          <SelectTrigger className="h-7 text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="scenario">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
                                 <Package className="h-3 w-3 text-blue-600" />
                                 Matériel
                               </div>
                             </SelectItem>
                             <SelectItem value="travaux">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-1">
                                 <Wrench className="h-3 w-3 text-orange-600" />
                                 Travaux
                               </div>
                             </SelectItem>
                           </SelectContent>
                         </Select>
+                      ) : (
+                        <div />
                       )}
                     </div>
                   ))}
@@ -428,8 +450,9 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                   <div>
                     <div className="text-sm text-muted-foreground">Matériel → Scénario</div>
                     <div className="font-semibold">
-                      {scenarioLines.length} ligne(s) • {formatAmount(totalScenario)} HT
+                      {scenarioLines.length} ligne(s) • {formatAmount(totalScenario * 1.2)} TTC
                     </div>
+                    <div className="text-xs text-muted-foreground">{formatAmount(totalScenario)} HT</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -437,8 +460,9 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                   <div>
                     <div className="text-sm text-muted-foreground">Main d'œuvre → Travaux</div>
                     <div className="font-semibold">
-                      {travauxLines.length} ligne(s) • {formatAmount(totalTravaux)} HT
+                      {travauxLines.length} ligne(s) • {formatAmount(totalTravaux * 1.2)} TTC
                     </div>
+                    <div className="text-xs text-muted-foreground">{formatAmount(totalTravaux)} HT</div>
                   </div>
                 </div>
               </div>
