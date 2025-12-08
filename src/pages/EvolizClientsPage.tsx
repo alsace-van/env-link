@@ -3,21 +3,14 @@
 // Synchro bidirectionnelle avec VPB
 // ============================================
 
-import React, { useEffect, useState } from 'react';
-import { useEvolizConfig } from '@/hooks/useEvolizConfig';
-import { useEvolizClients } from '@/hooks/useEvolizClients';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import React, { useEffect, useState } from "react";
+import { useEvolizConfig } from "@/hooks/useEvolizConfig";
+import { useEvolizClients } from "@/hooks/useEvolizClients";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -25,18 +18,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { 
-  Loader2, 
-  RefreshCw, 
-  Users, 
+} from "@/components/ui/dropdown-menu";
+import {
+  Loader2,
+  RefreshCw,
+  Users,
   ExternalLink,
   Link2,
   Unlink,
@@ -51,18 +44,18 @@ import {
   Mail,
   Phone,
   MapPin,
-  Check
-} from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import type { EvolizClient } from '@/types/evoliz.types';
-import { Link } from 'react-router-dom';
+  Check,
+} from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import type { EvolizClient } from "@/types/evoliz.types";
+import { Link } from "react-router-dom";
 
 export default function EvolizClientsPage() {
   const { isConfigured, isLoading: configLoading } = useEvolizConfig();
-  const { 
-    clients, 
+  const {
+    clients,
     mappings,
-    isLoading, 
+    isLoading,
     isSyncing,
     error,
     fetchClients,
@@ -71,7 +64,7 @@ export default function EvolizClientsPage() {
     unlinkClient,
   } = useEvolizClients();
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<EvolizClient | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [importingClientId, setImportingClientId] = useState<number | null>(null);
@@ -85,7 +78,7 @@ export default function EvolizClientsPage() {
   }, [isConfigured, configLoading]);
 
   // Filtrer les clients
-  const filteredClients = clients.filter(client => {
+  const filteredClients = clients.filter((client) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -97,7 +90,7 @@ export default function EvolizClientsPage() {
 
   // Vérifier si un client est lié
   const isClientLinked = (clientId: number) => {
-    return mappings.some(m => m.evoliz_client_id === clientId);
+    return mappings.some((m) => m.evoliz_client_id === clientId);
   };
 
   // Importer un client
@@ -148,11 +141,7 @@ export default function EvolizClientsPage() {
             }}
             disabled={isLoading}
           >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             <span className="ml-2 hidden sm:inline">Actualiser</span>
           </Button>
         </div>
@@ -197,17 +186,13 @@ export default function EvolizClientsPage() {
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">
-              {clients.filter(c => c.type === 'Professionnel').length}
-            </div>
+            <div className="text-2xl font-bold">{clients.filter((c) => c.type === "Professionnel").length}</div>
             <div className="text-sm text-muted-foreground">Professionnels</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">
-              {clients.filter(c => c.type === 'Particulier').length}
-            </div>
+            <div className="text-2xl font-bold">{clients.filter((c) => c.type === "Particulier").length}</div>
             <div className="text-sm text-muted-foreground">Particuliers</div>
           </CardContent>
         </Card>
@@ -241,9 +226,9 @@ export default function EvolizClientsPage() {
                 {filteredClients.map((client) => {
                   const isLinked = isClientLinked(client.clientid);
                   const isImporting = importingClientId === client.clientid;
-                  
+
                   return (
-                    <TableRow 
+                    <TableRow
                       key={client.clientid}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => {
@@ -253,7 +238,7 @@ export default function EvolizClientsPage() {
                     >
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {client.type === 'Professionnel' ? (
+                          {client.type === "Professionnel" ? (
                             <Building2 className="h-4 w-4 text-muted-foreground" />
                           ) : (
                             <User className="h-4 w-4 text-muted-foreground" />
@@ -262,16 +247,10 @@ export default function EvolizClientsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={client.type === 'Professionnel' ? 'default' : 'secondary'}>
-                          {client.type}
-                        </Badge>
+                        <Badge variant={client.type === "Professionnel" ? "default" : "secondary"}>{client.type}</Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {client.email || '-'}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {client.address?.town || '-'}
-                      </TableCell>
+                      <TableCell className="text-muted-foreground">{client.email || "-"}</TableCell>
+                      <TableCell className="text-muted-foreground">{client.address?.town || "-"}</TableCell>
                       <TableCell>
                         {isLinked ? (
                           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
@@ -293,7 +272,7 @@ export default function EvolizClientsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             {!isLinked ? (
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleImport(client.clientid);
@@ -308,7 +287,7 @@ export default function EvolizClientsPage() {
                                 Importer dans VPB
                               </DropdownMenuItem>
                             ) : (
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   unlinkClient(client.clientid);
@@ -320,7 +299,7 @@ export default function EvolizClientsPage() {
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem asChild>
-                              <a 
+                              <a
                                 href={`https://www.evoliz.com/clients/${client.clientid}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
@@ -349,7 +328,7 @@ export default function EvolizClientsPage() {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  {selectedClient.type === 'Professionnel' ? (
+                  {selectedClient.type === "Professionnel" ? (
                     <Building2 className="h-5 w-5" />
                   ) : (
                     <User className="h-5 w-5" />
@@ -357,7 +336,7 @@ export default function EvolizClientsPage() {
                   {selectedClient.name}
                 </DialogTitle>
                 <DialogDescription>
-                  <Badge variant={selectedClient.type === 'Professionnel' ? 'default' : 'secondary'}>
+                  <Badge variant={selectedClient.type === "Professionnel" ? "default" : "secondary"}>
                     {selectedClient.type}
                   </Badge>
                 </DialogDescription>
@@ -369,10 +348,7 @@ export default function EvolizClientsPage() {
                   {selectedClient.email && (
                     <div className="flex items-center gap-2 text-sm">
                       <Mail className="h-4 w-4 text-muted-foreground" />
-                      <a 
-                        href={`mailto:${selectedClient.email}`}
-                        className="text-primary hover:underline"
-                      >
+                      <a href={`mailto:${selectedClient.email}`} className="text-primary hover:underline">
                         {selectedClient.email}
                       </a>
                     </div>
@@ -400,7 +376,7 @@ export default function EvolizClientsPage() {
                 </div>
 
                 {/* Infos pro */}
-                {selectedClient.type === 'Professionnel' && (
+                {selectedClient.type === "Professionnel" && (
                   <div className="border-t pt-4 space-y-2">
                     {selectedClient.siret && (
                       <div className="flex justify-between text-sm">
@@ -425,17 +401,13 @@ export default function EvolizClientsPage() {
                         <Check className="h-4 w-4" />
                         Lié à un client VPB
                       </span>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => unlinkClient(selectedClient.clientid)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => unlinkClient(selectedClient.clientid)}>
                         <Unlink className="h-4 w-4 mr-1" />
                         Délier
                       </Button>
                     </div>
                   ) : (
-                    <Button 
+                    <Button
                       className="w-full"
                       onClick={() => handleImport(selectedClient.clientid)}
                       disabled={importingClientId === selectedClient.clientid}
@@ -453,7 +425,7 @@ export default function EvolizClientsPage() {
 
               <DialogFooter>
                 <Button variant="outline" asChild>
-                  <a 
+                  <a
                     href={`https://www.evoliz.com/clients/${selectedClient.clientid}`}
                     target="_blank"
                     rel="noopener noreferrer"
