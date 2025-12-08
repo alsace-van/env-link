@@ -136,16 +136,16 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
       if (!user) return;
 
       // Note: evoliz_article_id existe dans la DB mais peut ne pas être dans les types générés
-      const { data: localData, error: localError } = await supabase
+      const { data: localData, error: localError } = (await supabase
         .from("accessories_catalog")
         .select(
-          "id, nom, reference_fabricant, prix_vente_ttc, prix_reference, marge_pourcent, fournisseur, description, created_at",
+          "id, nom, reference_fabricant, prix_vente_ttc, prix_reference, marge_pourcent, fournisseur, description, created_at, evoliz_article_id",
         )
         .eq("user_id", user.id)
-        .order("nom");
+        .order("nom")) as { data: LocalCatalogItem[] | null; error: any };
 
       if (localError) throw localError;
-      setLocalItems((localData || []) as unknown as LocalCatalogItem[]);
+      setLocalItems(localData || []);
 
       // Charger le catalogue Evoliz (toutes les pages)
       if (isConfigured) {
@@ -172,7 +172,7 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
         setEvolizItems(allEvolizItems);
 
         // Analyser et matcher les articles
-        analyzeSync((localData || []) as unknown as LocalCatalogItem[], allEvolizItems);
+        analyzeSync(localData || [], allEvolizItems);
       }
     } catch (error: any) {
       console.error("Erreur chargement données:", error);
@@ -458,7 +458,10 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
               updateData.evoliz_article_id = evolizArticle.articleid;
             }
 
-            const { error } = await (supabase as any).from("accessories_catalog").update(updateData).eq("id", item.localItem.id);
+            const { error } = await (supabase as any)
+              .from("accessories_catalog")
+              .update(updateData)
+              .eq("id", item.localItem.id);
 
             if (error) throw error;
             updated++;
