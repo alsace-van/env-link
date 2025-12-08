@@ -24,6 +24,7 @@ export type Database = {
           delivery_date: string | null
           description: string | null
           description_media: Json | null
+          evoliz_article_id: number | null
           expected_delivery_date: string | null
           fournisseur: string | null
           hauteur_mm: number | null
@@ -82,6 +83,7 @@ export type Database = {
           delivery_date?: string | null
           description?: string | null
           description_media?: Json | null
+          evoliz_article_id?: number | null
           expected_delivery_date?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
@@ -140,6 +142,7 @@ export type Database = {
           delivery_date?: string | null
           description?: string | null
           description_media?: Json | null
+          evoliz_article_id?: number | null
           expected_delivery_date?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
@@ -917,6 +920,53 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      evoliz_imports: {
+        Row: {
+          created_at: string | null
+          evoliz_document_number: string | null
+          evoliz_quote_id: string
+          id: string
+          import_date: string | null
+          lignes_importees: number | null
+          project_id: string | null
+          total_materiel_ht: number | null
+          total_mo_ht: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          evoliz_document_number?: string | null
+          evoliz_quote_id: string
+          id?: string
+          import_date?: string | null
+          lignes_importees?: number | null
+          project_id?: string | null
+          total_materiel_ht?: number | null
+          total_mo_ht?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          evoliz_document_number?: string | null
+          evoliz_quote_id?: string
+          id?: string
+          import_date?: string | null
+          lignes_importees?: number | null
+          project_id?: string | null
+          total_materiel_ht?: number | null
+          total_mo_ht?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evoliz_imports_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       evoliz_quotes_cache: {
         Row: {
@@ -1826,11 +1876,13 @@ export type Database = {
           delai_paiement: string | null
           description: string | null
           est_archive: boolean | null
+          evoliz_item_id: string | null
           expense_date: string | null
           facture_url: string | null
           fournisseur: string | null
           hauteur_mm: number | null
           id: string
+          imported_from_evoliz: boolean | null
           intensite_amperes: number | null
           invoice_number: string | null
           largeur_mm: number | null
@@ -1877,11 +1929,13 @@ export type Database = {
           delai_paiement?: string | null
           description?: string | null
           est_archive?: boolean | null
+          evoliz_item_id?: string | null
           expense_date?: string | null
           facture_url?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          imported_from_evoliz?: boolean | null
           intensite_amperes?: number | null
           invoice_number?: string | null
           largeur_mm?: number | null
@@ -1928,11 +1982,13 @@ export type Database = {
           delai_paiement?: string | null
           description?: string | null
           est_archive?: boolean | null
+          evoliz_item_id?: string | null
           expense_date?: string | null
           facture_url?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
+          imported_from_evoliz?: boolean | null
           intensite_amperes?: number | null
           invoice_number?: string | null
           largeur_mm?: number | null
@@ -2399,7 +2455,10 @@ export type Database = {
           display_order: number | null
           due_date: string | null
           estimated_hours: number | null
+          evoliz_item_id: string | null
+          forfait_ttc: number | null
           id: string
+          imported_from_evoliz: boolean | null
           notes: string | null
           priority: string | null
           project_id: string | null
@@ -2424,7 +2483,10 @@ export type Database = {
           display_order?: number | null
           due_date?: string | null
           estimated_hours?: number | null
+          evoliz_item_id?: string | null
+          forfait_ttc?: number | null
           id?: string
+          imported_from_evoliz?: boolean | null
           notes?: string | null
           priority?: string | null
           project_id?: string | null
@@ -2449,7 +2511,10 @@ export type Database = {
           display_order?: number | null
           due_date?: string | null
           estimated_hours?: number | null
+          evoliz_item_id?: string | null
+          forfait_ttc?: number | null
           id?: string
+          imported_from_evoliz?: boolean | null
           notes?: string | null
           priority?: string | null
           project_id?: string | null
@@ -3514,6 +3579,7 @@ export type Database = {
           default_location: string | null
           default_motif: string | null
           email: string | null
+          hourly_rate_ttc: number | null
           id: string
           legal_form: string | null
           owner_civility: string | null
@@ -3539,6 +3605,7 @@ export type Database = {
           default_location?: string | null
           default_motif?: string | null
           email?: string | null
+          hourly_rate_ttc?: number | null
           id?: string
           legal_form?: string | null
           owner_civility?: string | null
@@ -3564,6 +3631,7 @@ export type Database = {
           default_location?: string | null
           default_motif?: string | null
           email?: string | null
+          hourly_rate_ttc?: number | null
           id?: string
           legal_form?: string | null
           owner_civility?: string | null
