@@ -294,6 +294,13 @@ export interface EvolizArticle {
   comment: string | null;
   created_at?: string;
   updated_at?: string;
+  // Fournisseur lié (si défini dans Evoliz)
+  supplier?: {
+    supplierid: number;
+    name: string;
+  } | null;
+  supplier_reference?: string | null;
+  weight?: number | null;
 }
 
 export interface EvolizArticleInput {
