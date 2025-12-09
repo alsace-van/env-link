@@ -257,9 +257,16 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 analytic_code: catalogArticle.analytic_code,
                 classification: catalogArticle.classification,
                 nature: catalogArticle.nature,
+                purchase_price_root: catalogArticle.purchase_unit_price_vat_exclude,
+                purchase_price_margin: catalogArticle.margin?.purchase_unit_price_vat_exclude,
+                supplier: catalogArticle.supplier?.name,
               });
 
-              const purchasePrice = catalogArticle.purchase_unit_price_vat_exclude || null;
+              // Le prix d'achat peut être à la racine ou dans margin
+              const purchasePrice =
+                catalogArticle.purchase_unit_price_vat_exclude ||
+                catalogArticle.margin?.purchase_unit_price_vat_exclude ||
+                null;
               const supplierName = catalogArticle.supplier?.name || null;
 
               // Récupérer la classification depuis l'article du catalogue
