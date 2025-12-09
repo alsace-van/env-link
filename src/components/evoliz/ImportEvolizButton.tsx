@@ -76,23 +76,13 @@ function formatAmount(value: number): string {
   }).format(value);
 }
 
-// Nettoyer le HTML des textes Evoliz
-function cleanHtmlText(text: string | null | undefined): string {
-  if (!text) return "";
-  return text
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/p>/gi, " ")
-    .replace(/<p>/gi, "")
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+// Formater date
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 }
 
 // Détecter si une ligne est de la main d'œuvre
@@ -102,7 +92,6 @@ function detectMainOeuvre(designation: string, unit: string, nature?: string): b
 
   // Si nature = "service" dans Evoliz, c'est de la MO
   if (nature && nature.toLowerCase() === "service") {
-    console.log("🔧 MO détectée par nature=service:", designation);
     return true;
   }
 
@@ -120,10 +109,8 @@ function detectMainOeuvre(designation: string, unit: string, nature?: string): b
     /^prestation\s/i, // prestation ...
   ];
 
-  // Vérifier la désignation
   for (const pattern of moPatterns) {
     if (pattern.test(designationLower)) {
-      console.log("🔧 MO détectée par pattern:", designation, "->", pattern);
       return true;
     }
   }
@@ -131,20 +118,10 @@ function detectMainOeuvre(designation: string, unit: string, nature?: string): b
   // Vérifier l'unité (heure, forfait)
   const moUnits = ["h", "heure", "heures", "hr", "forfait", "f"];
   if (moUnits.includes(unitLower)) {
-    console.log("🔧 MO détectée par unité:", designation, "-> unit=", unit);
     return true;
   }
 
   return false;
-}
-
-// Formater date
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 }
 
 // Badge statut
@@ -190,17 +167,10 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         const salePrice = item.unit_price_vat_exclude || 0;
         const designation = item.designation || item.designation_clean || "";
         const unit = item.unit || "";
-        const nature = item.nature || "";
-
-        // Log pour debug
-        console.log("📋 Ligne devis:", { designation, unit, nature });
+        const nature = item.nature || ""; // "product" ou "service" dans Evoliz
 
         // Détecter automatiquement si c'est de la main d'œuvre
         const isMO = detectMainOeuvre(designation, unit, nature);
-
-        if (isMO) {
-          console.log("✅ -> Classée en TRAVAUX");
-        }
 
         return {
           itemid: item.itemid || crypto.randomUUID(),
@@ -242,11 +212,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           // Récupérer les détails de chaque article (silencieusement)
           const articlePromises = [...new Set(articleIds)].map(async (articleId) => {
             try {
-              const response = (await evolizApi.getArticle(articleId)) as any;
-              // La réponse est { data: {...}, error: null } - on extrait data
-              const article = response?.data || response;
-              // DEBUG: Voir la structure complète de l'article Evoliz
-              console.log("📦 Article Evoliz complet:", JSON.stringify(article, null, 2));
+              const article = (await evolizApi.getArticle(articleId)) as any;
               return article;
             } catch {
               // Article pas trouvé dans le catalogue Evoliz - pas grave, on continue
@@ -265,23 +231,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
               const catalogArticle = articleMap.get(line.articleid);
               if (!catalogArticle) return line; // Pas trouvé, on garde la ligne telle quelle
 
-              // Le prix d'achat peut être à la racine ou dans margin
-              const purchasePrice =
-                catalogArticle.purchase_unit_price_vat_exclude ||
-                catalogArticle.margin?.purchase_unit_price_vat_exclude ||
-                null;
-
-              // DEBUG: Voir d'où vient le prix d'achat
-              console.log("💰 Extraction prix d'achat pour", catalogArticle.designation, {
-                root: catalogArticle.purchase_unit_price_vat_exclude,
-                margin: catalogArticle.margin?.purchase_unit_price_vat_exclude,
-                marginObject: catalogArticle.margin,
-                final: purchasePrice,
-              });
-
-              // Le fournisseur peut être un objet ou null
-              const supplierName = catalogArticle.supplier?.name || null;
-
+              const purchasePrice = catalogArticle.purchase_unit_price_vat_exclude || null;
               let marginPercent: number | null = null;
 
               if (purchasePrice && purchasePrice > 0 && line.unit_price_vat_exclude > 0) {
@@ -293,7 +243,6 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 purchase_unit_price_vat_exclude: purchasePrice,
                 margin_percent: marginPercent,
                 reference: catalogArticle.reference || line.reference,
-                supplier_name: supplierName,
                 catalog_enriched: purchasePrice !== null,
               };
             }),
@@ -379,7 +328,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         // Filtrer les articles qui n'existent pas encore (par nom OU par référence)
         const newCatalogItems = scenarioLines
           .filter((line) => {
-            const cleanName = cleanHtmlText(line.designation);
+            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
             const ref = line.reference?.trim();
 
             // Vérifier si l'article existe déjà par nom
@@ -395,7 +344,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             return true;
           })
           .map((line) => {
-            const cleanName = cleanHtmlText(line.designation);
+            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
             const prixVenteHT = line.unit_price_vat_exclude;
             const prixVenteTTC = prixVenteHT * 1.2;
             const prixAchatHT = line.purchase_unit_price_vat_exclude || null;
@@ -421,7 +370,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
               marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
               marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
               description: `Importé depuis devis Evoliz ${selectedQuote.document_number}`,
-              fournisseur: line.supplier_name || null, // Fournisseur depuis Evoliz
+              fournisseur: "Import Evoliz",
               available_in_shop: false,
             };
           });
@@ -449,7 +398,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           project_id: projectId,
           scenario_id: scenarioId || null,
           user_id: user.id,
-          nom_accessoire: cleanHtmlText(line.designation),
+          nom_accessoire: line.designation.replace(/<[^>]*>/g, "").trim(), // Nettoyer HTML
           quantite: Math.round(line.quantity), // Forcer en entier
           prix: line.unit_price_vat_exclude,
           prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
@@ -500,7 +449,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             project_id: projectId,
             user_id: user.id,
             category_id: categoryId,
-            title: cleanHtmlText(line.designation),
+            title: line.designation.replace(/<[^>]*>/g, "").trim(),
             completed: false,
             display_order: index + 1,
             forfait_ttc: forfaitTTC,
@@ -677,7 +626,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                       <div className="flex items-center gap-1 min-w-0">
                         <div
                           className="text-sm truncate"
-                          title={cleanHtmlText(line.designation)}
+                          title={line.designation.replace(/<[^>]*>/g, "")}
                           dangerouslySetInnerHTML={{
                             __html: line.designation.replace(/\n/g, " "),
                           }}
