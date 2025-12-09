@@ -1,7 +1,6 @@
 // ============================================
-// DIALOG SCANNER FACTURES FOURNISSEURS
-// Upload + OCR Gemini + Validation + Envoi Evoliz
-// Version Dialog pour intégration dans ExpenseTableForm
+// DIALOG IMPORT RELEVÉ BANCAIRE PDF
+// Upload PDF + OCR Gemini → Lignes à valider
 // ============================================
 
 import { useState, useCallback } from "react";
@@ -9,94 +8,84 @@ import { useDropzone } from "react-dropzone";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   FileUp,
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Send,
-  X,
+  Import,
   FileText,
-  Image,
-  Sparkles,
-  Building2,
-  Plus,
-  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  Building,
+  Calendar,
+  Banknote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { evolizApi, initializeEvolizApi } from "@/services/evolizService";
-import { useEvolizConfig } from "@/hooks/useEvolizConfig";
-import type { EvolizSupplier, EvolizPurchaseClassification } from "@/types/evoliz.types";
 
 // Types
-interface ExtractedInvoice {
-  supplier_name: string;
-  invoice_number: string | null;
-  invoice_date: string | null;
-  total_ht: number | null;
-  total_ttc: number | null;
-  tva_amount: number | null;
-  confidence: number;
+interface BankLine {
+  id: string;
+  date: string;
+  label: string;
+  amount: number;
+  type: "debit" | "credit";
+  selected: boolean;
+  // Pour liaison avec facture
+  linkedInvoiceId?: string;
 }
 
-interface UploadedFile {
-  file: File;
-  preview: string;
-  type: "pdf" | "image";
+interface BankStatementInfo {
+  bank_name?: string;
+  account_number?: string;
+  period_start?: string;
+  period_end?: string;
+  opening_balance?: number;
+  closing_balance?: number;
 }
 
-type Step = "upload" | "analyzing" | "validation" | "sending" | "success" | "error";
+type Step = "upload" | "analyzing" | "validation" | "importing" | "success" | "error";
 
-interface SupplierInvoiceScannerDialogProps {
+interface BankStatementImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onInvoiceScanned?: (data: {
-    supplier_name: string;
-    total_ttc: number | null;
-    total_ht: number | null;
-    invoice_number?: string | null;
-    invoice_date?: string | null;
-  }) => void;
+  onLinesImported: (
+    lines: Array<{
+      id: string;
+      type: "entree" | "sortie";
+      date: string;
+      label: string;
+      amount: number;
+      bankLineId: string;
+    }>,
+  ) => void;
 }
 
-export function SupplierInvoiceScannerDialog({
-  open,
-  onOpenChange,
-  onInvoiceScanned,
-}: SupplierInvoiceScannerDialogProps) {
-  const { isConfigured, credentials } = useEvolizConfig();
-
-  // États
+export function BankStatementImportDialog({ open, onOpenChange, onLinesImported }: BankStatementImportDialogProps) {
   const [step, setStep] = useState<Step>("upload");
-  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
-  const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(null);
-  const [editedData, setEditedData] = useState<ExtractedInvoice | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string>("");
 
-  // Fournisseurs Evoliz
-  const [suppliers, setSuppliers] = useState<EvolizSupplier[]>([]);
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
-  const [isNewSupplier, setIsNewSupplier] = useState(false);
-  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+  // Données extraites
+  const [bankInfo, setBankInfo] = useState<BankStatementInfo | null>(null);
+  const [lines, setLines] = useState<BankLine[]>([]);
 
-  // Classifications d'achat
-  const [purchaseClassifications, setPurchaseClassifications] = useState<EvolizPurchaseClassification[]>([]);
-  const [selectedClassificationId, setSelectedClassificationId] = useState<string>("");
+  // Sélection
+  const [selectAll, setSelectAll] = useState(true);
 
-  // Reset quand on ferme
+  // Reset
   const handleClose = () => {
     setStep("upload");
-    setUploadedFile(null);
-    setExtractedData(null);
-    setEditedData(null);
     setError(null);
-    setSelectedSupplierId("");
-    setIsNewSupplier(false);
+    setFileName("");
+    setBankInfo(null);
+    setLines([]);
+    setSelectAll(true);
     onOpenChange(false);
   };
 
@@ -105,74 +94,38 @@ export function SupplierInvoiceScannerDialog({
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
-    const isPdf = file.type === "application/pdf";
-    const isImage = file.type.startsWith("image/");
-
-    if (!isPdf && !isImage) {
-      toast.error("Format non supporté. Utilisez PDF, JPG ou PNG.");
+    if (file.type !== "application/pdf") {
+      toast.error("Seuls les fichiers PDF sont acceptés");
       return;
     }
 
-    const preview = URL.createObjectURL(file);
-    setUploadedFile({
-      file,
-      preview,
-      type: isPdf ? "pdf" : "image",
-    });
-
-    // Lancer l'analyse automatiquement
-    analyzeDocument(file);
+    setFileName(file.name);
+    analyzeStatement(file);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "application/pdf": [".pdf"],
-      "image/jpeg": [".jpg", ".jpeg"],
-      "image/png": [".png"],
     },
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10 MB
+    maxSize: 15 * 1024 * 1024, // 15 MB
   });
 
-  // Charger les fournisseurs Evoliz
-  const loadSuppliers = async () => {
-    if (!isConfigured || !credentials) return;
-
-    setLoadingSuppliers(true);
-    try {
-      initializeEvolizApi(credentials);
-      const response = await evolizApi.getSuppliers({ per_page: 500 });
-      setSuppliers(response.data || []);
-
-      // Charger aussi les classifications d'achat
-      const classifResponse = await evolizApi.getPurchaseClassifications();
-      setPurchaseClassifications(classifResponse.data || []);
-    } catch (err) {
-      console.error("Erreur chargement fournisseurs:", err);
-    } finally {
-      setLoadingSuppliers(false);
-    }
-  };
-
-  // Analyser le document avec Gemini
-  const analyzeDocument = async (file: File) => {
+  // Analyser le relevé avec Gemini
+  const analyzeStatement = async (file: File) => {
     setStep("analyzing");
     setError(null);
 
     try {
-      // Charger les fournisseurs en parallèle
-      loadSuppliers();
-
       // Convertir en base64
       const base64 = await fileToBase64(file);
-      const mimeType = file.type;
 
-      // Appeler l'edge function Gemini
-      const { data, error } = await supabase.functions.invoke("gemini-invoice-ocr", {
+      // Appeler l'edge function
+      const { data, error } = await supabase.functions.invoke("gemini-bank-statement-ocr", {
         body: {
           image: base64,
-          mimeType,
+          mimeType: "application/pdf",
           fileName: file.name,
         },
       });
@@ -180,155 +133,83 @@ export function SupplierInvoiceScannerDialog({
       if (error) throw error;
 
       if (!data || !data.success) {
-        throw new Error(data?.error || "Erreur lors de l'analyse");
+        throw new Error(data?.error || "Erreur lors de l'extraction");
       }
 
-      const extracted: ExtractedInvoice = {
-        supplier_name: data.supplier_name || "",
-        invoice_number: data.invoice_number || null,
-        invoice_date: data.invoice_date || null,
-        total_ht: data.total_ht || null,
-        total_ttc: data.total_ttc || null,
-        tva_amount: data.tva_amount || null,
-        confidence: data.confidence || 0,
-      };
+      // Stocker les infos du relevé
+      setBankInfo({
+        bank_name: data.bank_name,
+        account_number: data.account_number,
+        period_start: data.period_start,
+        period_end: data.period_end,
+        opening_balance: data.opening_balance,
+        closing_balance: data.closing_balance,
+      });
 
-      setExtractedData(extracted);
-      setEditedData({ ...extracted });
+      // Préparer les lignes avec ID et sélection
+      const extractedLines: BankLine[] = (data.lines || []).map((line: any, index: number) => ({
+        id: `bank-${Date.now()}-${index}`,
+        date: line.date,
+        label: line.label,
+        amount: line.amount,
+        type: line.type,
+        selected: true,
+      }));
 
-      // Essayer de matcher le fournisseur
-      matchSupplier(extracted.supplier_name);
-
+      setLines(extractedLines);
       setStep("validation");
+
+      toast.success(`${extractedLines.length} opérations extraites`);
     } catch (err) {
-      console.error("Erreur analyse:", err);
-      setError(err instanceof Error ? err.message : "Erreur lors de l'analyse");
+      console.error("Erreur extraction:", err);
+      setError(err instanceof Error ? err.message : "Erreur lors de l'extraction");
       setStep("error");
     }
   };
 
-  // Matcher le fournisseur
-  const matchSupplier = (supplierName: string) => {
-    if (!supplierName || suppliers.length === 0) {
-      setIsNewSupplier(true);
-      return;
-    }
-
-    const nameLower = supplierName.toLowerCase().trim();
-
-    // Chercher une correspondance exacte ou partielle
-    const exactMatch = suppliers.find((s) => s.name.toLowerCase().trim() === nameLower);
-
-    if (exactMatch) {
-      setSelectedSupplierId(exactMatch.supplierid.toString());
-      setIsNewSupplier(false);
-      return;
-    }
-
-    // Recherche partielle (le nom extrait contient le nom Evoliz ou vice-versa)
-    const partialMatch = suppliers.find((s) => {
-      const evolizName = s.name.toLowerCase().trim();
-      return nameLower.includes(evolizName) || evolizName.includes(nameLower);
-    });
-
-    if (partialMatch) {
-      setSelectedSupplierId(partialMatch.supplierid.toString());
-      setIsNewSupplier(false);
-      return;
-    }
-
-    // Pas de match → nouveau fournisseur
-    setIsNewSupplier(true);
-    setSelectedSupplierId("");
+  // Toggle sélection d'une ligne
+  const toggleLine = (id: string) => {
+    setLines((prev) => prev.map((line) => (line.id === id ? { ...line, selected: !line.selected } : line)));
   };
 
-  // Envoyer vers Evoliz
-  const sendToEvoliz = async () => {
-    if (!editedData || !isConfigured || !credentials) return;
-
-    setStep("sending");
-    setError(null);
-
-    try {
-      initializeEvolizApi(credentials);
-
-      let supplierId: number;
-
-      // Créer le fournisseur si nouveau
-      if (isNewSupplier || !selectedSupplierId) {
-        const newSupplier = await evolizApi.createSupplier({
-          name: editedData.supplier_name,
-          type: "Professionnel",
-        });
-        supplierId = newSupplier.supplierid;
-        toast.success(`Fournisseur "${editedData.supplier_name}" créé`);
-      } else {
-        supplierId = parseInt(selectedSupplierId);
-      }
-
-      // Calculer la TVA si manquante
-      let tvaAmount = editedData.tva_amount;
-      if (!tvaAmount && editedData.total_ht && editedData.total_ttc) {
-        tvaAmount = editedData.total_ttc - editedData.total_ht;
-      }
-
-      // Calculer le montant HT si manquant
-      let totalHT = editedData.total_ht;
-      if (!totalHT && editedData.total_ttc && tvaAmount) {
-        totalHT = editedData.total_ttc - tvaAmount;
-      } else if (!totalHT && editedData.total_ttc) {
-        // Assumer 20% de TVA
-        totalHT = editedData.total_ttc / 1.2;
-      }
-
-      // Créer la dépense
-      const buyInput = {
-        supplierid: supplierId,
-        external_document_number: editedData.invoice_number || undefined,
-        documentdate: editedData.invoice_date || new Date().toISOString().split("T")[0],
-        label: `Facture ${editedData.invoice_number || ""}`.trim(),
-        items: [
-          {
-            designation: `Facture ${editedData.supplier_name}`,
-            quantity: 1,
-            unit_price_vat_exclude: totalHT || 0,
-            vat: tvaAmount || (totalHT ? totalHT * 0.2 : 0),
-            vat_rate: 20,
-            ...(selectedClassificationId ? { purchaseclassificationid: parseInt(selectedClassificationId) } : {}),
-          },
-        ],
-      };
-
-      await evolizApi.createBuy(buyInput);
-
-      // Callback pour ajouter la ligne dans le tableau parent
-      if (onInvoiceScanned) {
-        onInvoiceScanned({
-          supplier_name: editedData.supplier_name,
-          total_ttc: editedData.total_ttc,
-          total_ht: totalHT,
-          invoice_number: editedData.invoice_number,
-          invoice_date: editedData.invoice_date,
-        });
-      }
-
-      toast.success("Facture envoyée vers Evoliz !");
-      setStep("success");
-    } catch (err) {
-      console.error("Erreur envoi:", err);
-      setError(err instanceof Error ? err.message : "Erreur lors de l'envoi");
-      setStep("error");
-    }
+  // Toggle tout sélectionner
+  const toggleSelectAll = () => {
+    const newValue = !selectAll;
+    setSelectAll(newValue);
+    setLines((prev) => prev.map((line) => ({ ...line, selected: newValue })));
   };
 
-  // Helpers
+  // Importer les lignes sélectionnées
+  const importLines = () => {
+    const selectedLines = lines.filter((l) => l.selected);
+
+    if (selectedLines.length === 0) {
+      toast.error("Sélectionnez au moins une ligne");
+      return;
+    }
+
+    // Convertir pour le parent
+    const importedLines = selectedLines.map((line) => ({
+      id: crypto.randomUUID(),
+      type: line.type === "credit" ? ("entree" as const) : ("sortie" as const),
+      date: line.date,
+      label: line.label,
+      amount: Math.abs(line.amount),
+      bankLineId: line.id,
+    }));
+
+    onLinesImported(importedLines);
+    toast.success(`${importedLines.length} lignes importées`);
+    setStep("success");
+  };
+
+  // Helper
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => {
         const result = reader.result as string;
-        // Enlever le préfixe data:...;base64,
         const base64 = result.split(",")[1];
         resolve(base64);
       };
@@ -336,52 +217,46 @@ export function SupplierInvoiceScannerDialog({
     });
   };
 
-  // Reset pour scanner une autre facture
-  const scanAnother = () => {
-    setStep("upload");
-    setUploadedFile(null);
-    setExtractedData(null);
-    setEditedData(null);
-    setError(null);
-    setSelectedSupplierId("");
-    setIsNewSupplier(false);
+  // Formater la date pour affichage
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "-";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("fr-FR");
+    } catch {
+      return dateStr;
+    }
   };
 
-  // Vérifier la configuration Evoliz
-  if (!isConfigured) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Evoliz non configuré</DialogTitle>
-            <DialogDescription>
-              Configurez vos identifiants Evoliz dans les paramètres pour utiliser cette fonctionnalité.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex justify-end">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Fermer
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  // Formater le montant
+  const formatAmount = (amount: number) => {
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+    }).format(amount);
+  };
+
+  // Stats
+  const selectedCount = lines.filter((l) => l.selected).length;
+  const totalDebits = lines
+    .filter((l) => l.selected && l.type === "debit")
+    .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+  const totalCredits = lines.filter((l) => l.selected && l.type === "credit").reduce((sum, l) => sum + l.amount, 0);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-4xl max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-blue-500" />
-            Scanner une facture fournisseur
+            <FileText className="h-5 w-5 text-blue-500" />
+            Importer un relevé bancaire PDF
           </DialogTitle>
           <DialogDescription>
-            {step === "upload" && "Déposez un PDF ou une photo de facture"}
-            {step === "analyzing" && "Analyse en cours..."}
-            {step === "validation" && "Vérifiez les informations extraites"}
-            {step === "sending" && "Envoi vers Evoliz..."}
-            {step === "success" && "Facture envoyée !"}
+            {step === "upload" && "Déposez votre relevé bancaire au format PDF"}
+            {step === "analyzing" && "Extraction des opérations en cours..."}
+            {step === "validation" && "Sélectionnez les opérations à importer"}
+            {step === "importing" && "Import en cours..."}
+            {step === "success" && "Import terminé !"}
             {step === "error" && "Une erreur est survenue"}
           </DialogDescription>
         </DialogHeader>
@@ -391,248 +266,176 @@ export function SupplierInvoiceScannerDialog({
           <div
             {...getRootProps()}
             className={`
-              border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
+              border-2 border-dashed rounded-lg p-10 text-center cursor-pointer
               transition-colors duration-200
               ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"}
             `}
           >
             <input {...getInputProps()} />
-            <FileUp className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+            <FileUp className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             {isDragActive ? (
-              <p className="text-blue-600 font-medium">Déposez le fichier ici...</p>
+              <p className="text-blue-600 font-medium text-lg">Déposez le fichier ici...</p>
             ) : (
-              <div className="space-y-1">
-                <p className="font-medium">Glissez-déposez votre facture</p>
-                <p className="text-sm text-muted-foreground">PDF, JPG ou PNG • Max 10 Mo</p>
+              <div className="space-y-2">
+                <p className="font-medium text-lg">Glissez-déposez votre relevé bancaire</p>
+                <p className="text-sm text-muted-foreground">Format PDF uniquement • Max 15 Mo</p>
               </div>
             )}
           </div>
         )}
 
-        {/* ÉTAPE: Analyse en cours */}
+        {/* ÉTAPE: Analyse */}
         {step === "analyzing" && (
-          <div className="py-10 text-center">
-            <Loader2 className="h-10 w-10 mx-auto animate-spin text-blue-500 mb-3" />
-            <p className="text-muted-foreground">Gemini analyse votre facture...</p>
+          <div className="py-12 text-center">
+            <Loader2 className="h-12 w-12 mx-auto animate-spin text-blue-500 mb-4" />
+            <p className="text-lg font-medium">Analyse du relevé...</p>
+            <p className="text-sm text-muted-foreground mt-2">{fileName}</p>
           </div>
         )}
 
         {/* ÉTAPE: Validation */}
-        {step === "validation" && editedData && (
+        {step === "validation" && (
           <div className="space-y-4">
-            {/* Aperçu du fichier */}
-            {uploadedFile && (
-              <div className="flex items-center gap-3 p-2 bg-muted rounded-lg">
-                {uploadedFile.type === "pdf" ? (
-                  <FileText className="h-6 w-6 text-red-500" />
-                ) : (
-                  <Image className="h-6 w-6 text-blue-500" />
+            {/* Infos du relevé */}
+            {bankInfo && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-muted rounded-lg text-sm">
+                {bankInfo.bank_name && (
+                  <div className="flex items-center gap-2">
+                    <Building className="h-4 w-4 text-muted-foreground" />
+                    <span>{bankInfo.bank_name}</span>
+                  </div>
                 )}
-                <span className="text-sm truncate flex-1">{uploadedFile.file.name}</span>
-                <Badge variant="outline" className="gap-1">
-                  <Sparkles className="h-3 w-3" />
-                  {Math.round((extractedData?.confidence || 0) * 100)}%
-                </Badge>
+                {bankInfo.period_start && bankInfo.period_end && (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span>
+                      {formatDate(bankInfo.period_start)} → {formatDate(bankInfo.period_end)}
+                    </span>
+                  </div>
+                )}
+                {bankInfo.opening_balance !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <Banknote className="h-4 w-4 text-muted-foreground" />
+                    <span>Solde initial: {formatAmount(bankInfo.opening_balance)}</span>
+                  </div>
+                )}
+                {bankInfo.closing_balance !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <Banknote className="h-4 w-4 text-muted-foreground" />
+                    <span>Solde final: {formatAmount(bankInfo.closing_balance)}</span>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Formulaire */}
-            <div className="grid gap-3">
-              {/* Fournisseur */}
-              <div className="space-y-1.5">
-                <Label className="text-xs">Fournisseur *</Label>
-                {isNewSupplier ? (
-                  <div className="flex gap-2">
-                    <Input
-                      value={editedData.supplier_name}
-                      onChange={(e) => setEditedData({ ...editedData, supplier_name: e.target.value })}
-                      placeholder="Nom du fournisseur"
-                      className="h-9"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setIsNewSupplier(false);
-                        matchSupplier(editedData.supplier_name);
-                      }}
-                      disabled={loadingSuppliers}
-                    >
-                      {loadingSuppliers ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
-                      <SelectTrigger className="h-9 flex-1">
-                        <SelectValue placeholder="Sélectionner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {suppliers.map((s) => (
-                          <SelectItem key={s.supplierid} value={s.supplierid.toString()}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsNewSupplier(true)}
-                      title="Créer un nouveau fournisseur"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-                {isNewSupplier && (
-                  <p className="text-xs text-orange-600 flex items-center gap-1">
-                    <Building2 className="h-3 w-3" />
-                    Sera créé dans Evoliz
-                  </p>
-                )}
+            {/* Stats de sélection */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={selectAll} onCheckedChange={toggleSelectAll} />
+                  <span className="text-sm font-medium">Tout sélectionner</span>
+                </label>
+                <Badge variant="outline">
+                  {selectedCount} / {lines.length} sélectionnées
+                </Badge>
               </div>
-
-              {/* Numéro et Date */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">N° Facture</Label>
-                  <Input
-                    value={editedData.invoice_number || ""}
-                    onChange={(e) => setEditedData({ ...editedData, invoice_number: e.target.value || null })}
-                    placeholder="FAC-001"
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Date</Label>
-                  <Input
-                    type="date"
-                    value={editedData.invoice_date || ""}
-                    onChange={(e) => setEditedData({ ...editedData, invoice_date: e.target.value || null })}
-                    className="h-9"
-                  />
-                </div>
+              <div className="flex items-center gap-4 text-sm">
+                <span className="flex items-center gap-1 text-green-600">
+                  <TrendingUp className="h-4 w-4" />+{formatAmount(totalCredits)}
+                </span>
+                <span className="flex items-center gap-1 text-red-600">
+                  <TrendingDown className="h-4 w-4" />-{formatAmount(totalDebits)}
+                </span>
               </div>
-
-              {/* Montants */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Total HT *</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={editedData.total_ht || ""}
-                    onChange={(e) => setEditedData({ ...editedData, total_ht: parseFloat(e.target.value) || null })}
-                    placeholder="0.00"
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">TVA</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={editedData.tva_amount || ""}
-                    onChange={(e) => setEditedData({ ...editedData, tva_amount: parseFloat(e.target.value) || null })}
-                    placeholder="0.00"
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Total TTC *</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={editedData.total_ttc || ""}
-                    onChange={(e) => setEditedData({ ...editedData, total_ttc: parseFloat(e.target.value) || null })}
-                    placeholder="0.00"
-                    className="h-9"
-                  />
-                </div>
-              </div>
-
-              {/* Classification */}
-              {purchaseClassifications.length > 0 && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Classification (optionnel)</Label>
-                  <Select value={selectedClassificationId} onValueChange={setSelectedClassificationId}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Sélectionner une classification" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">Aucune</SelectItem>
-                      {purchaseClassifications.map((c) => (
-                        <SelectItem
-                          key={c.purchaseclassificationid || c.id}
-                          value={(c.purchaseclassificationid || c.id)?.toString() || ""}
-                        >
-                          {c.code} - {c.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
             </div>
 
-            <Separator />
+            {/* Table des lignes */}
+            <ScrollArea className="h-[400px] border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="w-[50px]"></TableHead>
+                    <TableHead className="w-[100px]">Date</TableHead>
+                    <TableHead>Libellé</TableHead>
+                    <TableHead className="w-[120px] text-right">Montant</TableHead>
+                    <TableHead className="w-[80px] text-center">Type</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lines.map((line) => (
+                    <TableRow
+                      key={line.id}
+                      className={`cursor-pointer ${!line.selected ? "opacity-50" : ""}`}
+                      onClick={() => toggleLine(line.id)}
+                    >
+                      <TableCell>
+                        <Checkbox checked={line.selected} onCheckedChange={() => toggleLine(line.id)} />
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{formatDate(line.date)}</TableCell>
+                      <TableCell>
+                        <span className="line-clamp-1" title={line.label}>
+                          {line.label}
+                        </span>
+                      </TableCell>
+                      <TableCell
+                        className={`text-right font-medium ${line.type === "credit" ? "text-green-600" : "text-red-600"}`}
+                      >
+                        {line.type === "credit" ? "+" : "-"}
+                        {formatAmount(Math.abs(line.amount))}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {line.type === "credit" ? (
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            <TrendingUp className="h-3 w-3 mr-1" />
+                            Entrée
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                            <TrendingDown className="h-3 w-3 mr-1" />
+                            Sortie
+                          </Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
 
             {/* Actions */}
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={handleClose}>
                 Annuler
               </Button>
-              <Button
-                onClick={sendToEvoliz}
-                disabled={!editedData.supplier_name || (!editedData.total_ht && !editedData.total_ttc)}
-                className="gap-2"
-              >
-                <Send className="h-4 w-4" />
-                Envoyer vers Evoliz
+              <Button onClick={importLines} disabled={selectedCount === 0} className="gap-2">
+                <Import className="h-4 w-4" />
+                Importer {selectedCount} ligne{selectedCount > 1 ? "s" : ""}
               </Button>
             </div>
-          </div>
-        )}
-
-        {/* ÉTAPE: Envoi en cours */}
-        {step === "sending" && (
-          <div className="py-10 text-center">
-            <Loader2 className="h-10 w-10 mx-auto animate-spin text-blue-500 mb-3" />
-            <p className="text-muted-foreground">Création de la dépense dans Evoliz...</p>
           </div>
         )}
 
         {/* ÉTAPE: Succès */}
         {step === "success" && (
-          <div className="py-8 text-center space-y-4">
-            <CheckCircle2 className="h-12 w-12 mx-auto text-green-500" />
+          <div className="py-10 text-center space-y-4">
+            <CheckCircle2 className="h-14 w-14 mx-auto text-green-500" />
             <div>
-              <p className="font-semibold">Facture envoyée !</p>
-              <p className="text-sm text-muted-foreground">La dépense a été créée dans Evoliz</p>
+              <p className="font-semibold text-lg">Import terminé !</p>
+              <p className="text-sm text-muted-foreground">Les lignes ont été ajoutées au tableau</p>
             </div>
-            <div className="flex gap-2 justify-center">
-              <Button variant="outline" onClick={scanAnother}>
-                Scanner une autre
-              </Button>
-              <Button onClick={handleClose}>Terminé</Button>
-            </div>
+            <Button onClick={handleClose}>Fermer</Button>
           </div>
         )}
 
         {/* ÉTAPE: Erreur */}
         {step === "error" && (
-          <div className="py-8 text-center space-y-4">
-            <AlertCircle className="h-12 w-12 mx-auto text-red-500" />
+          <div className="py-10 text-center space-y-4">
+            <AlertCircle className="h-14 w-14 mx-auto text-red-500" />
             <div>
-              <p className="font-semibold">Erreur</p>
+              <p className="font-semibold text-lg">Erreur d'extraction</p>
               <p className="text-sm text-muted-foreground">{error}</p>
             </div>
-            <Button onClick={scanAnother}>Réessayer</Button>
+            <Button onClick={() => setStep("upload")}>Réessayer</Button>
           </div>
         )}
       </DialogContent>
