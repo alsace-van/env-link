@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import UserAISettings from "@/components/UserAISettings";
+import { UploadTokenManager } from "@/components/UploadTokenManager";
 
 interface UserProfile {
   id: string;
@@ -715,6 +716,9 @@ const Account = () => {
 
           {/* Onglet Sécurité */}
           <TabsContent value="security" className="space-y-6">
+            {/* Tokens d'upload pour raccourci macOS */}
+            <UploadTokenManager />
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
