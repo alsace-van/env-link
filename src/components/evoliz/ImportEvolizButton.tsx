@@ -76,6 +76,25 @@ function formatAmount(value: number): string {
   }).format(value);
 }
 
+// Nettoyer le HTML des textes Evoliz
+function cleanHtmlText(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, " ")
+    .replace(/<p>/gi, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // Formater date
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString("fr-FR", {
@@ -198,6 +217,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 purchase_unit_price_vat_exclude: purchasePrice,
                 margin_percent: marginPercent,
                 reference: catalogArticle.reference || line.reference,
+                supplier_name: catalogArticle.supplier?.name || null,
                 catalog_enriched: purchasePrice !== null,
               };
             }),
@@ -283,7 +303,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         // Filtrer les articles qui n'existent pas encore (par nom OU par référence)
         const newCatalogItems = scenarioLines
           .filter((line) => {
-            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
+            const cleanName = cleanHtmlText(line.designation);
             const ref = line.reference?.trim();
 
             // Vérifier si l'article existe déjà par nom
@@ -299,7 +319,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             return true;
           })
           .map((line) => {
-            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
+            const cleanName = cleanHtmlText(line.designation);
             const prixVenteHT = line.unit_price_vat_exclude;
             const prixVenteTTC = prixVenteHT * 1.2;
             const prixAchatHT = line.purchase_unit_price_vat_exclude || null;
@@ -325,7 +345,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
               marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
               marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
               description: `Importé depuis devis Evoliz ${selectedQuote.document_number}`,
-              fournisseur: "Import Evoliz",
+              fournisseur: line.supplier_name || null, // Fournisseur depuis Evoliz
               available_in_shop: false,
             };
           });
@@ -353,7 +373,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           project_id: projectId,
           scenario_id: scenarioId || null,
           user_id: user.id,
-          nom_accessoire: line.designation.replace(/<[^>]*>/g, "").trim(), // Nettoyer HTML
+          nom_accessoire: cleanHtmlText(line.designation),
           quantite: Math.round(line.quantity), // Forcer en entier
           prix: line.unit_price_vat_exclude,
           prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
@@ -404,7 +424,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             project_id: projectId,
             user_id: user.id,
             category_id: categoryId,
-            title: line.designation.replace(/<[^>]*>/g, "").trim(),
+            title: cleanHtmlText(line.designation),
             completed: false,
             display_order: index + 1,
             forfait_ttc: forfaitTTC,
@@ -581,7 +601,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                       <div className="flex items-center gap-1 min-w-0">
                         <div
                           className="text-sm truncate"
-                          title={line.designation.replace(/<[^>]*>/g, "")}
+                          title={cleanHtmlText(line.designation)}
                           dangerouslySetInnerHTML={{
                             __html: line.designation.replace(/\n/g, " "),
                           }}
