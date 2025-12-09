@@ -86,13 +86,21 @@ function formatDate(dateString: string): string {
 }
 
 // Détecter si une ligne est de la main d'œuvre
-function detectMainOeuvre(designation: string, unit: string, nature?: string): boolean {
+function detectMainOeuvre(designation: string, unit: string, nature?: string, classification?: string): boolean {
   const designationLower = designation.toLowerCase();
   const unitLower = unit.toLowerCase();
 
   // Si nature = "service" dans Evoliz, c'est de la MO
   if (nature && nature.toLowerCase() === "service") {
     return true;
+  }
+
+  // Si classification = "03" ou "Travaux réalisés" dans Evoliz, c'est de la MO
+  if (classification) {
+    const classifLower = classification.toLowerCase();
+    if (classifLower.includes("03") || classifLower.includes("travaux")) {
+      return true;
+    }
   }
 
   // Patterns dans la désignation
@@ -168,9 +176,20 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         const designation = item.designation || item.designation_clean || "";
         const unit = item.unit || "";
         const nature = item.nature || ""; // "product" ou "service" dans Evoliz
+        // Classification Evoliz : peut être dans analytic_code, classification, ou analytic.label
+        const classification = item.analytic_code || item.classification || item.analytic?.label || "";
+
+        // Log pour debug
+        console.log("📋 Ligne devis:", {
+          designation: designation.substring(0, 40),
+          unit,
+          nature,
+          classification,
+          analytic: item.analytic,
+        });
 
         // Détecter automatiquement si c'est de la main d'œuvre
-        const isMO = detectMainOeuvre(designation, unit, nature);
+        const isMO = detectMainOeuvre(designation, unit, nature, classification);
 
         return {
           itemid: item.itemid || crypto.randomUUID(),
@@ -231,7 +250,38 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
               const catalogArticle = articleMap.get(line.articleid);
               if (!catalogArticle) return line; // Pas trouvé, on garde la ligne telle quelle
 
+              // Log pour debug - voir la structure de l'article
+              console.log("📦 Article Evoliz enrichi:", {
+                designation: catalogArticle.designation?.substring(0, 40),
+                analytic: catalogArticle.analytic,
+                analytic_code: catalogArticle.analytic_code,
+                classification: catalogArticle.classification,
+                nature: catalogArticle.nature,
+              });
+
               const purchasePrice = catalogArticle.purchase_unit_price_vat_exclude || null;
+              const supplierName = catalogArticle.supplier?.name || null;
+
+              // Récupérer la classification depuis l'article du catalogue
+              const classification =
+                catalogArticle.analytic?.label || catalogArticle.analytic_code || catalogArticle.classification || "";
+              const nature = catalogArticle.nature || "";
+
+              // Re-vérifier si c'est de la MO avec les infos du catalogue
+              const shouldBeMO = detectMainOeuvre(line.designation, line.unit, nature, classification);
+
+              // Si la ligne était en "scenario" mais devrait être en "travaux", on la re-classe
+              const newDestination = line.destination === "scenario" && shouldBeMO ? "travaux" : line.destination;
+
+              if (shouldBeMO && line.destination !== "travaux") {
+                console.log(
+                  "🔧 Reclassé en MO après enrichissement:",
+                  line.designation.substring(0, 40),
+                  "-> classification:",
+                  classification,
+                );
+              }
+
               let marginPercent: number | null = null;
 
               if (purchasePrice && purchasePrice > 0 && line.unit_price_vat_exclude > 0) {
@@ -243,6 +293,8 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 purchase_unit_price_vat_exclude: purchasePrice,
                 margin_percent: marginPercent,
                 reference: catalogArticle.reference || line.reference,
+                supplier_name: supplierName,
+                destination: newDestination as LineDestination,
                 catalog_enriched: purchasePrice !== null,
               };
             }),
