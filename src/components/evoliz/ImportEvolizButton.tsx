@@ -215,6 +215,14 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 catalogArticle.margin?.purchase_unit_price_vat_exclude ||
                 null;
 
+              // DEBUG: Voir d'où vient le prix d'achat
+              console.log("💰 Extraction prix d'achat pour", catalogArticle.designation, {
+                root: catalogArticle.purchase_unit_price_vat_exclude,
+                margin: catalogArticle.margin?.purchase_unit_price_vat_exclude,
+                marginObject: catalogArticle.margin,
+                final: purchasePrice,
+              });
+
               // Le fournisseur peut être un objet ou null
               const supplierName = catalogArticle.supplier?.name || null;
 
