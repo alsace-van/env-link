@@ -100,6 +100,12 @@ interface EvolizArticle {
   } | null;
   supplier_reference?: string | null;
   weight?: number | null;
+  // Marge (contient aussi le prix d'achat)
+  margin?: {
+    purchase_unit_price_vat_exclude?: number | null;
+    margin_percent?: number | null;
+    amount?: number | null;
+  } | null;
 }
 
 type SyncStatus = "local_only" | "evoliz_only" | "synced" | "conflict" | "price_diff";
@@ -444,7 +450,11 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
         try {
           const prixVenteHT = evolizArticle.unit_price_vat_exclude;
           const prixVenteTTC = prixVenteHT * 1.2;
-          const prixAchatHT = evolizArticle.purchase_unit_price_vat_exclude || null;
+          // Le prix d'achat peut être à la racine ou dans margin
+          const prixAchatHT =
+            evolizArticle.purchase_unit_price_vat_exclude ||
+            evolizArticle.margin?.purchase_unit_price_vat_exclude ||
+            null;
 
           let margePourcent: number | null = null;
           let margeNette: number | null = null;
@@ -545,6 +555,17 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
+      // Charger tous les fournisseurs Evoliz une seule fois
+      setSyncMessage("Chargement des fournisseurs...");
+      let allSuppliers: any[] = [];
+      try {
+        const suppliersResponse = await evolizApi.getSuppliers({ per_page: 500 });
+        allSuppliers = suppliersResponse?.data || [];
+        console.log(`📋 ${allSuppliers.length} fournisseurs Evoliz chargés`);
+      } catch (err) {
+        console.warn("Impossible de charger les fournisseurs:", err);
+      }
+
       let created = 0;
       let updated = 0;
       let errors = 0;
@@ -556,8 +577,9 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
 
         try {
           const prixVenteHT = (localArticle.prix_vente_ttc || 0) / 1.2;
+          const prixAchatHT = localArticle.prix_reference || null;
 
-          const articleData = {
+          const articleData: any = {
             reference: localArticle.reference_fabricant || `VPB-${localArticle.id.slice(0, 8)}`,
             designation: localArticle.nom,
             unit_price_vat_exclude: Math.round(prixVenteHT * 100) / 100,
@@ -565,6 +587,24 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
             unit: "u",
             comment: localArticle.description || null,
           };
+
+          // Ajouter le prix d'achat si disponible
+          if (prixAchatHT && prixAchatHT > 0) {
+            articleData.purchase_unit_price_vat_exclude = Math.round(prixAchatHT * 100) / 100;
+          }
+
+          // Chercher le fournisseur par nom dans la liste chargée
+          if (localArticle.fournisseur && allSuppliers.length > 0) {
+            const matchingSupplier = allSuppliers.find(
+              (s: any) => s.name?.toLowerCase() === localArticle.fournisseur?.toLowerCase(),
+            );
+            if (matchingSupplier?.supplierid) {
+              articleData.supplierid = matchingSupplier.supplierid;
+              console.log(`🏭 Fournisseur trouvé: ${localArticle.fournisseur} -> ID ${matchingSupplier.supplierid}`);
+            } else {
+              console.log(`⚠️ Fournisseur "${localArticle.fournisseur}" non trouvé dans Evoliz`);
+            }
+          }
 
           if (item.status === "local_only") {
             // Créer dans Evoliz
