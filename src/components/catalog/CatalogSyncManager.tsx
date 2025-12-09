@@ -93,6 +93,13 @@ interface EvolizArticle {
   vat_rate?: number;
   unit: string | null;
   comment: string | null;
+  // Fournisseur (si lié dans Evoliz)
+  supplier?: {
+    supplierid: number;
+    name: string;
+  } | null;
+  supplier_reference?: string | null;
+  weight?: number | null;
 }
 
 type SyncStatus = "local_only" | "evoliz_only" | "synced" | "conflict" | "price_diff";
@@ -449,6 +456,9 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
 
           if (item.status === "evoliz_only") {
             // Nouvel article
+            // Récupérer le nom du fournisseur si disponible
+            const fournisseurName = evolizArticle.supplier?.name || null;
+
             const catalogData = {
               user_id: user.id,
               nom: cleanedDesignation,
@@ -459,7 +469,8 @@ export function CatalogSyncManager({ onComplete }: CatalogSyncManagerProps) {
               marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
               marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
               description: cleanHtmlText(evolizArticle.comment) || null,
-              fournisseur: null, // Non disponible dans l'API Evoliz
+              fournisseur: fournisseurName,
+              poids_kg: evolizArticle.weight || null,
             };
 
             const { error } = await (supabase as any).from("accessories_catalog").insert({
