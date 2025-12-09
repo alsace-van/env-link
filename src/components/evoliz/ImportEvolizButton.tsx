@@ -187,6 +187,8 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           const articlePromises = [...new Set(articleIds)].map(async (articleId) => {
             try {
               const article = (await evolizApi.getArticle(articleId)) as any;
+              // DEBUG: Voir la structure complète de l'article Evoliz
+              console.log("📦 Article Evoliz complet:", JSON.stringify(article, null, 2));
               return article;
             } catch {
               // Article pas trouvé dans le catalogue Evoliz - pas grave, on continue
