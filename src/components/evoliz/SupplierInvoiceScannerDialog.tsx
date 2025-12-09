@@ -6,25 +6,13 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   FileUp,
   Loader2,
@@ -82,20 +70,20 @@ export function SupplierInvoiceScannerDialog({
   onInvoiceScanned,
 }: SupplierInvoiceScannerDialogProps) {
   const { isConfigured, credentials } = useEvolizConfig();
-  
+
   // États
   const [step, setStep] = useState<Step>("upload");
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [extractedData, setExtractedData] = useState<ExtractedInvoice | null>(null);
   const [editedData, setEditedData] = useState<ExtractedInvoice | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Fournisseurs Evoliz
   const [suppliers, setSuppliers] = useState<EvolizSupplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
-  
+
   // Classifications d'achat
   const [purchaseClassifications, setPurchaseClassifications] = useState<EvolizPurchaseClassification[]>([]);
   const [selectedClassificationId, setSelectedClassificationId] = useState<string>("");
@@ -115,23 +103,23 @@ export function SupplierInvoiceScannerDialog({
   // Dropzone
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
-    
+
     const file = acceptedFiles[0];
     const isPdf = file.type === "application/pdf";
     const isImage = file.type.startsWith("image/");
-    
+
     if (!isPdf && !isImage) {
       toast.error("Format non supporté. Utilisez PDF, JPG ou PNG.");
       return;
     }
-    
+
     const preview = URL.createObjectURL(file);
     setUploadedFile({
       file,
       preview,
       type: isPdf ? "pdf" : "image",
     });
-    
+
     // Lancer l'analyse automatiquement
     analyzeDocument(file);
   }, []);
@@ -150,13 +138,13 @@ export function SupplierInvoiceScannerDialog({
   // Charger les fournisseurs Evoliz
   const loadSuppliers = async () => {
     if (!isConfigured || !credentials) return;
-    
+
     setLoadingSuppliers(true);
     try {
       initializeEvolizApi(credentials);
       const response = await evolizApi.getSuppliers({ per_page: 500 });
       setSuppliers(response.data || []);
-      
+
       // Charger aussi les classifications d'achat
       const classifResponse = await evolizApi.getPurchaseClassifications();
       setPurchaseClassifications(classifResponse.data || []);
@@ -171,15 +159,15 @@ export function SupplierInvoiceScannerDialog({
   const analyzeDocument = async (file: File) => {
     setStep("analyzing");
     setError(null);
-    
+
     try {
       // Charger les fournisseurs en parallèle
       loadSuppliers();
-      
+
       // Convertir en base64
       const base64 = await fileToBase64(file);
       const mimeType = file.type;
-      
+
       // Appeler l'edge function Gemini
       const { data, error } = await supabase.functions.invoke("gemini-invoice-ocr", {
         body: {
@@ -188,13 +176,13 @@ export function SupplierInvoiceScannerDialog({
           fileName: file.name,
         },
       });
-      
+
       if (error) throw error;
-      
+
       if (!data || !data.success) {
         throw new Error(data?.error || "Erreur lors de l'analyse");
       }
-      
+
       const extracted: ExtractedInvoice = {
         supplier_name: data.supplier_name || "",
         invoice_number: data.invoice_number || null,
@@ -204,13 +192,13 @@ export function SupplierInvoiceScannerDialog({
         tva_amount: data.tva_amount || null,
         confidence: data.confidence || 0,
       };
-      
+
       setExtractedData(extracted);
       setEditedData({ ...extracted });
-      
+
       // Essayer de matcher le fournisseur
       matchSupplier(extracted.supplier_name);
-      
+
       setStep("validation");
     } catch (err) {
       console.error("Erreur analyse:", err);
@@ -225,32 +213,30 @@ export function SupplierInvoiceScannerDialog({
       setIsNewSupplier(true);
       return;
     }
-    
+
     const nameLower = supplierName.toLowerCase().trim();
-    
+
     // Chercher une correspondance exacte ou partielle
-    const exactMatch = suppliers.find(
-      s => s.name.toLowerCase().trim() === nameLower
-    );
-    
+    const exactMatch = suppliers.find((s) => s.name.toLowerCase().trim() === nameLower);
+
     if (exactMatch) {
       setSelectedSupplierId(exactMatch.supplierid.toString());
       setIsNewSupplier(false);
       return;
     }
-    
+
     // Recherche partielle (le nom extrait contient le nom Evoliz ou vice-versa)
-    const partialMatch = suppliers.find(s => {
+    const partialMatch = suppliers.find((s) => {
       const evolizName = s.name.toLowerCase().trim();
       return nameLower.includes(evolizName) || evolizName.includes(nameLower);
     });
-    
+
     if (partialMatch) {
       setSelectedSupplierId(partialMatch.supplierid.toString());
       setIsNewSupplier(false);
       return;
     }
-    
+
     // Pas de match → nouveau fournisseur
     setIsNewSupplier(true);
     setSelectedSupplierId("");
@@ -259,15 +245,15 @@ export function SupplierInvoiceScannerDialog({
   // Envoyer vers Evoliz
   const sendToEvoliz = async () => {
     if (!editedData || !isConfigured || !credentials) return;
-    
+
     setStep("sending");
     setError(null);
-    
+
     try {
       initializeEvolizApi(credentials);
-      
+
       let supplierId: number;
-      
+
       // Créer le fournisseur si nouveau
       if (isNewSupplier || !selectedSupplierId) {
         const newSupplier = await evolizApi.createSupplier({
@@ -279,13 +265,13 @@ export function SupplierInvoiceScannerDialog({
       } else {
         supplierId = parseInt(selectedSupplierId);
       }
-      
+
       // Calculer la TVA si manquante
       let tvaAmount = editedData.tva_amount;
       if (!tvaAmount && editedData.total_ht && editedData.total_ttc) {
         tvaAmount = editedData.total_ttc - editedData.total_ht;
       }
-      
+
       // Calculer le montant HT si manquant
       let totalHT = editedData.total_ht;
       if (!totalHT && editedData.total_ttc && tvaAmount) {
@@ -294,7 +280,7 @@ export function SupplierInvoiceScannerDialog({
         // Assumer 20% de TVA
         totalHT = editedData.total_ttc / 1.2;
       }
-      
+
       // Créer la dépense
       const buyInput = {
         supplierid: supplierId,
@@ -312,9 +298,9 @@ export function SupplierInvoiceScannerDialog({
           },
         ],
       };
-      
+
       await evolizApi.createBuy(buyInput);
-      
+
       // Callback pour ajouter la ligne dans le tableau parent
       if (onInvoiceScanned) {
         onInvoiceScanned({
@@ -325,7 +311,7 @@ export function SupplierInvoiceScannerDialog({
           invoice_date: editedData.invoice_date,
         });
       }
-      
+
       toast.success("Facture envoyée vers Evoliz !");
       setStep("success");
     } catch (err) {
@@ -407,10 +393,7 @@ export function SupplierInvoiceScannerDialog({
             className={`
               border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
               transition-colors duration-200
-              ${isDragActive 
-                ? "border-blue-500 bg-blue-50" 
-                : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
-              }
+              ${isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"}
             `}
           >
             <input {...getInputProps()} />
@@ -420,9 +403,7 @@ export function SupplierInvoiceScannerDialog({
             ) : (
               <div className="space-y-1">
                 <p className="font-medium">Glissez-déposez votre facture</p>
-                <p className="text-sm text-muted-foreground">
-                  PDF, JPG ou PNG • Max 10 Mo
-                </p>
+                <p className="text-sm text-muted-foreground">PDF, JPG ou PNG • Max 10 Mo</p>
               </div>
             )}
           </div>
@@ -477,15 +458,16 @@ export function SupplierInvoiceScannerDialog({
                       }}
                       disabled={loadingSuppliers}
                     >
-                      {loadingSuppliers ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      {loadingSuppliers ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
                 ) : (
                   <div className="flex gap-2">
-                    <Select
-                      value={selectedSupplierId}
-                      onValueChange={setSelectedSupplierId}
-                    >
+                    <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
                       <SelectTrigger className="h-9 flex-1">
                         <SelectValue placeholder="Sélectionner" />
                       </SelectTrigger>
@@ -578,17 +560,17 @@ export function SupplierInvoiceScannerDialog({
               {purchaseClassifications.length > 0 && (
                 <div className="space-y-1.5">
                   <Label className="text-xs">Classification (optionnel)</Label>
-                  <Select
-                    value={selectedClassificationId}
-                    onValueChange={setSelectedClassificationId}
-                  >
+                  <Select value={selectedClassificationId} onValueChange={setSelectedClassificationId}>
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Sélectionner une classification" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">Aucune</SelectItem>
                       {purchaseClassifications.map((c) => (
-                        <SelectItem key={c.purchaseclassificationid || c.id} value={(c.purchaseclassificationid || c.id)?.toString() || ""}>
+                        <SelectItem
+                          key={c.purchaseclassificationid || c.id}
+                          value={(c.purchaseclassificationid || c.id)?.toString() || ""}
+                        >
                           {c.code} - {c.label}
                         </SelectItem>
                       ))}
@@ -637,9 +619,7 @@ export function SupplierInvoiceScannerDialog({
               <Button variant="outline" onClick={scanAnother}>
                 Scanner une autre
               </Button>
-              <Button onClick={handleClose}>
-                Terminé
-              </Button>
+              <Button onClick={handleClose}>Terminé</Button>
             </div>
           </div>
         )}
@@ -652,9 +632,7 @@ export function SupplierInvoiceScannerDialog({
               <p className="font-semibold">Erreur</p>
               <p className="text-sm text-muted-foreground">{error}</p>
             </div>
-            <Button onClick={scanAnother}>
-              Réessayer
-            </Button>
+            <Button onClick={scanAnother}>Réessayer</Button>
           </div>
         )}
       </DialogContent>
