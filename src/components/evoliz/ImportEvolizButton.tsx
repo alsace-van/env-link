@@ -1,11 +1,14 @@
 // ============================================
-// DIALOG EXPORT SCÉNARIO VERS EVOLIZ
-// Permet d'exporter un scénario VPB en devis Evoliz
+// ImportEvolizButton.tsx
+// Bouton + Modale pour importer un devis Evoliz
+// Étape 1: Choisir le devis
+// Étape 2: Cocher les lignes + choisir Matériel/MO
 // ============================================
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { evolizApi, initializeEvolizApi } from "@/services/evolizService";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -14,632 +17,805 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, FileText, ExternalLink, CheckCircle2, AlertCircle, Send, Users, Package, Wrench } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Loader2,
+  Download,
+  Package,
+  Wrench,
+  X,
+  FileText,
+  ChevronRight,
+  ChevronLeft,
+  ExternalLink,
+  AlertCircle,
+  Check,
+  BookPlus,
+} from "lucide-react";
 import { toast } from "sonner";
+import { useEvolizConfig } from "@/hooks/useEvolizConfig";
+import { useEvolizQuotes } from "@/hooks/useEvolizQuotes";
+import { useHourlyRate } from "@/hooks/useHourlyRate";
+import { Label } from "@/components/ui/label";
+import { evolizApi } from "@/services/evolizService";
 
-interface ExportToEvolizDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  scenarioId: string;
-  scenarioName: string;
+type LineDestination = "scenario" | "travaux" | "ignore";
+
+interface QuoteLine {
+  itemid: string;
+  articleid?: number | null; // ID de l'article dans le catalogue Evoliz
+  designation: string;
+  quantity: number;
+  unit?: string;
+  unit_price_vat_exclude: number;
+  total_vat_exclude: number;
+  selected: boolean;
+  destination: LineDestination;
+  // Champs de marge Evoliz (enrichis depuis le catalogue)
+  purchase_unit_price_vat_exclude?: number | null;
+  margin_percent?: number | null;
+  // Champs supplémentaires du catalogue
+  reference?: string | null;
+  supplier_name?: string | null;
+  catalog_enriched?: boolean; // Indique si les données ont été enrichies
+}
+
+interface ImportEvolizButtonProps {
   projectId: string;
-  projectName?: string;
-  clientName?: string;
+  scenarioId?: string;
+  onImportComplete?: () => void;
 }
 
-interface ExpenseItem {
-  id: string;
-  nom_accessoire: string;
-  quantite: number;
-  prix_vente_ttc: number;
-  prix: number; // prix achat HT
-  categorie: string;
-  marque?: string;
-  fournisseur?: string;
-  selected: boolean;
+// Formater montant
+function formatAmount(value: number): string {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+  }).format(value);
 }
 
-interface TodoItem {
-  id: string;
-  title: string;
-  forfait_ttc: number;
-  estimated_hours: number;
-  category_name?: string;
-  selected: boolean;
+// Nettoyer le HTML des textes Evoliz
+function cleanHtmlText(text: string | null | undefined): string {
+  if (!text) return "";
+  return text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, " ")
+    .replace(/<p>/gi, "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-interface EvolizClient {
-  clientid: number;
-  name: string;
-  code?: string;
-}
+// Détecter si une ligne est de la main d'œuvre
+function detectMainOeuvre(designation: string, unit: string, nature?: string): boolean {
+  const designationLower = designation.toLowerCase();
+  const unitLower = unit.toLowerCase();
 
-const ExportToEvolizDialog = ({
-  isOpen,
-  onClose,
-  scenarioId,
-  scenarioName,
-  projectId,
-  projectName,
-  clientName,
-}: ExportToEvolizDialogProps) => {
-  // États
-  const [isLoading, setIsLoading] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [isConfigured, setIsConfigured] = useState(false);
-  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
-  const [todos, setTodos] = useState<TodoItem[]>([]);
-  const [evolizClients, setEvolizClients] = useState<EvolizClient[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<string>("");
-  const [quoteObject, setQuoteObject] = useState("");
-  const [quoteComment, setQuoteComment] = useState("");
-  const [exportResult, setExportResult] = useState<{
-    success: boolean;
-    quoteId?: number;
-    documentNumber?: string;
-    webdocUrl?: string;
-    message?: string;
-  } | null>(null);
+  // Si nature = "service" dans Evoliz, c'est de la MO
+  if (nature && nature.toLowerCase() === "service") {
+    console.log("🔧 MO détectée par nature=service:", designation);
+    return true;
+  }
 
-  // Charger la configuration Evoliz et les données
-  useEffect(() => {
-    if (isOpen) {
-      loadData();
+  // Patterns dans la désignation
+  const moPatterns = [
+    /^\[mo\]/i, // [MO] au début
+    /\[mo\]/i, // [MO] n'importe où
+    /^mo\s*[-:]/i, // MO - ou MO:
+    /main\s*d['']?\s*[oœ]uvre/i, // main d'œuvre, main d'oeuvre
+    /^pose\s/i, // pose ...
+    /^installation\s/i, // installation ...
+    /^montage\s/i, // montage ...
+    /^réparation\s/i, // réparation ...
+    /^forfait\s/i, // forfait ...
+    /^prestation\s/i, // prestation ...
+  ];
+
+  // Vérifier la désignation
+  for (const pattern of moPatterns) {
+    if (pattern.test(designationLower)) {
+      console.log("🔧 MO détectée par pattern:", designation, "->", pattern);
+      return true;
     }
-  }, [isOpen, scenarioId]);
+  }
 
-  const loadData = async () => {
-    setIsLoading(true);
-    setExportResult(null);
+  // Vérifier l'unité (heure, forfait)
+  const moUnits = ["h", "heure", "heures", "hr", "forfait", "f"];
+  if (moUnits.includes(unitLower)) {
+    console.log("🔧 MO détectée par unité:", designation, "-> unit=", unit);
+    return true;
+  }
 
-    try {
-      // 1. Vérifier la configuration Evoliz
+  return false;
+}
+
+// Formater date
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+// Badge statut
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { label: string; className: string }> = {
+    draft: { label: "Brouillon", className: "bg-gray-100 text-gray-800" },
+    sent: { label: "Envoyé", className: "bg-blue-100 text-blue-800" },
+    accept: { label: "Accepté", className: "bg-green-100 text-green-800" },
+    reject: { label: "Refusé", className: "bg-red-100 text-red-800" },
+    invoice: { label: "Facturé", className: "bg-purple-100 text-purple-800" },
+  };
+  const c = config[status?.toLowerCase()] || { label: status, className: "bg-gray-100" };
+  return <Badge className={c.className}>{c.label}</Badge>;
+}
+
+export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: ImportEvolizButtonProps) {
+  const queryClient = useQueryClient();
+  const { isConfigured } = useEvolizConfig();
+  const { quotes, isLoading: loadingQuotes, fetchQuotes } = useEvolizQuotes();
+  const { estimateHours } = useHourlyRate();
+
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
+  const [lines, setLines] = useState<QuoteLine[]>([]);
+  const [addToCatalog, setAddToCatalog] = useState(true); // Ajouter au catalogue par défaut
+
+  // Charger les devis quand on ouvre
+  useEffect(() => {
+    if (open && isConfigured) {
+      fetchQuotes();
+    }
+  }, [open, isConfigured]);
+
+  // État pour l'enrichissement
+  const [isEnriching, setIsEnriching] = useState(false);
+
+  // Quand on sélectionne un devis, préparer les lignes et enrichir depuis le catalogue
+  useEffect(() => {
+    if (selectedQuote?.items) {
+      // 1. Créer les lignes de base
+      const baseLines = selectedQuote.items.map((item: any) => {
+        const salePrice = item.unit_price_vat_exclude || 0;
+        const designation = item.designation || item.designation_clean || "";
+        const unit = item.unit || "";
+        const nature = item.nature || "";
+
+        // Log pour debug
+        console.log("📋 Ligne devis:", { designation, unit, nature });
+
+        // Détecter automatiquement si c'est de la main d'œuvre
+        const isMO = detectMainOeuvre(designation, unit, nature);
+
+        if (isMO) {
+          console.log("✅ -> Classée en TRAVAUX");
+        }
+
+        return {
+          itemid: item.itemid || crypto.randomUUID(),
+          articleid: item.articleid || null,
+          designation: designation,
+          quantity: item.quantity || 1,
+          unit: unit,
+          unit_price_vat_exclude: salePrice,
+          total_vat_exclude: item.total?.vat_exclude || salePrice * item.quantity || 0,
+          selected: true,
+          destination: (isMO ? "travaux" : "scenario") as LineDestination,
+          // Sera enrichi depuis le catalogue
+          purchase_unit_price_vat_exclude: null as number | null,
+          margin_percent: null as number | null,
+          reference: item.reference || null,
+          supplier_name: null as string | null,
+          catalog_enriched: false,
+        };
+      });
+
+      setLines(baseLines);
+
+      // 2. Enrichir les lignes qui ont un articleid depuis le catalogue Evoliz
+      const enrichLines = async () => {
+        const articleIds: number[] = baseLines
+          .filter(
+            (line): line is typeof line & { articleid: number } =>
+              line.articleid !== null && line.articleid !== undefined,
+          )
+          .map((line) => line.articleid);
+
+        if (articleIds.length === 0) {
+          return; // Pas d'articles à enrichir, on continue silencieusement
+        }
+
+        setIsEnriching(true);
+
+        try {
+          // Récupérer les détails de chaque article (silencieusement)
+          const articlePromises = [...new Set(articleIds)].map(async (articleId) => {
+            try {
+              const response = (await evolizApi.getArticle(articleId)) as any;
+              // La réponse est { data: {...}, error: null } - on extrait data
+              const article = response?.data || response;
+              // DEBUG: Voir la structure complète de l'article Evoliz
+              console.log("📦 Article Evoliz complet:", JSON.stringify(article, null, 2));
+              return article;
+            } catch {
+              // Article pas trouvé dans le catalogue Evoliz - pas grave, on continue
+              return null;
+            }
+          });
+
+          const articles = await Promise.all(articlePromises);
+          const articleMap = new Map<number, any>(articles.filter(Boolean).map((a: any) => [a.articleid, a]));
+
+          // Mettre à jour les lignes avec les données du catalogue
+          setLines((prevLines) =>
+            prevLines.map((line) => {
+              if (!line.articleid) return line;
+
+              const catalogArticle = articleMap.get(line.articleid);
+              if (!catalogArticle) return line; // Pas trouvé, on garde la ligne telle quelle
+
+              // Le prix d'achat peut être à la racine ou dans margin
+              const purchasePrice =
+                catalogArticle.purchase_unit_price_vat_exclude ||
+                catalogArticle.margin?.purchase_unit_price_vat_exclude ||
+                null;
+
+              // DEBUG: Voir d'où vient le prix d'achat
+              console.log("💰 Extraction prix d'achat pour", catalogArticle.designation, {
+                root: catalogArticle.purchase_unit_price_vat_exclude,
+                margin: catalogArticle.margin?.purchase_unit_price_vat_exclude,
+                marginObject: catalogArticle.margin,
+                final: purchasePrice,
+              });
+
+              // Le fournisseur peut être un objet ou null
+              const supplierName = catalogArticle.supplier?.name || null;
+
+              let marginPercent: number | null = null;
+
+              if (purchasePrice && purchasePrice > 0 && line.unit_price_vat_exclude > 0) {
+                marginPercent = ((line.unit_price_vat_exclude - purchasePrice) / line.unit_price_vat_exclude) * 100;
+              }
+
+              return {
+                ...line,
+                purchase_unit_price_vat_exclude: purchasePrice,
+                margin_percent: marginPercent,
+                reference: catalogArticle.reference || line.reference,
+                supplier_name: supplierName,
+                catalog_enriched: purchasePrice !== null,
+              };
+            }),
+          );
+        } catch {
+          // Erreur globale - on continue sans enrichissement
+        } finally {
+          setIsEnriching(false);
+        }
+      };
+
+      enrichLines();
+    }
+  }, [selectedQuote]);
+
+  // Reset quand on ferme
+  const handleClose = () => {
+    setOpen(false);
+    setStep(1);
+    setSelectedQuote(null);
+    setLines([]);
+  };
+
+  // Sélectionner un devis et passer à l'étape 2
+  const handleSelectQuote = (quote: any) => {
+    setSelectedQuote(quote);
+    setStep(2);
+  };
+
+  // Toggle sélection ligne
+  const toggleLine = (itemid: string) => {
+    setLines((prev) => prev.map((l) => (l.itemid === itemid ? { ...l, selected: !l.selected } : l)));
+  };
+
+  // Changer destination
+  const setDestination = (itemid: string, dest: LineDestination) => {
+    setLines((prev) => prev.map((l) => (l.itemid === itemid ? { ...l, destination: dest } : l)));
+  };
+
+  // Tout sélectionner/désélectionner
+  const selectAll = (selected: boolean) => {
+    setLines((prev) => prev.map((l) => ({ ...l, selected })));
+  };
+
+  // Tout mettre en scénario
+  const setAllToScenario = () => {
+    setLines((prev) => prev.map((l) => ({ ...l, destination: "scenario" })));
+  };
+
+  // Calculer totaux
+  const selectedLines = lines.filter((l) => l.selected);
+  const scenarioLines = selectedLines.filter((l) => l.destination === "scenario");
+  const travauxLines = selectedLines.filter((l) => l.destination === "travaux");
+
+  const totalScenario = scenarioLines.reduce((sum, l) => sum + l.total_vat_exclude, 0);
+  const totalTravaux = travauxLines.reduce((sum, l) => sum + l.total_vat_exclude, 0);
+
+  // Mutation import
+  const importMutation = useMutation({
+    mutationFn: async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("Vous devez être connecté");
-        return;
-      }
+      if (!user) throw new Error("Non connecté");
 
-      const { data: credentials } = await (supabase as any)
-        .from("evoliz_credentials")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .single();
+      // 1. Ajouter au catalogue si option activée (seulement les lignes matériel)
+      let catalogItemsCreated = 0;
+      if (addToCatalog && scenarioLines.length > 0) {
+        // Récupérer les articles existants dans le catalogue (nom et référence)
+        const { data: existingItems } = await (supabase as any)
+          .from("accessories_catalog")
+          .select("nom, reference_fabricant")
+          .eq("user_id", user.id);
 
-      if (!credentials) {
-        setIsConfigured(false);
-        setIsLoading(false);
-        return;
-      }
+        // Créer des sets pour vérification rapide des doublons
+        const existingNames = new Set(
+          (existingItems || []).map((item: any) => item.nom?.toLowerCase().trim()).filter(Boolean),
+        );
+        const existingRefs = new Set(
+          (existingItems || []).map((item: any) => item.reference_fabricant?.toLowerCase().trim()).filter(Boolean),
+        );
 
-      setIsConfigured(true);
-      initializeEvolizApi(credentials);
+        // Filtrer les articles qui n'existent pas encore (par nom OU par référence)
+        const newCatalogItems = scenarioLines
+          .filter((line) => {
+            const cleanName = cleanHtmlText(line.designation);
+            const ref = line.reference?.trim();
 
-      // 2. Charger les dépenses du scénario
-      const { data: expensesData, error: expensesError } = await (supabase as any)
-        .from("project_expenses")
-        .select("*")
-        .eq("scenario_id", scenarioId)
-        .eq("est_archive", false)
-        .order("categorie", { ascending: true });
+            // Vérifier si l'article existe déjà par nom
+            if (existingNames.has(cleanName.toLowerCase())) {
+              return false;
+            }
 
-      if (expensesError) {
-        console.error("Erreur chargement dépenses:", expensesError);
-      } else {
-        const items: ExpenseItem[] = (expensesData || []).map((e: any) => ({
-          id: e.id,
-          nom_accessoire: e.nom_accessoire || e.product_name || "Article sans nom",
-          quantite: e.quantite || e.quantity || 1,
-          prix_vente_ttc: e.prix_vente_ttc || 0,
-          prix: e.prix || e.unit_price || 0,
-          categorie: e.categorie || e.category || "Divers",
-          marque: e.marque,
-          fournisseur: e.fournisseur || e.supplier,
-          selected: true,
-        }));
-        setExpenses(items);
-      }
+            // Vérifier si l'article existe déjà par référence (si référence fournie)
+            if (ref && existingRefs.has(ref.toLowerCase())) {
+              return false;
+            }
 
-      // 3. Charger les travaux (todos) du projet avec leur catégorie
-      const { data: todosData, error: todosError } = await (supabase as any)
-        .from("project_todos")
-        .select(
-          `
-          id,
-          title,
-          forfait_ttc,
-          estimated_hours,
-          work_categories (name)
-        `,
-        )
-        .eq("project_id", projectId)
-        .order("display_order", { ascending: true });
+            return true;
+          })
+          .map((line) => {
+            const cleanName = cleanHtmlText(line.designation);
+            const prixVenteHT = line.unit_price_vat_exclude;
+            const prixVenteTTC = prixVenteHT * 1.2;
+            const prixAchatHT = line.purchase_unit_price_vat_exclude || null;
 
-      if (todosError) {
-        console.error("Erreur chargement travaux:", todosError);
-      } else {
-        const todoItems: TodoItem[] = (todosData || [])
-          .filter((t: any) => t.forfait_ttc && t.forfait_ttc > 0) // Seulement ceux avec un forfait
-          .map((t: any) => ({
-            id: t.id,
-            title: t.title || "Travail sans titre",
-            forfait_ttc: t.forfait_ttc || 0,
-            estimated_hours: t.estimated_hours || 0,
-            category_name: t.work_categories?.name || "Main d'œuvre",
-            selected: true,
-          }));
-        setTodos(todoItems);
-      }
+            // Calculer la marge si on a le prix d'achat
+            let margePourcent: number | null = null;
+            let margeNette: number | null = null;
 
-      // 4. Charger les clients Evoliz
-      try {
-        const clientsResponse = await evolizApi.getClients({ per_page: 100 });
-        setEvolizClients(clientsResponse.data || []);
+            if (prixAchatHT && prixAchatHT > 0) {
+              margePourcent = ((prixVenteHT - prixAchatHT) / prixVenteHT) * 100;
+              margeNette = prixVenteHT - prixAchatHT;
+            } else if (line.margin_percent) {
+              margePourcent = line.margin_percent;
+            }
 
-        // Essayer de matcher le client VPB avec un client Evoliz
-        if (clientName && clientsResponse.data) {
-          const matchedClient = clientsResponse.data.find((c: any) =>
-            c.name?.toLowerCase().includes(clientName.toLowerCase()),
-          );
-          if (matchedClient) {
-            setSelectedClientId(matchedClient.clientid.toString());
+            return {
+              user_id: user.id,
+              nom: cleanName,
+              reference_fabricant: line.reference || null, // Référence Evoliz
+              prix_vente_ttc: prixVenteTTC,
+              prix_public_ttc: prixVenteTTC,
+              prix_reference: prixAchatHT,
+              marge_pourcent: margePourcent ? Math.round(margePourcent * 100) / 100 : null,
+              marge_nette: margeNette ? Math.round(margeNette * 100) / 100 : null,
+              description: `Importé depuis devis Evoliz ${selectedQuote.document_number}`,
+              fournisseur: line.supplier_name || null, // Fournisseur depuis Evoliz
+              available_in_shop: false,
+            };
+          });
+
+        console.log("📦 Articles à ajouter au catalogue:", newCatalogItems);
+
+        if (newCatalogItems.length > 0) {
+          const { error: catalogError } = await (supabase as any).from("accessories_catalog").insert(newCatalogItems);
+
+          if (catalogError) {
+            console.error("❌ Erreur ajout catalogue:", catalogError);
+            // On continue quand même l'import
+          } else {
+            console.log("✅ Catalogue mis à jour:", catalogItemsCreated, "articles");
+            catalogItemsCreated = newCatalogItems.length;
           }
+        } else {
+          console.log("ℹ️ Aucun nouvel article à ajouter (tous existent déjà)");
         }
-      } catch (err) {
-        console.error("Erreur chargement clients Evoliz:", err);
       }
 
-      // 5. Pré-remplir l'objet du devis
-      setQuoteObject(projectName || scenarioName || "Aménagement fourgon");
-    } catch (err) {
-      console.error("Erreur chargement données:", err);
-      toast.error("Erreur lors du chargement des données");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      // 2. Importer matériel dans project_expenses
+      if (scenarioLines.length > 0) {
+        const expenses = scenarioLines.map((line) => ({
+          project_id: projectId,
+          scenario_id: scenarioId || null,
+          user_id: user.id,
+          nom_accessoire: cleanHtmlText(line.designation),
+          quantite: Math.round(line.quantity), // Forcer en entier
+          prix: line.unit_price_vat_exclude,
+          prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
+          categorie: "Import Evoliz",
+          statut_paiement: "payé",
+        }));
 
-  // Toggle sélection d'un article
-  const toggleExpenseSelection = (expenseId: string) => {
-    setExpenses((prev) => prev.map((e) => (e.id === expenseId ? { ...e, selected: !e.selected } : e)));
-  };
+        const { error } = await (supabase as any).from("project_expenses").insert(expenses);
 
-  // Toggle sélection d'un travail
-  const toggleTodoSelection = (todoId: string) => {
-    setTodos((prev) => prev.map((t) => (t.id === todoId ? { ...t, selected: !t.selected } : t)));
-  };
+        if (error) throw error;
+      }
 
-  // Sélectionner/Désélectionner tout (matériel)
-  const toggleSelectAllExpenses = () => {
-    const allSelected = expenses.every((e) => e.selected);
-    setExpenses((prev) => prev.map((e) => ({ ...e, selected: !allSelected })));
-  };
+      // 2. Importer MO dans project_todos
+      if (travauxLines.length > 0) {
+        // Créer ou récupérer catégorie "Import Evoliz"
+        let categoryId: string;
 
-  // Sélectionner/Désélectionner tout (travaux)
-  const toggleSelectAllTodos = () => {
-    const allSelected = todos.every((t) => t.selected);
-    setTodos((prev) => prev.map((t) => ({ ...t, selected: !allSelected })));
-  };
+        const { data: existingCat } = await (supabase as any)
+          .from("work_categories")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("name", "Import Evoliz")
+          .single();
 
-  // Calculer les totaux matériel
-  const selectedExpenses = expenses.filter((e) => e.selected);
-  const totalMaterielHT = selectedExpenses.reduce((sum, e) => {
-    const prixHT = e.prix_vente_ttc ? e.prix_vente_ttc / 1.2 : e.prix || 0;
-    return sum + prixHT * e.quantite;
-  }, 0);
-  const totalMaterielTTC = selectedExpenses.reduce((sum, e) => {
-    const prix = e.prix_vente_ttc || e.prix * 1.2 || 0;
-    return sum + prix * e.quantite;
-  }, 0);
+        if (existingCat) {
+          categoryId = existingCat.id;
+        } else {
+          const { data: newCat, error: catError } = await (supabase as any)
+            .from("work_categories")
+            .insert({
+              project_id: projectId,
+              user_id: user.id,
+              name: "Import Evoliz",
+              color: "#6366f1",
+              icon: "FileDown",
+              display_order: 99,
+            })
+            .select()
+            .single();
 
-  // Calculer les totaux travaux
-  const selectedTodos = todos.filter((t) => t.selected);
-  const totalTravauxTTC = selectedTodos.reduce((sum, t) => sum + (t.forfait_ttc || 0), 0);
-  const totalTravauxHT = totalTravauxTTC / 1.2;
+          if (catError) throw catError;
+          categoryId = newCat.id;
+        }
 
-  // Totaux généraux
-  const totalHT = totalMaterielHT + totalTravauxHT;
-  const totalTTC = totalMaterielTTC + totalTravauxTTC;
+        const todos = travauxLines.map((line, index) => {
+          const forfaitTTC = line.total_vat_exclude * 1.2;
+          return {
+            project_id: projectId,
+            user_id: user.id,
+            category_id: categoryId,
+            title: cleanHtmlText(line.designation),
+            completed: false,
+            display_order: index + 1,
+            forfait_ttc: forfaitTTC,
+            estimated_hours: estimateHours(forfaitTTC),
+            imported_from_evoliz: true,
+            evoliz_item_id: line.itemid,
+          };
+        });
 
-  // Formater le montant
-  const formatAmount = (amount: number) => {
-    return new Intl.NumberFormat("fr-FR", {
-      style: "currency",
-      currency: "EUR",
-    }).format(amount);
-  };
+        const { error } = await (supabase as any).from("project_todos").insert(todos);
 
-  // Exporter vers Evoliz
-  const handleExport = async () => {
-    if (!selectedClientId) {
-      toast.error("Veuillez sélectionner un client Evoliz");
-      return;
-    }
+        if (error) throw error;
+      }
 
-    if (selectedExpenses.length === 0 && selectedTodos.length === 0) {
-      toast.error("Veuillez sélectionner au moins un article ou travail");
-      return;
-    }
-
-    setIsExporting(true);
-
-    try {
-      // Construire les lignes du devis - MATÉRIEL
-      const expenseItems = selectedExpenses.map((expense) => {
-        // Prix unitaire HT (on part du TTC et on enlève 20% de TVA)
-        const unitPriceHT = expense.prix_vente_ttc ? expense.prix_vente_ttc / 1.2 : expense.prix || 0;
-
-        return {
-          designation: expense.nom_accessoire,
-          quantity: expense.quantite,
-          unit_price_vat_exclude: Math.round(unitPriceHT * 100) / 100,
-          vat: 20, // TVA 20%
-          unit: "", // Unité vide par défaut
-        };
+      // 3. Logger l'import
+      await (supabase as any).from("evoliz_imports").insert({
+        user_id: user.id,
+        project_id: projectId,
+        evoliz_quote_id: selectedQuote.quoteid,
+        evoliz_document_number: selectedQuote.document_number,
+        total_materiel_ht: totalScenario,
+        total_mo_ht: totalTravaux,
+        lignes_importees: selectedLines.length,
       });
 
-      // Construire les lignes du devis - TRAVAUX (MO)
-      const todoItems = selectedTodos.map((todo) => {
-        const unitPriceHT = (todo.forfait_ttc || 0) / 1.2;
+      return { scenarioCount: scenarioLines.length, travauxCount: travauxLines.length, catalogItemsCreated };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["accessories-catalog"] });
 
-        return {
-          designation: `[MO] ${todo.title}`,
-          quantity: 1,
-          unit_price_vat_exclude: Math.round(unitPriceHT * 100) / 100,
-          vat: 20, // TVA 20%
-          unit: "forfait",
-        };
-      });
+      let message = `Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`;
+      if (result.catalogItemsCreated > 0) {
+        message += ` • ${result.catalogItemsCreated} ajouté(s) au catalogue`;
+      }
+      toast.success(message);
 
-      // Combiner matériel + travaux
-      const items = [...expenseItems, ...todoItems];
+      handleClose();
+      onImportComplete?.();
+    },
+    onError: (error: any) => {
+      console.error("Erreur import:", error);
+      toast.error("Erreur : " + error.message);
+    },
+  });
 
-      // Créer le devis via l'API
-      const quoteData = {
-        clientid: parseInt(selectedClientId),
-        object: quoteObject || "Aménagement fourgon",
-        comment: quoteComment || undefined,
-        items: items,
-        // Options par défaut
-        validity: 30, // 30 jours de validité
-      };
-
-      console.log("Création devis Evoliz:", quoteData);
-
-      const result = await evolizApi.createQuote(quoteData as any);
-
-      console.log("Devis créé:", result);
-
-      setExportResult({
-        success: true,
-        quoteId: result.quoteid,
-        documentNumber: result.document_number,
-        webdocUrl: result.webdoc,
-        message: `Devis ${result.document_number} créé avec succès !`,
-      });
-
-      toast.success(`Devis ${result.document_number} créé dans Evoliz !`);
-    } catch (err: any) {
-      console.error("Erreur export:", err);
-      setExportResult({
-        success: false,
-        message: err.message || "Erreur lors de la création du devis",
-      });
-      toast.error("Erreur lors de la création du devis");
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  // Rendu si pas configuré
-  if (!isConfigured && !isLoading) {
-    return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Export vers Evoliz</DialogTitle>
-          </DialogHeader>
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Evoliz n'est pas configuré. Allez dans les paramètres pour connecter votre compte.
-            </AlertDescription>
-          </Alert>
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose}>
-              Fermer
-            </Button>
-            <Button onClick={() => (window.location.href = "/settings/evoliz")}>Configurer Evoliz</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
+  if (!isConfigured) {
+    return null; // Ne pas afficher si Evoliz pas configuré
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Exporter vers Evoliz
-          </DialogTitle>
-          <DialogDescription>Créer un devis Evoliz à partir du scénario "{scenarioName}"</DialogDescription>
-        </DialogHeader>
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <Download className="h-4 w-4 mr-2" />
+        Importer devis Evoliz
+      </Button>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : exportResult?.success ? (
-          // Résultat succès
-          <div className="space-y-6 py-4">
-            <Alert className="border-green-500 bg-green-50">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">{exportResult.message}</AlertDescription>
-            </Alert>
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5" />
+              {step === 1 ? "Choisir un devis Evoliz" : `Import ${selectedQuote?.document_number}`}
+            </DialogTitle>
+            <DialogDescription>
+              {step === 1
+                ? "Sélectionnez le devis à importer dans ce projet"
+                : "Cochez les lignes et choisissez leur destination"}
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="text-center space-y-4">
-              <div className="text-4xl">🎉</div>
-              <h3 className="text-xl font-semibold">Devis {exportResult.documentNumber}</h3>
-              <p className="text-muted-foreground">Le devis a été créé avec succès dans Evoliz.</p>
-
-              {exportResult.webdocUrl && (
-                <Button asChild>
-                  <a href={exportResult.webdocUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Voir le devis PDF
-                  </a>
-                </Button>
-              )}
-            </div>
-          </div>
-        ) : (
-          // Formulaire d'export
-          <div className="space-y-6 py-4">
-            {/* Erreur précédente */}
-            {exportResult?.success === false && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{exportResult.message}</AlertDescription>
-              </Alert>
-            )}
-
-            {/* Sélection client */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Client Evoliz *
-              </Label>
-              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un client..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {evolizClients.map((client) => (
-                    <SelectItem key={client.clientid} value={client.clientid.toString()}>
-                      {client.code ? `[${client.code}] ` : ""}
-                      {client.name}
-                    </SelectItem>
+          {/* ÉTAPE 1 : Liste des devis */}
+          {step === 1 && (
+            <div className="flex-1 overflow-y-auto max-h-[500px] pr-2">
+              {loadingQuotes ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : quotes.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Aucun devis trouvé sur Evoliz</p>
+                </div>
+              ) : (
+                <div className="space-y-2 p-1">
+                  {quotes.map((quote) => (
+                    <div
+                      key={quote.quoteid}
+                      onClick={() => handleSelectQuote(quote)}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium">{quote.document_number}</span>
+                          <StatusBadge status={quote.status} />
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-1">
+                          {quote.client?.name || "Client inconnu"} • {formatDate(quote.documentdate)}
+                        </div>
+                        {quote.object && (
+                          <div className="text-sm text-muted-foreground truncate max-w-md">{quote.object}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="font-semibold">{formatAmount(quote.total?.vat_include || 0)}</div>
+                          <div className="text-xs text-muted-foreground">TTC</div>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-              {clientName && <p className="text-xs text-muted-foreground">Client VPB : {clientName}</p>}
-            </div>
-
-            {/* Objet du devis */}
-            <div className="space-y-2">
-              <Label>Objet du devis</Label>
-              <Input
-                value={quoteObject}
-                onChange={(e) => setQuoteObject(e.target.value)}
-                placeholder="Ex: Aménagement fourgon"
-              />
-            </div>
-
-            {/* Commentaire */}
-            <div className="space-y-2">
-              <Label>Commentaire (optionnel)</Label>
-              <Textarea
-                value={quoteComment}
-                onChange={(e) => setQuoteComment(e.target.value)}
-                placeholder="Notes ou conditions particulières..."
-                rows={2}
-              />
-            </div>
-
-            <Separator />
-
-            {/* Liste des articles (Matériel) */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="flex items-center gap-2">
-                  <Package className="h-4 w-4 text-blue-600" />
-                  Matériel ({selectedExpenses.length}/{expenses.length})
-                </Label>
-                <Button variant="ghost" size="sm" onClick={toggleSelectAllExpenses}>
-                  {expenses.every((e) => e.selected) ? "Tout désélectionner" : "Tout sélectionner"}
-                </Button>
-              </div>
-
-              {expenses.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
-                  Aucun matériel dans ce scénario
-                </div>
-              ) : (
-                <div className="border rounded-lg max-h-64 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10"></TableHead>
-                        <TableHead>Article</TableHead>
-                        <TableHead className="text-right">Qté</TableHead>
-                        <TableHead className="text-right">P.U. HT</TableHead>
-                        <TableHead className="text-right">Total HT</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {expenses.map((expense) => {
-                        const prixHT = expense.prix_vente_ttc ? expense.prix_vente_ttc / 1.2 : expense.prix || 0;
-                        const totalLigne = prixHT * expense.quantite;
-
-                        return (
-                          <TableRow key={expense.id} className={!expense.selected ? "opacity-50" : ""}>
-                            <TableCell>
-                              <Checkbox
-                                checked={expense.selected}
-                                onCheckedChange={() => toggleExpenseSelection(expense.id)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <div className="font-medium">{expense.nom_accessoire}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  {expense.categorie}
-                                  {expense.marque && ` • ${expense.marque}`}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">{expense.quantite}</TableCell>
-                            <TableCell className="text-right">{formatAmount(prixHT)}</TableCell>
-                            <TableCell className="text-right">{formatAmount(totalLigne)}</TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
                 </div>
               )}
             </div>
-
-            {/* Liste des travaux (Main d'œuvre) */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="flex items-center gap-2">
-                  <Wrench className="h-4 w-4 text-orange-600" />
-                  Main d'œuvre ({selectedTodos.length}/{todos.length})
-                </Label>
-                {todos.length > 0 && (
-                  <Button variant="ghost" size="sm" onClick={toggleSelectAllTodos}>
-                    {todos.every((t) => t.selected) ? "Tout désélectionner" : "Tout sélectionner"}
-                  </Button>
-                )}
-              </div>
-
-              {todos.length === 0 ? (
-                <div className="text-sm text-muted-foreground py-4 text-center border rounded-lg">
-                  Aucun travail avec forfait dans ce projet
-                </div>
-              ) : (
-                <div className="border rounded-lg max-h-48 overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10"></TableHead>
-                        <TableHead>Travail</TableHead>
-                        <TableHead className="text-right">Heures est.</TableHead>
-                        <TableHead className="text-right">Forfait TTC</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {todos.map((todo) => (
-                        <TableRow key={todo.id} className={!todo.selected ? "opacity-50" : ""}>
-                          <TableCell>
-                            <Checkbox checked={todo.selected} onCheckedChange={() => toggleTodoSelection(todo.id)} />
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{todo.title}</div>
-                              <div className="text-xs text-muted-foreground">{todo.category_name}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right">{todo.estimated_hours}h</TableCell>
-                          <TableCell className="text-right">{formatAmount(todo.forfait_ttc)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </div>
-
-            {/* Totaux */}
-            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-              {selectedExpenses.length > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="flex items-center gap-1">
-                    <Package className="h-3 w-3" /> Matériel HT
-                  </span>
-                  <span>{formatAmount(totalMaterielHT)}</span>
-                </div>
-              )}
-              {selectedTodos.length > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="flex items-center gap-1">
-                    <Wrench className="h-3 w-3" /> Main d'œuvre HT
-                  </span>
-                  <span>{formatAmount(totalTravauxHT)}</span>
-                </div>
-              )}
-              <Separator />
-              <div className="flex justify-between text-sm">
-                <span>Total HT</span>
-                <span>{formatAmount(totalHT)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>TVA (20%)</span>
-                <span>{formatAmount(totalTTC - totalHT)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between font-bold">
-                <span>Total TTC</span>
-                <span>{formatAmount(totalTTC)}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {exportResult?.success ? "Fermer" : "Annuler"}
-          </Button>
-          {!exportResult?.success && (
-            <Button
-              onClick={handleExport}
-              disabled={
-                isExporting || !selectedClientId || (selectedExpenses.length === 0 && selectedTodos.length === 0)
-              }
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Création en cours...
-                </>
-              ) : (
-                <>
-                  <Send className="h-4 w-4 mr-2" />
-                  Créer le devis Evoliz
-                </>
-              )}
-            </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
 
-export default ExportToEvolizDialog;
+          {/* ÉTAPE 2 : Lignes du devis */}
+          {step === 2 && selectedQuote && (
+            <>
+              <div className="flex items-center justify-between py-2">
+                <Button variant="ghost" size="sm" onClick={() => setStep(1)}>
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Retour
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => selectAll(true)}>
+                    Tout cocher
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => selectAll(false)}>
+                    Tout décocher
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={setAllToScenario}>
+                    <Package className="h-4 w-4 mr-1" />
+                    Tout → Matériel
+                  </Button>
+                </div>
+              </div>
+
+              {/* Indicateur d'enrichissement */}
+              {isEnriching && (
+                <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded-lg mb-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Récupération des prix d'achat depuis le catalogue Evoliz...
+                </div>
+              )}
+
+              {/* En-tête tableau */}
+              <div className="grid grid-cols-[auto_1fr_50px_80px_80px_80px_90px_90px_110px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border rounded-t-lg">
+                <div></div>
+                <div>Désignation</div>
+                <div className="text-center">Qté</div>
+                <div className="text-right">PU HT</div>
+                <div className="text-right">Achat HT</div>
+                <div className="text-right">PU TTC</div>
+                <div className="text-right">Total HT</div>
+                <div className="text-right">Total TTC</div>
+                <div className="text-center">Destination</div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto max-h-[300px] border border-t-0 rounded-b-lg">
+                <div className="divide-y">
+                  {lines.map((line) => (
+                    <div
+                      key={line.itemid}
+                      className={`grid grid-cols-[auto_1fr_50px_80px_80px_80px_90px_90px_110px] gap-2 items-center px-3 py-2 ${
+                        !line.selected ? "opacity-50 bg-muted/30" : "hover:bg-muted/20"
+                      }`}
+                    >
+                      <Checkbox checked={line.selected} onCheckedChange={() => toggleLine(line.itemid)} />
+
+                      <div className="flex items-center gap-1 min-w-0">
+                        <div
+                          className="text-sm truncate"
+                          title={cleanHtmlText(line.designation)}
+                          dangerouslySetInnerHTML={{
+                            __html: line.designation.replace(/\n/g, " "),
+                          }}
+                        />
+                        {line.catalog_enriched && (
+                          <span title="Prix d'achat récupéré">
+                            <Check className="h-3 w-3 text-green-600 flex-shrink-0" />
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-sm text-center">{line.quantity}</div>
+
+                      <div className="text-sm text-right">{formatAmount(line.unit_price_vat_exclude)}</div>
+
+                      <div className="text-sm text-right">
+                        {line.purchase_unit_price_vat_exclude ? (
+                          <span className="text-green-600 font-medium">
+                            {formatAmount(line.purchase_unit_price_vat_exclude)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </div>
+
+                      <div className="text-sm text-right text-muted-foreground">
+                        {formatAmount(line.unit_price_vat_exclude * 1.2)}
+                      </div>
+
+                      <div className="text-sm text-right">{formatAmount(line.total_vat_exclude)}</div>
+
+                      <div className="text-sm text-right font-medium">{formatAmount(line.total_vat_exclude * 1.2)}</div>
+
+                      {line.selected ? (
+                        <Select
+                          value={line.destination}
+                          onValueChange={(v) => setDestination(line.itemid, v as LineDestination)}
+                        >
+                          <SelectTrigger className="h-7 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="scenario">
+                              <div className="flex items-center gap-1">
+                                <Package className="h-3 w-3 text-blue-600" />
+                                Matériel
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="travaux">
+                              <div className="flex items-center gap-1">
+                                <Wrench className="h-3 w-3 text-orange-600" />
+                                Travaux
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <div />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Récap */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  <div>
+                    <div className="text-sm text-muted-foreground">Matériel → Scénario</div>
+                    <div className="font-semibold">
+                      {scenarioLines.length} ligne(s) • {formatAmount(totalScenario * 1.2)} TTC
+                    </div>
+                    <div className="text-xs text-muted-foreground">{formatAmount(totalScenario)} HT</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Wrench className="h-5 w-5 text-orange-600" />
+                  <div>
+                    <div className="text-sm text-muted-foreground">Main d'œuvre → Travaux</div>
+                    <div className="font-semibold">
+                      {travauxLines.length} ligne(s) • {formatAmount(totalTravaux * 1.2)} TTC
+                    </div>
+                    <div className="text-xs text-muted-foreground">{formatAmount(totalTravaux)} HT</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Option ajout au catalogue */}
+              {scenarioLines.length > 0 && (
+                <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Checkbox
+                    id="add-to-catalog"
+                    checked={addToCatalog}
+                    onCheckedChange={(checked) => setAddToCatalog(checked as boolean)}
+                  />
+                  <Label htmlFor="add-to-catalog" className="flex items-center gap-2 cursor-pointer text-sm">
+                    <BookPlus className="h-4 w-4 text-blue-600" />
+                    <span>Ajouter les nouveaux articles au catalogue</span>
+                    <span className="text-xs text-muted-foreground">(articles matériel uniquement)</span>
+                  </Label>
+                </div>
+              )}
+
+              {selectedLines.length === 0 && (
+                <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+                  <AlertCircle className="h-4 w-4" />
+                  Aucune ligne sélectionnée
+                </div>
+              )}
+            </>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleClose}>
+              Annuler
+            </Button>
+            {step === 2 && (
+              <Button
+                onClick={() => importMutation.mutate()}
+                disabled={importMutation.isPending || selectedLines.length === 0}
+              >
+                {importMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Import...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    Importer ({selectedLines.length} lignes)
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
