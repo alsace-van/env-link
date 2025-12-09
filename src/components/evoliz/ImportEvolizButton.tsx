@@ -179,14 +179,11 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         // Classification Evoliz : peut être dans analytic_code, classification, ou analytic.label
         const classification = item.analytic_code || item.classification || item.analytic?.label || "";
 
-        // Log pour debug
-        console.log("📋 Ligne devis:", {
-          designation: designation.substring(0, 40),
-          unit,
-          nature,
-          classification,
-          analytic: item.analytic,
-        });
+        // Log pour debug (stringify pour éviter "objet n'existe plus")
+        console.log(
+          "📋 Ligne devis:",
+          JSON.stringify({ designation: designation.substring(0, 40), unit, nature, classification }),
+        );
 
         // Détecter automatiquement si c'est de la main d'œuvre
         const isMO = detectMainOeuvre(designation, unit, nature, classification);
@@ -250,17 +247,24 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
               const catalogArticle = articleMap.get(line.articleid);
               if (!catalogArticle) return line; // Pas trouvé, on garde la ligne telle quelle
 
-              // Log pour debug - voir la structure de l'article
-              console.log("📦 Article Evoliz enrichi:", {
-                designation: catalogArticle.designation?.substring(0, 40),
-                analytic: catalogArticle.analytic,
-                analytic_code: catalogArticle.analytic_code,
-                classification: catalogArticle.classification,
-                nature: catalogArticle.nature,
-                purchase_price_root: catalogArticle.purchase_unit_price_vat_exclude,
-                purchase_price_margin: catalogArticle.margin?.purchase_unit_price_vat_exclude,
-                supplier: catalogArticle.supplier?.name,
-              });
+              // Log pour debug - voir la structure de l'article (stringify pour éviter "objet n'existe plus")
+              console.log(
+                "📦 Article Evoliz enrichi:",
+                JSON.stringify(
+                  {
+                    designation: catalogArticle.designation?.substring(0, 40),
+                    analytic: catalogArticle.analytic,
+                    analytic_code: catalogArticle.analytic_code,
+                    classification: catalogArticle.classification,
+                    nature: catalogArticle.nature,
+                    purchase_price_root: catalogArticle.purchase_unit_price_vat_exclude,
+                    purchase_price_margin: catalogArticle.margin?.purchase_unit_price_vat_exclude,
+                    supplier: catalogArticle.supplier?.name,
+                  },
+                  null,
+                  2,
+                ),
+              );
 
               // Le prix d'achat peut être à la racine ou dans margin
               const purchasePrice =
@@ -283,9 +287,12 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
               if (shouldBeMO && line.destination !== "travaux") {
                 console.log(
                   "🔧 Reclassé en MO après enrichissement:",
-                  line.designation.substring(0, 40),
-                  "-> classification:",
-                  classification,
+                  JSON.stringify({
+                    designation: line.designation.substring(0, 40),
+                    nature: nature,
+                    classification: classification,
+                    unit: line.unit,
+                  }),
                 );
               }
 
