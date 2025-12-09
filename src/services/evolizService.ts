@@ -328,6 +328,14 @@ class EvolizApiService {
     });
   }
 
+  async createSupplier(data: { name: string; type?: string }): Promise<EvolizSupplier> {
+    return this.callProxy<EvolizSupplier>({
+      endpoint: "/suppliers",
+      method: "POST",
+      body: data,
+    });
+  }
+
   // --- BUYS ---
 
   async getBuys(params?: {
