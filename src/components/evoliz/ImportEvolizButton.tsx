@@ -186,7 +186,9 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           // Récupérer les détails de chaque article (silencieusement)
           const articlePromises = [...new Set(articleIds)].map(async (articleId) => {
             try {
-              const article = (await evolizApi.getArticle(articleId)) as any;
+              const response = (await evolizApi.getArticle(articleId)) as any;
+              // La réponse est { data: {...}, error: null } - on extrait data
+              const article = response?.data || response;
               // DEBUG: Voir la structure complète de l'article Evoliz
               console.log("📦 Article Evoliz complet:", JSON.stringify(article, null, 2));
               return article;
@@ -207,7 +209,15 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
               const catalogArticle = articleMap.get(line.articleid);
               if (!catalogArticle) return line; // Pas trouvé, on garde la ligne telle quelle
 
-              const purchasePrice = catalogArticle.purchase_unit_price_vat_exclude || null;
+              // Le prix d'achat peut être à la racine ou dans margin
+              const purchasePrice =
+                catalogArticle.purchase_unit_price_vat_exclude ||
+                catalogArticle.margin?.purchase_unit_price_vat_exclude ||
+                null;
+
+              // Le fournisseur peut être un objet ou null
+              const supplierName = catalogArticle.supplier?.name || null;
+
               let marginPercent: number | null = null;
 
               if (purchasePrice && purchasePrice > 0 && line.unit_price_vat_exclude > 0) {
@@ -219,7 +229,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                 purchase_unit_price_vat_exclude: purchasePrice,
                 margin_percent: marginPercent,
                 reference: catalogArticle.reference || line.reference,
-                supplier_name: catalogArticle.supplier?.name || null,
+                supplier_name: supplierName,
                 catalog_enriched: purchasePrice !== null,
               };
             }),
