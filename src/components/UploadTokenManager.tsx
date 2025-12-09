@@ -20,18 +20,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Key,
-  Copy,
-  Check,
-  Trash2,
-  RefreshCw,
-  AlertTriangle,
-  Eye,
-  EyeOff,
-  Smartphone,
-  Info,
-} from "lucide-react";
+import { Key, Copy, Check, Trash2, RefreshCw, AlertTriangle, Eye, EyeOff, Smartphone, Info } from "lucide-react";
 import { toast } from "sonner";
 
 interface UploadToken {
@@ -50,12 +39,12 @@ export function UploadTokenManager() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newTokenName, setNewTokenName] = useState("Raccourci macOS");
-  
+
   // Dialog pour afficher le nouveau token
   const [showNewToken, setShowNewToken] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  
+
   // Charger les tokens
   useEffect(() => {
     loadTokens();
@@ -81,6 +70,15 @@ export function UploadTokenManager() {
   const generateToken = async () => {
     setCreating(true);
     try {
+      // Récupérer l'utilisateur connecté
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Vous devez être connecté");
+        return;
+      }
+
       // Générer le token côté client (même format que la fonction SQL)
       const randomBytes = new Uint8Array(24);
       crypto.getRandomValues(randomBytes);
@@ -90,6 +88,7 @@ export function UploadTokenManager() {
       const { data, error } = await (supabase as any)
         .from("user_upload_tokens")
         .insert({
+          user_id: user.id,
           name: newTokenName,
           token: token,
         })
@@ -152,10 +151,7 @@ export function UploadTokenManager() {
     }
 
     try {
-      const { error } = await (supabase as any)
-        .from("user_upload_tokens")
-        .delete()
-        .eq("id", id);
+      const { error } = await (supabase as any).from("user_upload_tokens").delete().eq("id", id);
 
       if (error) throw error;
       await loadTokens();
@@ -223,7 +219,9 @@ export function UploadTokenManager() {
           {/* Créer un nouveau token */}
           <div className="flex gap-2">
             <div className="flex-1">
-              <Label htmlFor="token-name" className="sr-only">Nom du token</Label>
+              <Label htmlFor="token-name" className="sr-only">
+                Nom du token
+              </Label>
               <Input
                 id="token-name"
                 placeholder="Nom du token (ex: MacBook Pro)"
@@ -256,14 +254,14 @@ export function UploadTokenManager() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{token.name}</span>
                         {!token.is_active && (
-                          <Badge variant="secondary" className="text-xs">Désactivé</Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            Désactivé
+                          </Badge>
                         )}
                       </div>
-                      <code className="text-xs text-muted-foreground font-mono">
-                        {maskToken(token.token)}
-                      </code>
+                      <code className="text-xs text-muted-foreground font-mono">{maskToken(token.token)}</code>
                     </div>
-                    
+
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
@@ -271,11 +269,7 @@ export function UploadTokenManager() {
                         onClick={() => toggleToken(token.id, token.is_active)}
                         title={token.is_active ? "Désactiver" : "Réactiver"}
                       >
-                        {token.is_active ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                        {token.is_active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                       <Button
                         variant="ghost"
@@ -288,7 +282,7 @@ export function UploadTokenManager() {
                       </Button>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                     <span>Utilisé {token.use_count} fois</span>
                     <span>•</span>
@@ -323,19 +317,13 @@ export function UploadTokenManager() {
 
           <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
             <code className="flex-1 text-sm font-mono break-all">{newToken}</code>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => newToken && copyToken(newToken)}
-            >
+            <Button variant="outline" size="icon" onClick={() => newToken && copyToken(newToken)}>
               {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
 
           <DialogFooter>
-            <Button onClick={() => setShowNewToken(false)}>
-              J'ai copié mon token
-            </Button>
+            <Button onClick={() => setShowNewToken(false)}>J'ai copié mon token</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
