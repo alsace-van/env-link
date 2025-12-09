@@ -301,6 +301,14 @@ export interface EvolizArticle {
   } | null;
   supplier_reference?: string | null;
   weight?: number | null;
+  // Marge (contient aussi le prix d'achat)
+  margin?: {
+    purchase_unit_price_vat_exclude?: number | null;
+    margin_percent?: number | null;
+    markup_percent?: number | null;
+    amount?: number | null;
+    coefficient?: number | null;
+  } | null;
 }
 
 export interface EvolizArticleInput {
