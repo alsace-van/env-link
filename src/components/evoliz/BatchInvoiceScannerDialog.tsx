@@ -5,40 +5,16 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   FileUp,
   Loader2,
@@ -116,11 +92,7 @@ const MAX_FILES = 50;
 // COMPONENT
 // ============================================
 
-export function BatchInvoiceScannerDialog({
-  open,
-  onOpenChange,
-  onComplete,
-}: BatchInvoiceScannerDialogProps) {
+export function BatchInvoiceScannerDialog({ open, onOpenChange, onComplete }: BatchInvoiceScannerDialogProps) {
   const { isConfigured: isEvolizConfigured, credentials } = useEvolizConfig();
   const { isConfigured: isAIConfigured, provider, apiKey } = useAIConfig();
 
@@ -236,7 +208,7 @@ export function BatchInvoiceScannerDialog({
 
       setFiles((prev) => [...prev, ...newFiles]);
     },
-    [files.length]
+    [files.length],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -334,9 +306,7 @@ export function BatchInvoiceScannerDialog({
     }
   };
 
-  const matchSupplier = (
-    supplierName: string
-  ): { matchedId: string | null; isNew: boolean } => {
+  const matchSupplier = (supplierName: string): { matchedId: string | null; isNew: boolean } => {
     if (!supplierName || suppliers.length === 0) {
       return { matchedId: null, isNew: true };
     }
@@ -344,18 +314,14 @@ export function BatchInvoiceScannerDialog({
     const nameLower = supplierName.toLowerCase().trim();
 
     // Match exact
-    const exactMatch = suppliers.find(
-      (s) => s.name.toLowerCase().trim() === nameLower
-    );
+    const exactMatch = suppliers.find((s) => s.name.toLowerCase().trim() === nameLower);
     if (exactMatch) {
       return { matchedId: exactMatch.supplierid.toString(), isNew: false };
     }
 
     // Match partiel (contient)
     const partialMatch = suppliers.find(
-      (s) =>
-        s.name.toLowerCase().includes(nameLower) ||
-        nameLower.includes(s.name.toLowerCase())
+      (s) => s.name.toLowerCase().includes(nameLower) || nameLower.includes(s.name.toLowerCase()),
     );
     if (partialMatch) {
       return { matchedId: partialMatch.supplierid.toString(), isNew: false };
@@ -364,9 +330,7 @@ export function BatchInvoiceScannerDialog({
     // Match par mots clés
     const words = nameLower.split(/\s+/).filter((w) => w.length > 3);
     for (const word of words) {
-      const wordMatch = suppliers.find((s) =>
-        s.name.toLowerCase().includes(word)
-      );
+      const wordMatch = suppliers.find((s) => s.name.toLowerCase().includes(word));
       if (wordMatch) {
         return { matchedId: wordMatch.supplierid.toString(), isNew: false };
       }
@@ -389,11 +353,7 @@ export function BatchInvoiceScannerDialog({
       const batch = pendingFiles.slice(i, i + MAX_CONCURRENT_OCR);
 
       // Marquer comme "analyzing"
-      setFiles((prev) =>
-        prev.map((f) =>
-          batch.find((b) => b.id === f.id) ? { ...f, status: "analyzing" } : f
-        )
-      );
+      setFiles((prev) => prev.map((f) => (batch.find((b) => b.id === f.id) ? { ...f, status: "analyzing" } : f)));
 
       // Traiter en parallèle
       const results = await Promise.all(batch.map(analyzeFile));
@@ -403,7 +363,7 @@ export function BatchInvoiceScannerDialog({
         prev.map((f) => {
           const result = results.find((r) => r.id === f.id);
           return result || f;
-        })
+        }),
       );
 
       processed += batch.length;
@@ -418,22 +378,14 @@ export function BatchInvoiceScannerDialog({
   // ============================================
 
   const toggleSelectAll = (selected: boolean) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.status === "ready" ? { ...f, selected } : f))
-    );
+    setFiles((prev) => prev.map((f) => (f.status === "ready" ? { ...f, selected } : f)));
   };
 
   const toggleSelect = (id: string) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f))
-    );
+    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f)));
   };
 
-  const updateFileData = (
-    id: string,
-    field: keyof ExtractedInvoice,
-    value: string | number | null
-  ) => {
+  const updateFileData = (id: string, field: keyof ExtractedInvoice, value: string | number | null) => {
     setFiles((prev) =>
       prev.map((f) => {
         if (f.id !== id || !f.editedData) return f;
@@ -441,24 +393,18 @@ export function BatchInvoiceScannerDialog({
           ...f,
           editedData: { ...f.editedData, [field]: value },
         };
-      })
+      }),
     );
   };
 
   const updateSupplier = (id: string, supplierId: string | null, isNew: boolean) => {
     setFiles((prev) =>
-      prev.map((f) =>
-        f.id === id
-          ? { ...f, matchedSupplierId: supplierId, isNewSupplier: isNew }
-          : f
-      )
+      prev.map((f) => (f.id === id ? { ...f, matchedSupplierId: supplierId, isNewSupplier: isNew } : f)),
     );
   };
 
   const updateClassification = (id: string, classificationId: string | null) => {
-    setFiles((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, classificationId } : f))
-    );
+    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, classificationId } : f)));
   };
 
   // ============================================
@@ -466,9 +412,7 @@ export function BatchInvoiceScannerDialog({
   // ============================================
 
   const sendToEvoliz = async () => {
-    const selectedFiles = files.filter(
-      (f) => f.selected && f.status === "ready" && f.editedData
-    );
+    const selectedFiles = files.filter((f) => f.selected && f.status === "ready" && f.editedData);
 
     if (selectedFiles.length === 0) {
       toast.error("Aucune facture sélectionnée");
@@ -493,9 +437,7 @@ export function BatchInvoiceScannerDialog({
       const fileItem = selectedFiles[i];
 
       // Marquer comme "sending"
-      setFiles((prev) =>
-        prev.map((f) => (f.id === fileItem.id ? { ...f, status: "sending" } : f))
-      );
+      setFiles((prev) => prev.map((f) => (f.id === fileItem.id ? { ...f, status: "sending" } : f)));
 
       try {
         let supplierId = fileItem.matchedSupplierId;
@@ -530,9 +472,7 @@ export function BatchInvoiceScannerDialog({
               unit_price_vat_exclude: fileItem.editedData?.total_ht || 0,
               quantity: 1,
               vat: fileItem.editedData?.tva_rate || 20,
-              purchase_classificationid: fileItem.classificationId
-                ? parseInt(fileItem.classificationId)
-                : undefined,
+              purchase_classificationid: fileItem.classificationId ? parseInt(fileItem.classificationId) : undefined,
             },
           ],
         };
@@ -540,11 +480,7 @@ export function BatchInvoiceScannerDialog({
         const result = await evolizApi.createBuy(buyData);
 
         setFiles((prev) =>
-          prev.map((f) =>
-            f.id === fileItem.id
-              ? { ...f, status: "success", evolizBuyId: result.buyid }
-              : f
-          )
+          prev.map((f) => (f.id === fileItem.id ? { ...f, status: "success", evolizBuyId: result.buyid } : f)),
         );
 
         successCount++;
@@ -558,8 +494,8 @@ export function BatchInvoiceScannerDialog({
                   status: "error",
                   error: err instanceof Error ? err.message : "Erreur envoi",
                 }
-              : f
-          )
+              : f,
+          ),
         );
         errorCount++;
       }
@@ -589,11 +525,9 @@ export function BatchInvoiceScannerDialog({
   const readyFiles = files.filter((f) => f.status === "ready");
   const selectedCount = files.filter((f) => f.selected && f.status === "ready").length;
   const lowConfidenceCount = files.filter(
-    (f) => f.status === "ready" && (f.extractedData?.confidence || 0) < 0.7
+    (f) => f.status === "ready" && (f.extractedData?.confidence || 0) < 0.7,
   ).length;
-  const newSuppliersPreview = files.filter(
-    (f) => f.selected && f.status === "ready" && f.isNewSupplier
-  ).length;
+  const newSuppliersPreview = files.filter((f) => f.selected && f.status === "ready" && f.isNewSupplier).length;
 
   // ============================================
   // RENDER
@@ -647,8 +581,8 @@ export function BatchInvoiceScannerDialog({
                   <div>
                     <p className="font-medium text-blue-800">Evoliz non configuré</p>
                     <p className="text-sm text-blue-600 mt-1">
-                      Configurez vos identifiants Evoliz dans{" "}
-                      <span className="font-medium">Paramètres → Evoliz</span> pour envoyer les factures.
+                      Configurez vos identifiants Evoliz dans <span className="font-medium">Paramètres → Evoliz</span>{" "}
+                      pour envoyer les factures.
                     </p>
                   </div>
                 </div>
@@ -666,14 +600,10 @@ export function BatchInvoiceScannerDialog({
                 <input {...getInputProps()} />
                 <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                 {isDragActive ? (
-                  <p className="text-lg font-medium text-primary">
-                    Déposez les fichiers ici...
-                  </p>
+                  <p className="text-lg font-medium text-primary">Déposez les fichiers ici...</p>
                 ) : (
                   <>
-                    <p className="text-lg font-medium">
-                      Glissez-déposez vos factures ici
-                    </p>
+                    <p className="text-lg font-medium">Glissez-déposez vos factures ici</p>
                     <p className="text-sm text-muted-foreground mt-1">
                       ou cliquez pour sélectionner (PDF, JPG, PNG - max {MAX_FILES} fichiers)
                     </p>
@@ -685,15 +615,8 @@ export function BatchInvoiceScannerDialog({
               {files.length > 0 && (
                 <div className="mt-6">
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium">
-                      Fichiers à traiter ({files.length})
-                    </h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={resetAll}
-                      className="text-muted-foreground"
-                    >
+                    <h3 className="font-medium">Fichiers à traiter ({files.length})</h3>
+                    <Button variant="ghost" size="sm" onClick={resetAll} className="text-muted-foreground">
                       <Trash2 className="h-4 w-4 mr-1" />
                       Tout supprimer
                     </Button>
@@ -702,21 +625,14 @@ export function BatchInvoiceScannerDialog({
                   <ScrollArea className="h-[200px] rounded-lg border">
                     <div className="p-2 space-y-1">
                       {files.map((f) => (
-                        <div
-                          key={f.id}
-                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50"
-                        >
+                        <div key={f.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
                           {f.type === "pdf" ? (
                             <FileText className="h-5 w-5 text-red-500 shrink-0" />
                           ) : (
                             <Image className="h-5 w-5 text-blue-500 shrink-0" />
                           )}
-                          <span className="flex-1 truncate text-sm">
-                            {f.file.name}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {(f.file.size / 1024).toFixed(0)} Ko
-                          </span>
+                          <span className="flex-1 truncate text-sm">{f.file.name}</span>
+                          <span className="text-xs text-muted-foreground">{(f.file.size / 1024).toFixed(0)} Ko</span>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -731,11 +647,7 @@ export function BatchInvoiceScannerDialog({
                   </ScrollArea>
 
                   <div className="flex justify-end mt-4">
-                    <Button 
-                      onClick={startProcessing} 
-                      className="gap-2"
-                      disabled={!isGeminiConfigured}
-                    >
+                    <Button onClick={startProcessing} className="gap-2" disabled={!isGeminiConfigured}>
                       <Sparkles className="h-4 w-4" />
                       Analyser {files.length} facture{files.length > 1 ? "s" : ""}
                     </Button>
@@ -751,12 +663,11 @@ export function BatchInvoiceScannerDialog({
               <div className="text-center py-8">
                 <Loader2 className="h-12 w-12 mx-auto animate-spin text-primary mb-4" />
                 <h3 className="text-lg font-medium mb-2">Analyse en cours...</h3>
-                <p className="text-muted-foreground mb-6">
-                  Extraction des données avec l'OCR Gemini
-                </p>
+                <p className="text-muted-foreground mb-6">Extraction des données avec l'OCR Gemini</p>
                 <Progress value={processingProgress} className="w-64 mx-auto" />
                 <p className="text-sm text-muted-foreground mt-2">
-                  {processingProgress}% ({files.filter((f) => f.status !== "pending" && f.status !== "analyzing").length}/{files.length})
+                  {processingProgress}% (
+                  {files.filter((f) => f.status !== "pending" && f.status !== "analyzing").length}/{files.length})
                 </p>
               </div>
 
@@ -764,31 +675,20 @@ export function BatchInvoiceScannerDialog({
               <ScrollArea className="h-[200px] mt-4">
                 <div className="space-y-1">
                   {files.map((f) => (
-                    <div
-                      key={f.id}
-                      className="flex items-center gap-3 p-2 rounded-lg bg-muted/30"
-                    >
+                    <div key={f.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
                       {f.status === "pending" && (
                         <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
                       )}
-                      {f.status === "analyzing" && (
-                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                      )}
-                      {f.status === "ready" && (
-                        <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      )}
-                      {f.status === "error" && (
-                        <XCircle className="h-5 w-5 text-red-500" />
-                      )}
+                      {f.status === "analyzing" && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+                      {f.status === "ready" && <CheckCircle2 className="h-5 w-5 text-green-500" />}
+                      {f.status === "error" && <XCircle className="h-5 w-5 text-red-500" />}
                       <span className="flex-1 truncate text-sm">{f.file.name}</span>
                       {f.status === "ready" && f.extractedData && (
                         <Badge variant="outline" className="text-xs">
                           {Math.round(f.extractedData.confidence * 100)}%
                         </Badge>
                       )}
-                      {f.status === "error" && (
-                        <span className="text-xs text-red-500">{f.error}</span>
-                      )}
+                      {f.status === "error" && <span className="text-xs text-red-500">{f.error}</span>}
                     </div>
                   ))}
                 </div>
@@ -807,8 +707,7 @@ export function BatchInvoiceScannerDialog({
                     onCheckedChange={(checked) => toggleSelectAll(!!checked)}
                   />
                   <span className="text-sm">
-                    {selectedCount} sélectionnée{selectedCount > 1 ? "s" : ""} sur{" "}
-                    {readyFiles.length}
+                    {selectedCount} sélectionnée{selectedCount > 1 ? "s" : ""} sur {readyFiles.length}
                   </span>
 
                   {lowConfidenceCount > 0 && (
@@ -821,17 +720,14 @@ export function BatchInvoiceScannerDialog({
                   {newSuppliersPreview > 0 && (
                     <Badge variant="outline" className="text-blue-600 border-blue-300">
                       <Plus className="h-3 w-3 mr-1" />
-                      {newSuppliersPreview} nouveau{newSuppliersPreview > 1 ? "x" : ""} fournisseur{newSuppliersPreview > 1 ? "s" : ""}
+                      {newSuppliersPreview} nouveau{newSuppliersPreview > 1 ? "x" : ""} fournisseur
+                      {newSuppliersPreview > 1 ? "s" : ""}
                     </Badge>
                   )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setGlobalStep("upload")}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setGlobalStep("upload")}>
                     <RotateCcw className="h-4 w-4 mr-1" />
                     Retour
                   </Button>
@@ -870,12 +766,7 @@ export function BatchInvoiceScannerDialog({
                               {f.error}
                             </TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => removeFile(f.id)}
-                              >
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeFile(f.id)}>
                                 <X className="h-4 w-4" />
                               </Button>
                             </TableCell>
@@ -890,15 +781,10 @@ export function BatchInvoiceScannerDialog({
                       return (
                         <TableRow
                           key={f.id}
-                          className={`${lowConfidence ? "bg-orange-50/50" : ""} ${
-                            !f.selected ? "opacity-50" : ""
-                          }`}
+                          className={`${lowConfidence ? "bg-orange-50/50" : ""} ${!f.selected ? "opacity-50" : ""}`}
                         >
                           <TableCell>
-                            <Checkbox
-                              checked={f.selected}
-                              onCheckedChange={() => toggleSelect(f.id)}
-                            />
+                            <Checkbox checked={f.selected} onCheckedChange={() => toggleSelect(f.id)} />
                           </TableCell>
                           <TableCell>
                             <TooltipProvider>
@@ -923,9 +809,7 @@ export function BatchInvoiceScannerDialog({
                               ) : (
                                 <Image className="h-4 w-4 text-blue-500 shrink-0" />
                               )}
-                              <span className="truncate max-w-[150px] text-sm">
-                                {f.file.name}
-                              </span>
+                              <span className="truncate max-w-[150px] text-sm">{f.file.name}</span>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -934,9 +818,7 @@ export function BatchInvoiceScannerDialog({
                                 <div className="flex items-center gap-1">
                                   <Input
                                     value={f.editedData.supplier_name}
-                                    onChange={(e) =>
-                                      updateFileData(f.id, "supplier_name", e.target.value)
-                                    }
+                                    onChange={(e) => updateFileData(f.id, "supplier_name", e.target.value)}
                                     className="h-7 text-sm w-32"
                                     placeholder="Nouveau"
                                   />
@@ -965,10 +847,7 @@ export function BatchInvoiceScannerDialog({
                                       </span>
                                     </SelectItem>
                                     {suppliers.map((s) => (
-                                      <SelectItem
-                                        key={s.supplierid}
-                                        value={s.supplierid.toString()}
-                                      >
+                                      <SelectItem key={s.supplierid} value={s.supplierid.toString()}>
                                         {s.name}
                                       </SelectItem>
                                     ))}
@@ -980,9 +859,7 @@ export function BatchInvoiceScannerDialog({
                           <TableCell>
                             <Input
                               value={f.editedData.invoice_number || ""}
-                              onChange={(e) =>
-                                updateFileData(f.id, "invoice_number", e.target.value || null)
-                              }
+                              onChange={(e) => updateFileData(f.id, "invoice_number", e.target.value || null)}
                               className="h-7 text-sm w-24"
                               placeholder="N°"
                             />
@@ -991,9 +868,7 @@ export function BatchInvoiceScannerDialog({
                             <Input
                               type="date"
                               value={f.editedData.invoice_date || ""}
-                              onChange={(e) =>
-                                updateFileData(f.id, "invoice_date", e.target.value || null)
-                              }
+                              onChange={(e) => updateFileData(f.id, "invoice_date", e.target.value || null)}
                               className="h-7 text-sm w-32"
                             />
                           </TableCell>
@@ -1003,11 +878,7 @@ export function BatchInvoiceScannerDialog({
                               step="0.01"
                               value={f.editedData.total_ht || ""}
                               onChange={(e) =>
-                                updateFileData(
-                                  f.id,
-                                  "total_ht",
-                                  e.target.value ? parseFloat(e.target.value) : null
-                                )
+                                updateFileData(f.id, "total_ht", e.target.value ? parseFloat(e.target.value) : null)
                               }
                               className="h-7 text-sm w-20 text-right"
                             />
@@ -1018,11 +889,7 @@ export function BatchInvoiceScannerDialog({
                               step="0.01"
                               value={f.editedData.tva_amount || ""}
                               onChange={(e) =>
-                                updateFileData(
-                                  f.id,
-                                  "tva_amount",
-                                  e.target.value ? parseFloat(e.target.value) : null
-                                )
+                                updateFileData(f.id, "tva_amount", e.target.value ? parseFloat(e.target.value) : null)
                               }
                               className="h-7 text-sm w-16 text-right"
                             />
@@ -1033,11 +900,7 @@ export function BatchInvoiceScannerDialog({
                               step="0.01"
                               value={f.editedData.total_ttc || ""}
                               onChange={(e) =>
-                                updateFileData(
-                                  f.id,
-                                  "total_ttc",
-                                  e.target.value ? parseFloat(e.target.value) : null
-                                )
+                                updateFileData(f.id, "total_ttc", e.target.value ? parseFloat(e.target.value) : null)
                               }
                               className="h-7 text-sm w-20 text-right font-medium"
                             />
@@ -1045,9 +908,7 @@ export function BatchInvoiceScannerDialog({
                           <TableCell>
                             <Select
                               value={f.classificationId || ""}
-                              onValueChange={(v) =>
-                                updateClassification(f.id, v || null)
-                              }
+                              onValueChange={(v) => updateClassification(f.id, v || null)}
                             >
                               <SelectTrigger className="h-7 text-sm w-32">
                                 <SelectValue placeholder="Classification" />
@@ -1066,12 +927,7 @@ export function BatchInvoiceScannerDialog({
                             </Select>
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => removeFile(f.id)}
-                            >
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeFile(f.id)}>
                               <X className="h-4 w-4" />
                             </Button>
                           </TableCell>
@@ -1094,11 +950,7 @@ export function BatchInvoiceScannerDialog({
                     € TTC
                   </span>
                 </div>
-                <Button
-                  onClick={sendToEvoliz}
-                  disabled={selectedCount === 0}
-                  className="gap-2"
-                >
+                <Button onClick={sendToEvoliz} disabled={selectedCount === 0} className="gap-2">
                   <Send className="h-4 w-4" />
                   Envoyer {selectedCount} facture{selectedCount > 1 ? "s" : ""} vers Evoliz
                 </Button>
@@ -1112,13 +964,9 @@ export function BatchInvoiceScannerDialog({
               <div className="text-center py-8">
                 <Loader2 className="h-12 w-12 mx-auto animate-spin text-primary mb-4" />
                 <h3 className="text-lg font-medium mb-2">Envoi vers Evoliz...</h3>
-                <p className="text-muted-foreground mb-6">
-                  Création des achats dans votre comptabilité
-                </p>
+                <p className="text-muted-foreground mb-6">Création des achats dans votre comptabilité</p>
                 <Progress value={sendingProgress} className="w-64 mx-auto" />
-                <p className="text-sm text-muted-foreground mt-2">
-                  {sendingProgress}%
-                </p>
+                <p className="text-sm text-muted-foreground mt-2">{sendingProgress}%</p>
               </div>
             </div>
           )}
@@ -1139,8 +987,8 @@ export function BatchInvoiceScannerDialog({
                   {stats.errors === 0
                     ? "Import terminé avec succès !"
                     : stats.success === 0
-                    ? "Échec de l'import"
-                    : "Import partiellement réussi"}
+                      ? "Échec de l'import"
+                      : "Import partiellement réussi"}
                 </h3>
 
                 <div className="flex justify-center gap-6 my-6">
@@ -1185,10 +1033,7 @@ export function BatchInvoiceScannerDialog({
                       {files
                         .filter((f) => f.status === "error")
                         .map((f) => (
-                          <div
-                            key={f.id}
-                            className="flex items-center gap-2 p-2 text-sm"
-                          >
+                          <div key={f.id} className="flex items-center gap-2 p-2 text-sm">
                             <XCircle className="h-4 w-4 text-red-500 shrink-0" />
                             <span className="font-medium">{f.file.name}</span>
                             <span className="text-red-600">{f.error}</span>
