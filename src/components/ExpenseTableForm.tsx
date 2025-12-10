@@ -66,27 +66,21 @@ class ComponentErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundary
   }
 }
 
-// ============================================
-// IMPORT DYNAMIQUE DE IncomingInvoicesList
-// ============================================
-
 // Import lazy pour isoler les erreurs de chargement
 const IncomingInvoicesList = lazy(() =>
   import("@/components/IncomingInvoicesList")
     .then((module) => {
-      console.log("[DEBUG] IncomingInvoicesList chargé avec succès");
+      console.log("[DEBUG] ✅ IncomingInvoicesList chargé avec succès");
       return { default: module.IncomingInvoicesList };
     })
     .catch((err) => {
-      console.error("[DEBUG] Erreur chargement IncomingInvoicesList:", err);
-      // Retourner un composant fallback
+      console.error("[DEBUG] ❌ Erreur chargement IncomingInvoicesList:", err);
       return {
         default: ({ trigger }: any) => (
           <Button
             variant="outline"
             className="gap-2 border-orange-300 text-orange-600"
             onClick={() => {
-              console.error("[DEBUG] Clic sur bouton fallback - module non chargé");
               toast.error("Module IncomingInvoicesList non disponible - voir console F12");
             }}
           >
@@ -138,13 +132,14 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   // DEBUG: Log au montage
   useEffect(() => {
-    console.log("[DEBUG] ExpenseTableForm monté");
-    return () => console.log("[DEBUG] ExpenseTableForm démonté");
+    console.log("[DEBUG] 🚀 ExpenseTableForm monté");
+    return () => console.log("[DEBUG] 💀 ExpenseTableForm démonté");
   }, []);
 
   useEffect(() => {
     loadFournisseurs();
     loadProjects();
+    // Ajouter une ligne vide au démarrage pour permettre la saisie immédiate
     if (rows.length === 0) {
       addNewRow();
     }
@@ -203,6 +198,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   const removeRow = (id: string) => {
     const filteredRows = rows.filter((row) => row.id !== id);
+    // S'assurer qu'il reste toujours au moins une ligne vide
     if (filteredRows.length === 0) {
       addNewRow();
     } else {
@@ -214,14 +210,17 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const updatedRows = rows.map((row) => (row.id === id ? { ...row, [field]: value } : row));
     setRows(updatedRows);
 
+    // Vérifier si la dernière ligne a été modifiée et contient suffisamment de données
     const lastRow = updatedRows[updatedRows.length - 1];
     if (lastRow && lastRow.id === id) {
+      // Ajouter une nouvelle ligne seulement si les champs essentiels sont remplis
       const hasEssentialData =
         lastRow.nom_accessoire.trim() !== "" &&
         lastRow.fournisseur.trim() !== "" &&
         lastRow.prix_vente_ttc.trim() !== "";
 
       if (hasEssentialData) {
+        // Vérifier qu'il n'y a pas déjà une ligne vide à la fin
         addNewRow();
       }
     }
@@ -229,8 +228,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   const handleFileSelect = async (rowId: string, file: File | null) => {
     if (!file) return;
+
     const row = rows.find((r) => r.id === rowId);
     if (!row) return;
+
+    // Store file temporarily in row
     updateRow(rowId, "facture_file", file);
   };
 
@@ -258,6 +260,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const saveRows = async () => {
+    // Filtrer les lignes vides
     const rowsToSave = rows.filter(
       (row) => row.nom_accessoire.trim() || row.fournisseur.trim() || row.project_id || row.prix_vente_ttc,
     );
@@ -267,6 +270,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       return;
     }
 
+    // Validation
     for (const row of rowsToSave) {
       if (!row.nom_accessoire.trim()) {
         toast.error("Le nom/description est requis pour toutes les lignes");
@@ -294,309 +298,222 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       return;
     }
 
+    // Upload invoices first
     const rowsWithUrls = await Promise.all(
       rowsToSave.map(async (row) => {
         if (row.facture_file) {
-          setUploading((prev) => new Set(prev).add(row.id));
-          try {
-            const fileExt = row.facture_file.name.split(".").pop();
-            const fileName = `${user.id}/${Date.now()}-${crypto.randomUUID()}.${fileExt}`;
+          const fileExt = row.facture_file.name.split(".").pop();
+          const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-            const { error: uploadError } = await supabase.storage.from("factures").upload(fileName, row.facture_file);
+          const { error: uploadError, data } = await supabase.storage
+            .from("project-invoices")
+            .upload(fileName, row.facture_file);
 
-            if (uploadError) throw uploadError;
-
-            const {
-              data: { publicUrl },
-            } = supabase.storage.from("factures").getPublicUrl(fileName);
-
-            return { ...row, facture_url: publicUrl };
-          } catch (err) {
-            console.error("Erreur upload:", err);
-            toast.error(`Erreur lors de l'upload de la facture pour "${row.nom_accessoire}"`);
+          if (uploadError) {
+            console.error("Upload error:", uploadError);
             return row;
-          } finally {
-            setUploading((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(row.id);
-              return newSet;
-            });
           }
+
+          // Use public URL (permanent, no expiration)
+          const { data: publicUrlData } = supabase.storage.from("project-invoices").getPublicUrl(fileName);
+
+          if (!publicUrlData) {
+            console.error("Error creating public URL");
+            return row;
+          }
+
+          return { ...row, facture_url: publicUrlData.publicUrl };
         }
         return row;
       }),
     );
 
-    const entrees = rowsWithUrls.filter((row) => row.type === "entree");
-    const sorties = rowsWithUrls.filter((row) => row.type === "sortie");
+    // Séparer les entrées et sorties
+    const entries = rowsWithUrls.filter((row) => row.type === "entree");
+    const expenses = rowsWithUrls.filter((row) => row.type === "sortie");
 
-    let savedCount = 0;
-
-    for (const row of entrees) {
-      const { error } = await supabase.from("projects_paiements").insert({
-        project_id: row.project_id,
+    // Insérer les entrées d'argent (paiements)
+    if (entries.length > 0) {
+      const paymentsToInsert = entries.map((row) => ({
+        project_id: row.project_id!,
         user_id: user.id,
-        date_paiement: row.date_achat ? new Date(row.date_achat).toISOString() : new Date().toISOString(),
         montant: parseFloat(row.prix_vente_ttc),
+        date_paiement: row.date_achat.split("T")[0], // Prendre seulement la date
         type_paiement: row.type_paiement || "acompte",
+        mode_paiement: "virement",
         notes: row.nom_accessoire,
-      });
+      }));
 
-      if (error) {
-        console.error("Erreur sauvegarde entrée:", error);
-        toast.error(`Erreur lors de l'enregistrement de "${row.nom_accessoire}"`);
-      } else {
-        savedCount++;
+      const { error: paymentError } = await supabase.from("project_payment_transactions").insert(paymentsToInsert);
+
+      if (paymentError) {
+        toast.error("Erreur lors de l'enregistrement des entrées d'argent");
+        console.error(paymentError);
+        return;
       }
     }
 
-    for (const row of sorties) {
-      const { error } = await supabase.from("project_expenses").insert({
-        project_id: null,
+    // Insérer les sorties d'argent (dépenses)
+    if (expenses.length > 0) {
+      const expensesToInsert = expenses.map((row) => ({
+        project_id: null, // Dépenses fournisseurs globales, pas liées à un projet
         user_id: user.id,
         nom_accessoire: row.nom_accessoire,
         fournisseur: row.fournisseur,
-        quantite: 1,
-        prix: parseFloat(row.prix_vente_ttc),
-        date_achat: row.date_achat ? new Date(row.date_achat).toISOString() : new Date().toISOString(),
+        date_achat: row.date_achat,
+        date_paiement: row.date_paiement || null,
         statut_paiement: row.statut_paiement,
         delai_paiement: row.delai_paiement,
+        prix: parseFloat(row.prix_vente_ttc),
+        prix_vente_ttc: parseFloat(row.prix_vente_ttc),
+        quantite: 1,
+        categorie: "Fournisseur",
+        statut_livraison: "commande",
         facture_url: row.facture_url || null,
-      });
+      }));
 
-      if (error) {
-        console.error("Erreur sauvegarde sortie:", error);
-        toast.error(`Erreur lors de l'enregistrement de "${row.nom_accessoire}"`);
-      } else {
-        savedCount++;
+      const { data: insertedExpenses, error: expenseError } = await supabase
+        .from("project_expenses")
+        .insert(expensesToInsert)
+        .select();
+
+      if (expenseError) {
+        toast.error("Erreur lors de l'enregistrement des sorties d'argent");
+        console.error(expenseError);
+        return;
+      }
+
+      // Créer automatiquement une tâche pour chaque sortie non payée
+      if (insertedExpenses) {
+        const todosToCreate = insertedExpenses
+          .filter((expense: any) => expense.statut_paiement !== "paye")
+          .map((expense: any) => ({
+            user_id: user.id,
+            project_id: projectId,
+            title: `Payer: ${expense.nom_accessoire}`,
+            description: `Fournisseur: ${expense.fournisseur}\nMontant: ${expense.prix.toFixed(2)} €`,
+            priority: "high",
+            completed: false,
+          }));
+
+        if (todosToCreate.length > 0) {
+          const { data: createdTodos } = await supabase.from("project_todos").insert(todosToCreate).select();
+
+          // Mettre à jour les dépenses avec l'ID de la tâche
+          if (createdTodos) {
+            for (let i = 0; i < createdTodos.length; i++) {
+              const expense = insertedExpenses.filter((e: any) => e.statut_paiement !== "paye")[i];
+              await supabase.from("project_expenses").update({ todo_id: createdTodos[i].id }).eq("id", expense.id);
+            }
+          }
+        }
       }
     }
 
-    if (savedCount > 0) {
-      toast.success(`${savedCount} ligne(s) enregistrée(s) avec succès`);
-      resetTable();
-      onSuccess();
+    toast.success(`${rowsToSave.length} ligne(s) bancaire(s) ajoutée(s) avec succès`);
+    // Réinitialiser avec une ligne vide
+    setRows([
+      {
+        id: crypto.randomUUID(),
+        type: "sortie",
+        nom_accessoire: "",
+        fournisseur: "",
+        project_id: "",
+        type_paiement: "acompte",
+        date_achat: new Date().toISOString().slice(0, 16),
+        date_paiement: "",
+        statut_paiement: "non_paye",
+        delai_paiement: "commande",
+        prix_vente_ttc: "",
+      },
+    ]);
+    onSuccess();
+  };
+
+  // Removed automatic row creation on mount to show empty table with headers
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      saveRows();
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    // Fonction désactivée pour les lignes bancaires - utiliser le formulaire
+    e.preventDefault();
+    toast.info("Utilisez le formulaire pour saisir les lignes bancaires");
+  };
+
+  // Callback quand une facture est scannée et envoyée vers Evoliz
   const handleInvoiceScanned = (invoiceData: {
-    supplier: string;
-    total: number;
-    date: string;
-    description: string;
+    supplier_name: string;
+    total_ttc: number | null;
+    total_ht: number | null;
+    invoice_number?: string | null;
+    invoice_date?: string | null;
   }) => {
+    // Ajouter une ligne dans le tableau avec les données scannées
     const newRow: BankLineRow = {
       id: crypto.randomUUID(),
       type: "sortie",
-      nom_accessoire: invoiceData.description || "Facture scannée",
-      fournisseur: invoiceData.supplier || "",
-      project_id: "",
-      type_paiement: "acompte",
-      date_achat: invoiceData.date || new Date().toISOString().slice(0, 16),
+      nom_accessoire: `Facture ${invoiceData.invoice_number || invoiceData.supplier_name}`,
+      fournisseur: invoiceData.supplier_name,
+      date_achat: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
       date_paiement: "",
       statut_paiement: "non_paye",
-      delai_paiement: "commande",
-      prix_vente_ttc: invoiceData.total?.toString() || "",
+      delai_paiement: "immediat",
+      prix_vente_ttc: (invoiceData.total_ttc || 0).toFixed(2),
     };
 
-    const lastRow = rows[rows.length - 1];
-    if (lastRow && !lastRow.nom_accessoire && !lastRow.fournisseur && !lastRow.prix_vente_ttc) {
-      setRows([
-        ...rows.slice(0, -1),
-        newRow,
-        {
-          id: crypto.randomUUID(),
-          type: "sortie",
-          nom_accessoire: "",
-          fournisseur: "",
-          project_id: "",
-          type_paiement: "acompte",
-          date_achat: new Date().toISOString().slice(0, 16),
-          date_paiement: "",
-          statut_paiement: "non_paye",
-          delai_paiement: "commande",
-          prix_vente_ttc: "",
-        },
-      ]);
-    } else {
-      setRows([
-        ...rows,
-        newRow,
-        {
-          id: crypto.randomUUID(),
-          type: "sortie",
-          nom_accessoire: "",
-          fournisseur: "",
-          project_id: "",
-          type_paiement: "acompte",
-          date_achat: new Date().toISOString().slice(0, 16),
-          date_paiement: "",
-          statut_paiement: "non_paye",
-          delai_paiement: "commande",
-          prix_vente_ttc: "",
-        },
-      ]);
-    }
-
-    setShowScannerDialog(false);
-    toast.success("Facture analysée et ajoutée au tableau");
+    setRows((prev) => [...prev, newRow]);
+    toast.success("Facture ajoutée à la liste");
   };
 
+  // Callback quand des lignes sont importées depuis un relevé bancaire
   const handleBankLinesImported = (
-    lines: Array<{
-      date: string;
-      description: string;
-      amount: number;
+    importedLines: Array<{
+      id: string;
       type: "entree" | "sortie";
+      date: string;
+      label: string;
+      amount: number;
+      bankLineId: string;
     }>,
   ) => {
-    const newRows: BankLineRow[] = lines.map((line) => ({
-      id: crypto.randomUUID(),
+    const newRows: BankLineRow[] = importedLines.map((line) => ({
+      id: line.id,
       type: line.type,
-      nom_accessoire: line.description,
-      fournisseur: line.type === "sortie" ? extractSupplierName(line.description) : "",
-      project_id: "",
-      type_paiement: "acompte",
+      nom_accessoire: line.label,
+      fournisseur: line.type === "sortie" ? extractSupplierFromLabel(line.label) : "",
       date_achat: line.date,
-      date_paiement: "",
-      statut_paiement: "non_paye",
-      delai_paiement: "commande",
-      prix_vente_ttc: Math.abs(line.amount).toString(),
+      date_paiement: line.date,
+      statut_paiement: "paye",
+      delai_paiement: "immediat",
+      prix_vente_ttc: line.amount.toFixed(2),
     }));
 
-    const lastRow = rows[rows.length - 1];
-    if (lastRow && !lastRow.nom_accessoire && !lastRow.fournisseur && !lastRow.prix_vente_ttc) {
-      setRows([
-        ...rows.slice(0, -1),
-        ...newRows,
-        {
-          id: crypto.randomUUID(),
-          type: "sortie",
-          nom_accessoire: "",
-          fournisseur: "",
-          project_id: "",
-          type_paiement: "acompte",
-          date_achat: new Date().toISOString().slice(0, 16),
-          date_paiement: "",
-          statut_paiement: "non_paye",
-          delai_paiement: "commande",
-          prix_vente_ttc: "",
-        },
-      ]);
-    } else {
-      setRows([
-        ...rows,
-        ...newRows,
-        {
-          id: crypto.randomUUID(),
-          type: "sortie",
-          nom_accessoire: "",
-          fournisseur: "",
-          project_id: "",
-          type_paiement: "acompte",
-          date_achat: new Date().toISOString().slice(0, 16),
-          date_paiement: "",
-          statut_paiement: "non_paye",
-          delai_paiement: "commande",
-          prix_vente_ttc: "",
-        },
-      ]);
-    }
-
+    setRows((prev) => [...prev, ...newRows]);
     setShowBankImportDialog(false);
-    toast.success(`${lines.length} ligne(s) importée(s) depuis le relevé bancaire`);
   };
 
-  const extractSupplierName = (description: string) => {
-    const cleaned = description
-      .replace(/^(PAIEMENT|VIREMENT|PRELEVEMENT|CB|CARTE|VIR|SEPA|CHQ)\s*/i, "")
-      .replace(/\d{2}\/\d{2}\/\d{2,4}/g, "")
-      .replace(/\s+/g, " ")
+  // Extraire un nom de fournisseur depuis le libellé bancaire
+  const extractSupplierFromLabel = (label: string): string => {
+    // Nettoyer les préfixes courants
+    let cleaned = label
+      .replace(/^(CB|VIR|VIREMENT|PRLV|PRELEVEMENT|CHQ|CHEQUE)\s*/i, "")
+      .replace(/^\d{2}\/\d{2}\s*/, "") // Enlever les dates DD/MM
+      .replace(/\s+\d{2}\/\d{2}.*$/, "") // Enlever les dates à la fin
+      .replace(/\s+CARTE\s+\d+.*$/i, "") // Enlever numéro de carte
       .trim();
 
+    // Prendre les premiers mots significatifs
     const words = cleaned.split(/\s+/).filter((w) => w.length > 2);
     return words.slice(0, 3).join(" ");
   };
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData.getData("text");
-    if (!clipboardData.includes("\t") && !clipboardData.includes("\n")) return;
-
-    e.preventDefault();
-
-    const lines = clipboardData.split("\n").filter((line) => line.trim());
-
-    const newRows: BankLineRow[] = lines.map((line) => {
-      const cols = line.split("\t");
-      return {
-        id: crypto.randomUUID(),
-        type:
-          cols[0]?.toLowerCase().includes("entrée") || cols[0]?.toLowerCase().includes("entree")
-            ? "entree"
-            : ("sortie" as "entree" | "sortie"),
-        nom_accessoire: cols[1]?.trim() || "",
-        fournisseur: cols[2]?.trim() || "",
-        project_id: "",
-        type_paiement: "acompte",
-        date_achat: cols[3]?.trim() || new Date().toISOString().slice(0, 16),
-        date_paiement: "",
-        statut_paiement: "non_paye",
-        delai_paiement: "commande",
-        prix_vente_ttc: cols[4]?.replace(",", ".").replace(/[^0-9.]/g, "") || "",
-      };
-    });
-
-    if (newRows.length > 0) {
-      const lastRow = rows[rows.length - 1];
-      if (lastRow && !lastRow.nom_accessoire && !lastRow.fournisseur && !lastRow.prix_vente_ttc) {
-        setRows([
-          ...rows.slice(0, -1),
-          ...newRows,
-          {
-            id: crypto.randomUUID(),
-            type: "sortie",
-            nom_accessoire: "",
-            fournisseur: "",
-            project_id: "",
-            type_paiement: "acompte",
-            date_achat: new Date().toISOString().slice(0, 16),
-            date_paiement: "",
-            statut_paiement: "non_paye",
-            delai_paiement: "commande",
-            prix_vente_ttc: "",
-          },
-        ]);
-      } else {
-        setRows([
-          ...rows,
-          ...newRows,
-          {
-            id: crypto.randomUUID(),
-            type: "sortie",
-            nom_accessoire: "",
-            fournisseur: "",
-            project_id: "",
-            type_paiement: "acompte",
-            date_achat: new Date().toISOString().slice(0, 16),
-            date_paiement: "",
-            statut_paiement: "non_paye",
-            delai_paiement: "commande",
-            prix_vente_ttc: "",
-          },
-        ]);
-      }
-      toast.success(`${newRows.length} ligne(s) collée(s) depuis le presse-papier`);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      addNewRow();
-    }
-  };
-
   // DEBUG: Log au rendu
-  console.log("[DEBUG] ExpenseTableForm rendu");
+  console.log("[DEBUG] 🔄 ExpenseTableForm rendu");
 
   return (
     <Card>
@@ -604,7 +521,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         <div className="flex items-center justify-between">
           <CardTitle>Ajouter des lignes bancaires</CardTitle>
           <div className="flex gap-2">
-            {/* Bouton Factures reçues avec Error Boundary + Suspense */}
+            {/* DEBUG: Bouton Factures reçues avec Error Boundary + Suspense */}
             <ComponentErrorBoundary
               componentName="IncomingInvoicesList"
               fallback={
@@ -612,7 +529,6 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                   variant="outline"
                   className="gap-2 border-red-300 text-red-600"
                   onClick={() => {
-                    console.error("[DEBUG] Bouton fallback cliqué - voir console");
                     toast.error("Module IncomingInvoicesList en erreur - voir console F12");
                   }}
                 >
@@ -633,14 +549,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                 />
               </Suspense>
             </ComponentErrorBoundary>
-
-            {/* Bouton Import PDF */}
+            {/* Boutons toujours visibles */}
             <Button variant="outline" onClick={() => setShowBankImportDialog(true)} className="gap-2">
               <FileUp className="h-4 w-4" />
               Importer relevé PDF
             </Button>
-
-            {/* Bouton Scanner */}
             <Button variant="outline" onClick={() => setShowScannerDialog(true)} className="gap-2">
               <ScanLine className="h-4 w-4" />
               Scanner facture
@@ -676,13 +589,13 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
             <TableHeader>
               <TableRow className="bg-muted/80 border-b-2 border-gray-400">
                 <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Type</TableHead>
-                <TableHead className="min-w-[200px] font-semibold border-r-2 border-gray-400">Description</TableHead>
-                <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">
+                <TableHead className="min-w-[180px] font-semibold border-r-2 border-gray-400">Description</TableHead>
+                <TableHead className="min-w-[140px] font-semibold border-r-2 border-gray-400">
                   Projet / Fournisseur
                 </TableHead>
                 <TableHead className="min-w-[120px] font-semibold border-r-2 border-gray-400">Type paiement</TableHead>
-                <TableHead className="min-w-[180px] font-semibold border-r-2 border-gray-400">Date</TableHead>
-                <TableHead className="min-w-[120px] font-semibold border-r-2 border-gray-400">Montant</TableHead>
+                <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">Date</TableHead>
+                <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Montant</TableHead>
                 <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Facture</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
               </TableRow>
