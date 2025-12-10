@@ -423,6 +423,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         <div className="flex items-center justify-between">
           <CardTitle>Ajouter des lignes bancaires</CardTitle>
           <div className="flex gap-2">
+            {/* Bouton Factures reçues - isolé pour éviter propagation d'erreur */}
             <IncomingInvoicesList
               asDialog
               trigger={
@@ -432,6 +433,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                 </Button>
               }
             />
+            {/* Boutons toujours visibles */}
             <Button variant="outline" onClick={() => setShowBankImportDialog(true)} className="gap-2">
               <FileUp className="h-4 w-4" />
               Importer relevé PDF
