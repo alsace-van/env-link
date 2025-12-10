@@ -488,9 +488,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     setFormData(newFormData);
   };
 
-  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes", value: string) => {
+  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes" | "tension_volts", value: string) => {
     const newFormData = { ...formData, [field]: value };
-    const voltage = 12; // 12V system
+
+    // Utiliser la tension sélectionnée ou 12V par défaut
+    const voltage = field === "tension_volts" ? parseFloat(value) || 12 : parseFloat(formData.tension_volts) || 12;
 
     if (field === "puissance_watts" && value) {
       // Calculate intensity from power: I = P / U
@@ -503,6 +505,12 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       const intensity = parseFloat(value);
       if (!isNaN(intensity) && intensity > 0) {
         newFormData.puissance_watts = (intensity * voltage).toFixed(1);
+      }
+    } else if (field === "tension_volts" && value) {
+      // Recalculer l'intensité si la puissance existe
+      const power = parseFloat(formData.puissance_watts);
+      if (!isNaN(power) && power > 0) {
+        newFormData.intensite_amperes = (power / voltage).toFixed(2);
       }
     }
 
@@ -1007,8 +1015,26 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               </Select>
             </div>
 
+            {/* ✅ Sélecteur de tension - placé en premier */}
             <div className="space-y-2">
-              <Label htmlFor="puissance">Puissance (W) - 12V</Label>
+              <Label htmlFor="tension">Tension</Label>
+              <Select
+                value={formData.tension_volts || "12"}
+                onValueChange={(value) => handleElectricalChange("tension_volts", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir la tension" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="12">12V (Batterie auxiliaire)</SelectItem>
+                  <SelectItem value="24">24V (Camion/Bus)</SelectItem>
+                  <SelectItem value="230">230V (Secteur)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="puissance">Puissance (W)</Label>
               <Input
                 id="puissance"
                 type="number"
@@ -1021,7 +1047,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="intensite">Intensité (A) - 12V</Label>
+              <Label htmlFor="intensite">Intensité (A) @ {formData.tension_volts || "12"}V</Label>
               <Input
                 id="intensite"
                 type="number"
@@ -1043,19 +1069,6 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 onChange={(e) => setFormData({ ...formData, capacite_ah: e.target.value })}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="Ex: 100"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tension">Tension (V)</Label>
-              <Input
-                id="tension"
-                type="number"
-                step="0.1"
-                value={formData.tension_volts}
-                onChange={(e) => setFormData({ ...formData, tension_volts: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 12"
               />
             </div>
 
