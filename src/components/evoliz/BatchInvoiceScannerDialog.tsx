@@ -63,6 +63,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { evolizApi, initializeEvolizApi } from "@/services/evolizService";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
+import { useAIConfig } from "@/hooks/useAIConfig";
 import type { EvolizSupplier, EvolizPurchaseClassification } from "@/types/evoliz.types";
 
 // ============================================
@@ -120,7 +121,8 @@ export function BatchInvoiceScannerDialog({
   onOpenChange,
   onComplete,
 }: BatchInvoiceScannerDialogProps) {
-  const { isConfigured, credentials } = useEvolizConfig();
+  const { isConfigured: isEvolizConfigured, credentials } = useEvolizConfig();
+  const { isConfigured: isAIConfigured, provider, apiKey } = useAIConfig();
 
   // État global
   const [globalStep, setGlobalStep] = useState<GlobalStep>("upload");
@@ -140,6 +142,9 @@ export function BatchInvoiceScannerDialog({
     errors: 0,
     newSuppliers: 0,
   });
+
+  // Vérifications de configuration
+  const isGeminiConfigured = isAIConfigured && provider === "gemini" && apiKey?.startsWith("AIza");
 
   // ============================================
   // RESET
@@ -170,7 +175,7 @@ export function BatchInvoiceScannerDialog({
   // ============================================
 
   const loadEvolizData = async () => {
-    if (!isConfigured || !credentials) return;
+    if (!isEvolizConfigured || !credentials) return;
 
     setLoadingEvoliz(true);
     try {
@@ -195,7 +200,7 @@ export function BatchInvoiceScannerDialog({
     if (open) {
       loadEvolizData();
     }
-  }, [open, isConfigured]);
+  }, [open, isEvolizConfigured]);
 
   // ============================================
   // DROPZONE
@@ -470,7 +475,7 @@ export function BatchInvoiceScannerDialog({
       return;
     }
 
-    if (!isConfigured || !credentials) {
+    if (!isEvolizConfigured || !credentials) {
       toast.error("Evoliz non configuré");
       return;
     }
@@ -622,6 +627,33 @@ export function BatchInvoiceScannerDialog({
           {/* STEP: Upload */}
           {globalStep === "upload" && (
             <div className="p-6">
+              {/* Alertes de configuration */}
+              {!isGeminiConfigured && (
+                <div className="mb-4 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-orange-800">Clé Gemini non configurée</p>
+                    <p className="text-sm text-orange-600 mt-1">
+                      L'OCR nécessite une clé API Gemini. Configurez-la dans{" "}
+                      <span className="font-medium">Paramètres → Configuration IA</span>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!isEvolizConfigured && (
+                <div className="mb-4 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-blue-800">Evoliz non configuré</p>
+                    <p className="text-sm text-blue-600 mt-1">
+                      Configurez vos identifiants Evoliz dans{" "}
+                      <span className="font-medium">Paramètres → Evoliz</span> pour envoyer les factures.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Dropzone */}
               <div
                 {...getRootProps()}
@@ -699,7 +731,11 @@ export function BatchInvoiceScannerDialog({
                   </ScrollArea>
 
                   <div className="flex justify-end mt-4">
-                    <Button onClick={startProcessing} className="gap-2">
+                    <Button 
+                      onClick={startProcessing} 
+                      className="gap-2"
+                      disabled={!isGeminiConfigured}
+                    >
                       <Sparkles className="h-4 w-4" />
                       Analyser {files.length} facture{files.length > 1 ? "s" : ""}
                     </Button>
