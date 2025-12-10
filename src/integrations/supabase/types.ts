@@ -1170,6 +1170,129 @@ export type Database = {
           },
         ]
       }
+      incoming_invoices: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          description: string | null
+          detected_zones: Json | null
+          due_date: string | null
+          evoliz_error: string | null
+          evoliz_expense_id: string | null
+          evoliz_sent_at: string | null
+          evoliz_status: string | null
+          file_name: string
+          file_path: string
+          file_url: string | null
+          id: string
+          invoice_date: string | null
+          invoice_number: string | null
+          mime_type: string | null
+          ocr_error: string | null
+          ocr_result: Json | null
+          source: string | null
+          status: string | null
+          supplier_name: string | null
+          supplier_siret: string | null
+          template_id: string | null
+          tokens_used: number | null
+          total_ht: number | null
+          total_paid: number | null
+          total_ttc: number | null
+          tva_amount: number | null
+          tva_rate: number | null
+          updated_at: string | null
+          upload_token_id: string | null
+          user_id: string
+          zones_validated: boolean | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          description?: string | null
+          detected_zones?: Json | null
+          due_date?: string | null
+          evoliz_error?: string | null
+          evoliz_expense_id?: string | null
+          evoliz_sent_at?: string | null
+          evoliz_status?: string | null
+          file_name: string
+          file_path: string
+          file_url?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          mime_type?: string | null
+          ocr_error?: string | null
+          ocr_result?: Json | null
+          source?: string | null
+          status?: string | null
+          supplier_name?: string | null
+          supplier_siret?: string | null
+          template_id?: string | null
+          tokens_used?: number | null
+          total_ht?: number | null
+          total_paid?: number | null
+          total_ttc?: number | null
+          tva_amount?: number | null
+          tva_rate?: number | null
+          updated_at?: string | null
+          upload_token_id?: string | null
+          user_id: string
+          zones_validated?: boolean | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          description?: string | null
+          detected_zones?: Json | null
+          due_date?: string | null
+          evoliz_error?: string | null
+          evoliz_expense_id?: string | null
+          evoliz_sent_at?: string | null
+          evoliz_status?: string | null
+          file_name?: string
+          file_path?: string
+          file_url?: string | null
+          id?: string
+          invoice_date?: string | null
+          invoice_number?: string | null
+          mime_type?: string | null
+          ocr_error?: string | null
+          ocr_result?: Json | null
+          source?: string | null
+          status?: string | null
+          supplier_name?: string | null
+          supplier_siret?: string | null
+          template_id?: string | null
+          tokens_used?: number | null
+          total_ht?: number | null
+          total_paid?: number | null
+          total_ttc?: number | null
+          tva_amount?: number | null
+          tva_rate?: number | null
+          updated_at?: string | null
+          upload_token_id?: string | null
+          user_id?: string
+          zones_validated?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incoming_invoices_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_ocr_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "incoming_invoices_upload_token_id_fkey"
+            columns: ["upload_token_id"]
+            isOneToOne: false
+            referencedRelation: "user_upload_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspection_photos: {
         Row: {
           annotated_photo_url: string | null
@@ -1883,6 +2006,7 @@ export type Database = {
           hauteur_mm: number | null
           id: string
           imported_from_evoliz: boolean | null
+          incoming_invoice_id: string | null
           intensite_amperes: number | null
           invoice_number: string | null
           largeur_mm: number | null
@@ -1936,6 +2060,7 @@ export type Database = {
           hauteur_mm?: number | null
           id?: string
           imported_from_evoliz?: boolean | null
+          incoming_invoice_id?: string | null
           intensite_amperes?: number | null
           invoice_number?: string | null
           largeur_mm?: number | null
@@ -1989,6 +2114,7 @@ export type Database = {
           hauteur_mm?: number | null
           id?: string
           imported_from_evoliz?: boolean | null
+          incoming_invoice_id?: string | null
           intensite_amperes?: number | null
           invoice_number?: string | null
           largeur_mm?: number | null
@@ -2029,6 +2155,20 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_expenses_incoming_invoice_id_fkey"
+            columns: ["incoming_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "incoming_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_expenses_incoming_invoice_id_fkey"
+            columns: ["incoming_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "view_incoming_invoices_with_payments"
             referencedColumns: ["id"]
           },
           {
@@ -3445,6 +3585,51 @@ export type Database = {
           },
         ]
       }
+      supplier_ocr_templates: {
+        Row: {
+          created_at: string | null
+          field_zones: Json
+          id: string
+          identification_patterns: Json | null
+          last_used_at: string | null
+          success_rate: number | null
+          supplier_name: string
+          supplier_name_normalized: string | null
+          supplier_siret: string | null
+          times_used: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          field_zones?: Json
+          id?: string
+          identification_patterns?: Json | null
+          last_used_at?: string | null
+          success_rate?: number | null
+          supplier_name: string
+          supplier_name_normalized?: string | null
+          supplier_siret?: string | null
+          times_used?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          field_zones?: Json
+          id?: string
+          identification_patterns?: Json | null
+          last_used_at?: string | null
+          success_rate?: number | null
+          supplier_name?: string
+          supplier_name_normalized?: string | null
+          supplier_siret?: string | null
+          times_used?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       suppliers: {
         Row: {
           address: string | null
@@ -3982,6 +4167,42 @@ export type Database = {
         }
         Relationships: []
       }
+      user_upload_tokens: {
+        Row: {
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          last_used_at: string | null
+          name: string | null
+          token: string
+          use_count: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          name?: string | null
+          token: string
+          use_count?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          name?: string | null
+          token?: string
+          use_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       vehicle_damages: {
         Row: {
           created_at: string | null
@@ -4489,6 +4710,52 @@ export type Database = {
           },
         ]
       }
+      view_incoming_invoices_with_payments: {
+        Row: {
+          amount_linked: number | null
+          confidence: number | null
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          evoliz_error: string | null
+          evoliz_expense_id: string | null
+          evoliz_sent_at: string | null
+          evoliz_status: string | null
+          file_name: string | null
+          file_path: string | null
+          file_url: string | null
+          id: string | null
+          invoice_date: string | null
+          invoice_number: string | null
+          linked_payments_count: number | null
+          mime_type: string | null
+          ocr_error: string | null
+          ocr_result: Json | null
+          payment_status: string | null
+          source: string | null
+          status: string | null
+          supplier_name: string | null
+          supplier_siret: string | null
+          tokens_used: number | null
+          total_ht: number | null
+          total_paid: number | null
+          total_ttc: number | null
+          tva_amount: number | null
+          tva_rate: number | null
+          updated_at: string | null
+          upload_token_id: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "incoming_invoices_upload_token_id_fkey"
+            columns: ["upload_token_id"]
+            isOneToOne: false
+            referencedRelation: "user_upload_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       count_rti_by_status: {
@@ -4509,7 +4776,16 @@ export type Database = {
           product_group_id: string
         }[]
       }
+      find_supplier_template: {
+        Args: {
+          p_supplier_name: string
+          p_supplier_siret?: string
+          p_user_id: string
+        }
+        Returns: string
+      }
       generate_order_number: { Args: never; Returns: string }
+      generate_upload_token: { Args: never; Returns: string }
       get_latest_rti: {
         Args: { p_project_id: string }
         Returns: {
@@ -4541,6 +4817,10 @@ export type Database = {
           source_name: string
           source_type: string
         }[]
+      }
+      update_template_stats: {
+        Args: { p_success?: boolean; p_template_id: string }
+        Returns: undefined
       }
     }
     Enums: {
