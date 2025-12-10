@@ -17,17 +17,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Package, Wrench, X, FileDown, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useHourlyRate } from "@/hooks/useHourlyRate";
+
+// ✅ Fonction pour décoder les entités HTML
+const decodeHtmlEntities = (text: string): string => {
+  if (!text) return text;
+  return text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/\s+/g, " ") // Remplace les espaces multiples par un seul
+    .trim();
+};
 
 type LineDestination = "scenario" | "travaux" | "ignore";
 
@@ -73,7 +82,7 @@ export function ImportFromEvolizDialog({
 }: ImportFromEvolizDialogProps) {
   const queryClient = useQueryClient();
   const { hourlyRateTTC, estimateHours } = useHourlyRate();
-  
+
   const [lines, setLines] = useState<LineWithDestination[]>([]);
 
   // Initialiser les lignes avec destination par défaut = scénario
@@ -83,18 +92,14 @@ export function ImportFromEvolizDialog({
         quote.items.map((item) => ({
           ...item,
           destination: "scenario" as LineDestination,
-        }))
+        })),
       );
     }
   }, [quote]);
 
   // Changer la destination d'une ligne
   const setLineDestination = (itemId: string, destination: LineDestination) => {
-    setLines((prev) =>
-      prev.map((line) =>
-        line.itemid === itemId ? { ...line, destination } : line
-      )
-    );
+    setLines((prev) => prev.map((line) => (line.itemid === itemId ? { ...line, destination } : line)));
   };
 
   // Tout mettre dans scénario
@@ -116,13 +121,15 @@ export function ImportFromEvolizDialog({
       }
       return acc;
     },
-    { scenario: 0, travaux: 0, scenarioCount: 0, travauxCount: 0, ignoreCount: 0 }
+    { scenario: 0, travaux: 0, scenarioCount: 0, travauxCount: 0, ignoreCount: 0 },
   );
 
   // Mutation d'import
   const importMutation = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
       const scenarioLines = lines.filter((l) => l.destination === "scenario");
@@ -134,7 +141,7 @@ export function ImportFromEvolizDialog({
           project_id: projectId,
           scenario_id: scenarioId || null,
           user_id: user.id,
-          nom_accessoire: line.designation,
+          nom_accessoire: decodeHtmlEntities(line.designation),
           quantite: line.quantity,
           prix: line.unit_price_vat_exclude, // Prix unitaire HT
           prix_vente_ttc: line.unit_price_vat_exclude * 1.2, // Conversion TTC
@@ -144,9 +151,7 @@ export function ImportFromEvolizDialog({
           evoliz_item_id: line.itemid,
         }));
 
-        const { error } = await (supabase as any)
-          .from("project_expenses")
-          .insert(expenses);
+        const { error } = await (supabase as any).from("project_expenses").insert(expenses);
 
         if (error) throw error;
       }
@@ -155,7 +160,7 @@ export function ImportFromEvolizDialog({
       if (travauxLines.length > 0) {
         // Récupérer ou créer une catégorie "Import Evoliz"
         let categoryId: string;
-        
+
         const { data: existingCat } = await (supabase as any)
           .from("work_categories")
           .select("id")
@@ -189,7 +194,7 @@ export function ImportFromEvolizDialog({
             project_id: projectId,
             user_id: user.id,
             category_id: categoryId,
-            title: line.designation,
+            title: decodeHtmlEntities(line.designation),
             completed: false,
             display_order: index + 1,
             forfait_ttc: forfaitTTC,
@@ -199,9 +204,7 @@ export function ImportFromEvolizDialog({
           };
         });
 
-        const { error } = await (supabase as any)
-          .from("project_todos")
-          .insert(todos);
+        const { error } = await (supabase as any).from("project_todos").insert(todos);
 
         if (error) throw error;
       }
@@ -226,10 +229,8 @@ export function ImportFromEvolizDialog({
       queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
       queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
       queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
-      
-      toast.success(
-        `Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`
-      );
+
+      toast.success(`Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`);
       onOpenChange(false);
     },
     onError: (error: any) => {
@@ -268,9 +269,7 @@ export function ImportFromEvolizDialog({
             <FileDown className="h-5 w-5" />
             Import devis {quote.document_number}
           </DialogTitle>
-          <DialogDescription>
-            Classez chaque ligne : Scénario (matériel) ou Travaux (main d'œuvre)
-          </DialogDescription>
+          <DialogDescription>Classez chaque ligne : Scénario (matériel) ou Travaux (main d'œuvre)</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -280,9 +279,7 @@ export function ImportFromEvolizDialog({
               <Package className="h-4 w-4 mr-1" />
               Tout en Scénario
             </Button>
-            <span className="text-sm text-muted-foreground">
-              puis ajustez les lignes main d'œuvre
-            </span>
+            <span className="text-sm text-muted-foreground">puis ajustez les lignes main d'œuvre</span>
           </div>
 
           {/* Liste des lignes */}
@@ -301,27 +298,19 @@ export function ImportFromEvolizDialog({
                 {lines.map((line) => (
                   <tr
                     key={line.itemid}
-                    className={`border-b hover:bg-muted/30 ${
-                      line.destination === "ignore" ? "opacity-50" : ""
-                    }`}
+                    className={`border-b hover:bg-muted/30 ${line.destination === "ignore" ? "opacity-50" : ""}`}
                   >
                     <td className="p-3">
                       <div className="flex items-center gap-2">
                         {getDestinationIcon(line.destination)}
-                        <span className={line.destination === "ignore" ? "line-through" : ""}>
-                          {line.designation}
-                        </span>
+                        <span className={line.destination === "ignore" ? "line-through" : ""}>{line.designation}</span>
                       </div>
                     </td>
                     <td className="p-3 text-right text-sm">
                       {line.quantity} {line.unit || ""}
                     </td>
-                    <td className="p-3 text-right text-sm">
-                      {line.unit_price_vat_exclude.toFixed(2)} €
-                    </td>
-                    <td className="p-3 text-right font-medium">
-                      {line.total_vat_exclude.toFixed(2)} €
-                    </td>
+                    <td className="p-3 text-right text-sm">{line.unit_price_vat_exclude.toFixed(2)} €</td>
+                    <td className="p-3 text-right font-medium">{line.total_vat_exclude.toFixed(2)} €</td>
                     <td className="p-3">
                       <Select
                         value={line.destination}
