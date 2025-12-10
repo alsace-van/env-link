@@ -437,6 +437,30 @@ const ExpenseFormDialog = ({
         toast.error("Erreur lors de la modification");
         console.error(error);
       } else {
+        // ✅ SYNCHRONISATION BIDIRECTIONNELLE : Mettre à jour le catalogue si lié
+        if (expense.accessory_id) {
+          const { error: syncError } = await supabase
+            .from("accessories_catalog")
+            .update({
+              nom: formData.nom_accessoire,
+              marque: formData.marque || null,
+              prix_reference: parseFloat(formData.prix_achat),
+              prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
+              fournisseur: formData.fournisseur || null,
+              type_electrique: formData.type_electrique || null,
+              poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
+              puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+              intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+            })
+            .eq("id", expense.accessory_id);
+
+          if (syncError) {
+            console.warn("Erreur sync catalogue:", syncError);
+          } else {
+            console.log("[Dépense] Catalogue synchronisé");
+          }
+        }
+
         // Mettre à jour les options sélectionnées
         // Supprimer les anciennes
         await supabase.from("expense_selected_options").delete().eq("expense_id", expense.id);
