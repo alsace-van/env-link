@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,12 +78,32 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   // State pour le dialog d'import en masse
   const [batchImportOpen, setBatchImportOpen] = useState(false);
+  const [pendingInvoicesCount, setPendingInvoicesCount] = useState(0);
+
+  // Charger le compteur de factures en attente
+  const loadPendingInvoicesCount = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { count, error } = await supabase
+      .from("incoming_invoices")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("evoliz_status", "pending");
+
+    if (!error && count !== null) {
+      setPendingInvoicesCount(count);
+    }
+  };
 
   useEffect(() => {
     loadBankBalance();
     loadBankLines();
     loadPayments();
     loadTotalSales();
+    loadPendingInvoicesCount();
   }, [projectId, paymentRefresh]);
 
   const loadBankBalance = async () => {
@@ -612,9 +633,17 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setBatchImportOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => setBatchImportOpen(true)} className="relative">
                 <FileUp className="h-4 w-4 mr-2" />
                 Import en masse
+                {pendingInvoicesCount > 0 && (
+                  <Badge
+                    variant="destructive"
+                    className="absolute -top-2 -right-2 h-5 min-w-5 flex items-center justify-center p-0 text-xs"
+                  >
+                    {pendingInvoicesCount > 99 ? "99+" : pendingInvoicesCount}
+                  </Badge>
+                )}
               </Button>
               <IncomingInvoicesList
                 asDialog
@@ -837,6 +866,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         onOpenChange={setBatchImportOpen}
         onComplete={() => {
           loadBankLines();
+          loadPendingInvoicesCount();
           toast.success("Factures importées vers Evoliz");
         }}
       />
