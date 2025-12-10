@@ -81,10 +81,10 @@ interface IncomingInvoice {
   evoliz_error: string | null;
   tokens_used: number | null;
   source: string | null;
-  // Nouveaux champs pour l'annotation
-  detected_zones: { [key: string]: any } | null;
-  zones_validated: boolean;
-  template_id: string | null;
+  // Nouveaux champs pour l'annotation (optionnels - peuvent ne pas exister en BDD)
+  detected_zones?: { [key: string]: any } | null;
+  zones_validated?: boolean | null;
+  template_id?: string | null;
   // Champs calculés pour la liaison
   linked_payments_count?: number;
   amount_linked?: number;
@@ -667,7 +667,7 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
                         setAnnotatorOpen(true);
                       }}
                       title="Annoter les zones OCR"
-                      className={invoice.zones_validated ? "text-green-600" : ""}
+                      className={invoice.zones_validated === true ? "text-green-600" : ""}
                     >
                       <PenTool className="h-4 w-4" />
                     </Button>
