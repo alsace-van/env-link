@@ -1,5 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
+// ✅ MODIFIÉ: Ajout bouton synchronisation catalogue + affichage champs techniques
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Edit, Trash2, Package, Truck, ArrowRight } from "lucide-react";
+import { Plus, Edit, Trash2, Package, Truck, ArrowRight, RefreshCw, Zap, Battery, Sun } from "lucide-react";
 import { toast } from "sonner";
 import ExpenseFormDialog from "@/components/ExpenseFormDialog";
 
@@ -46,6 +47,7 @@ interface Expense {
 const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange }: CompactExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
@@ -105,6 +107,98 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     }
 
     setIsLoading(false);
+  };
+
+  // ✅ NOUVELLE FONCTION: Synchroniser les données techniques depuis le catalogue
+  const syncFromCatalog = async () => {
+    setIsSyncing(true);
+
+    try {
+      // Récupérer les dépenses avec accessory_id
+      const expensesWithAccessoryId = expenses.filter((e) => e.accessory_id);
+
+      if (expensesWithAccessoryId.length === 0) {
+        toast.info("Aucun article n'est lié au catalogue. Utilisez la sélection catalogue lors de l'ajout.");
+        setIsSyncing(false);
+        return;
+      }
+
+      // Récupérer les données du catalogue
+      const accessoryIds = expensesWithAccessoryId.map((e) => e.accessory_id);
+      const { data: catalogData, error: catalogError } = await (supabase as any)
+        .from("accessories_catalog")
+        .select(
+          "id, type_electrique, puissance_watts, intensite_amperes, poids_kg, longueur_mm, largeur_mm, hauteur_mm",
+        )
+        .in("id", accessoryIds);
+
+      if (catalogError) {
+        console.error("Erreur chargement catalogue:", catalogError);
+        toast.error("Erreur lors de la récupération du catalogue");
+        setIsSyncing(false);
+        return;
+      }
+
+      // Créer un map pour accès rapide
+      const catalogMap = new Map(catalogData.map((item: any) => [item.id, item]));
+
+      // Compter les mises à jour
+      let updatedCount = 0;
+      let skippedCount = 0;
+
+      // Mettre à jour chaque dépense
+      for (const expense of expensesWithAccessoryId) {
+        const catalogItem = catalogMap.get(expense.accessory_id);
+
+        if (!catalogItem) {
+          skippedCount++;
+          continue;
+        }
+
+        // Vérifier si au moins un champ technique est rempli dans le catalogue
+        const hasData = catalogItem.type_electrique || catalogItem.puissance_watts || catalogItem.intensite_amperes;
+
+        if (!hasData) {
+          skippedCount++;
+          continue;
+        }
+
+        // Mettre à jour la dépense avec les données du catalogue
+        const { error: updateError } = await supabase
+          .from("project_expenses")
+          .update({
+            type_electrique: catalogItem.type_electrique,
+            puissance_watts: catalogItem.puissance_watts,
+            intensite_amperes: catalogItem.intensite_amperes,
+            poids_kg: catalogItem.poids_kg,
+            longueur_mm: catalogItem.longueur_mm,
+            largeur_mm: catalogItem.largeur_mm,
+            hauteur_mm: catalogItem.hauteur_mm,
+          })
+          .eq("id", expense.id);
+
+        if (!updateError) {
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount > 0) {
+        toast.success(`${updatedCount} article(s) synchronisé(s) depuis le catalogue`);
+        loadExpenses();
+        onExpenseChange();
+      } else if (skippedCount > 0) {
+        toast.warning(
+          `Aucune donnée technique trouvée dans le catalogue. Remplissez d'abord les champs techniques dans le catalogue.`,
+        );
+      } else {
+        toast.info("Tous les articles sont déjà à jour");
+      }
+    } catch (err) {
+      console.error("Erreur sync catalogue:", err);
+      toast.error("Erreur lors de la synchronisation");
+    }
+
+    setIsSyncing(false);
   };
 
   const deleteExpense = async (id: string) => {
@@ -202,6 +296,44 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     }
   };
 
+  // ✅ NOUVELLE FONCTION: Obtenir le badge du type électrique
+  const getElectricTypeBadge = (expense: Expense) => {
+    if (!expense.type_electrique) return null;
+
+    const typeConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+      producteur: {
+        color: "bg-yellow-100 text-yellow-700 border-yellow-300",
+        icon: <Sun className="h-3 w-3" />,
+        label: "Prod",
+      },
+      stockage: {
+        color: "bg-blue-100 text-blue-700 border-blue-300",
+        icon: <Battery className="h-3 w-3" />,
+        label: "Stock",
+      },
+      consommateur: {
+        color: "bg-red-100 text-red-700 border-red-300",
+        icon: <Zap className="h-3 w-3" />,
+        label: "Conso",
+      },
+      convertisseur: {
+        color: "bg-purple-100 text-purple-700 border-purple-300",
+        icon: <RefreshCw className="h-3 w-3" />,
+        label: "Conv",
+      },
+    };
+
+    const config = typeConfig[expense.type_electrique];
+    if (!config) return null;
+
+    return (
+      <Badge variant="outline" className={`text-[10px] px-1 py-0 gap-0.5 ${config.color}`}>
+        {config.icon}
+        {config.label}
+      </Badge>
+    );
+  };
+
   // Grouper par catégorie
   const groupedByCategory = categories.reduce(
     (acc, cat) => {
@@ -221,18 +353,58 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
       })
     : expenses;
 
+  // Compter les articles avec/sans données techniques
+  const articlesWithTechData = expenses.filter((e) => e.type_electrique || e.puissance_watts).length;
+  const articlesWithAccessoryId = expenses.filter((e) => e.accessory_id).length;
+
   if (isLoading) {
     return <div className="text-center py-4 text-sm text-muted-foreground">Chargement...</div>;
   }
 
   return (
     <div className="space-y-3">
-      {/* Bouton ajouter */}
+      {/* Boutons d'action */}
       {!isLocked && (
-        <Button size="sm" className="w-full" onClick={() => setIsDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Ajouter un article
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" className="flex-1" onClick={() => setIsDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter un article
+          </Button>
+
+          {/* ✅ NOUVEAU: Bouton synchronisation catalogue */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={syncFromCatalog}
+                  disabled={isSyncing || articlesWithAccessoryId === 0}
+                  className="gap-1"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                  Sync
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Synchroniser les données techniques depuis le catalogue</p>
+                <p className="text-xs text-muted-foreground">
+                  {articlesWithAccessoryId} article(s) lié(s) au catalogue
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      )}
+
+      {/* ✅ NOUVEAU: Indicateur données techniques */}
+      {expenses.length > 0 && (
+        <div className="text-xs text-muted-foreground flex items-center gap-2">
+          <Zap className="h-3 w-3" />
+          <span>
+            {articlesWithTechData}/{expenses.length} articles avec données techniques
+          </span>
+        </div>
       )}
 
       {/* Filtres par catégorie */}
@@ -274,12 +446,16 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
                     <h4 className="text-sm font-medium truncate">{expense.nom_accessoire}</h4>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                     {expense.marque && (
                       <Badge variant="secondary" className="text-xs py-0 px-1.5">
                         {expense.marque}
                       </Badge>
                     )}
+
+                    {/* ✅ NOUVEAU: Badge type électrique */}
+                    {getElectricTypeBadge(expense)}
+
                     <span>{expense.prix.toFixed(2)} € × </span>
                     <Input
                       type="number"
@@ -290,6 +466,24 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
                       disabled={isLocked}
                     />
                   </div>
+
+                  {/* ✅ NOUVEAU: Affichage puissance/intensité si disponible */}
+                  {(expense.puissance_watts || expense.intensite_amperes) && (
+                    <div className="flex items-center gap-2 mt-1 text-xs">
+                      {expense.puissance_watts && (
+                        <span className="text-yellow-600 dark:text-yellow-400 flex items-center gap-0.5">
+                          <Zap className="h-3 w-3" />
+                          {expense.puissance_watts}W
+                        </span>
+                      )}
+                      {expense.intensite_amperes && (
+                        <span className="text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
+                          <Battery className="h-3 w-3" />
+                          {expense.intensite_amperes}Ah
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {expense.prix_vente_ttc && (
                     <div className="text-xs mt-1">
