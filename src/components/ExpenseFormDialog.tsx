@@ -218,6 +218,17 @@ const ExpenseFormDialog = ({
       .order("created_at", { ascending: false });
 
     if (data) {
+      // DEBUG
+      console.log("[Catalogue] Accessoires chargés:", data.length);
+      const electricItems = data.filter((a) => a.type_electrique);
+      console.log(
+        "[Catalogue] Accessoires avec type_electrique:",
+        electricItems.map((a) => ({
+          nom: a.nom,
+          type_electrique: a.type_electrique,
+          puissance_watts: a.puissance_watts,
+        })),
+      );
       setCatalogAccessories(data);
     }
   };
@@ -256,6 +267,14 @@ const ExpenseFormDialog = ({
   };
 
   const selectAccessoryFromCatalog = async (accessory: any) => {
+    // DEBUG
+    console.log("[Catalogue] Accessoire sélectionné:", {
+      nom: accessory.nom,
+      type_electrique: accessory.type_electrique,
+      puissance_watts: accessory.puissance_watts,
+      intensite_amperes: accessory.intensite_amperes,
+    });
+
     setFormData({
       ...formData,
       nom_accessoire: accessory.nom,
