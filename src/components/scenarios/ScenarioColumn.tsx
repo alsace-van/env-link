@@ -113,17 +113,31 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
   };
 
   const calculateBilanEnergie = (expenses: any[]) => {
+    // DEBUG: Afficher les données pour comprendre le problème
+    console.log(
+      "[BilanEnergie] Toutes les dépenses:",
+      expenses.map((e) => ({
+        nom: e.nom_accessoire,
+        type_electrique: e.type_electrique,
+        puissance_watts: e.puissance_watts,
+        intensite_amperes: e.intensite_amperes,
+      })),
+    );
+
     // Calculer la production solaire - utiliser type_electrique et puissance_watts
-    const production = expenses
-      .filter((e) => e.type_electrique === "producteur")
-      .reduce((sum, e) => {
-        // Utiliser le champ puissance_watts de la DB
-        const puissance = e.puissance_watts || 0;
-        return sum + puissance * (e.quantite || 1);
-      }, 0);
+    const producteurs = expenses.filter((e) => e.type_electrique === "producteur");
+    console.log("[BilanEnergie] Producteurs trouvés:", producteurs.length);
+
+    const production = producteurs.reduce((sum, e) => {
+      // Utiliser le champ puissance_watts de la DB
+      const puissance = e.puissance_watts || 0;
+      console.log("[BilanEnergie] Producteur:", e.nom_accessoire, "puissance:", puissance);
+      return sum + puissance * (e.quantite || 1);
+    }, 0);
 
     // Calculer le stockage batterie - utiliser type_electrique
     const stockageItems = expenses.filter((e) => e.type_electrique === "stockage");
+    console.log("[BilanEnergie] Stockage trouvés:", stockageItems.length);
 
     // Calculer Ah depuis intensite_amperes ou extraire du nom si pas disponible
     const stockage_ah = stockageItems.reduce((sum, e) => {
@@ -142,6 +156,8 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
     const stockage_wh = stockage_ah * 12;
     const autonomie_jours =
       production > 0 && stockage_wh > 0 ? Math.round((stockage_wh / (production * 5)) * 10) / 10 : 0;
+
+    console.log("[BilanEnergie] Résultat:", { production, stockage_ah, stockage_wh, autonomie_jours });
 
     if (production > 0 || stockage_ah > 0) {
       setBilanEnergie({
