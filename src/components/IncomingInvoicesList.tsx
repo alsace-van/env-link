@@ -24,7 +24,11 @@ import {
   Percent,
   FileSearch,
   Send,
+  PenTool,
+  Settings,
 } from "lucide-react";
+import { OCRAnnotator } from "@/components/OCRAnnotator";
+import { SupplierTemplatesManager } from "@/components/SupplierTemplatesManager";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
@@ -77,6 +81,10 @@ interface IncomingInvoice {
   evoliz_error: string | null;
   tokens_used: number | null;
   source: string | null;
+  // Nouveaux champs pour l'annotation
+  detected_zones: { [key: string]: any } | null;
+  zones_validated: boolean;
+  template_id: string | null;
   // Champs calculés pour la liaison
   linked_payments_count?: number;
   amount_linked?: number;
@@ -96,6 +104,8 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletingMultiple, setDeletingMultiple] = useState(false);
+  const [annotatorOpen, setAnnotatorOpen] = useState(false);
+  const [invoiceToAnnotate, setInvoiceToAnnotate] = useState<IncomingInvoice | null>(null);
 
   useEffect(() => {
     if (!asDialog || dialogOpen) {
@@ -653,6 +663,18 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
                       variant="ghost"
                       size="icon"
                       onClick={() => {
+                        setInvoiceToAnnotate(invoice);
+                        setAnnotatorOpen(true);
+                      }}
+                      title="Annoter les zones OCR"
+                      className={invoice.zones_validated ? "text-green-600" : ""}
+                    >
+                      <PenTool className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
                         setSelectedInvoice(invoice);
                         setDetailsOpen(true);
                       }}
@@ -690,6 +712,19 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
       )}
 
       {renderDetailsSheet()}
+
+      {/* Annotateur OCR */}
+      {invoiceToAnnotate && (
+        <OCRAnnotator
+          invoice={invoiceToAnnotate as any}
+          open={annotatorOpen}
+          onOpenChange={setAnnotatorOpen}
+          onSave={() => {
+            loadInvoices();
+            setInvoiceToAnnotate(null);
+          }}
+        />
+      )}
     </>
   );
 
@@ -711,11 +746,18 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
               <Receipt className="h-5 w-5" />
               Factures reçues ({invoices.length})
             </DialogTitle>
-            <DialogDescription>
-              Factures envoyées via le raccourci macOS • Cliquez sur 👁️ pour voir les détails OCR
-            </DialogDescription>
+            <DialogDescription>Factures envoyées via le raccourci macOS • 🖊️ Annoter • 👁️ Détails</DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            <SupplierTemplatesManager
+              asDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Templates
+                </Button>
+              }
+            />
             <Button variant="outline" size="sm" onClick={loadInvoices}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Actualiser
@@ -739,10 +781,21 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
             </CardTitle>
             <CardDescription>Factures envoyées via le raccourci macOS</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={loadInvoices}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Actualiser
-          </Button>
+          <div className="flex gap-2">
+            <SupplierTemplatesManager
+              asDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Templates
+                </Button>
+              }
+            />
+            <Button variant="outline" size="sm" onClick={loadInvoices}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Actualiser
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>{content}</CardContent>
