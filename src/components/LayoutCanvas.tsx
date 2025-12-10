@@ -907,12 +907,32 @@ export const LayoutCanvas = ({
     const furnitureWeight = Array.from(furnitureItems.values()).reduce((sum, item) => sum + (item.poids_kg || 0), 0);
 
     // Récupérer le poids des accessoires depuis les dépenses du projet
+    // ✅ CORRIGÉ: Filtre les articles archivés et ne prend que les scénarios existants
     const fetchAccessoriesWeight = async () => {
       try {
+        // D'abord récupérer les IDs des scénarios actifs du projet
+        const { data: scenarios, error: scenarioError } = await supabase
+          .from("project_scenarios")
+          .select("id")
+          .eq("project_id", projectId);
+
+        if (scenarioError) throw scenarioError;
+
+        const activeScenarioIds = scenarios?.map((s) => s.id) || [];
+
+        if (activeScenarioIds.length === 0) {
+          setAccessoriesWeight(0);
+          setTotalWeight(furnitureWeight);
+          return;
+        }
+
+        // Récupérer les dépenses des scénarios actifs, non archivées
         const { data, error } = await supabase
           .from("project_expenses")
-          .select("poids_kg, quantite")
-          .eq("project_id", projectId);
+          .select("poids_kg, quantite, scenario_id")
+          .eq("project_id", projectId)
+          .in("scenario_id", activeScenarioIds)
+          .or("est_archive.is.null,est_archive.eq.false");
 
         if (error) throw error;
 
