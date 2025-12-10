@@ -456,7 +456,7 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
                     {/* ✅ NOUVEAU: Badge type électrique */}
                     {getElectricTypeBadge(expense)}
 
-                    <span>{expense.prix.toFixed(2)} € × </span>
+                    <span>{(expense.prix || 0).toFixed(2)} € × </span>
                     <Input
                       type="number"
                       min="1"
@@ -489,7 +489,7 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
                     <div className="text-xs mt-1">
                       <span className="text-muted-foreground">Vente: </span>
                       <span className="font-semibold text-green-600">
-                        {(expense.prix_vente_ttc * expense.quantite).toFixed(2)} €
+                        {((expense.prix_vente_ttc || 0) * (expense.quantite || 1)).toFixed(2)} €
                       </span>
                     </div>
                   )}
