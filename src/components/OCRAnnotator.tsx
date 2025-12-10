@@ -429,7 +429,7 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
             </div>
 
             {/* Zone PDF */}
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 overflow-hidden p-4">
               {loading ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="h-8 w-8 animate-spin" />
@@ -437,27 +437,28 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
               ) : pdfUrl ? (
                 <div
                   ref={containerRef}
-                  className="relative mx-auto bg-white shadow-lg cursor-crosshair"
+                  className={`relative mx-auto bg-white shadow-lg h-full ${selectedField ? "cursor-crosshair" : "cursor-default"}`}
                   style={{
                     width: `${zoom * 100}%`,
                     maxWidth: `${zoom * 800}px`,
                   }}
-                  onMouseDown={handleMouseDown}
-                  onMouseMove={handleMouseMove}
-                  onMouseUp={handleMouseUp}
-                  onMouseLeave={handleMouseUp}
+                  onMouseDown={selectedField ? handleMouseDown : undefined}
+                  onMouseMove={selectedField ? handleMouseMove : undefined}
+                  onMouseUp={selectedField ? handleMouseUp : undefined}
+                  onMouseLeave={selectedField ? handleMouseUp : undefined}
                 >
-                  {/* Pour un vrai PDF, il faudrait utiliser react-pdf ou pdf.js */}
-                  {/* Ici on utilise un embed ou iframe comme fallback */}
+                  {/* PDF viewer - interactif seulement quand on n'est pas en mode dessin */}
                   <iframe
-                    src={`${pdfUrl}#toolbar=0`}
-                    className="w-full pointer-events-none"
-                    style={{ height: "1000px" }}
+                    src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                    className={`w-full h-full border-0 ${selectedField ? "pointer-events-none" : ""}`}
+                    style={{ minHeight: "calc(90vh - 180px)" }}
                     title="PDF Preview"
                   />
 
-                  {/* Overlay pour les zones */}
-                  <div className="absolute inset-0">{renderZones()}</div>
+                  {/* Overlay pour les zones - seulement en mode dessin ou si zones visibles */}
+                  {(selectedField || showZones) && (
+                    <div className="absolute inset-0 pointer-events-none">{renderZones()}</div>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
