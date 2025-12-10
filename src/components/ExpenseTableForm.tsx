@@ -51,12 +51,14 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   }, [projectId]);
 
   const loadProjects = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data } = await supabase.from("projects").select("id, nom").eq("user_id", user.id).order("nom");
+    const { data } = await supabase
+      .from("projects")
+      .select("id, nom")
+      .eq("user_id", user.id)
+      .order("nom");
 
     if (data) {
       setProjects(data);
@@ -64,17 +66,15 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   const loadFournisseurs = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data } = (await supabase
+    const { data } = await supabase
       .from("project_expenses")
       .select("fournisseur")
       .is("project_id", null)
       .eq("user_id", user.id)
-      .not("fournisseur", "is", null)) as any;
+      .not("fournisseur", "is", null) as any;
 
     if (data) {
       const uniqueFournisseurs = Array.from(new Set(data.map((d) => d.fournisseur).filter(Boolean)));
@@ -166,8 +166,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   const saveRows = async () => {
     // Filtrer les lignes vides
-    const rowsToSave = rows.filter(
-      (row) => row.nom_accessoire.trim() || row.fournisseur.trim() || row.project_id || row.prix_vente_ttc,
+    const rowsToSave = rows.filter((row) => 
+      row.nom_accessoire.trim() || 
+      row.fournisseur.trim() || 
+      row.project_id ||
+      row.prix_vente_ttc
     );
 
     if (rowsToSave.length === 0) {
@@ -234,8 +237,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     );
 
     // Séparer les entrées et sorties
-    const entries = rowsWithUrls.filter((row) => row.type === "entree");
-    const expenses = rowsWithUrls.filter((row) => row.type === "sortie");
+    const entries = rowsWithUrls.filter(row => row.type === "entree");
+    const expenses = rowsWithUrls.filter(row => row.type === "sortie");
 
     // Insérer les entrées d'argent (paiements)
     if (entries.length > 0) {
@@ -243,7 +246,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         project_id: row.project_id!,
         user_id: user.id,
         montant: parseFloat(row.prix_vente_ttc),
-        date_paiement: row.date_achat.split("T")[0], // Prendre seulement la date
+        date_paiement: row.date_achat.split('T')[0], // Prendre seulement la date
         type_paiement: row.type_paiement || "acompte",
         mode_paiement: "virement",
         notes: row.nom_accessoire,
@@ -302,13 +305,19 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
           }));
 
         if (todosToCreate.length > 0) {
-          const { data: createdTodos } = await supabase.from("project_todos").insert(todosToCreate).select();
+          const { data: createdTodos } = await supabase
+            .from("project_todos")
+            .insert(todosToCreate)
+            .select();
 
           // Mettre à jour les dépenses avec l'ID de la tâche
           if (createdTodos) {
             for (let i = 0; i < createdTodos.length; i++) {
               const expense = insertedExpenses.filter((e: any) => e.statut_paiement !== "paye")[i];
-              await supabase.from("project_expenses").update({ todo_id: createdTodos[i].id }).eq("id", expense.id);
+              await supabase
+                .from("project_expenses")
+                .update({ todo_id: createdTodos[i].id })
+                .eq("id", expense.id);
             }
           }
         }
@@ -370,23 +379,21 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       delai_paiement: "immediat",
       prix_vente_ttc: (invoiceData.total_ttc || 0).toFixed(2),
     };
-
-    setRows((prev) => [...prev, newRow]);
+    
+    setRows(prev => [...prev, newRow]);
     toast.success("Facture ajoutée à la liste");
   };
 
   // Callback quand des lignes sont importées depuis un relevé bancaire
-  const handleBankLinesImported = (
-    importedLines: Array<{
-      id: string;
-      type: "entree" | "sortie";
-      date: string;
-      label: string;
-      amount: number;
-      bankLineId: string;
-    }>,
-  ) => {
-    const newRows: BankLineRow[] = importedLines.map((line) => ({
+  const handleBankLinesImported = (importedLines: Array<{
+    id: string;
+    type: "entree" | "sortie";
+    date: string;
+    label: string;
+    amount: number;
+    bankLineId: string;
+  }>) => {
+    const newRows: BankLineRow[] = importedLines.map(line => ({
       id: line.id,
       type: line.type,
       nom_accessoire: line.label,
@@ -397,8 +404,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       delai_paiement: "immediat",
       prix_vente_ttc: line.amount.toFixed(2),
     }));
-
-    setRows((prev) => [...prev, ...newRows]);
+    
+    setRows(prev => [...prev, ...newRows]);
     setShowBankImportDialog(false);
   };
 
@@ -411,9 +418,9 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       .replace(/\s+\d{2}\/\d{2}.*$/, "") // Enlever les dates à la fin
       .replace(/\s+CARTE\s+\d+.*$/i, "") // Enlever numéro de carte
       .trim();
-
+    
     // Prendre les premiers mots significatifs
-    const words = cleaned.split(/\s+/).filter((w) => w.length > 2);
+    const words = cleaned.split(/\s+/).filter(w => w.length > 2);
     return words.slice(0, 3).join(" ");
   };
 
@@ -432,11 +439,19 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                 </Button>
               }
             />
-            <Button variant="outline" onClick={() => setShowBankImportDialog(true)} className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowBankImportDialog(true)}
+              className="gap-2"
+            >
               <FileUp className="h-4 w-4" />
               Importer relevé PDF
             </Button>
-            <Button variant="outline" onClick={() => setShowScannerDialog(true)} className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowScannerDialog(true)}
+              className="gap-2"
+            >
               <ScanLine className="h-4 w-4" />
               Scanner facture
             </Button>
@@ -445,18 +460,10 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         <div className="bg-muted p-3 rounded-lg mt-3 space-y-2">
           <p className="text-sm font-medium">💰 Entrées et sorties d'argent</p>
           <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-            <li>
-              <strong>Entrée :</strong> Paiement client (acompte ou solde) - sélectionnez le projet concerné
-            </li>
-            <li>
-              <strong>Sortie :</strong> Dépense fournisseur - renseignez le fournisseur et la facture
-            </li>
-            <li>
-              <strong>Importer :</strong> Importez un relevé bancaire PDF (extraction automatique)
-            </li>
-            <li>
-              <strong>Scanner :</strong> Analysez une facture PDF/photo et envoyez-la vers Evoliz
-            </li>
+            <li><strong>Entrée :</strong> Paiement client (acompte ou solde) - sélectionnez le projet concerné</li>
+            <li><strong>Sortie :</strong> Dépense fournisseur - renseignez le fournisseur et la facture</li>
+            <li><strong>Importer :</strong> Importez un relevé bancaire PDF (extraction automatique)</li>
+            <li><strong>Scanner :</strong> Analysez une facture PDF/photo et envoyez-la vers Evoliz</li>
           </ul>
         </div>
       </CardHeader>
@@ -472,9 +479,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
               <TableRow className="bg-muted/80 border-b-2 border-gray-400">
                 <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Type</TableHead>
                 <TableHead className="min-w-[180px] font-semibold border-r-2 border-gray-400">Description</TableHead>
-                <TableHead className="min-w-[140px] font-semibold border-r-2 border-gray-400">
-                  Projet / Fournisseur
-                </TableHead>
+                <TableHead className="min-w-[140px] font-semibold border-r-2 border-gray-400">Projet / Fournisseur</TableHead>
                 <TableHead className="min-w-[120px] font-semibold border-r-2 border-gray-400">Type paiement</TableHead>
                 <TableHead className="min-w-[150px] font-semibold border-r-2 border-gray-400">Date</TableHead>
                 <TableHead className="min-w-[100px] font-semibold border-r-2 border-gray-400">Montant</TableHead>
@@ -660,14 +665,10 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
           <Button
             onClick={saveRows}
             size="sm"
-            disabled={rows.every(
-              (row) => !row.nom_accessoire && !row.fournisseur && !row.project_id && !row.prix_vente_ttc,
-            )}
+            disabled={rows.every((row) => !row.nom_accessoire && !row.fournisseur && !row.project_id && !row.prix_vente_ttc)}
           >
             <Save className="h-4 w-4 mr-2" />
-            Enregistrer tout (
-            {rows.filter((row) => row.nom_accessoire || row.fournisseur || row.project_id || row.prix_vente_ttc).length}
-            )
+            Enregistrer tout ({rows.filter((row) => row.nom_accessoire || row.fournisseur || row.project_id || row.prix_vente_ttc).length})
           </Button>
         </div>
       </CardContent>
