@@ -4,25 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import {
-  Building2,
-  Trash2,
-  Loader2,
-  FileText,
-  Check,
-  Settings,
-  Eye,
-  RefreshCw,
-  BarChart3,
-} from "lucide-react";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Building2, Trash2, Loader2, FileText, Check, Settings, Eye, RefreshCw, BarChart3 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,13 +25,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 
@@ -107,7 +84,9 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data, error } = await (supabase as any)
@@ -129,14 +108,11 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
   const deleteTemplate = async (template: SupplierTemplate) => {
     setDeleting(template.id);
     try {
-      const { error } = await (supabase as any)
-        .from("supplier_ocr_templates")
-        .delete()
-        .eq("id", template.id);
+      const { error } = await (supabase as any).from("supplier_ocr_templates").delete().eq("id", template.id);
 
       if (error) throw error;
 
-      setTemplates(templates.filter(t => t.id !== template.id));
+      setTemplates(templates.filter((t) => t.id !== template.id));
       toast.success(`Template "${template.supplier_name}" supprimé`);
     } catch (err) {
       console.error("Erreur suppression:", err);
@@ -173,9 +149,7 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
               <Settings className="h-5 w-5" />
               Template: {selectedTemplate.supplier_name}
             </SheetTitle>
-            <SheetDescription>
-              Configuration OCR pour ce fournisseur
-            </SheetDescription>
+            <SheetDescription>Configuration OCR pour ce fournisseur</SheetDescription>
           </SheetHeader>
 
           <ScrollArea className="h-[calc(100vh-120px)] mt-4 pr-4">
@@ -227,7 +201,9 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
                 <h4 className="text-sm font-semibold mb-3">Patterns d'identification</h4>
                 <div className="flex flex-wrap gap-2">
                   {(selectedTemplate.identification_patterns || []).map((pattern, i) => (
-                    <Badge key={i} variant="secondary">{pattern}</Badge>
+                    <Badge key={i} variant="secondary">
+                      {pattern}
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -243,9 +219,7 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
                     <div key={field} className="p-3 border rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-sm">{FIELD_LABELS[field] || field}</span>
-                        <Badge variant="outline">
-                          {Math.round(config.confidence * 100)}%
-                        </Badge>
+                        <Badge variant="outline">{Math.round(config.confidence * 100)}%</Badge>
                       </div>
                       <div className="text-xs text-muted-foreground space-y-1">
                         <p>
@@ -254,18 +228,14 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
                         <p>
                           Taille: {(config.zone.width * 100).toFixed(0)}% × {(config.zone.height * 100).toFixed(0)}%
                         </p>
-                        {config.label_patterns.length > 0 && (
-                          <p>Labels: {config.label_patterns.join(", ")}</p>
-                        )}
+                        {config.label_patterns.length > 0 && <p>Labels: {config.label_patterns.join(", ")}</p>}
                         <p>Format: {config.value_format}</p>
                       </div>
                     </div>
                   ))}
 
                   {getZoneCount(selectedTemplate) === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      Aucune zone configurée
-                    </p>
+                    <p className="text-sm text-muted-foreground text-center py-4">Aucune zone configurée</p>
                   )}
                 </div>
               </div>
@@ -283,8 +253,8 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
                     <AlertDialogHeader>
                       <AlertDialogTitle>Supprimer ce template ?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Le template "{selectedTemplate.supplier_name}" sera supprimé.
-                        Les futures factures de ce fournisseur utiliseront l'OCR standard.
+                        Le template "{selectedTemplate.supplier_name}" sera supprimé. Les futures factures de ce
+                        fournisseur utiliseront l'OCR standard.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -320,9 +290,7 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
         <div className="text-center py-8 text-muted-foreground">
           <Settings className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p>Aucun template configuré</p>
-          <p className="text-sm mt-2">
-            Les templates sont créés automatiquement quand vous annotez une facture
-          </p>
+          <p className="text-sm mt-2">Les templates sont créés automatiquement quand vous annotez une facture</p>
         </div>
       ) : (
         <Table>
@@ -346,15 +314,11 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
                     <span className="font-medium">{template.supplier_name}</span>
                   </div>
                 </TableCell>
-                <TableCell className="font-mono text-sm">
-                  {template.supplier_siret || "-"}
-                </TableCell>
+                <TableCell className="font-mono text-sm">{template.supplier_siret || "-"}</TableCell>
                 <TableCell className="text-center">
                   <Badge variant="secondary">{getZoneCount(template)}</Badge>
                 </TableCell>
-                <TableCell className="text-center font-medium">
-                  {template.times_used}
-                </TableCell>
+                <TableCell className="text-center font-medium">{template.times_used}</TableCell>
                 <TableCell className="text-center">
                   <div className="flex items-center justify-center gap-2">
                     <Progress value={template.success_rate} className="w-16 h-2" />
@@ -363,9 +327,7 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
                     </span>
                   </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {formatDate(template.last_used_at)}
-                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">{formatDate(template.last_used_at)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button
@@ -422,9 +384,7 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
               <Settings className="h-5 w-5" />
               Templates OCR par fournisseur ({templates.length})
             </DialogTitle>
-            <DialogDescription>
-              Configurations d'extraction personnalisées pour chaque fournisseur
-            </DialogDescription>
+            <DialogDescription>Configurations d'extraction personnalisées pour chaque fournisseur</DialogDescription>
           </DialogHeader>
           <div className="flex justify-end mb-4">
             <Button variant="outline" size="sm" onClick={loadTemplates}>
@@ -448,9 +408,7 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
               <Settings className="h-5 w-5" />
               Templates OCR ({templates.length})
             </CardTitle>
-            <CardDescription>
-              Configurations par fournisseur
-            </CardDescription>
+            <CardDescription>Configurations par fournisseur</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={loadTemplates}>
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -458,9 +416,7 @@ export function SupplierTemplatesManager({ asDialog = false, trigger }: Supplier
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
-        {content}
-      </CardContent>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }
