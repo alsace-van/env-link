@@ -12,12 +12,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Edit, Plus, Euro, FileText, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Edit, Plus, Euro, FileText, Trash2, ChevronDown, ChevronUp, Receipt, Link } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import ExpenseTableForm from "@/components/ExpenseTableForm";
 import { FinancialSidebar } from "@/components/FinancialSidebar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { IncomingInvoicesList } from "@/components/IncomingInvoicesList";
+import { InvoiceLinkDialog } from "@/components/InvoiceLinkDialog";
 
 interface BankBalance {
   id: string;
@@ -36,7 +38,8 @@ interface BankLine {
   type_paiement?: string;
   statut_paiement?: string;
   facture_url?: string;
-  todo_id?: string; // ID de la tâche associée
+  todo_id?: string;
+  incoming_invoice_id?: string | null;
 }
 
 interface Payment {
@@ -67,6 +70,10 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     date_heure_depart: "",
   });
 
+  // State pour le dialog de liaison facture
+  const [invoiceLinkDialogOpen, setInvoiceLinkDialogOpen] = useState(false);
+  const [selectedBankLine, setSelectedBankLine] = useState<BankLine | null>(null);
+
   useEffect(() => {
     loadBankBalance();
     loadBankLines();
@@ -96,7 +103,9 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   };
 
   const loadBankLines = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     // Charger uniquement les dépenses SANS project_id (factures fournisseurs globales)
@@ -116,10 +125,12 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     // Charger les paiements (entrées)
     let paymentsQuery = supabase
       .from("project_payment_transactions")
-      .select(`
+      .select(
+        `
         *,
         projects!inner(nom, user_id)
-      `)
+      `,
+      )
       .eq("projects.user_id", user.id);
 
     // En mode projet: filtrer par projet spécifique
@@ -127,7 +138,9 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       paymentsQuery = paymentsQuery.eq("project_id", projectId);
     }
 
-    const { data: paymentsData, error: paymentsError } = await paymentsQuery.order("date_paiement", { ascending: false });
+    const { data: paymentsData, error: paymentsError } = await paymentsQuery.order("date_paiement", {
+      ascending: false,
+    });
 
     if (paymentsError) {
       console.error("Error loading payments:", paymentsError);
@@ -149,6 +162,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
           statut_paiement: expense.statut_paiement,
           facture_url: expense.facture_url,
           todo_id: expense.todo_id,
+          incoming_invoice_id: expense.incoming_invoice_id,
         });
       });
     }
@@ -320,7 +334,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
     : [];
 
   const paidExpenses = filteredBankLines
-    .filter(line => line.type === "sortie")
+    .filter((line) => line.type === "sortie")
     .reduce((sum, line) => {
       // Déduire uniquement les dépenses déjà payées ET dont la date est après le solde de départ
       if (line.statut_paiement === "paye" && line.date && bankBalance) {
@@ -349,7 +363,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   // Dépenses non payées dont la date limite est ce mois
   const unpaidExpensesThisMonth = filteredBankLines
-    .filter(line => line.type === "sortie")
+    .filter((line) => line.type === "sortie")
     .filter((line) => {
       if (line.statut_paiement === "paye" || !line.date) return false;
       const paymentDate = new Date(line.date);
@@ -361,7 +375,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   // Total des sorties d'argent pour affichage
   const totalExpenses = filteredBankLines
-    .filter(line => line.type === "sortie")
+    .filter((line) => line.type === "sortie")
     .reduce((sum, line) => sum + line.montant, 0);
 
   const deleteBankLine = async (line: BankLine) => {
@@ -389,10 +403,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   const validatePayment = async (line: BankLine) => {
     if (line.type !== "sortie") return;
 
-    const { error } = await supabase
-      .from("project_expenses")
-      .update({ statut_paiement: "paye" })
-      .eq("id", line.id);
+    const { error } = await supabase.from("project_expenses").update({ statut_paiement: "paye" }).eq("id", line.id);
 
     if (error) {
       toast.error("Erreur lors de la validation");
@@ -537,65 +548,51 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       <Card>
         <CardHeader>
           <CardTitle>Sorties à payer</CardTitle>
-          <CardDescription>
-            Dépenses non payées en attente de validation manuelle
-          </CardDescription>
+          <CardDescription>Dépenses non payées en attente de validation manuelle</CardDescription>
         </CardHeader>
         <CardContent>
-          {filteredBankLines.filter(line => line.type === "sortie" && line.statut_paiement !== "paye").length > 0 ? (
-              <div className="space-y-2">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2 px-2">Date</th>
-                        <th className="text-left py-2 px-2">Description</th>
-                        <th className="text-left py-2 px-2">Fournisseur</th>
-                        <th className="text-right py-2 px-2">Montant</th>
-                        <th className="text-right py-2 px-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBankLines
-                        .filter(line => line.type === "sortie" && line.statut_paiement !== "paye")
-                        .map((line) => (
-                          <tr key={line.id} className="border-b hover:bg-muted/50">
-                            <td className="py-2 px-2">{format(new Date(line.date), "dd/MM/yyyy")}</td>
-                            <td className="py-2 px-2">{line.description}</td>
-                            <td className="py-2 px-2">{line.fournisseur}</td>
-                            <td className="py-2 px-2 text-right font-semibold text-destructive">
-                              -{line.montant.toFixed(2)} €
-                            </td>
-                            <td className="py-2 px-2 text-right">
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => validatePayment(line)}
-                                  className="h-7"
-                                >
-                                  ✓ Valider
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteBankLine(line)}
-                                  className="h-7"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
+          {filteredBankLines.filter((line) => line.type === "sortie" && line.statut_paiement !== "paye").length > 0 ? (
+            <div className="space-y-2">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-2">Date</th>
+                      <th className="text-left py-2 px-2">Description</th>
+                      <th className="text-left py-2 px-2">Fournisseur</th>
+                      <th className="text-right py-2 px-2">Montant</th>
+                      <th className="text-right py-2 px-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBankLines
+                      .filter((line) => line.type === "sortie" && line.statut_paiement !== "paye")
+                      .map((line) => (
+                        <tr key={line.id} className="border-b hover:bg-muted/50">
+                          <td className="py-2 px-2">{format(new Date(line.date), "dd/MM/yyyy")}</td>
+                          <td className="py-2 px-2">{line.description}</td>
+                          <td className="py-2 px-2">{line.fournisseur}</td>
+                          <td className="py-2 px-2 text-right font-semibold text-destructive">
+                            -{line.montant.toFixed(2)} €
+                          </td>
+                          <td className="py-2 px-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="outline" size="sm" onClick={() => validatePayment(line)} className="h-7">
+                                ✓ Valider
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => deleteBankLine(line)} className="h-7">
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                Aucune sortie en attente de paiement
-              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">Aucune sortie en attente de paiement</p>
           )}
         </CardContent>
       </Card>
@@ -603,118 +600,161 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
       {/* Lignes bancaires */}
       <Card>
         <CardHeader>
-          <CardTitle>Lignes bancaires</CardTitle>
-          <CardDescription>
-            Toutes les entrées et sorties d'argent (seules les sorties validées sont déduites du solde)
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Lignes bancaires</CardTitle>
+              <CardDescription>
+                Toutes les entrées et sorties d'argent (seules les sorties validées sont déduites du solde)
+              </CardDescription>
+            </div>
+            <IncomingInvoicesList
+              asDialog
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Factures reçues
+                </Button>
+              }
+            />
+          </div>
         </CardHeader>
         <CardContent>
-            {filteredBankLines.length > 0 ? (
-              <div className="space-y-2">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2 px-2">Type</th>
-                        <th className="text-left py-2 px-2">Date</th>
-                        <th className="text-left py-2 px-2">Description</th>
-                        <th className="text-left py-2 px-2">Projet / Fournisseur</th>
-                        <th className="text-left py-2 px-2">Type</th>
-                        <th className="text-right py-2 px-2">Montant</th>
-                        <th className="text-center py-2 px-2">Facture</th>
-                        <th className="text-center py-2 px-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBankLines.map((line) => (
-                        <tr 
-                          key={`${line.type}-${line.id}`} 
-                          className={`border-b hover:bg-muted/50 ${line.type === "entree" ? "bg-green-50 dark:bg-green-950/20" : ""}`}
-                        >
-                          <td className="py-2 px-2">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              line.type === "entree" 
-                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
+          {filteredBankLines.length > 0 ? (
+            <div className="space-y-2">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-2">Type</th>
+                      <th className="text-left py-2 px-2">Date</th>
+                      <th className="text-left py-2 px-2">Description</th>
+                      <th className="text-left py-2 px-2">Projet / Fournisseur</th>
+                      <th className="text-left py-2 px-2">Type</th>
+                      <th className="text-right py-2 px-2">Montant</th>
+                      <th className="text-center py-2 px-2">Facture</th>
+                      <th className="text-center py-2 px-2">Facture liée</th>
+                      <th className="text-center py-2 px-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBankLines.map((line) => (
+                      <tr
+                        key={`${line.type}-${line.id}`}
+                        className={`border-b hover:bg-muted/50 ${line.type === "entree" ? "bg-green-50 dark:bg-green-950/20" : ""}`}
+                      >
+                        <td className="py-2 px-2">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              line.type === "entree"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                 : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                            }`}>
-                              {line.type === "entree" ? "💰 Entrée" : "📤 Sortie"}
-                            </span>
-                          </td>
-                          <td className="py-2 px-2">
-                            {line.date ? format(new Date(line.date), "dd/MM/yyyy HH:mm") : "-"}
-                          </td>
-                          <td className="py-2 px-2 font-medium">{line.description}</td>
-                          <td className="py-2 px-2 text-muted-foreground">
-                            {line.type === "entree" ? line.project_name : line.fournisseur || "-"}
-                          </td>
-                          <td className="py-2 px-2">
-                            {line.type === "entree" ? (
-                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            }`}
+                          >
+                            {line.type === "entree" ? "💰 Entrée" : "📤 Sortie"}
+                          </span>
+                        </td>
+                        <td className="py-2 px-2">
+                          {line.date ? format(new Date(line.date), "dd/MM/yyyy HH:mm") : "-"}
+                        </td>
+                        <td className="py-2 px-2 font-medium">{line.description}</td>
+                        <td className="py-2 px-2 text-muted-foreground">
+                          {line.type === "entree" ? line.project_name : line.fournisseur || "-"}
+                        </td>
+                        <td className="py-2 px-2">
+                          {line.type === "entree" ? (
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                 line.type_paiement === "solde"
                                   ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
                                   : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                              }`}>
-                                {line.type_paiement === "solde" ? "Solde" : "Acompte"}
-                              </span>
-                            ) : line.statut_paiement ? (
-                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              }`}
+                            >
+                              {line.type_paiement === "solde" ? "Solde" : "Acompte"}
+                            </span>
+                          ) : line.statut_paiement ? (
+                            <span
+                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                                 line.statut_paiement === "paye"
                                   ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                   : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                              }`}>
-                                {line.statut_paiement === "paye" ? "Payé" : "Non payé"}
-                              </span>
-                            ) : "-"}
-                          </td>
-                          <td className={`py-2 px-2 text-right font-medium ${
-                            line.type === "entree" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          }`}>
-                            {line.type === "entree" ? "+" : "-"}{line.montant.toFixed(2)} €
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            {line.facture_url ? (
-                              <a
-                                href={line.facture_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center text-primary hover:text-primary/80"
-                              >
-                                <FileText className="h-4 w-4" />
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">-</span>
-                            )}
-                          </td>
-                          <td className="py-2 px-2 text-center">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive/80"
-                              onClick={() => deleteBankLine(line)}
+                              }`}
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="font-bold border-t-2">
-                        <td colSpan={5} className="py-3 px-2 text-right">
-                          Total sorties :
+                              {line.statut_paiement === "paye" ? "Payé" : "Non payé"}
+                            </span>
+                          ) : (
+                            "-"
+                          )}
                         </td>
-                        <td className="py-3 px-2 text-right text-destructive">-{totalExpenses.toFixed(2)} €</td>
-                        <td colSpan={2}></td>
+                        <td
+                          className={`py-2 px-2 text-right font-medium ${
+                            line.type === "entree"
+                              ? "text-green-600 dark:text-green-400"
+                              : "text-red-600 dark:text-red-400"
+                          }`}
+                        >
+                          {line.type === "entree" ? "+" : "-"}
+                          {line.montant.toFixed(2)} €
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {line.facture_url ? (
+                            <a
+                              href={line.facture_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center text-primary hover:text-primary/80"
+                            >
+                              <FileText className="h-4 w-4" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {line.type === "sortie" && (
+                            <Button
+                              variant={line.incoming_invoice_id ? "outline" : "ghost"}
+                              size="sm"
+                              className={`h-7 ${line.incoming_invoice_id ? "border-green-500 text-green-700" : ""}`}
+                              onClick={() => {
+                                setSelectedBankLine(line);
+                                setInvoiceLinkDialogOpen(true);
+                              }}
+                            >
+                              <Link className="h-3 w-3 mr-1" />
+                              {line.incoming_invoice_id ? "Liée" : "Lier"}
+                            </Button>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive/80"
+                            onClick={() => deleteBankLine(line)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
                       </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="font-bold border-t-2">
+                      <td colSpan={6} className="py-3 px-2 text-right">
+                        Total sorties :
+                      </td>
+                      <td className="py-3 px-2 text-right text-destructive">-{totalExpenses.toFixed(2)} €</td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-            ) : (
-              <p className="text-center py-4 text-muted-foreground">Aucune ligne bancaire enregistrée</p>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          ) : (
+            <p className="text-center py-4 text-muted-foreground">Aucune ligne bancaire enregistrée</p>
+          )}
+        </CardContent>
+      </Card>
 
       <FinancialSidebar
         isOpen={isSidebarOpen}
@@ -766,6 +806,20 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de liaison facture */}
+      <InvoiceLinkDialog
+        open={invoiceLinkDialogOpen}
+        onOpenChange={setInvoiceLinkDialogOpen}
+        bankLineId={selectedBankLine?.id || null}
+        bankLineDescription={selectedBankLine?.description || ""}
+        bankLineMontant={selectedBankLine?.montant || 0}
+        currentInvoiceId={selectedBankLine?.incoming_invoice_id}
+        onLinked={() => {
+          loadBankLines();
+          setSelectedBankLine(null);
+        }}
+      />
     </div>
   );
 };
