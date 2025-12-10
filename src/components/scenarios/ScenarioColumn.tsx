@@ -113,32 +113,31 @@ const ScenarioColumn = ({ scenario, projectId, isLocked, onExpenseChange, onScen
   };
 
   const calculateBilanEnergie = (expenses: any[]) => {
-    // Calculer la production solaire
+    // Calculer la production solaire - utiliser type_electrique et puissance_watts
     const production = expenses
-      .filter(
-        (e) =>
-          e.categorie?.toLowerCase().includes("électrique") ||
-          e.categorie?.toLowerCase().includes("panneau") ||
-          e.nom_accessoire?.toLowerCase().includes("panneau"),
-      )
+      .filter((e) => e.type_electrique === "producteur")
       .reduce((sum, e) => {
-        const match = e.nom_accessoire?.match(/(\d+)\s*w/i);
-        if (match) {
-          return sum + parseInt(match[1]) * (e.quantite || 1);
-        }
-        return sum;
+        // Utiliser le champ puissance_watts de la DB
+        const puissance = e.puissance_watts || 0;
+        return sum + puissance * (e.quantite || 1);
       }, 0);
 
-    // Calculer le stockage batterie
-    const stockage_ah = expenses
-      .filter((e) => e.nom_accessoire?.toLowerCase().includes("batterie"))
-      .reduce((sum, e) => {
-        const match = e.nom_accessoire?.match(/(\d+)\s*ah/i);
-        if (match) {
-          return sum + parseInt(match[1]) * (e.quantite || 1);
-        }
-        return sum;
-      }, 0);
+    // Calculer le stockage batterie - utiliser type_electrique
+    const stockageItems = expenses.filter((e) => e.type_electrique === "stockage");
+
+    // Calculer Ah depuis intensite_amperes ou extraire du nom si pas disponible
+    const stockage_ah = stockageItems.reduce((sum, e) => {
+      // Priorité au champ intensite_amperes (qui peut stocker les Ah pour les batteries)
+      if (e.intensite_amperes) {
+        return sum + e.intensite_amperes * (e.quantite || 1);
+      }
+      // Fallback: extraire du nom si format "XXXAh"
+      const match = e.nom_accessoire?.match(/(\d+)\s*ah/i);
+      if (match) {
+        return sum + parseInt(match[1]) * (e.quantite || 1);
+      }
+      return sum;
+    }, 0);
 
     const stockage_wh = stockage_ah * 12;
     const autonomie_jours =
