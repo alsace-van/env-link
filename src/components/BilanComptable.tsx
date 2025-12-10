@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Edit, Plus, Euro, FileText, Trash2, ChevronDown, ChevronUp, Receipt, Link } from "lucide-react";
+import { Edit, Plus, Euro, FileText, Trash2, ChevronDown, ChevronUp, Receipt, Link, FileUp } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import ExpenseTableForm from "@/components/ExpenseTableForm";
@@ -20,6 +20,7 @@ import { FinancialSidebar } from "@/components/FinancialSidebar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { IncomingInvoicesList } from "@/components/IncomingInvoicesList";
 import { InvoiceLinkDialog } from "@/components/InvoiceLinkDialog";
+import { BatchInvoiceScannerDialog } from "@/components/evoliz/BatchInvoiceScannerDialog";
 
 interface BankBalance {
   id: string;
@@ -73,6 +74,9 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   // State pour le dialog de liaison facture
   const [invoiceLinkDialogOpen, setInvoiceLinkDialogOpen] = useState(false);
   const [selectedBankLine, setSelectedBankLine] = useState<BankLine | null>(null);
+
+  // State pour le dialog d'import en masse
+  const [batchImportOpen, setBatchImportOpen] = useState(false);
 
   useEffect(() => {
     loadBankBalance();
@@ -607,15 +611,21 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                 Toutes les entrées et sorties d'argent (seules les sorties validées sont déduites du solde)
               </CardDescription>
             </div>
-            <IncomingInvoicesList
-              asDialog
-              trigger={
-                <Button variant="outline" size="sm">
-                  <Receipt className="h-4 w-4 mr-2" />
-                  Factures reçues
-                </Button>
-              }
-            />
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setBatchImportOpen(true)}>
+                <FileUp className="h-4 w-4 mr-2" />
+                Import en masse
+              </Button>
+              <IncomingInvoicesList
+                asDialog
+                trigger={
+                  <Button variant="outline" size="sm">
+                    <Receipt className="h-4 w-4 mr-2" />
+                    Factures reçues
+                  </Button>
+                }
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -818,6 +828,16 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
         onLinked={() => {
           loadBankLines();
           setSelectedBankLine(null);
+        }}
+      />
+
+      {/* Dialog d'import en masse des factures fournisseurs */}
+      <BatchInvoiceScannerDialog
+        open={batchImportOpen}
+        onOpenChange={setBatchImportOpen}
+        onComplete={() => {
+          loadBankLines();
+          toast.success("Factures importées vers Evoliz");
         }}
       />
     </div>
