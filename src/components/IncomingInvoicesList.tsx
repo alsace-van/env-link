@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   FileText,
@@ -17,6 +18,12 @@ import {
   Calendar,
   Building2,
   Link,
+  Eye,
+  Hash,
+  Euro,
+  Percent,
+  FileSearch,
+  Send,
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -38,22 +45,38 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 interface IncomingInvoice {
   id: string;
   file_name: string;
   file_path: string;
+  file_url: string | null;
+  mime_type: string | null;
   supplier_name: string | null;
+  supplier_siret: string | null;
   invoice_number: string | null;
   invoice_date: string | null;
+  due_date: string | null;
   total_ht: number | null;
   total_ttc: number | null;
   tva_amount: number | null;
+  tva_rate: number | null;
+  description: string | null;
   status: string;
   confidence: number | null;
-  created_at: string;
-  evoliz_status: string | null;
+  ocr_result: any;
   ocr_error: string | null;
+  created_at: string;
+  updated_at: string;
+  evoliz_status: string | null;
+  evoliz_expense_id: string | null;
+  evoliz_sent_at: string | null;
+  evoliz_error: string | null;
+  tokens_used: number | null;
+  source: string | null;
   // Champs calculés pour la liaison
   linked_payments_count?: number;
   amount_linked?: number;
@@ -69,6 +92,10 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<IncomingInvoice | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingMultiple, setDeletingMultiple] = useState(false);
 
   useEffect(() => {
     if (!asDialog || dialogOpen) {
@@ -111,6 +138,7 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
       );
 
       setInvoices(invoicesWithPayments);
+      setSelectedIds(new Set());
     } catch (err) {
       console.error("Erreur chargement factures:", err);
       toast.error("Erreur lors du chargement des factures");
@@ -139,6 +167,53 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
       toast.error("Erreur lors de la suppression");
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setDeletingMultiple(true);
+
+    try {
+      const toDelete = invoices.filter((i) => selectedIds.has(i.id));
+
+      // Supprimer les fichiers du storage
+      const filePaths = toDelete.map((i) => i.file_path).filter(Boolean);
+      if (filePaths.length > 0) {
+        await supabase.storage.from("incoming-invoices").remove(filePaths);
+      }
+
+      // Supprimer les enregistrements
+      const { error } = await (supabase as any).from("incoming_invoices").delete().in("id", Array.from(selectedIds));
+
+      if (error) throw error;
+
+      setInvoices(invoices.filter((i) => !selectedIds.has(i.id)));
+      setSelectedIds(new Set());
+      toast.success(`${toDelete.length} facture(s) supprimée(s)`);
+    } catch (err) {
+      console.error("Erreur suppression multiple:", err);
+      toast.error("Erreur lors de la suppression");
+    } finally {
+      setDeletingMultiple(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === invoices.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(invoices.map((i) => i.id)));
     }
   };
 
@@ -173,6 +248,12 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
         return (
           <Badge variant="secondary">
             <Clock className="h-3 w-3 mr-1" /> En attente
+          </Badge>
+        );
+      case "processing":
+        return (
+          <Badge className="bg-blue-100 text-blue-800">
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" /> En cours
           </Badge>
         );
       default:
@@ -213,13 +294,295 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
     return new Date(dateStr).toLocaleDateString("fr-FR");
   };
 
+  const formatDateTime = (dateStr: string | null) => {
+    if (!dateStr) return "-";
+    return new Date(dateStr).toLocaleString("fr-FR");
+  };
+
   const formatAmount = (amount: number | null) => {
-    if (amount === null) return "-";
+    if (amount === null || amount === undefined) return "-";
     return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(amount);
+  };
+
+  // Panneau de détails
+  const renderDetailsSheet = () => {
+    if (!selectedInvoice) return null;
+
+    return (
+      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <SheetContent className="w-[500px] sm:max-w-[500px]">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <FileSearch className="h-5 w-5" />
+              Détails de la facture
+            </SheetTitle>
+            <SheetDescription>Informations extraites par OCR (Gemini)</SheetDescription>
+          </SheetHeader>
+
+          <ScrollArea className="h-[calc(100vh-120px)] mt-4 pr-4">
+            <div className="space-y-6">
+              {/* Actions */}
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => openFile(selectedInvoice.file_path)}>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Voir le PDF
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Supprimer
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Supprimer cette facture ?</AlertDialogTitle>
+                      <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annuler</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          deleteInvoice(selectedInvoice);
+                          setDetailsOpen(false);
+                        }}
+                        className="bg-destructive text-destructive-foreground"
+                      >
+                        Supprimer
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+
+              <Separator />
+
+              {/* Statuts */}
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Statuts
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-xs text-muted-foreground mb-1">OCR</p>
+                    {getStatusBadge(selectedInvoice.status)}
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-xs text-muted-foreground mb-1">Evoliz</p>
+                    {selectedInvoice.evoliz_status === "sent" ? (
+                      <Badge className="bg-blue-100 text-blue-800">
+                        <Send className="h-3 w-3 mr-1" /> Envoyé
+                      </Badge>
+                    ) : selectedInvoice.evoliz_status === "error" ? (
+                      <Badge variant="destructive">Erreur</Badge>
+                    ) : (
+                      <Badge variant="outline">En attente</Badge>
+                    )}
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-xs text-muted-foreground mb-1">Confiance OCR</p>
+                    <p className="font-semibold">
+                      {selectedInvoice.confidence ? `${Math.round(selectedInvoice.confidence * 100)}%` : "-"}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-xs text-muted-foreground mb-1">Liaison</p>
+                    {getLinkBadge(selectedInvoice)}
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Infos Fournisseur - Ce qu'Evoliz reçoit */}
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  Fournisseur (→ Evoliz)
+                </h4>
+                <div className="space-y-2">
+                  <DetailRow
+                    label="Nom"
+                    value={selectedInvoice.supplier_name}
+                    icon={<Building2 className="h-3 w-3" />}
+                    important
+                  />
+                  <DetailRow label="SIRET" value={selectedInvoice.supplier_siret} icon={<Hash className="h-3 w-3" />} />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Infos Facture - Ce qu'Evoliz reçoit */}
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Receipt className="h-4 w-4" />
+                  Facture (→ Evoliz)
+                </h4>
+                <div className="space-y-2">
+                  <DetailRow
+                    label="N° Facture"
+                    value={selectedInvoice.invoice_number}
+                    icon={<Hash className="h-3 w-3" />}
+                    important
+                  />
+                  <DetailRow
+                    label="Date facture"
+                    value={formatDate(selectedInvoice.invoice_date)}
+                    icon={<Calendar className="h-3 w-3" />}
+                    important
+                  />
+                  <DetailRow
+                    label="Date échéance"
+                    value={formatDate(selectedInvoice.due_date)}
+                    icon={<Calendar className="h-3 w-3" />}
+                  />
+                  <DetailRow
+                    label="Description"
+                    value={selectedInvoice.description}
+                    icon={<FileText className="h-3 w-3" />}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Montants - Ce qu'Evoliz reçoit */}
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Euro className="h-4 w-4" />
+                  Montants (→ Evoliz)
+                </h4>
+                <div className="space-y-2">
+                  <DetailRow
+                    label="Total HT"
+                    value={formatAmount(selectedInvoice.total_ht)}
+                    icon={<Euro className="h-3 w-3" />}
+                    important
+                  />
+                  <DetailRow
+                    label="TVA"
+                    value={formatAmount(selectedInvoice.tva_amount)}
+                    icon={<Percent className="h-3 w-3" />}
+                  />
+                  <DetailRow
+                    label="Taux TVA"
+                    value={selectedInvoice.tva_rate ? `${selectedInvoice.tva_rate}%` : "-"}
+                    icon={<Percent className="h-3 w-3" />}
+                  />
+                  <DetailRow
+                    label="Total TTC"
+                    value={formatAmount(selectedInvoice.total_ttc)}
+                    icon={<Euro className="h-3 w-3" />}
+                    important
+                    highlight
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Métadonnées */}
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Métadonnées
+                </h4>
+                <div className="space-y-2 text-xs">
+                  <DetailRow label="Fichier" value={selectedInvoice.file_name} />
+                  <DetailRow label="Source" value={selectedInvoice.source || "shortcut"} />
+                  <DetailRow label="Reçu le" value={formatDateTime(selectedInvoice.created_at)} />
+                  <DetailRow label="Mis à jour" value={formatDateTime(selectedInvoice.updated_at)} />
+                  <DetailRow label="Tokens IA" value={selectedInvoice.tokens_used?.toString() || "0"} />
+                </div>
+              </div>
+
+              {/* Erreurs */}
+              {(selectedInvoice.ocr_error || selectedInvoice.evoliz_error) && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-semibold mb-3 text-destructive flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      Erreurs
+                    </h4>
+                    {selectedInvoice.ocr_error && (
+                      <div className="p-3 bg-destructive/10 rounded-lg mb-2">
+                        <p className="text-xs font-medium text-destructive mb-1">Erreur OCR :</p>
+                        <p className="text-xs">{selectedInvoice.ocr_error}</p>
+                      </div>
+                    )}
+                    {selectedInvoice.evoliz_error && (
+                      <div className="p-3 bg-destructive/10 rounded-lg">
+                        <p className="text-xs font-medium text-destructive mb-1">Erreur Evoliz :</p>
+                        <p className="text-xs">{selectedInvoice.evoliz_error}</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Données brutes OCR */}
+              {selectedInvoice.ocr_result && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                      <FileSearch className="h-4 w-4" />
+                      Données brutes OCR
+                    </h4>
+                    <pre className="p-3 bg-muted rounded-lg text-xs overflow-auto max-h-[200px]">
+                      {JSON.stringify(selectedInvoice.ocr_result, null, 2)}
+                    </pre>
+                  </div>
+                </>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+    );
   };
 
   const content = (
     <>
+      {/* Barre d'actions */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between p-3 mb-4 bg-muted rounded-lg">
+          <span className="text-sm font-medium">{selectedIds.size} facture(s) sélectionnée(s)</span>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm" disabled={deletingMultiple}>
+                {deletingMultiple ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Supprimer la sélection
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Supprimer {selectedIds.size} facture(s) ?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Cette action est irréversible. Tous les fichiers et données seront supprimés.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={deleteSelected}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Supprimer {selectedIds.size} facture(s)
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -235,13 +598,19 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={selectedIds.size === invoices.length && invoices.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
               <TableHead>Fournisseur</TableHead>
               <TableHead>N° Facture</TableHead>
               <TableHead>Date</TableHead>
-              <TableHead className="text-right">Montant TTC</TableHead>
+              <TableHead className="text-right">HT</TableHead>
+              <TableHead className="text-right">TTC</TableHead>
               <TableHead>OCR</TableHead>
               <TableHead>Liaison</TableHead>
-              <TableHead>Reçu le</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -249,41 +618,48 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
             {invoices.map((invoice) => (
               <TableRow
                 key={invoice.id}
-                className={
-                  invoice.linked_payments_count && invoice.linked_payments_count > 0
-                    ? "bg-green-50/50 dark:bg-green-950/10"
-                    : ""
-                }
+                className={`${invoice.linked_payments_count && invoice.linked_payments_count > 0 ? "bg-green-50/50 dark:bg-green-950/10" : ""} ${selectedIds.has(invoice.id) ? "bg-primary/5" : ""}`}
               >
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{invoice.supplier_name || invoice.file_name}</span>
-                  </div>
-                  {invoice.confidence && (
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round(invoice.confidence * 100)}% confiance
-                    </span>
-                  )}
+                  <Checkbox checked={selectedIds.has(invoice.id)} onCheckedChange={() => toggleSelect(invoice.id)} />
                 </TableCell>
-                <TableCell>{invoice.invoice_number || "-"}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <div className="min-w-0">
+                      <span className="font-medium block truncate max-w-[150px]">
+                        {invoice.supplier_name || invoice.file_name}
+                      </span>
+                      {invoice.confidence && (
+                        <span className="text-xs text-muted-foreground">{Math.round(invoice.confidence * 100)}%</span>
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="font-mono text-sm">{invoice.invoice_number || "-"}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3 text-muted-foreground" />
                     {formatDate(invoice.invoice_date)}
                   </div>
                 </TableCell>
+                <TableCell className="text-right">{formatAmount(invoice.total_ht)}</TableCell>
                 <TableCell className="text-right font-medium">{formatAmount(invoice.total_ttc)}</TableCell>
                 <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                <TableCell>
-                  {getLinkBadge(invoice)}
-                  {invoice.amount_linked && invoice.amount_linked > 0 && (
-                    <div className="text-xs text-muted-foreground mt-1">{formatAmount(invoice.amount_linked)} lié</div>
-                  )}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">{formatDate(invoice.created_at)}</TableCell>
+                <TableCell>{getLinkBadge(invoice)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setSelectedInvoice(invoice);
+                        setDetailsOpen(true);
+                      }}
+                      title="Voir les détails"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -292,39 +668,19 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
                     >
                       <ExternalLink className="h-4 w-4" />
                     </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-destructive hover:text-destructive"
-                          disabled={deleting === invoice.id}
-                        >
-                          {deleting === invoice.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Supprimer cette facture ?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Cette action est irréversible. Le fichier et les données seront supprimés.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Annuler</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => deleteInvoice(invoice)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Supprimer
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      disabled={deleting === invoice.id}
+                      onClick={() => deleteInvoice(invoice)}
+                    >
+                      {deleting === invoice.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -332,6 +688,8 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
           </TableBody>
         </Table>
       )}
+
+      {renderDetailsSheet()}
     </>
   );
 
@@ -347,13 +705,15 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
             </Button>
           )}
         </DialogTrigger>
-        <DialogContent className="max-w-5xl max-h-[80vh] overflow-auto">
+        <DialogContent className="max-w-6xl max-h-[85vh] overflow-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Factures reçues
+              Factures reçues ({invoices.length})
             </DialogTitle>
-            <DialogDescription>Factures envoyées via le raccourci macOS</DialogDescription>
+            <DialogDescription>
+              Factures envoyées via le raccourci macOS • Cliquez sur 👁️ pour voir les détails OCR
+            </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end mb-4">
             <Button variant="outline" size="sm" onClick={loadInvoices}>
@@ -375,7 +735,7 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
           <div>
             <CardTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Factures reçues
+              Factures reçues ({invoices.length})
             </CardTitle>
             <CardDescription>Factures envoyées via le raccourci macOS</CardDescription>
           </div>
@@ -387,5 +747,32 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
       </CardHeader>
       <CardContent>{content}</CardContent>
     </Card>
+  );
+}
+
+// Composant helper pour les lignes de détail
+function DetailRow({
+  label,
+  value,
+  icon,
+  important = false,
+  highlight = false,
+}: {
+  label: string;
+  value: string | null | undefined;
+  icon?: React.ReactNode;
+  important?: boolean;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`flex items-center justify-between p-2 rounded ${highlight ? "bg-primary/10" : "bg-muted/50"}`}>
+      <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+        {icon}
+        {label}
+      </span>
+      <span className={`text-sm ${important ? "font-semibold" : ""} ${highlight ? "text-primary font-bold" : ""}`}>
+        {value || <span className="text-muted-foreground">-</span>}
+      </span>
+    </div>
   );
 }
