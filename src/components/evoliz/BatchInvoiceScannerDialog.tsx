@@ -154,7 +154,7 @@ export function BatchInvoiceScannerDialog({ open, onOpenChange, onComplete }: Ba
       initializeEvolizApi(credentials);
 
       const [suppliersRes, classifRes] = await Promise.all([
-        evolizApi.getSuppliers({ per_page: 500 }),
+        evolizApi.getSuppliers({ per_page: 100 }),
         evolizApi.getPurchaseClassifications(),
       ]);
 
