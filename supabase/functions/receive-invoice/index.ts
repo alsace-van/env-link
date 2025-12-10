@@ -30,42 +30,42 @@ serve(async (req) => {
     // 1. VÉRIFIER LE TOKEN D'UPLOAD
     // =========================================
     const uploadToken = req.headers.get("x-upload-token");
-    
+
     if (!uploadToken) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Token d'upload requis (header x-upload-token)" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Token d'upload requis (header x-upload-token)" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Chercher le token dans la base
     const { data: tokenData, error: tokenError } = await supabase
       .from("user_upload_tokens")
-      .select("id, user_id, is_active, expires_at")
+      .select("id, user_id, is_active, expires_at, use_count")
       .eq("token", uploadToken)
       .single();
 
     if (tokenError || !tokenData) {
       console.error("Token invalide:", uploadToken.substring(0, 10) + "...");
-      return new Response(
-        JSON.stringify({ success: false, error: "Token d'upload invalide" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Token d'upload invalide" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Vérifier si actif et non expiré
     if (!tokenData.is_active) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Token désactivé" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Token désactivé" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Token expiré" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Token expiré" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const userId = tokenData.user_id;
@@ -75,9 +75,9 @@ serve(async (req) => {
     // Mettre à jour last_used_at et use_count
     await supabase
       .from("user_upload_tokens")
-      .update({ 
+      .update({
         last_used_at: new Date().toISOString(),
-        use_count: (tokenData as any).use_count + 1 || 1
+        use_count: (tokenData.use_count || 0) + 1,
       })
       .eq("id", tokenId);
 
@@ -92,21 +92,21 @@ serve(async (req) => {
 
     if (aiConfigError || !aiConfig?.encrypted_api_key) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Clé API IA non configurée. Configurez votre clé Gemini dans les paramètres de l'application." 
+        JSON.stringify({
+          success: false,
+          error: "Clé API IA non configurée. Configurez votre clé Gemini dans les paramètres de l'application.",
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const geminiApiKey = decodeKey(aiConfig.encrypted_api_key);
-    
+
     if (!geminiApiKey || !geminiApiKey.startsWith("AIza")) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Clé API Gemini invalide" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Clé API Gemini invalide" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     console.log("✅ Clé Gemini récupérée pour user:", userId);
@@ -132,14 +132,12 @@ serve(async (req) => {
     // Organiser par utilisateur
     const storagePath = `${userId}/${timestamp}_${cleanFileName}`;
 
-    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+    const binaryData = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
 
-    const { error: uploadError } = await supabase.storage
-      .from("incoming-invoices")
-      .upload(storagePath, binaryData, {
-        contentType: detectedMimeType,
-        upsert: false,
-      });
+    const { error: uploadError } = await supabase.storage.from("incoming-invoices").upload(storagePath, binaryData, {
+      contentType: detectedMimeType,
+      upsert: false,
+    });
 
     if (uploadError) {
       // Créer le bucket s'il n'existe pas
@@ -149,14 +147,12 @@ serve(async (req) => {
           public: false,
           fileSizeLimit: 10485760,
         });
-        
-        const { error: retryError } = await supabase.storage
-          .from("incoming-invoices")
-          .upload(storagePath, binaryData, {
-            contentType: detectedMimeType,
-            upsert: false,
-          });
-        
+
+        const { error: retryError } = await supabase.storage.from("incoming-invoices").upload(storagePath, binaryData, {
+          contentType: detectedMimeType,
+          upsert: false,
+        });
+
         if (retryError) throw retryError;
       } else {
         throw uploadError;
@@ -205,37 +201,37 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: invoicePrompt },
-                { inline_data: { mime_type: detectedMimeType, data: base64Data } },
-              ],
-            }],
+            contents: [
+              {
+                parts: [{ text: invoicePrompt }, { inline_data: { mime_type: detectedMimeType, data: base64Data } }],
+              },
+            ],
             generationConfig: { temperature: 0, maxOutputTokens: 4096 },
           }),
-        }
+        },
       );
 
       if (geminiResponse.ok) {
         const geminiData = await geminiResponse.json();
-        
+
         // Récupérer les tokens utilisés
         tokensUsed = geminiData.usageMetadata?.totalTokenCount || 0;
-        
+
         const generatedText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-        
+
         if (generatedText) {
-          let cleanedText = generatedText.trim()
+          let cleanedText = generatedText
+            .trim()
             .replace(/^```json\s*/i, "")
             .replace(/^```\s*/i, "")
             .replace(/\s*```$/i, "");
-          
+
           const firstBrace = cleanedText.indexOf("{");
           const lastBrace = cleanedText.lastIndexOf("}");
           if (firstBrace >= 0 && lastBrace > firstBrace) {
             cleanedText = cleanedText.substring(firstBrace, lastBrace + 1);
           }
-          
+
           ocrResult = JSON.parse(cleanedText);
           console.log("✅ OCR réussi:", ocrResult.supplier_name, ocrResult.total_ttc, `(${tokensUsed} tokens)`);
         }
@@ -257,7 +253,7 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
       file_name: fileName,
       mime_type: detectedMimeType,
       user_id: userId,
-      status: ocrResult ? "processed" : (ocrError ? "error" : "pending"),
+      status: ocrResult ? "processed" : ocrError ? "error" : "pending",
       ocr_result: ocrResult,
       ocr_error: ocrError,
       supplier_name: ocrResult?.supplier_name || null,
@@ -287,14 +283,14 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
     // 7. METTRE À JOUR LE QUOTA TOKENS (optionnel)
     // =========================================
     if (tokensUsed > 0) {
-      // Incrémenter le compteur de tokens de l'utilisateur
-      await supabase.rpc("increment_user_ai_usage", {
-        p_user_id: userId,
-        p_tokens: tokensUsed,
-      }).catch(() => {
-        // La fonction RPC n'existe peut-être pas encore
+      try {
+        await supabase.rpc("increment_user_ai_usage", {
+          p_user_id: userId,
+          p_tokens: tokensUsed,
+        });
+      } catch {
         console.log("Note: increment_user_ai_usage RPC not available");
-      });
+      }
     }
 
     // =========================================
@@ -303,9 +299,9 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
     return new Response(
       JSON.stringify({
         success: true,
-        message: ocrResult 
+        message: ocrResult
           ? `✅ ${ocrResult.supplier_name || fileName} - ${ocrResult.total_ttc ? ocrResult.total_ttc + "€" : "?"} (${Math.round((ocrResult.confidence || 0) * 100)}%)`
-          : ocrError 
+          : ocrError
             ? `⚠️ Fichier reçu mais OCR échoué`
             : `📁 ${fileName} en attente de traitement`,
         invoice_id: insertData?.id || null,
@@ -314,7 +310,7 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("Error in receive-invoice:", error);
@@ -326,7 +322,7 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
