@@ -786,7 +786,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
 
   return (
     <div
-      className={`bg-white rounded-lg shadow-md border-2 group ${
+      className={`bg-white rounded-lg shadow-md border-2 group relative overflow-visible ${
         selected ? "border-blue-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
       }`}
       style={{
@@ -794,6 +794,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
         minWidth: block.width || 200,
         minHeight: 80,
         height: "auto", // Permet au bloc de s'étendre
+        marginTop: block.sourceDate || block.rescheduledTo ? 24 : 0, // Espace pour le badge
       }}
     >
       {/* Handles de connexion - comme MechanicalProcedures */}
@@ -1681,11 +1682,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   }, [blocks, selectedDate]);
 
   useEffect(() => {
-    // Inclure linkedTasks dans la comparaison pour détecter les changements
+    // Inclure linkedTasks et rescheduledTo dans la comparaison pour détecter les changements
     const currentIds = blocks
       .map(
         (b) =>
-          `${b.id}-${b.type}-${b.targetDate || ""}-${b.linkedProjectId || ""}-${b.sourceDate || ""}-${JSON.stringify(b.linkedTasks || [])}-${JSON.stringify(b.content).slice(0, 50)}`,
+          `${b.id}-${b.type}-${b.targetDate || ""}-${b.linkedProjectId || ""}-${b.sourceDate || ""}-${b.rescheduledTo || ""}-${JSON.stringify(b.linkedTasks || [])}-${JSON.stringify(b.content).slice(0, 50)}`,
       )
       .join(",");
     if (currentIds !== blocksIdsRef.current) {
