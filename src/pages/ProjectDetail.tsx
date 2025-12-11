@@ -436,16 +436,52 @@ interface MonthViewProps {
 }
 
 const SimpleMonthView = ({ projectId }: MonthViewProps) => {
-  const { todos, appointments, supplierExpenses, accessoryDeliveries, setCurrentProjectId } = useProjectData();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [allTodos, setAllTodos] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [supplierExpenses, setSupplierExpenses] = useState<any[]>([]);
+  const [accessoryDeliveries, setAccessoryDeliveries] = useState<any[]>([]);
 
+  // Charger TOUTES les données pour le planning mensuel (tous les projets)
   useEffect(() => {
-    setCurrentProjectId(projectId);
-  }, [projectId, setCurrentProjectId]);
+    const loadAllData = async () => {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) return;
+
+      // Charger tous les projets
+      const { data: projectsData } = await supabase.from("projects").select("id, name").eq("user_id", user.user.id);
+      if (projectsData) setProjects(projectsData);
+
+      // Charger toutes les tâches de l'utilisateur
+      const { data: todosData } = await supabase
+        .from("project_todos")
+        .select("*")
+        .eq("user_id", user.user.id)
+        .order("due_date", { ascending: true });
+      if (todosData) setAllTodos(todosData);
+
+      // Charger tous les rendez-vous
+      const { data: appointmentsData } = await supabase.from("appointments").select("*").eq("user_id", user.user.id);
+      if (appointmentsData) setAppointments(appointmentsData);
+
+      // Charger toutes les dépenses
+      const { data: expensesData } = await supabase.from("project_expenses").select("*").eq("user_id", user.user.id);
+      if (expensesData) setSupplierExpenses(expensesData);
+
+      // Charger toutes les livraisons
+      const { data: deliveriesData } = await supabase
+        .from("accessories_catalog")
+        .select("*")
+        .eq("user_id", user.user.id)
+        .not("delivery_date", "is", null);
+      if (deliveriesData) setAccessoryDeliveries(deliveriesData);
+    };
+    loadAllData();
+  }, []);
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
-  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
   // Ajouter les jours du mois précédent pour compléter la première semaine
   const firstDayOfWeek = getDay(monthStart);
@@ -459,8 +495,42 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
 
   const allDays = eachDayOfInterval({ start: startDate, end: endDate });
 
+  // Helper pour obtenir les noms de projets ayant des travaux ce jour
+  const getProjectNamesForDate = (date: Date) => {
+    const todosForDate = allTodos.filter((t) => {
+      if (t.due_date && isSameDay(parseISO(t.due_date), date)) return true;
+      if (t.scheduled_date && isSameDay(parseISO(t.scheduled_date), date)) return true;
+      return false;
+    });
+
+    // Regrouper par projet
+    const projectIds = new Set<string>();
+    const tasksWithoutProject: string[] = [];
+
+    todosForDate.forEach((todo: any) => {
+      if (todo.project_id) {
+        projectIds.add(todo.project_id);
+      } else {
+        tasksWithoutProject.push(todo.title);
+      }
+    });
+
+    // Convertir les IDs en noms
+    const projectNames = Array.from(projectIds).map((id) => {
+      const project = projects.find((p) => p.id === id);
+      return project?.name || "Projet inconnu";
+    });
+
+    return { projectNames, tasksWithoutProject, totalTodos: todosForDate.length };
+  };
+
   const getEventsForDate = (date: Date) => {
-    const todosForDate = todos.filter((t) => t.due_date && isSameDay(parseISO(t.due_date), date));
+    // Inclure due_date ET scheduled_date pour les tâches
+    const todosForDate = allTodos.filter((t) => {
+      if (t.due_date && isSameDay(parseISO(t.due_date), date)) return true;
+      if (t.scheduled_date && isSameDay(parseISO(t.scheduled_date), date)) return true;
+      return false;
+    });
     const appointmentsForDate = appointments.filter(
       (a) => a.appointment_date && isSameDay(parseISO(a.appointment_date), date),
     );
@@ -543,22 +613,39 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
 
               {events.total > 0 && (
                 <div className="space-y-1">
-                  {/* Afficher les tâches */}
-                  {events.todos.slice(0, 2).map((todo, idx) => (
-                    <div
-                      key={`todo-${idx}`}
-                      className="flex items-center gap-1 text-xs bg-purple-50 dark:bg-purple-950/30 px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40"
-                      title={todo.title}
-                    >
-                      <CheckCircle2 className="h-3 w-3 text-purple-500 flex-shrink-0" />
-                      <span className="truncate text-purple-700 dark:text-purple-300">{todo.title}</span>
-                    </div>
-                  ))}
-                  {events.todos.length > 2 && (
-                    <div className="text-xs text-purple-600 dark:text-purple-400 pl-4">
-                      +{events.todos.length - 2} autres
-                    </div>
-                  )}
+                  {/* Afficher les noms de projets et tâches sans projet */}
+                  {(() => {
+                    const { projectNames, tasksWithoutProject } = getProjectNamesForDate(day);
+                    return (
+                      <>
+                        {projectNames.slice(0, 2).map((name, idx) => (
+                          <div
+                            key={`proj-${idx}`}
+                            className="flex items-center gap-1 text-xs bg-purple-50 dark:bg-purple-950/30 px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                            title={name}
+                          >
+                            <CheckCircle2 className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                            <span className="truncate text-purple-700 dark:text-purple-300 font-medium">{name}</span>
+                          </div>
+                        ))}
+                        {tasksWithoutProject.slice(0, 2 - Math.min(projectNames.length, 2)).map((title, idx) => (
+                          <div
+                            key={`task-${idx}`}
+                            className="flex items-center gap-1 text-xs bg-purple-50/50 dark:bg-purple-950/20 px-1.5 py-0.5 rounded hover:bg-purple-100/50 dark:hover:bg-purple-900/30"
+                            title={title}
+                          >
+                            <CheckCircle2 className="h-3 w-3 text-purple-400 flex-shrink-0" />
+                            <span className="truncate text-purple-600 dark:text-purple-400">{title}</span>
+                          </div>
+                        ))}
+                        {projectNames.length + tasksWithoutProject.length > 2 && (
+                          <div className="text-xs text-purple-600 dark:text-purple-400 pl-4">
+                            +{projectNames.length + tasksWithoutProject.length - 2} autres
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {/* Afficher les rendez-vous */}
                   {events.appointments.slice(0, 2).map((appointment, idx) => (
