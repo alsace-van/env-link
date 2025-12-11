@@ -802,7 +802,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
 
-      {/* Indicateur bloc copié depuis roadmap - CLIQUABLE */}
+      {/* Indicateur bloc copié depuis roadmap - CLIQUABLE (pour la COPIE) */}
       {block.sourceDate && (
         <div className="absolute -top-6 left-0 right-0 flex justify-center">
           <button
@@ -815,6 +815,24 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
           >
             <MapPin className="h-3 w-3" />
             <span>depuis {format(parseISO(block.sourceDate), "d MMM", { locale: fr })}</span>
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {/* Indicateur bloc replanifié - CLIQUABLE (pour l'ORIGINAL) */}
+      {block.rescheduledTo && !block.sourceDate && (
+        <div className="absolute -top-6 left-0 right-0 flex justify-center">
+          <button
+            className="bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-2 py-0.5 rounded-t-md flex items-center gap-1 cursor-pointer transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToDate(block.rescheduledTo!);
+            }}
+            title="Aller à la date planifiée"
+          >
+            <CalendarIcon className="h-3 w-3" />
+            <span>→ {format(parseISO(block.rescheduledTo), "d MMM", { locale: fr })}</span>
             <ChevronRight className="h-3 w-3" />
           </button>
         </div>
@@ -847,30 +865,34 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                 <FolderOpen className="h-3 w-3" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-56 p-2" align="end" onClick={stopPropagation}>
+            <PopoverContent className="w-56 p-2" align="end" onClick={stopPropagation} onPointerDown={stopPropagation}>
               <div className="space-y-2">
                 <p className="text-xs font-medium text-gray-500">Lier à un projet</p>
                 <div className="max-h-48 overflow-auto space-y-1">
-                  {projects
-                    .filter((p) => p.id !== currentProjectId)
-                    .map((project) => (
-                      <button
-                        key={project.id}
-                        className={`w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2 ${
-                          block.linkedProjectId === project.id ? "bg-green-50 text-green-700" : ""
-                        }`}
-                        onClick={() => {
-                          onUpdate({
-                            linkedProjectId: project.id,
-                            linkedProjectName: project.name,
-                          });
-                          setShowProjectPicker(false);
-                        }}
-                      >
-                        <FolderOpen className="h-3 w-3" />
-                        {project.name}
-                      </button>
-                    ))}
+                  {projects.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-2">Aucun projet disponible</p>
+                  )}
+                  {projects.map((project) => (
+                    <button
+                      key={project.id}
+                      className={`w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2 ${
+                        block.linkedProjectId === project.id ? "bg-green-50 text-green-700" : ""
+                      }`}
+                      onClick={() => {
+                        onUpdate({
+                          linkedProjectId: project.id,
+                          linkedProjectName: project.nom || project.name,
+                        });
+                        setShowProjectPicker(false);
+                      }}
+                    >
+                      <FolderOpen className="h-3 w-3" />
+                      {project.nom || project.name}
+                      {project.id === currentProjectId && (
+                        <span className="text-xs text-gray-400 ml-auto">(actuel)</span>
+                      )}
+                    </button>
+                  ))}
                 </div>
                 {block.linkedProjectId && (
                   <>
@@ -981,7 +1003,13 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
               {block.targetDate && (
                 <DropdownMenuItem onClick={() => onUpdate({ targetDate: undefined })}>
                   <X className="h-4 w-4 mr-2" />
-                  Retirer la date
+                  Retirer la date cible
+                </DropdownMenuItem>
+              )}
+              {block.rescheduledTo && (
+                <DropdownMenuItem onClick={() => onUpdate({ rescheduledTo: undefined })}>
+                  <X className="h-4 w-4 mr-2" />
+                  Annuler le report ({format(parseISO(block.rescheduledTo), "d MMM", { locale: fr })})
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -2465,6 +2493,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
                   onEdgeClick={handleEdgeClick}
                   nodeTypes={nodeTypes}
                   fitView
+                  fitViewOptions={{
+                    padding: 0.2,
+                    minZoom: 0.5,
+                    maxZoom: 1.5,
+                  }}
+                  defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                  minZoom={0.2}
+                  maxZoom={2}
                   defaultEdgeOptions={{
                     type: "smoothstep",
                     markerEnd: { type: MarkerType.ArrowClosed },
