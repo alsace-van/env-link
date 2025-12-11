@@ -733,9 +733,11 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
           strokeCap: "round",
         });
 
-        arrowHead.add(end.subtract(vector.rotate(30)));
+        // rotate() avec center point pour TypeScript
+        const center = new scope.Point(0, 0);
+        arrowHead.add(end.subtract(vector.rotate(30, center)));
         arrowHead.add(end);
-        arrowHead.add(end.subtract(vector.rotate(-30)));
+        arrowHead.add(end.subtract(vector.rotate(-30, center)));
       }
 
       currentPath = null;
@@ -745,7 +747,10 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
     tool.activate();
 
     return () => {
-      scope.remove();
+      // Cleanup Paper.js
+      if (scope.project) {
+        scope.project.clear();
+      }
       paperScopeRef.current = null;
     };
   }, [open]);
