@@ -521,7 +521,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       return;
     }
 
-    toast.success("Projet créé avec succès !");
+    toast.success(isEditMode ? "Projet modifié avec succès !" : "Projet créé avec succès !");
     e.currentTarget.reset();
     setSelectedMarque("");
     setSelectedModele("");
@@ -728,8 +728,8 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                 </div>
               )}
 
-              {/* Champs de carte grise - TOUJOURS VISIBLES si des données OCR ont été scannées OU si marque+modèle sélectionnés */}
-              {(scannedData || (selectedMarque && selectedModele)) && (
+              {/* Champs de carte grise - TOUJOURS VISIBLES si des données OCR ont été scannées OU si marque+modèle sélectionnés OU en mode édition */}
+              {(scannedData || (selectedMarque && selectedModele) || isEditMode) && (
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="numero_chassis">Numéro de chassis (VIN - 17 car.)</Label>
