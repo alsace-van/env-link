@@ -899,22 +899,28 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                 size="icon"
                 className={`h-5 w-5 ${block.targetDate ? "text-blue-600" : "text-gray-400"}`}
                 onClick={stopPropagation}
-                title="Définir date cible"
+                title="Planifier pour une autre date"
               >
                 <CalendarIcon className="h-3 w-3" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end" onClick={stopPropagation}>
+              <div className="p-2 border-b bg-gray-50">
+                <p className="text-xs text-gray-600 font-medium">📅 Planifier ce bloc pour :</p>
+              </div>
               <Calendar
                 mode="single"
                 selected={block.targetDate ? parseISO(block.targetDate) : undefined}
                 onSelect={(date) => {
                   if (date) {
-                    onUpdate({ targetDate: format(date, "yyyy-MM-dd") });
+                    const targetDate = format(date, "yyyy-MM-dd");
+                    // Copier directement vers la date choisie
+                    onMoveToDate(targetDate);
                     setShowDatePicker(false);
                   }
                 }}
                 locale={fr}
+                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
               />
             </PopoverContent>
           </Popover>
@@ -957,19 +963,20 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
               <DropdownMenuItem
                 onClick={() => {
                   const dateStr = prompt(
-                    "Date cible (JJ/MM/AAAA):",
-                    block.targetDate ? format(parseISO(block.targetDate), "dd/MM/yyyy") : "",
+                    "Planifier pour quelle date ? (JJ/MM/AAAA):",
+                    format(addDays(new Date(), 1), "dd/MM/yyyy"),
                   );
                   if (dateStr) {
                     const [day, month, year] = dateStr.split("/");
                     if (day && month && year) {
-                      onUpdate({ targetDate: `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}` });
+                      const targetDate = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+                      onMoveToDate(targetDate);
                     }
                   }
                 }}
               >
                 <CalendarIcon className="h-4 w-4 mr-2" />
-                Définir date cible
+                Planifier pour une date
               </DropdownMenuItem>
               {block.targetDate && (
                 <DropdownMenuItem onClick={() => onUpdate({ targetDate: undefined })}>
