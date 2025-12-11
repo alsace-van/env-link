@@ -670,8 +670,13 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   {hasTasks ? "Ajouter un travail" : "Rechercher des travaux..."}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" align="start">
-                <Command>
+              <PopoverContent
+                className="w-80 p-0"
+                align="start"
+                onPointerDown={stopPropagation}
+                onClick={stopPropagation}
+              >
+                <Command shouldFilter={false}>
                   <CommandInput
                     placeholder="Rechercher dans les fiches de travaux..."
                     value={taskSearchQuery}
@@ -691,7 +696,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                       }
                     }}
                   />
-                  <CommandList>
+                  <CommandList className="max-h-[300px] overflow-y-auto">
                     {isSearchingTasks && (
                       <div className="p-4 text-center text-sm text-gray-500">
                         <Loader2 className="h-4 w-4 animate-spin mx-auto" />
@@ -708,7 +713,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         {taskSearchResults.map((task) => (
                           <CommandItem
                             key={task.id}
-                            value={task.id}
+                            value={task.title}
                             onSelect={() => {
                               if (onLinkTask) {
                                 onLinkTask(task);
@@ -1174,7 +1179,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
       // Mise à jour locale immédiate avec callback pour avoir la valeur actuelle
       setBlocks((prev) => {
         const updatedBlocks = prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b));
-        
+
         // Sync vers le bloc source si c'est une copie
         const block = prev.find((b) => b.id === blockId);
         if (block?.sourceBlockId && block?.sourceDate) {
@@ -1184,7 +1189,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             setTimeout(() => syncBlockToSource(blockId, contentUpdates), 0);
           }
         }
-        
+
         return updatedBlocks;
       });
       setHasUnsavedChanges(true);
