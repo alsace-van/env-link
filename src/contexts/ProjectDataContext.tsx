@@ -15,6 +15,7 @@ interface Todo {
   title: string;
   completed: boolean;
   due_date: string | null;
+  scheduled_date?: string | null; // Date planifiée pour les travaux
   project_id?: string | null;
   created_at: string;
   updated_at: string;
@@ -23,6 +24,7 @@ interface Todo {
   task_type?: string; // Type de tâche (delivery, appointment, etc.)
   accessory_id?: string | null; // Lien vers accessoire (pour les livraisons)
   description?: string | null;
+  category_id?: string | null; // Catégorie de travail
 }
 
 interface ProjectNote {
@@ -153,7 +155,14 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      await Promise.all([loadTodos(), loadNotes(), loadSupplierExpenses(), loadMonthlyCharges(), loadAppointments(), loadAccessoryDeliveries()]);
+      await Promise.all([
+        loadTodos(),
+        loadNotes(),
+        loadSupplierExpenses(),
+        loadMonthlyCharges(),
+        loadAppointments(),
+        loadAccessoryDeliveries(),
+      ]);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Erreur lors du chargement des données");
