@@ -103,7 +103,12 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   };
 
   const getItemsForDate = (date: Date) => {
-    const todosForDate = todos.filter((todo) => todo.due_date && isSameDay(parseISO(todo.due_date), date));
+    // Inclure due_date ET scheduled_date pour les tâches
+    const todosForDate = todos.filter((todo) => {
+      if (todo.due_date && isSameDay(parseISO(todo.due_date), date)) return true;
+      if (todo.scheduled_date && isSameDay(parseISO(todo.scheduled_date), date)) return true;
+      return false;
+    });
 
     const expensesForDate = supplierExpenses.filter(
       (expense) => expense.order_date && isSameDay(parseISO(expense.order_date), date),
@@ -133,8 +138,10 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
 
     return {
       todos: todos.filter((todo) => {
-        if (!todo.due_date) return false;
-        const todoDate = parseISO(todo.due_date);
+        // Vérifier due_date ou scheduled_date
+        const dateToCheck = todo.due_date || todo.scheduled_date;
+        if (!dateToCheck) return false;
+        const todoDate = parseISO(dateToCheck);
         return todoDate.getHours() === hour;
       }),
       expenses: expenses.filter((expense) => {
