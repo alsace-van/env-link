@@ -1342,48 +1342,55 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   );
 
   // Lier une tâche à un bloc (ajoute à la liste existante)
-  const linkTask = useCallback(
-    (blockId: string, task: AvailableTask) => {
-      const linkedTask: LinkedTask = {
-        id: task.id,
-        title: task.title,
-        description: task.description,
-        estimated_hours: task.estimated_hours,
-        actual_hours: task.actual_hours,
-        completed: task.completed,
-        scheduled_date: task.scheduled_date,
-        forfait_ttc: task.forfait_ttc,
-        category_name: task.category_name,
-        category_color: task.category_color,
-        category_icon: task.category_icon,
-        project_id: task.project_id,
-        project_name: task.project_name,
-      };
+  const linkTask = useCallback((blockId: string, task: AvailableTask) => {
+    const linkedTask: LinkedTask = {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      estimated_hours: task.estimated_hours,
+      actual_hours: task.actual_hours,
+      completed: task.completed,
+      scheduled_date: task.scheduled_date,
+      forfait_ttc: task.forfait_ttc,
+      category_name: task.category_name,
+      category_color: task.category_color,
+      category_icon: task.category_icon,
+      project_id: task.project_id,
+      project_name: task.project_name,
+    };
 
-      // Trouver le bloc actuel pour récupérer les tâches existantes
-      const currentBlock = blocks.find((b) => b.id === blockId);
-      const existingTasks = currentBlock?.linkedTasks || (currentBlock?.linkedTask ? [currentBlock.linkedTask] : []);
+    // Utiliser setBlocks avec callback pour avoir la valeur la plus récente
+    setBlocks((prevBlocks) => {
+      const currentBlock = prevBlocks.find((b) => b.id === blockId);
+      if (!currentBlock) return prevBlocks;
+
+      const existingTasks = currentBlock.linkedTasks || (currentBlock.linkedTask ? [currentBlock.linkedTask] : []);
 
       // Vérifier si la tâche n'est pas déjà dans la liste
       if (existingTasks.some((t) => t.id === task.id)) {
         toast.error("Cette tâche est déjà dans la liste");
-        return;
+        return prevBlocks;
       }
 
       // Ajouter la nouvelle tâche à la liste
       const newLinkedTasks = [...existingTasks, linkedTask];
 
-      updateBlockWithSync(blockId, {
-        linkedTasks: newLinkedTasks,
-        linkedTask: undefined, // Migrer vers le nouveau format
-        linkedProjectId: task.project_id,
-        linkedProjectName: task.project_name,
-      });
+      return prevBlocks.map((b) =>
+        b.id === blockId
+          ? {
+              ...b,
+              linkedTasks: newLinkedTasks,
+              linkedTask: undefined,
+              linkedProjectId: task.project_id,
+              linkedProjectName: task.project_name,
+            }
+          : b,
+      );
+    });
 
-      toast.success(`"${task.title}" ajouté`);
-    },
-    [updateBlockWithSync, blocks],
-  );
+    setHasUnsavedChanges(true);
+    toast.success(`"${task.title}" ajouté`);
+  }, []);
 
   // Mettre à jour le statut d'une tâche dans Supabase
   const updateTaskStatus = useCallback(
