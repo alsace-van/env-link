@@ -625,7 +625,24 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
           <div className="p-3 space-y-2">
             <Popover open={showTaskSearch} onOpenChange={setShowTaskSearch}>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-start text-gray-500" onClick={stopPropagation}>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-gray-500"
+                  onClick={async (e) => {
+                    stopPropagation(e);
+                    // Charger les travaux du projet actuel à l'ouverture
+                    if (onSearchTasks && taskSearchResults.length === 0) {
+                      setIsSearchingTasks(true);
+                      try {
+                        const results = await onSearchTasks("");
+                        setTaskSearchResults(results);
+                      } catch (error) {
+                        console.error("Erreur chargement initial:", error);
+                      }
+                      setIsSearchingTasks(false);
+                    }
+                  }}
+                >
                   <Search className="h-4 w-4 mr-2" />
                   Rechercher une tâche...
                 </Button>
@@ -637,7 +654,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                     value={taskSearchQuery}
                     onValueChange={async (value) => {
                       setTaskSearchQuery(value);
-                      if (value.length >= 2 && onSearchTasks) {
+                      if (onSearchTasks) {
                         setIsSearchingTasks(true);
                         try {
                           const results = await onSearchTasks(value);
@@ -646,8 +663,6 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                           console.error("Erreur recherche:", error);
                         }
                         setIsSearchingTasks(false);
-                      } else {
-                        setTaskSearchResults([]);
                       }
                     }}
                   />
@@ -657,11 +672,14 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         <Loader2 className="h-4 w-4 animate-spin mx-auto" />
                       </div>
                     )}
-                    {!isSearchingTasks && taskSearchResults.length === 0 && taskSearchQuery.length >= 2 && (
-                      <CommandEmpty>Aucune tâche trouvée</CommandEmpty>
+                    {!isSearchingTasks && taskSearchResults.length === 0 && (
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        <p>Aucun travaux trouvé</p>
+                        <p className="text-xs mt-1">Ajoutez des travaux dans l'onglet "Travaux" de votre projet</p>
+                      </div>
                     )}
                     {taskSearchResults.length > 0 && (
-                      <CommandGroup heading="Tâches disponibles">
+                      <CommandGroup heading={`Travaux disponibles (${taskSearchResults.length})`}>
                         {taskSearchResults.map((task) => (
                           <CommandItem
                             key={task.id}
@@ -1219,7 +1237,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   // Rechercher des tâches dans les fiches de travaux de tous les projets de l'utilisateur
   const searchTasks = useCallback(
     async (query: string): Promise<AvailableTask[]> => {
-      if (!userId || query.length < 2) return [];
+      if (!userId) return [];
+
+      // Si query vide ou trop court, retourner les travaux récents du projet actuel
+      const minQueryLength = query.length >= 2;
 
       try {
         // D'abord récupérer les projets de l'utilisateur
@@ -1229,8 +1250,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
         const projectIds = userProjects.map((p: any) => p.id);
 
-        // Rechercher dans project_todos avec les infos de catégorie et projet
-        const { data: tasks, error } = await (supabase as any)
+        // Construire la requête de base
+        let queryBuilder = (supabase as any)
           .from("project_todos")
           .select(
             `
@@ -1250,14 +1271,25 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             icon
           ),
           projects (
-            name
+            nom
           )
         `,
           )
           .in("project_id", projectIds)
-          .not("category_id", "is", null)
-          .ilike("title", `%${query}%`)
-          .eq("completed", false) // Seulement les tâches non terminées
+          .not("category_id", "is", null) // Seulement les travaux (avec catégorie)
+          .eq("completed", false); // Seulement les tâches non terminées
+
+        // Si recherche active, filtrer par titre
+        if (minQueryLength) {
+          queryBuilder = queryBuilder.ilike("title", `%${query}%`);
+        } else {
+          // Sinon, privilégier le projet actuel
+          if (projectId) {
+            queryBuilder = queryBuilder.eq("project_id", projectId);
+          }
+        }
+
+        const { data: tasks, error } = await queryBuilder
           .order("scheduled_date", { ascending: true, nullsFirst: false })
           .limit(20);
 
@@ -1276,14 +1308,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           category_color: task.work_categories?.color,
           category_icon: task.work_categories?.icon,
           project_id: task.project_id,
-          project_name: task.projects?.name || "Projet inconnu",
+          project_name: task.projects?.nom || "Projet inconnu",
         }));
       } catch (error) {
         console.error("Erreur recherche tâches:", error);
         return [];
       }
     },
-    [userId],
+    [userId, projectId],
   );
 
   // Lier une tâche à un bloc
