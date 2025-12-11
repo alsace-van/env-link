@@ -442,6 +442,7 @@ const Block = memo(
 
     return (
       <div
+        data-block-id={block.id}
         className={`absolute bg-white rounded-lg shadow-md border-2 transition-all group ${
           isSelected ? "border-blue-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
         } ${isConnectMode ? "ring-2 ring-blue-200" : ""}`}
@@ -960,23 +961,45 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
       const block = blocks.find((b) => b.id === blockId);
       if (!block) return;
 
+      // Récupérer l'élément DOM directement
+      const element = (e.target as HTMLElement).closest("[data-block-id]") as HTMLElement;
+      if (!element) return;
+
       const startX = e.clientX;
       const startY = e.clientY;
       const startBlockX = block.x;
       const startBlockY = block.y;
 
+      // Stocker la position finale
+      let finalX = startBlockX;
+      let finalY = startBlockY;
+
+      // Ajouter une classe pour désactiver les transitions pendant le drag
+      element.style.transition = "none";
+      element.style.zIndex = "1000";
+
       const handleMove = (moveEvent: PointerEvent) => {
         const dx = moveEvent.clientX - startX;
         const dy = moveEvent.clientY - startY;
-        updateBlock(blockId, {
-          x: Math.max(0, startBlockX + dx),
-          y: Math.max(0, startBlockY + dy),
-        });
+
+        finalX = Math.max(0, startBlockX + dx);
+        finalY = Math.max(0, startBlockY + dy);
+
+        // Manipuler directement le DOM pour un déplacement fluide
+        element.style.left = `${finalX}px`;
+        element.style.top = `${finalY}px`;
       };
 
       const handleUp = () => {
         document.removeEventListener("pointermove", handleMove);
         document.removeEventListener("pointerup", handleUp);
+
+        // Restaurer le style
+        element.style.transition = "";
+        element.style.zIndex = "";
+
+        // Mettre à jour le state React seulement à la fin
+        updateBlock(blockId, { x: finalX, y: finalY });
       };
 
       document.addEventListener("pointermove", handleMove);
