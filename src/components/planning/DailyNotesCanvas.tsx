@@ -786,15 +786,14 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
 
   return (
     <div
-      className={`bg-white rounded-lg shadow-md border-2 group relative overflow-visible ${
+      className={`bg-white rounded-lg shadow-md border-2 group relative ${
         selected ? "border-blue-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
       }`}
       style={{
         backgroundColor: block.style?.backgroundColor || "#fff",
         minWidth: block.width || 200,
         minHeight: 80,
-        height: "auto", // Permet au bloc de s'étendre
-        marginTop: block.sourceDate || block.rescheduledTo ? 24 : 0, // Espace pour le badge
+        height: "auto",
       }}
     >
       {/* Handles de connexion - comme MechanicalProcedures */}
@@ -803,44 +802,44 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
 
-      {/* Indicateur bloc copié depuis roadmap - CLIQUABLE (pour la COPIE) */}
+      {/* Badge copie (depuis X) - VIOLET - à l'intérieur du bloc */}
       {block.sourceDate && (
-        <div className="absolute -top-6 left-0 right-0 flex justify-center">
-          <button
-            className="bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs px-2 py-0.5 rounded-t-md flex items-center gap-1 cursor-pointer transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNavigateToDate(block.sourceDate!);
-            }}
-            title="Aller à la date d'origine"
-          >
-            <MapPin className="h-3 w-3" />
-            <span>depuis {format(parseISO(block.sourceDate), "d MMM", { locale: fr })}</span>
-            <ChevronRight className="h-3 w-3" />
-          </button>
-        </div>
+        <button
+          className="w-full bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs px-2 py-1 rounded-t-md flex items-center justify-center gap-1 cursor-pointer transition-colors border-b border-purple-200"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigateToDate(block.sourceDate!);
+          }}
+          title="Aller à la date d'origine"
+        >
+          <MapPin className="h-3 w-3" />
+          <span>depuis {format(parseISO(block.sourceDate), "d MMM", { locale: fr })}</span>
+          <ChevronRight className="h-3 w-3" />
+        </button>
       )}
 
-      {/* Indicateur bloc replanifié - CLIQUABLE (pour l'ORIGINAL) */}
+      {/* Badge replanifié (→ X) - BLEU - à l'intérieur du bloc */}
       {block.rescheduledTo && !block.sourceDate && (
-        <div className="absolute -top-6 left-0 right-0 flex justify-center">
-          <button
-            className="bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-2 py-0.5 rounded-t-md flex items-center gap-1 cursor-pointer transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNavigateToDate(block.rescheduledTo!);
-            }}
-            title="Aller à la date planifiée"
-          >
-            <CalendarIcon className="h-3 w-3" />
-            <span>→ {format(parseISO(block.rescheduledTo), "d MMM", { locale: fr })}</span>
-            <ChevronRight className="h-3 w-3" />
-          </button>
-        </div>
+        <button
+          className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-2 py-1 rounded-t-md flex items-center justify-center gap-1 cursor-pointer transition-colors border-b border-blue-200"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigateToDate(block.rescheduledTo!);
+          }}
+          title="Aller à la date planifiée"
+        >
+          <CalendarIcon className="h-3 w-3" />
+          <span>→ {format(parseISO(block.rescheduledTo), "d MMM", { locale: fr })}</span>
+          <ChevronRight className="h-3 w-3" />
+        </button>
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded-t-md border-b cursor-move">
+      <div
+        className={`flex items-center justify-between px-2 py-1 bg-gray-50 border-b cursor-move ${
+          !(block.sourceDate || block.rescheduledTo) ? "rounded-t-md" : ""
+        }`}
+      >
         <div className="flex items-center gap-1">
           <GripVertical className="h-4 w-4 text-gray-400" />
           {getBlockIcon()}
@@ -1724,7 +1723,13 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           await (supabase as any).from("project_todos").update({ scheduled_date: targetDate }).in("id", taskIds);
         }
 
-        setRoadmapDates((prev) => new Set([...prev, currentDateStr]));
+        // 7. Mettre à jour les roadmapDates pour les deux dates (origine et cible)
+        setRoadmapDates((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(currentDateStr); // Date d'origine (a un bloc replanifié)
+          newSet.add(targetDate); // Date cible (a une copie)
+          return newSet;
+        });
 
         toast.success(`Bloc copié vers le ${format(parseISO(targetDate), "d MMMM", { locale: fr })}`, {
           description: "Les modifications seront synchronisées avec l'original",
@@ -2148,11 +2153,23 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     }
   }, [selectedDate, projectId]);
 
+  // Charger les données quand la date ou le dialog change
+  const previousDateRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (open) {
-      loadDayData();
+    if (!open) {
+      previousDateRef.current = null;
+      return;
     }
-  }, [open, loadDayData]);
+
+    const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+
+    // Charger si c'est la première ouverture ou si la date a changé
+    if (!previousDateRef.current || previousDateRef.current !== currentDateStr) {
+      loadDayData();
+      previousDateRef.current = currentDateStr;
+    }
+  }, [selectedDate, open, loadDayData]);
 
   const saveNote = useCallback(async () => {
     if (!userId) return;
