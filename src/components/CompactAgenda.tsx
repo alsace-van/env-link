@@ -50,9 +50,15 @@ interface CompactAgendaProps {
   projectId: string | null;
 }
 
+interface Project {
+  id: string;
+  name: string;
+}
+
 const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isExpanded, setIsExpanded] = useState(false); // Mode réduit (4h) vs journée complète (13h)
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isMonthViewOpen, setIsMonthViewOpen] = useState(false);
   const [monthCellSize, setMonthCellSize] = useState<"normal" | "large">("normal"); // Taille des cases du mois
   const [currentTime, setCurrentTime] = useState(new Date()); // Pour rafraîchir l'heure actuelle
@@ -82,6 +88,51 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   useEffect(() => {
     setCurrentProjectId(projectId);
   }, [projectId, setCurrentProjectId]);
+
+  // Charger tous les projets pour afficher leurs noms
+  useEffect(() => {
+    const loadProjects = async () => {
+      const { data } = await supabase.from("projects").select("id, name");
+      if (data) {
+        setProjects(data);
+      }
+    };
+    loadProjects();
+  }, []);
+
+  // Helper pour obtenir les noms de projets ayant des travaux ce jour
+  const getProjectNamesForDate = (date: Date) => {
+    const todosForDate = todos.filter((todo) => {
+      if (todo.due_date && isSameDay(parseISO(todo.due_date), date)) return true;
+      if (todo.scheduled_date && isSameDay(parseISO(todo.scheduled_date), date)) return true;
+      return false;
+    });
+
+    // Regrouper par projet
+    const projectIds = new Set<string>();
+    const tasksWithoutProject: string[] = [];
+
+    todosForDate.forEach((todo) => {
+      if (todo.project_id) {
+        projectIds.add(todo.project_id);
+      } else {
+        // Tâche sans projet - ajouter le titre
+        tasksWithoutProject.push(todo.title);
+      }
+    });
+
+    // Convertir les IDs en noms
+    const projectNames = Array.from(projectIds).map((id) => {
+      const project = projects.find((p) => p.id === id);
+      return project?.name || "Projet inconnu";
+    });
+
+    return {
+      projectNames,
+      tasksWithoutProject,
+      totalTodos: todosForDate.length,
+    };
+  };
 
   // Rafraîchir l'heure actuelle toutes les minutes pour mettre à jour la surbrillance
   useEffect(() => {
@@ -910,18 +961,35 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                     {totalEvents > 0 && (
                       <div className="space-y-1">
                         {monthCellSize === "large" ? (
-                          // Mode agrandi : afficher les détails
+                          // Mode agrandi : afficher les noms de projets
                           <>
-                            {dayItems.todos.slice(0, 3).map((todo) => (
-                              <div
-                                key={todo.id}
-                                className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
-                              >
-                                <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                                <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
-                                <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
-                              </div>
-                            ))}
+                            {(() => {
+                              const { projectNames, tasksWithoutProject } = getProjectNamesForDate(day);
+                              return (
+                                <>
+                                  {projectNames.slice(0, 3).map((name, idx) => (
+                                    <div
+                                      key={`proj-${idx}`}
+                                      className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
+                                    >
+                                      <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                      <span className="truncate text-foreground dark:text-gray-100 font-medium">
+                                        {name}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  {tasksWithoutProject.slice(0, 2).map((title, idx) => (
+                                    <div
+                                      key={`task-${idx}`}
+                                      className="flex items-center gap-1.5 text-xs bg-purple-500/10 dark:bg-purple-500/20 px-2 py-1 rounded"
+                                    >
+                                      <CheckCircle2 className="h-3 w-3 text-gray-500 dark:text-gray-400" />
+                                      <span className="truncate text-muted-foreground dark:text-gray-300">{title}</span>
+                                    </div>
+                                  ))}
+                                </>
+                              );
+                            })()}
                             {dayItems.appointments.slice(0, 2).map((apt) => (
                               <div
                                 key={apt.id}
@@ -962,18 +1030,26 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             )}
                           </>
                         ) : (
-                          // Mode normal : afficher seulement les 2 premiers
+                          // Mode normal : afficher les noms de projets
                           <>
-                            {dayItems.todos.slice(0, 1).map((todo) => (
-                              <div
-                                key={todo.id}
-                                className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
-                              >
-                                <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
-                                <span className="font-semibold text-purple-800 dark:text-purple-400">Tâche:</span>
-                                <span className="truncate text-foreground dark:text-gray-100">{todo.title}</span>
-                              </div>
-                            ))}
+                            {(() => {
+                              const { projectNames, tasksWithoutProject } = getProjectNamesForDate(day);
+                              const firstItem = projectNames[0] || tasksWithoutProject[0];
+                              if (!firstItem) return null;
+                              const isProject = projectNames.length > 0;
+                              return (
+                                <div
+                                  className={`flex items-center gap-1.5 text-xs ${isProject ? "bg-purple-500/20 dark:bg-purple-500/30" : "bg-purple-500/10 dark:bg-purple-500/20"} px-2 py-1 rounded`}
+                                >
+                                  <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
+                                  <span
+                                    className={`truncate ${isProject ? "text-foreground dark:text-gray-100 font-medium" : "text-muted-foreground dark:text-gray-300"}`}
+                                  >
+                                    {firstItem}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                             {dayItems.appointments.slice(0, 1).map((apt) => (
                               <div
                                 key={apt.id}
