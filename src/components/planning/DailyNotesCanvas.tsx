@@ -1782,7 +1782,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           type: "customBlock",
           position: { x: block.x, y: block.y },
           data: {
-            block,
+            block: { ...block }, // Créer une nouvelle référence pour que memo détecte le changement
             onUpdate: (updates: Partial<NoteBlock>) => updateBlockWithSync(block.id, updates),
             onDelete: () => deleteBlock(block.id),
             onImageUpload: (file: File) => handleImageUpload(block.id, file),
@@ -2118,12 +2118,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         // Charger les blocs
         if (data.blocks_data) {
           try {
-            setBlocks(JSON.parse(data.blocks_data));
+            const loadedBlocks = JSON.parse(data.blocks_data);
+            setBlocks(loadedBlocks);
+            // Forcer ReactFlow à recalculer les nodes
+            blocksIdsRef.current = "";
           } catch {
             setBlocks([]);
+            blocksIdsRef.current = "";
           }
         } else {
           setBlocks([]);
+          blocksIdsRef.current = "";
         }
 
         // Charger les connexions
@@ -2143,6 +2148,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         }
         setBlocks([]);
         setEdges([]);
+        blocksIdsRef.current = "";
       }
     } catch (error) {
       console.error("Erreur chargement:", error);
