@@ -75,6 +75,7 @@ import {
   Loader2,
   GripVertical,
   X,
+  Plus,
   MoreHorizontal,
   Move,
   Link2,
@@ -147,7 +148,8 @@ interface NoteBlock {
   linkedProjectId?: string; // ID du projet lié
   linkedProjectName?: string; // Nom du projet lié (pour affichage)
   // Champs spécifiques au type "task"
-  linkedTask?: LinkedTask; // Tâche de travaux liée
+  linkedTasks?: LinkedTask[]; // Tâches de travaux liées (plusieurs possibles)
+  linkedTask?: LinkedTask; // DEPRECATED: pour compatibilité ascendante
   taskStatus?: "pending" | "in_progress" | "completed"; // Statut local du bloc
   style?: {
     fontSize?: number;
@@ -529,105 +531,116 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
         );
 
       case "task":
-        // Si une tâche est liée
-        if (block.linkedTask) {
-          const task = block.linkedTask;
-          const status = block.taskStatus || (task.completed ? "completed" : "pending");
+        // Récupérer les tâches (nouveau format linkedTasks[] ou ancien format linkedTask)
+        const tasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
+        const hasTasks = tasks.length > 0;
 
-          return (
-            <div className="p-3 space-y-2">
-              {/* Titre et projet */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1">
-                  <h4 className="font-medium text-sm">{task.title}</h4>
-                  {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
-                </div>
-                {task.category_color && (
-                  <div
-                    className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: task.category_color }}
-                    title={task.category_name}
-                  />
-                )}
-              </div>
+        // Calculs totaux
+        const totalHours = tasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0);
+        const totalForfait = tasks.reduce((sum, t) => sum + (t.forfait_ttc || 0), 0);
+        const completedCount = tasks.filter((t) => t.completed).length;
 
-              {/* Infos */}
-              <div className="flex flex-wrap gap-2 text-xs">
-                {task.estimated_hours && (
-                  <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
-                    <Clock className="h-3 w-3" />
-                    {task.estimated_hours}h
-                  </span>
-                )}
-                {task.forfait_ttc && (
-                  <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">
-                    {task.forfait_ttc}€
-                  </span>
-                )}
-                {task.scheduled_date && (
-                  <span className="flex items-center gap-1 bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded">
-                    <CalendarIcon className="h-3 w-3" />
-                    {format(parseISO(task.scheduled_date), "d MMM", { locale: fr })}
-                  </span>
-                )}
-                {task.project_name && (
-                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{task.project_name}</span>
-                )}
-              </div>
+        // Fonction pour supprimer une tâche du bloc
+        const removeTaskFromBlock = (taskId: string) => {
+          const newTasks = tasks.filter((t) => t.id !== taskId);
+          onUpdate({ linkedTasks: newTasks, linkedTask: undefined });
+        };
 
-              {/* Statut */}
-              <div className="flex items-center gap-1 pt-2 border-t">
-                <Button
-                  variant={status === "pending" ? "secondary" : "ghost"}
-                  size="sm"
-                  className={`h-7 text-xs flex-1 ${status === "pending" ? "bg-gray-200" : ""}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdate({ taskStatus: "pending" });
-                    if (onUpdateTaskStatus) onUpdateTaskStatus(task.id, "pending");
-                  }}
-                >
-                  <CircleDot className="h-3 w-3 mr-1" />À faire
-                </Button>
-                <Button
-                  variant={status === "in_progress" ? "secondary" : "ghost"}
-                  size="sm"
-                  className={`h-7 text-xs flex-1 ${status === "in_progress" ? "bg-orange-100 text-orange-700" : ""}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdate({ taskStatus: "in_progress" });
-                    if (onUpdateTaskStatus) onUpdateTaskStatus(task.id, "in_progress");
-                  }}
-                >
-                  <Play className="h-3 w-3 mr-1" />
-                  En cours
-                </Button>
-                <Button
-                  variant={status === "completed" ? "secondary" : "ghost"}
-                  size="sm"
-                  className={`h-7 text-xs flex-1 ${status === "completed" ? "bg-green-100 text-green-700" : ""}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onUpdate({ taskStatus: "completed" });
-                    if (onUpdateTaskStatus) onUpdateTaskStatus(task.id, "completed", task.estimated_hours);
-                  }}
-                >
-                  <Check className="h-3 w-3 mr-1" />
-                  Fait
-                </Button>
-              </div>
-            </div>
-          );
-        }
-
-        // Si aucune tâche liée → interface de recherche
         return (
           <div className="p-3 space-y-2">
+            {/* Liste des tâches liées */}
+            {hasTasks && (
+              <div className="space-y-2">
+                {tasks.map((task, index) => {
+                  const status = task.completed ? "completed" : "pending";
+                  return (
+                    <div
+                      key={task.id}
+                      className={`p-2 rounded-lg border ${task.completed ? "bg-green-50 border-green-200" : "bg-white border-gray-200"}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {/* Checkbox */}
+                        <Checkbox
+                          checked={task.completed}
+                          onCheckedChange={(checked) => {
+                            // Mettre à jour le statut dans le bloc
+                            const newTasks = tasks.map((t) => (t.id === task.id ? { ...t, completed: !!checked } : t));
+                            onUpdate({ linkedTasks: newTasks, linkedTask: undefined });
+                            // Synchro avec Supabase
+                            if (onUpdateTaskStatus) {
+                              onUpdateTaskStatus(task.id, checked ? "completed" : "pending", task.estimated_hours);
+                            }
+                          }}
+                          onClick={stopPropagation}
+                          className="mt-0.5"
+                        />
+
+                        {/* Contenu */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            {task.category_color && (
+                              <div
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: task.category_color }}
+                                title={task.category_name}
+                              />
+                            )}
+                            <span
+                              className={`text-sm font-medium truncate ${task.completed ? "line-through text-gray-500" : ""}`}
+                            >
+                              {task.title}
+                            </span>
+                          </div>
+
+                          {/* Infos compactes */}
+                          <div className="flex flex-wrap gap-1.5 mt-1 text-xs">
+                            {task.estimated_hours && <span className="text-blue-600">{task.estimated_hours}h</span>}
+                            {task.forfait_ttc && <span className="text-emerald-600">{task.forfait_ttc}€</span>}
+                            {task.project_name && task.project_id !== currentProjectId && (
+                              <span className="text-gray-400">{task.project_name}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Bouton supprimer */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeTaskFromBlock(task.id);
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Résumé si plusieurs tâches */}
+                {tasks.length > 1 && (
+                  <div className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t">
+                    <span>
+                      {completedCount}/{tasks.length} terminées
+                    </span>
+                    <div className="flex gap-2">
+                      {totalHours > 0 && <span className="text-blue-600">{totalHours}h total</span>}
+                      {totalForfait > 0 && <span className="text-emerald-600">{totalForfait}€ total</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bouton pour ajouter des tâches */}
             <Popover open={showTaskSearch} onOpenChange={setShowTaskSearch}>
               <PopoverTrigger asChild>
                 <Button
-                  variant="outline"
-                  className="w-full justify-start text-gray-500"
+                  variant={hasTasks ? "ghost" : "outline"}
+                  size={hasTasks ? "sm" : "default"}
+                  className={hasTasks ? "w-full h-7 text-xs text-gray-500" : "w-full justify-start text-gray-500"}
                   onClick={async (e) => {
                     stopPropagation(e);
                     // Charger les travaux du projet actuel à l'ouverture
@@ -635,7 +648,9 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                       setIsSearchingTasks(true);
                       try {
                         const results = await onSearchTasks("");
-                        setTaskSearchResults(results);
+                        // Filtrer les tâches déjà ajoutées
+                        const existingIds = tasks.map((t) => t.id);
+                        setTaskSearchResults(results.filter((r) => !existingIds.includes(r.id)));
                       } catch (error) {
                         console.error("Erreur chargement initial:", error);
                       }
@@ -643,8 +658,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                     }
                   }}
                 >
-                  <Search className="h-4 w-4 mr-2" />
-                  Rechercher une tâche...
+                  <Plus className="h-3 w-3 mr-1" />
+                  {hasTasks ? "Ajouter un travail" : "Rechercher des travaux..."}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-80 p-0" align="start">
@@ -658,7 +673,9 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         setIsSearchingTasks(true);
                         try {
                           const results = await onSearchTasks(value);
-                          setTaskSearchResults(results);
+                          // Filtrer les tâches déjà ajoutées
+                          const existingIds = tasks.map((t) => t.id);
+                          setTaskSearchResults(results.filter((r) => !existingIds.includes(r.id)));
                         } catch (error) {
                           console.error("Erreur recherche:", error);
                         }
@@ -687,9 +704,10 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                             onSelect={() => {
                               if (onLinkTask) {
                                 onLinkTask(task);
-                                setShowTaskSearch(false);
+                                // Ne pas fermer pour permettre d'ajouter plusieurs
                                 setTaskSearchQuery("");
-                                setTaskSearchResults([]);
+                                // Retirer de la liste des résultats
+                                setTaskSearchResults((prev) => prev.filter((t) => t.id !== task.id));
                               }
                             }}
                             className="cursor-pointer"
@@ -709,14 +727,9 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                                     <span className="text-blue-600">{task.estimated_hours}h</span>
                                   )}
                                   {task.forfait_ttc && <span className="text-emerald-600">{task.forfait_ttc}€</span>}
-                                  {task.scheduled_date && (
-                                    <span className="text-orange-600">
-                                      📅 {format(parseISO(task.scheduled_date), "d MMM", { locale: fr })}
-                                    </span>
-                                  )}
                                 </div>
                               </div>
-                              {task.completed && <Check className="h-4 w-4 text-green-500" />}
+                              <Plus className="h-4 w-4 text-gray-400" />
                             </div>
                           </CommandItem>
                         ))}
@@ -726,9 +739,10 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                 </Command>
               </PopoverContent>
             </Popover>
-            <p className="text-xs text-gray-400 text-center">
-              Recherchez une tâche depuis les fiches de travaux de vos projets
-            </p>
+
+            {!hasTasks && (
+              <p className="text-xs text-gray-400 text-center">Ajoutez des travaux depuis vos fiches de travaux</p>
+            )}
           </div>
         );
 
@@ -897,7 +911,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {/* Envoi vers sidebar - Tâche */}
-              {block.type === "task" && block.linkedTask && (
+              {block.type === "task" && (block.linkedTasks?.length || block.linkedTask) && (
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1318,7 +1332,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     [userId, projectId],
   );
 
-  // Lier une tâche à un bloc
+  // Lier une tâche à un bloc (ajoute à la liste existante)
   const linkTask = useCallback(
     (blockId: string, task: AvailableTask) => {
       const linkedTask: LinkedTask = {
@@ -1337,16 +1351,29 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         project_name: task.project_name,
       };
 
+      // Trouver le bloc actuel pour récupérer les tâches existantes
+      const currentBlock = blocks.find((b) => b.id === blockId);
+      const existingTasks = currentBlock?.linkedTasks || (currentBlock?.linkedTask ? [currentBlock.linkedTask] : []);
+
+      // Vérifier si la tâche n'est pas déjà dans la liste
+      if (existingTasks.some((t) => t.id === task.id)) {
+        toast.error("Cette tâche est déjà dans la liste");
+        return;
+      }
+
+      // Ajouter la nouvelle tâche à la liste
+      const newLinkedTasks = [...existingTasks, linkedTask];
+
       updateBlockWithSync(blockId, {
-        linkedTask,
-        taskStatus: task.completed ? "completed" : "pending",
+        linkedTasks: newLinkedTasks,
+        linkedTask: undefined, // Migrer vers le nouveau format
         linkedProjectId: task.project_id,
         linkedProjectName: task.project_name,
       });
 
-      toast.success(`Tâche "${task.title}" liée`);
+      toast.success(`"${task.title}" ajouté`);
     },
-    [updateBlockWithSync],
+    [updateBlockWithSync, blocks],
   );
 
   // Mettre à jour le statut d'une tâche dans Supabase
@@ -1381,28 +1408,30 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   const sendToSidebarTask = useCallback(
     async (blockId: string) => {
       const block = blocks.find((b) => b.id === blockId);
-      if (!block || block.type !== "task" || !block.linkedTask || !userId || !projectId) {
-        toast.error("Impossible d'envoyer cette tâche");
+      const tasks = block?.linkedTasks || (block?.linkedTask ? [block.linkedTask] : []);
+
+      if (!block || block.type !== "task" || tasks.length === 0 || !userId || !projectId) {
+        toast.error("Impossible d'envoyer ces tâches");
         return;
       }
 
       try {
-        const task = block.linkedTask;
+        // Créer une tâche pour chaque tâche liée
+        for (const task of tasks) {
+          const { error } = await (supabase as any).from("project_todos").insert({
+            project_id: projectId,
+            user_id: userId,
+            title: task.title,
+            description: task.description || null,
+            completed: false,
+            due_date: block.targetDate || null, // Utilise la date cible si définie
+            // PAS de category_id → apparaît dans la sidebar
+          });
 
-        // Créer une tâche simple (SANS category_id) dans project_todos
-        const { error } = await (supabase as any).from("project_todos").insert({
-          project_id: projectId,
-          user_id: userId,
-          title: task.title,
-          description: task.description || null,
-          completed: false,
-          due_date: block.targetDate || null, // Utilise la date cible si définie
-          // PAS de category_id → apparaît dans la sidebar
-        });
+          if (error) throw error;
+        }
 
-        if (error) throw error;
-
-        toast.success(`Tâche "${task.title}" ajoutée à la sidebar`);
+        toast.success(`${tasks.length} tâche(s) ajoutée(s) à la sidebar`);
       } catch (error) {
         console.error("Erreur envoi vers sidebar:", error);
         toast.error("Erreur lors de l'envoi");
