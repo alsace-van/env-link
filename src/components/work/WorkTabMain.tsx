@@ -9,6 +9,7 @@ import { WorkCategoryCard } from "./WorkCategoryCard";
 import { AddCategoryDialog } from "./AddCategoryDialog";
 import { AddTaskDialog } from "./AddTaskDialog";
 import { TaskTemplatesLibrary } from "./TaskTemplatesLibrary";
+import { EditTaskDialog } from "./EditTaskDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -24,6 +25,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showCompletedTasks, setShowCompletedTasks] = useState(true);
   const [selectedCategoryForTask, setSelectedCategoryForTask] = useState<string>("");
+  const [editingTask, setEditingTask] = useState<any | null>(null);
 
   // Fetch categories for this project
   const { data: categories, isLoading: loadingCategories } = useQuery({
@@ -58,8 +60,10 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   // Create category mutation
   const createCategoryMutation = useMutation({
     mutationFn: async (data: { name: string; color: string; icon: string; isTemplate: boolean }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       const { error } = await supabase.from("work_categories").insert({
         name: data.name,
         color: data.color,
@@ -89,7 +93,9 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       saveAsTemplate: boolean;
       templateId?: string;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       // If saving as template, create template first
       if (data.saveAsTemplate) {
@@ -133,8 +139,10 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   // Use template mutation
   const useTemplateMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       const { data: template, error: fetchError } = await supabase
         .from("task_templates")
         .select("*, work_categories!inner(id, name, color, icon)")
@@ -146,7 +154,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       // Find or create category in project
       let categoryId = template.category_id;
       const templateCategory = template.work_categories as any;
-      
+
       const { data: existingCategory } = await supabase
         .from("work_categories")
         .select("id")
@@ -197,8 +205,10 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   // Toggle complete mutation
   const toggleCompleteMutation = useMutation({
     mutationFn: async ({ taskId, actualHours }: { taskId: string; actualHours: number | null }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       const task = tasks?.find((t) => t.id === taskId);
       const isCompleting = !task?.completed;
 
@@ -248,10 +258,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   // Delete task mutation
   const deleteTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
-      const { error } = await supabase
-        .from("project_todos")
-        .delete()
-        .eq("id", taskId);
+      const { error } = await supabase.from("project_todos").delete().eq("id", taskId);
 
       if (error) throw error;
     },
@@ -294,6 +301,51 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
     },
   });
 
+  // Update task mutation
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({
+      taskId,
+      data,
+    }: {
+      taskId: string;
+      data: {
+        title: string;
+        description?: string | null;
+        estimated_hours?: number | null;
+        scheduled_date?: string | null;
+        category_id?: string | null;
+        forfait_ttc?: number | null;
+      };
+    }) => {
+      const { error } = await supabase
+        .from("project_todos")
+        .update({
+          title: data.title,
+          description: data.description,
+          estimated_hours: data.estimated_hours,
+          scheduled_date: data.scheduled_date,
+          category_id: data.category_id,
+          forfait_ttc: data.forfait_ttc,
+        })
+        .eq("id", taskId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
+      toast({ title: "✓ Tâche modifiée" });
+      setEditingTask(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Erreur",
+        description: "Impossible de modifier la tâche",
+        variant: "destructive",
+      });
+      console.error(error);
+    },
+  });
+
   const handleAddTaskForCategory = (categoryId: string) => {
     setSelectedCategoryForTask(categoryId);
     setShowAddTask(true);
@@ -306,9 +358,8 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   const globalProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
   const totalEstimatedHours = workTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0) || 0;
-  const totalActualHours = workTasks
-    .filter((t) => t.completed && t.actual_hours)
-    .reduce((sum, t) => sum + (t.actual_hours || 0), 0) || 0;
+  const totalActualHours =
+    workTasks.filter((t) => t.completed && t.actual_hours).reduce((sum, t) => sum + (t.actual_hours || 0), 0) || 0;
 
   if (loadingCategories || loadingTasks) {
     return (
@@ -326,11 +377,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">📋 Fiche de travaux</h2>
         <div className="flex gap-2">
-          <Button 
-            onClick={() => setShowCompletedTasks(!showCompletedTasks)} 
-            variant="outline"
-            size="sm"
-          >
+          <Button onClick={() => setShowCompletedTasks(!showCompletedTasks)} variant="outline" size="sm">
             {showCompletedTasks ? (
               <>
                 <Eye className="h-4 w-4 mr-2" />
@@ -358,14 +405,14 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       <Card>
         <CardHeader>
           <CardTitle>Vue d'ensemble</CardTitle>
-          <CardDescription>
-            Progression globale du projet
-          </CardDescription>
+          <CardDescription>Progression globale du projet</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span>{completedTasks} tâches terminées / {totalTasks} total</span>
+              <span>
+                {completedTasks} tâches terminées / {totalTasks} total
+              </span>
               <span className="font-semibold">{Math.round(globalProgress)}%</span>
             </div>
             <Progress value={globalProgress} className="h-3" />
@@ -395,12 +442,10 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
                 category={category}
                 tasks={categoryTasks}
                 showCompleted={showCompletedTasks}
-                onToggleComplete={(taskId, actualHours) =>
-                  toggleCompleteMutation.mutate({ taskId, actualHours })
-                }
-                onEditTime={(taskId) => {
-                  // TODO: Implement edit time dialog
-                  console.log("Edit time for task", taskId);
+                onToggleComplete={(taskId, actualHours) => toggleCompleteMutation.mutate({ taskId, actualHours })}
+                onEditTask={(taskId) => {
+                  const task = tasks?.find((t) => t.id === taskId);
+                  if (task) setEditingTask(task);
                 }}
                 onDelete={(taskId) => {
                   if (confirm("Êtes-vous sûr de vouloir supprimer cette tâche ?")) {
@@ -419,12 +464,8 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
         ) : (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground mb-4">
-                Aucune catégorie créée pour ce projet
-              </p>
-              <Button onClick={() => setShowLibrary(true)}>
-                📚 Parcourir la bibliothèque de tâches
-              </Button>
+              <p className="text-muted-foreground mb-4">Aucune catégorie créée pour ce projet</p>
+              <Button onClick={() => setShowLibrary(true)}>📚 Parcourir la bibliothèque de tâches</Button>
             </CardContent>
           </Card>
         )}
@@ -454,6 +495,14 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
         onOpenChange={setShowLibrary}
         projectId={projectId}
         onUseTemplate={(templateId) => useTemplateMutation.mutate(templateId)}
+      />
+
+      <EditTaskDialog
+        open={!!editingTask}
+        onOpenChange={(open) => !open && setEditingTask(null)}
+        task={editingTask}
+        categories={categories || []}
+        onSave={(taskId, data) => updateTaskMutation.mutate({ taskId, data })}
       />
     </div>
   );
