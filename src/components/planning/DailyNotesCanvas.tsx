@@ -927,7 +927,12 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                 <CalendarIcon className="h-3 w-3" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end" onClick={stopPropagation}>
+            <PopoverContent
+              className="w-auto p-0"
+              align="end"
+              onClick={stopPropagation}
+              onPointerDown={stopPropagation}
+            >
               <div className="p-2 border-b bg-gray-50">
                 <p className="text-xs text-gray-600 font-medium">📅 Planifier ce bloc pour :</p>
               </div>
@@ -936,10 +941,13 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                 selected={block.targetDate ? parseISO(block.targetDate) : undefined}
                 onSelect={(date) => {
                   if (date) {
-                    const targetDate = format(date, "yyyy-MM-dd");
-                    // Copier directement vers la date choisie
-                    onMoveToDate(targetDate);
+                    // Fermer le popover AVANT d'appeler la fonction
                     setShowDatePicker(false);
+                    // Petit délai pour éviter les problèmes de double-clic
+                    setTimeout(() => {
+                      const targetDate = format(date, "yyyy-MM-dd");
+                      onMoveToDate(targetDate);
+                    }, 100);
                   }
                 }}
                 locale={fr}
@@ -1584,11 +1592,26 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   }, [quickNoteTitle, quickNoteContent, userId, projectId]);
 
   // Copier un bloc vers une autre date (roadmap)
+  const [isMovingBlock, setIsMovingBlock] = useState(false);
+
   const moveBlockToDate = useCallback(
     async (blockId: string, targetDate: string) => {
+      // Protection contre les doubles appels
+      if (isMovingBlock) {
+        console.log("moveBlockToDate déjà en cours, ignoré");
+        return;
+      }
+
       const block = blocks.find((b) => b.id === blockId);
       if (!block || !userId) return;
 
+      // Vérifier si le bloc a déjà été replanifié vers cette date
+      if (block.rescheduledTo === targetDate) {
+        toast.info("Ce bloc est déjà planifié pour cette date");
+        return;
+      }
+
+      setIsMovingBlock(true);
       const currentDateStr = format(selectedDate, "yyyy-MM-dd");
 
       try {
@@ -1622,6 +1645,15 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             targetBlocks = JSON.parse(targetNote.blocks_data);
           } catch {}
         }
+
+        // Vérifier qu'on n'a pas déjà copié ce bloc vers cette date
+        const alreadyCopied = targetBlocks.some((b) => b.sourceBlockId === block.id);
+        if (alreadyCopied) {
+          toast.info("Ce bloc existe déjà à cette date");
+          setIsMovingBlock(false);
+          return;
+        }
+
         targetBlocks.push(blockForTarget);
 
         // 4. Sauvegarder dans la date cible
@@ -1646,6 +1678,13 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         // Ne pas supprimer le bloc - on le garde comme roadmap
         updateBlockWithSync(blockId, { rescheduledTo: targetDate });
 
+        // 6. Mettre à jour scheduled_date des travaux liés pour qu'ils apparaissent dans le planning mensuel
+        const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
+        if (linkedTasks.length > 0) {
+          const taskIds = linkedTasks.map((t) => t.id);
+          await (supabase as any).from("project_todos").update({ scheduled_date: targetDate }).in("id", taskIds);
+        }
+
         setRoadmapDates((prev) => new Set([...prev, currentDateStr]));
 
         toast.success(`Bloc copié vers le ${format(parseISO(targetDate), "d MMMM", { locale: fr })}`, {
@@ -1654,9 +1693,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
       } catch (error) {
         console.error("Erreur copie bloc:", error);
         toast.error("Erreur lors de la copie");
+      } finally {
+        setIsMovingBlock(false);
       }
     },
-    [blocks, userId, projectId, selectedDate, updateBlockWithSync],
+    [blocks, userId, projectId, selectedDate, updateBlockWithSync, isMovingBlock],
   );
 
   // ============================================
@@ -1957,7 +1998,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
-    // Récupérer toutes les notes du projet pour scanner les targetDates
+    // Récupérer toutes les notes du projet pour scanner les dates avec contenu
     const { data, error } = await (supabase as any)
       .from("daily_notes")
       .select("note_date, blocks_data")
@@ -1971,8 +2012,16 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           try {
             const blocks: NoteBlock[] = JSON.parse(note.blocks_data);
             blocks.forEach((block) => {
-              if (block.targetDate) {
-                // Cette note est une roadmap pour la date cible
+              // Ajouter la date cible si définie (bloc original planifié)
+              if (block.rescheduledTo) {
+                dates.add(block.rescheduledTo);
+              }
+              // Ajouter la date d'origine si c'est une copie (pour navigation inverse)
+              if (block.sourceDate) {
+                dates.add(block.sourceDate);
+              }
+              // Ajouter la date de la note si elle contient des tâches liées
+              if (block.type === "task" && (block.linkedTasks?.length || block.linkedTask)) {
                 dates.add(note.note_date);
               }
             });
