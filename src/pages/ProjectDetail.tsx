@@ -87,6 +87,7 @@ import {
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import { useProjectData } from "@/contexts/ProjectDataContext";
+import DailyNotesButton from "@/components/planning/DailyNotesButton";
 
 interface Project {
   id: string;
@@ -399,9 +400,12 @@ const CalendarDropdown = ({ projectId, isOpen, onClose }: CalendarDropdownProps)
                 </div>
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <ChevronUp className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {projectId && <DailyNotesButton projectId={projectId} variant="ghost" size="icon" showLabel={false} />}
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <ChevronUp className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-3">
