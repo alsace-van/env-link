@@ -195,10 +195,11 @@ interface CustomBlockData {
   onUpdate: (updates: Partial<NoteBlock>) => void;
   onDelete: () => void;
   onImageUpload: (file: File) => void;
+  [key: string]: unknown;
 }
 
-const CustomBlockNode = memo(({ data, selected }: NodeProps<Node<CustomBlockData>>) => {
-  const { block, onUpdate, onDelete, onImageUpload } = data;
+const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
+  const { block, onUpdate, onDelete, onImageUpload } = data as CustomBlockData;
   const [isEditing, setIsEditing] = useState(false);
 
   const stopPropagation = (e: React.MouseEvent | React.PointerEvent) => {
@@ -661,10 +662,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             onUpdate: (updates: Partial<NoteBlock>) => updateBlock(block.id, updates),
             onDelete: () => deleteBlock(block.id),
             onImageUpload: (file: File) => handleImageUpload(block.id, file),
-          },
+          } as CustomBlockData,
           style: { width: block.width },
-          selected: selectedBlockId === block.id,
-        })),
+        })) as any,
       );
     }
   }, [blocks, setNodes, updateBlock, deleteBlock, handleImageUpload, selectedBlockId]);
@@ -681,7 +681,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         label: edge.label,
         markerEnd: { type: MarkerType.ArrowClosed },
         style: { strokeWidth: 2, stroke: "#64748b" },
-      })),
+      })) as any,
     );
   }, [edges, setFlowEdges]);
 
@@ -878,7 +878,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     const dateStr = format(selectedDate, "yyyy-MM-dd");
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("daily_notes")
         .select("*")
         .eq("project_id", projectId)
@@ -952,7 +952,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     const connectionsData = JSON.stringify(edges);
 
     try {
-      const { data: existing } = await supabase
+      const { data: existing } = await (supabase as any)
         .from("daily_notes")
         .select("id")
         .eq("project_id", projectId)
@@ -961,7 +961,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         .maybeSingle();
 
       if (existing) {
-        await supabase
+        await (supabase as any)
           .from("daily_notes")
           .update({
             canvas_data: canvasData,
@@ -971,7 +971,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           })
           .eq("id", existing.id);
       } else {
-        await supabase.from("daily_notes").insert({
+        await (supabase as any).from("daily_notes").insert({
           project_id: projectId,
           user_id: userId,
           note_date: dateStr,
