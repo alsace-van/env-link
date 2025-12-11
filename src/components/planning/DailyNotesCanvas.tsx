@@ -181,12 +181,12 @@ interface BlockProps {
   block: NoteBlock;
   isSelected: boolean;
   isConnectMode: boolean;
+  isPendingConnection: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<NoteBlock>) => void;
   onDelete: () => void;
   onDragStart: (e: React.PointerEvent) => void;
   onAnchorDragStart: (blockId: string, anchor: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => void;
-  onAnchorDrop: (blockId: string, anchor: "top" | "right" | "bottom" | "left") => void;
 }
 
 // Composant pour les points d'ancrage
@@ -196,41 +196,29 @@ const AnchorPoint = memo(
     blockId,
     anchor,
     isConnectMode,
+    isPendingConnection,
     onDragStart,
-    onDrop,
   }: {
     position: { top?: string; right?: string; bottom?: string; left?: string; transform: string };
     blockId: string;
     anchor: "top" | "right" | "bottom" | "left";
     isConnectMode: boolean;
+    isPendingConnection: boolean;
     onDragStart: (blockId: string, anchor: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => void;
-    onDrop: (blockId: string, anchor: "top" | "right" | "bottom" | "left") => void;
   }) => (
     <div
-      className={`absolute w-4 h-4 rounded-full border-2 cursor-crosshair transition-all z-20
+      className={`absolute w-5 h-5 rounded-full border-2 cursor-crosshair transition-all z-20
       ${
-        isConnectMode
+        isConnectMode || isPendingConnection
           ? "bg-blue-500 border-blue-600 opacity-100 scale-110"
-          : "bg-white border-gray-400 opacity-0 group-hover:opacity-100 hover:bg-blue-100 hover:border-blue-500"
+          : "bg-white border-gray-400 opacity-0 group-hover:opacity-100 hover:bg-blue-100 hover:border-blue-500 hover:scale-125"
       }`}
       style={position}
       onPointerDown={(e) => {
         e.stopPropagation();
         e.preventDefault();
+        console.log("Anchor drag start:", blockId, anchor);
         onDragStart(blockId, anchor, e);
-      }}
-      onPointerUp={(e) => {
-        e.stopPropagation();
-        onDrop(blockId, anchor);
-      }}
-      onPointerEnter={(e) => {
-        if (e.buttons > 0) {
-          // Survol pendant le drag
-          (e.target as HTMLElement).classList.add("bg-green-500", "border-green-600", "scale-125");
-        }
-      }}
-      onPointerLeave={(e) => {
-        (e.target as HTMLElement).classList.remove("bg-green-500", "border-green-600", "scale-125");
       }}
     />
   ),
@@ -243,12 +231,12 @@ const Block = memo(
     block,
     isSelected,
     isConnectMode,
+    isPendingConnection,
     onSelect,
     onUpdate,
     onDelete,
     onDragStart,
     onAnchorDragStart,
-    onAnchorDrop,
   }: BlockProps) => {
     const [isEditing, setIsEditing] = useState(false);
 
@@ -260,12 +248,12 @@ const Block = memo(
       e.stopPropagation();
     };
 
-    // Positions des ancres
+    // Positions des ancres (plus grandes pour faciliter le clic)
     const anchorPositions = {
-      top: { top: "-8px", left: "50%", transform: "translateX(-50%)" },
-      right: { top: "50%", right: "-8px", transform: "translateY(-50%)" },
-      bottom: { bottom: "-8px", left: "50%", transform: "translateX(-50%)" },
-      left: { top: "50%", left: "-8px", transform: "translateY(-50%)" },
+      top: { top: "-10px", left: "50%", transform: "translateX(-50%)" },
+      right: { top: "50%", right: "-10px", transform: "translateY(-50%)" },
+      bottom: { bottom: "-10px", left: "50%", transform: "translateX(-50%)" },
+      left: { top: "50%", left: "-10px", transform: "translateY(-50%)" },
     };
 
     const renderContent = () => {
@@ -468,8 +456,8 @@ const Block = memo(
               blockId={block.id}
               anchor={anchor}
               isConnectMode={isConnectMode}
+              isPendingConnection={isPendingConnection}
               onDragStart={onAnchorDragStart}
-              onDrop={onAnchorDrop}
             />
           ),
         )}
@@ -1024,82 +1012,125 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
     }
   }, []);
 
+  // Trouver l'ancrage le plus proche d'une position
+  const findNearestAnchor = useCallback(
+    (mouseX: number, mouseY: number, excludeBlockId?: string) => {
+      const SNAP_DISTANCE = 25; // Distance de snap en pixels
+      let nearest: { blockId: string; anchor: "top" | "right" | "bottom" | "left"; distance: number } | null = null;
+
+      for (const block of blocks) {
+        if (block.id === excludeBlockId) continue;
+
+        const anchors: Array<"top" | "right" | "bottom" | "left"> = ["top", "right", "bottom", "left"];
+        for (const anchor of anchors) {
+          const pos = getAnchorPosition(block, anchor);
+          const distance = Math.sqrt(Math.pow(pos.x - mouseX, 2) + Math.pow(pos.y - mouseY, 2));
+
+          if (distance < SNAP_DISTANCE && (!nearest || distance < nearest.distance)) {
+            nearest = { blockId: block.id, anchor, distance };
+          }
+        }
+      }
+
+      return nearest;
+    },
+    [blocks, getAnchorPosition],
+  );
+
   // Démarrer une connexion depuis un ancrage
   const handleAnchorDragStart = useCallback(
     (blockId: string, anchor: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => {
+      console.log("handleAnchorDragStart called:", blockId, anchor);
+
       const block = blocks.find((b) => b.id === blockId);
-      if (!block || !containerRef.current) return;
+      if (!block) {
+        console.log("Block not found");
+        return;
+      }
+      if (!containerRef.current) {
+        console.log("Container ref is null");
+        return;
+      }
+
+      e.stopPropagation();
+      e.preventDefault();
 
       const rect = containerRef.current.getBoundingClientRect();
       const scrollLeft = containerRef.current.scrollLeft;
       const scrollTop = containerRef.current.scrollTop;
 
+      const getMousePos = (event: PointerEvent | React.PointerEvent) => ({
+        x: event.clientX - rect.left + scrollLeft,
+        y: event.clientY - rect.top + scrollTop,
+      });
+
+      const initialPos = getMousePos(e);
+      console.log("Initial position:", initialPos);
+
       setPendingConnection({
         sourceBlockId: blockId,
         sourceAnchor: anchor,
-        mouseX: e.clientX - rect.left + scrollLeft,
-        mouseY: e.clientY - rect.top + scrollTop,
+        mouseX: initialPos.x,
+        mouseY: initialPos.y,
       });
 
       const handleMove = (moveEvent: PointerEvent) => {
+        const pos = getMousePos(moveEvent);
         setPendingConnection((prev) =>
           prev
             ? {
                 ...prev,
-                mouseX: moveEvent.clientX - rect.left + scrollLeft,
-                mouseY: moveEvent.clientY - rect.top + scrollTop,
+                mouseX: pos.x,
+                mouseY: pos.y,
               }
             : null,
         );
       };
 
-      const handleUp = () => {
+      const handleUp = (upEvent: PointerEvent) => {
         document.removeEventListener("pointermove", handleMove);
         document.removeEventListener("pointerup", handleUp);
-        // Si on relâche sans être sur un ancrage, annuler
-        setTimeout(() => {
-          setPendingConnection(null);
-        }, 100);
+
+        const pos = getMousePos(upEvent);
+        console.log("Mouse up at:", pos);
+
+        const nearestAnchor = findNearestAnchor(pos.x, pos.y, blockId);
+        console.log("Nearest anchor:", nearestAnchor);
+
+        if (nearestAnchor) {
+          // Créer la connexion
+          const exists = connections.some(
+            (c) => c.sourceBlockId === blockId && c.targetBlockId === nearestAnchor.blockId,
+          );
+
+          if (!exists) {
+            const newConnection: BlockConnection = {
+              id: crypto.randomUUID(),
+              sourceBlockId: blockId,
+              sourceAnchor: anchor,
+              targetBlockId: nearestAnchor.blockId,
+              targetAnchor: nearestAnchor.anchor,
+              color: strokeColor,
+              strokeWidth: 2,
+            };
+
+            console.log("Creating connection:", newConnection);
+            setConnections((prev) => [...prev, newConnection]);
+            toast.success("Connexion créée");
+          } else {
+            console.log("Connection already exists");
+          }
+        } else {
+          console.log("No anchor found nearby");
+        }
+
+        setPendingConnection(null);
       };
 
       document.addEventListener("pointermove", handleMove);
       document.addEventListener("pointerup", handleUp);
     },
-    [blocks],
-  );
-
-  // Terminer une connexion sur un ancrage cible
-  const handleAnchorDrop = useCallback(
-    (targetBlockId: string, targetAnchor: "top" | "right" | "bottom" | "left") => {
-      if (!pendingConnection) return;
-      if (pendingConnection.sourceBlockId === targetBlockId) {
-        setPendingConnection(null);
-        return; // Pas de connexion sur soi-même
-      }
-
-      // Vérifier si la connexion existe déjà
-      const exists = connections.some(
-        (c) => c.sourceBlockId === pendingConnection.sourceBlockId && c.targetBlockId === targetBlockId,
-      );
-
-      if (!exists) {
-        const newConnection: BlockConnection = {
-          id: crypto.randomUUID(),
-          sourceBlockId: pendingConnection.sourceBlockId,
-          sourceAnchor: pendingConnection.sourceAnchor,
-          targetBlockId,
-          targetAnchor,
-          color: strokeColor,
-          strokeWidth: 2,
-        };
-
-        setConnections((prev) => [...prev, newConnection]);
-        toast.success("Connexion créée");
-      }
-
-      setPendingConnection(null);
-    },
-    [pendingConnection, connections, strokeColor],
+    [blocks, connections, strokeColor, findNearestAnchor],
   );
 
   // Supprimer une connexion
@@ -1507,17 +1538,52 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                     if (!sourceBlock) return null;
 
                     const start = getAnchorPosition(sourceBlock, pendingConnection.sourceAnchor);
+                    const nearestAnchor = findNearestAnchor(
+                      pendingConnection.mouseX,
+                      pendingConnection.mouseY,
+                      pendingConnection.sourceBlockId,
+                    );
+
+                    // Si on est proche d'un ancrage, snap vers lui
+                    let endX = pendingConnection.mouseX;
+                    let endY = pendingConnection.mouseY;
+
+                    if (nearestAnchor) {
+                      const targetBlock = blocks.find((b) => b.id === nearestAnchor.blockId);
+                      if (targetBlock) {
+                        const targetPos = getAnchorPosition(targetBlock, nearestAnchor.anchor);
+                        endX = targetPos.x;
+                        endY = targetPos.y;
+                      }
+                    }
 
                     return (
-                      <line
-                        x1={start.x}
-                        y1={start.y}
-                        x2={pendingConnection.mouseX}
-                        y2={pendingConnection.mouseY}
-                        stroke={strokeColor}
-                        strokeWidth="2"
-                        strokeDasharray="5,5"
-                      />
+                      <>
+                        {/* Ligne de connexion */}
+                        <line
+                          x1={start.x}
+                          y1={start.y}
+                          x2={endX}
+                          y2={endY}
+                          stroke={nearestAnchor ? "#22C55E" : strokeColor}
+                          strokeWidth={nearestAnchor ? 3 : 2}
+                          strokeDasharray={nearestAnchor ? "0" : "5,5"}
+                        />
+                        {/* Cercle sur l'ancrage cible */}
+                        {nearestAnchor && (
+                          <circle cx={endX} cy={endY} r="8" fill="#22C55E" stroke="white" strokeWidth="2" />
+                        )}
+                        {/* Cercle sur la position de la souris si pas de snap */}
+                        {!nearestAnchor && (
+                          <circle
+                            cx={pendingConnection.mouseX}
+                            cy={pendingConnection.mouseY}
+                            r="5"
+                            fill={strokeColor}
+                            opacity="0.5"
+                          />
+                        )}
+                      </>
                     );
                   })()}
               </svg>
@@ -1529,12 +1595,12 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                   block={block}
                   isSelected={selectedBlockId === block.id}
                   isConnectMode={activeTool === "connect"}
+                  isPendingConnection={!!pendingConnection}
                   onSelect={() => setSelectedBlockId(block.id)}
                   onUpdate={(updates) => updateBlock(block.id, updates)}
                   onDelete={() => deleteBlock(block.id)}
                   onDragStart={(e) => handleBlockDragStart(block.id, e)}
                   onAnchorDragStart={handleAnchorDragStart}
-                  onAnchorDrop={handleAnchorDrop}
                 />
               ))}
             </>
