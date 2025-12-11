@@ -575,7 +575,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                             }
                           }}
                           onClick={stopPropagation}
-                          className="mt-0.5"
+                          onPointerDown={stopPropagation}
+                          className="mt-0.5 cursor-pointer"
                         />
 
                         {/* Contenu */}
@@ -609,10 +610,14 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
+                          className="h-6 w-6 p-0 text-gray-400 hover:text-red-500 cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
                             removeTaskFromBlock(task.id);
+                          }}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
                           }}
                         >
                           <X className="h-3 w-3" />
