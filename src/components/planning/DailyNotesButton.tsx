@@ -14,11 +14,11 @@ interface DailyNotesButtonProps {
   showLabel?: boolean;
 }
 
-const DailyNotesButton = ({ 
-  projectId, 
-  variant = "outline", 
+const DailyNotesButton = ({
+  projectId,
+  variant = "outline",
   size = "default",
-  showLabel = true 
+  showLabel = true,
 }: DailyNotesButtonProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -27,12 +27,7 @@ const DailyNotesButton = ({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant={variant}
-              size={size}
-              onClick={() => setIsOpen(true)}
-              className="gap-2"
-            >
+            <Button variant={variant} size={size} onClick={() => setIsOpen(true)} className="gap-2">
               <CalendarDays className="h-4 w-4" />
               {showLabel && "Planning visuel"}
             </Button>
@@ -44,11 +39,7 @@ const DailyNotesButton = ({
         </Tooltip>
       </TooltipProvider>
 
-      <VisualPlanningCanvas
-        open={isOpen}
-        onOpenChange={setIsOpen}
-        projectId={projectId}
-      />
+      <VisualPlanningCanvas open={isOpen} onOpenChange={setIsOpen} projectId={projectId} />
     </>
   );
 };
