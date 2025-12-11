@@ -77,6 +77,12 @@ import {
   MoreHorizontal,
   Move,
   Link2,
+  Send,
+  Calendar as CalendarIcon,
+  FolderOpen,
+  Unlink,
+  Copy,
+  MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, startOfWeek, endOfWeek, isToday, isSameDay } from "date-fns";
@@ -106,6 +112,11 @@ interface NoteBlock {
   width: number;
   height: number;
   content: any;
+  targetDate?: string; // Date cible pour export vers un autre jour (format yyyy-MM-dd)
+  sourceDate?: string; // Date d'origine (pour les blocs copiés depuis une roadmap)
+  sourceBlockId?: string; // ID du bloc original (pour synchronisation)
+  linkedProjectId?: string; // ID du projet lié
+  linkedProjectName?: string; // Nom du projet lié (pour affichage)
   style?: {
     fontSize?: number;
     fontFamily?: string;
@@ -186,6 +197,12 @@ const FONTS = [
 const GOOGLE_FONTS_URL =
   "https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Fira+Code:wght@400;700&family=Indie+Flower&family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Lato:wght@400;700&family=Libre+Baskerville:wght@400;700&family=Lora:wght@400;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;700&family=Nunito:wght@400;700&family=Open+Sans:wght@400;700&family=Oswald:wght@400;700&family=PT+Serif:wght@400;700&family=Pacifico&family=Patrick+Hand&family=Permanent+Marker&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;700&family=Raleway:wght@400;700&family=Roboto:wght@400;700&family=Shadows+Into+Light&family=Source+Code+Pro:wght@400;700&family=Ubuntu:wght@400;700&display=swap";
 
+// Interface pour les projets
+interface ProjectItem {
+  id: string;
+  name: string;
+}
+
 // ============================================
 // CUSTOM NODE COMPONENT (comme MechanicalProcedures)
 // ============================================
@@ -195,12 +212,19 @@ interface CustomBlockData {
   onUpdate: (updates: Partial<NoteBlock>) => void;
   onDelete: () => void;
   onImageUpload: (file: File) => void;
+  onMoveToDate: (targetDate: string) => void;
+  onNavigateToDate: (date: string) => void;
+  projects: ProjectItem[];
+  currentProjectId: string;
   [key: string]: unknown;
 }
 
 const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
-  const { block, onUpdate, onDelete, onImageUpload } = data as CustomBlockData;
+  const { block, onUpdate, onDelete, onImageUpload, onMoveToDate, onNavigateToDate, projects, currentProjectId } =
+    data as CustomBlockData;
   const [isEditing, setIsEditing] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
 
   const stopPropagation = (e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
@@ -470,30 +494,213 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
 
+      {/* Indicateur bloc copié depuis roadmap - CLIQUABLE */}
+      {block.sourceDate && (
+        <div className="absolute -top-6 left-0 right-0 flex justify-center">
+          <button
+            className="bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs px-2 py-0.5 rounded-t-md flex items-center gap-1 cursor-pointer transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigateToDate(block.sourceDate!);
+            }}
+            title="Aller à la date d'origine"
+          >
+            <MapPin className="h-3 w-3" />
+            <span>depuis {format(parseISO(block.sourceDate), "d MMM", { locale: fr })}</span>
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded-t-md border-b cursor-move">
         <div className="flex items-center gap-1">
           <GripVertical className="h-4 w-4 text-gray-400" />
           {getBlockIcon()}
           <span className="text-xs text-gray-500 capitalize">{block.type}</span>
+          {/* Badge projet lié */}
+          {block.linkedProjectName && (
+            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-1">
+              {block.linkedProjectName}
+            </span>
+          )}
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={stopPropagation}>
-              <MoreHorizontal className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onDelete} className="text-red-600">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Supprimer
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-0.5">
+          {/* Project picker */}
+          <Popover open={showProjectPicker} onOpenChange={setShowProjectPicker}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-5 w-5 ${block.linkedProjectId ? "text-green-600" : "text-gray-400"}`}
+                onClick={stopPropagation}
+                title="Lier à un projet"
+              >
+                <FolderOpen className="h-3 w-3" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-2" align="end" onClick={stopPropagation}>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-500">Lier à un projet</p>
+                <div className="max-h-48 overflow-auto space-y-1">
+                  {projects
+                    .filter((p) => p.id !== currentProjectId)
+                    .map((project) => (
+                      <button
+                        key={project.id}
+                        className={`w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2 ${
+                          block.linkedProjectId === project.id ? "bg-green-50 text-green-700" : ""
+                        }`}
+                        onClick={() => {
+                          onUpdate({
+                            linkedProjectId: project.id,
+                            linkedProjectName: project.name,
+                          });
+                          setShowProjectPicker(false);
+                        }}
+                      >
+                        <FolderOpen className="h-3 w-3" />
+                        {project.name}
+                      </button>
+                    ))}
+                </div>
+                {block.linkedProjectId && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <button
+                      className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-red-50 text-red-600 flex items-center gap-2"
+                      onClick={() => {
+                        onUpdate({ linkedProjectId: undefined, linkedProjectName: undefined });
+                        setShowProjectPicker(false);
+                      }}
+                    >
+                      <Unlink className="h-3 w-3" />
+                      Délier du projet
+                    </button>
+                  </>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Date picker pour export */}
+          <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-5 w-5 ${block.targetDate ? "text-blue-600" : "text-gray-400"}`}
+                onClick={stopPropagation}
+                title="Définir date cible"
+              >
+                <CalendarIcon className="h-3 w-3" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end" onClick={stopPropagation}>
+              <Calendar
+                mode="single"
+                selected={block.targetDate ? parseISO(block.targetDate) : undefined}
+                onSelect={(date) => {
+                  if (date) {
+                    onUpdate({ targetDate: format(date, "yyyy-MM-dd") });
+                    setShowDatePicker(false);
+                  }
+                }}
+                locale={fr}
+              />
+            </PopoverContent>
+          </Popover>
+
+          {/* Menu options */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={stopPropagation}>
+                <MoreHorizontal className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  const dateStr = prompt(
+                    "Date cible (JJ/MM/AAAA):",
+                    block.targetDate ? format(parseISO(block.targetDate), "dd/MM/yyyy") : "",
+                  );
+                  if (dateStr) {
+                    const [day, month, year] = dateStr.split("/");
+                    if (day && month && year) {
+                      onUpdate({ targetDate: `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}` });
+                    }
+                  }
+                }}
+              >
+                <CalendarIcon className="h-4 w-4 mr-2" />
+                Définir date cible
+              </DropdownMenuItem>
+              {block.targetDate && (
+                <DropdownMenuItem onClick={() => onUpdate({ targetDate: undefined })}>
+                  <X className="h-4 w-4 mr-2" />
+                  Retirer la date
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              {block.linkedProjectId && (
+                <DropdownMenuItem
+                  onClick={() => onUpdate({ linkedProjectId: undefined, linkedProjectName: undefined })}
+                >
+                  <Unlink className="h-4 w-4 mr-2" />
+                  Délier du projet
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={onDelete} className="text-red-600">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Supprimer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Content */}
       <div className="nodrag">{renderContent()}</div>
+
+      {/* Footer avec date cible et/ou projet */}
+      {(block.targetDate || block.linkedProjectId) && (
+        <div className="border-t rounded-b-md overflow-hidden">
+          {/* Ligne projet */}
+          {block.linkedProjectId && (
+            <div className="flex items-center justify-between px-2 py-1 bg-green-50">
+              <div className="flex items-center gap-1 text-xs text-green-600">
+                <FolderOpen className="h-3 w-3" />
+                <span>{block.linkedProjectName}</span>
+              </div>
+            </div>
+          )}
+          {/* Ligne date cible */}
+          {block.targetDate && (
+            <div
+              className={`flex items-center justify-between px-2 py-1 bg-blue-50 ${block.linkedProjectId ? "border-t border-blue-100" : ""}`}
+            >
+              <div className="flex items-center gap-1 text-xs text-blue-600">
+                <CalendarIcon className="h-3 w-3" />
+                <span>→ {format(parseISO(block.targetDate), "EEEE d MMMM", { locale: fr })}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveToDate(block.targetDate!);
+                }}
+                title="Copier vers cette date"
+              >
+                <Copy className="h-3 w-3 mr-1" />
+                Copier
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 });
@@ -524,6 +731,12 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Liste des projets pour le sélecteur
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+
+  // Dates avec des blocs roadmap (pour indicateurs dans l'agenda)
+  const [roadmapDates, setRoadmapDates] = useState<Set<string>>(new Set());
 
   // États dessin Paper.js
   const [activeTool, setActiveTool] = useState<DrawTool>("select");
@@ -574,6 +787,74 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
     setHasUnsavedChanges(true);
   }, []);
+
+  // Synchroniser les modifications vers le bloc source (original)
+  const syncBlockToSource = useCallback(
+    async (blockId: string, updates: Partial<NoteBlock>) => {
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block?.sourceBlockId || !block?.sourceDate || !userId) return;
+
+      try {
+        // Charger la note de la date source
+        const { data: sourceNote, error } = await (supabase as any)
+          .from("daily_notes")
+          .select("*")
+          .eq("project_id", projectId)
+          .eq("user_id", userId)
+          .eq("note_date", block.sourceDate)
+          .maybeSingle();
+
+        if (error || !sourceNote?.blocks_data) return;
+
+        // Trouver et mettre à jour le bloc source
+        let sourceBlocks: NoteBlock[] = JSON.parse(sourceNote.blocks_data);
+        const sourceBlockIndex = sourceBlocks.findIndex((b) => b.id === block.sourceBlockId);
+
+        if (sourceBlockIndex === -1) return;
+
+        // Appliquer les mêmes modifications au bloc source (sauf position et dates)
+        const { x, y, targetDate, sourceDate, sourceBlockId, ...contentUpdates } = updates;
+        sourceBlocks[sourceBlockIndex] = {
+          ...sourceBlocks[sourceBlockIndex],
+          ...contentUpdates,
+        };
+
+        // Sauvegarder
+        await (supabase as any)
+          .from("daily_notes")
+          .update({
+            blocks_data: JSON.stringify(sourceBlocks),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", sourceNote.id);
+
+        console.log("Bloc source synchronisé");
+      } catch (error) {
+        console.error("Erreur sync bloc source:", error);
+      }
+    },
+    [blocks, userId, projectId],
+  );
+
+  // Wrapper updateBlock avec sync automatique
+  const updateBlockWithSync = useCallback(
+    (blockId: string, updates: Partial<NoteBlock>) => {
+      // Mise à jour locale immédiate
+      setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
+      setHasUnsavedChanges(true);
+
+      // Sync vers le bloc source si c'est une copie (avec debounce implicite via save)
+      const block = blocks.find((b) => b.id === blockId);
+      if (block?.sourceBlockId && block?.sourceDate) {
+        // Sync seulement les modifications de contenu, pas la position
+        const { x, y, ...contentUpdates } = updates;
+        if (Object.keys(contentUpdates).length > 0) {
+          syncBlockToSource(blockId, contentUpdates);
+        }
+      }
+    },
+    [blocks, syncBlockToSource],
+  );
 
   const deleteBlock = useCallback(
     (blockId: string) => {
@@ -632,14 +913,88 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           data: { publicUrl },
         } = supabase.storage.from("project-files").getPublicUrl(filePath);
 
-        updateBlock(blockId, { content: publicUrl });
+        updateBlockWithSync(blockId, { content: publicUrl });
         toast.success("Image ajoutée");
       } catch (error) {
         console.error("Erreur upload:", error);
         toast.error("Erreur lors de l'upload");
       }
     },
-    [userId, updateBlock],
+    [userId, updateBlockWithSync],
+  );
+
+  // Copier un bloc vers une autre date (roadmap)
+  const moveBlockToDate = useCallback(
+    async (blockId: string, targetDate: string) => {
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block || !userId) return;
+
+      const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+
+      try {
+        // 1. Charger ou créer la note de la date cible
+        const { data: targetNote, error: fetchError } = await (supabase as any)
+          .from("daily_notes")
+          .select("*")
+          .eq("project_id", projectId)
+          .eq("user_id", userId)
+          .eq("note_date", targetDate)
+          .maybeSingle();
+
+        if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
+
+        // 2. Préparer le bloc pour la nouvelle date avec référence vers l'original
+        const blockForTarget: NoteBlock = {
+          ...block,
+          id: crypto.randomUUID(), // Nouveau ID
+          x: 100 + Math.random() * 100,
+          y: 100 + Math.random() * 100,
+          targetDate: undefined, // Retirer la date cible
+          sourceDate: currentDateStr, // Marquer la date d'origine (roadmap)
+          sourceBlockId: block.id, // Référence vers le bloc original pour sync
+        };
+
+        // 3. Récupérer les blocs existants de la date cible
+        let targetBlocks: NoteBlock[] = [];
+        if (targetNote?.blocks_data) {
+          try {
+            targetBlocks = JSON.parse(targetNote.blocks_data);
+          } catch {}
+        }
+        targetBlocks.push(blockForTarget);
+
+        // 4. Sauvegarder dans la date cible
+        if (targetNote) {
+          await (supabase as any)
+            .from("daily_notes")
+            .update({
+              blocks_data: JSON.stringify(targetBlocks),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", targetNote.id);
+        } else {
+          await (supabase as any).from("daily_notes").insert({
+            project_id: projectId,
+            user_id: userId,
+            note_date: targetDate,
+            blocks_data: JSON.stringify(targetBlocks),
+          });
+        }
+
+        // 5. NE PAS supprimer le bloc de la date actuelle - on le garde comme roadmap
+        // Mettre à jour les indicateurs roadmap
+        setRoadmapDates((prev) => new Set([...prev, currentDateStr]));
+        setHasUnsavedChanges(true);
+
+        toast.success(`Bloc copié vers le ${format(parseISO(targetDate), "d MMMM", { locale: fr })}`, {
+          description: "Les modifications seront synchronisées avec l'original",
+        });
+      } catch (error) {
+        console.error("Erreur copie bloc:", error);
+        toast.error("Erreur lors de la copie");
+      }
+    },
+    [blocks, userId, projectId, selectedDate],
   );
 
   // ============================================
@@ -648,8 +1003,29 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
   const blocksIdsRef = useRef<string>("");
 
+  // Mettre à jour les indicateurs roadmap quand les blocs changent
   useEffect(() => {
-    const currentIds = blocks.map((b) => `${b.id}-${b.type}-${JSON.stringify(b.content).slice(0, 50)}`).join(",");
+    const hasTargetDate = blocks.some((b) => b.targetDate);
+    const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+
+    setRoadmapDates((prev) => {
+      const newSet = new Set(prev);
+      if (hasTargetDate) {
+        newSet.add(currentDateStr);
+      } else {
+        newSet.delete(currentDateStr);
+      }
+      return newSet;
+    });
+  }, [blocks, selectedDate]);
+
+  useEffect(() => {
+    const currentIds = blocks
+      .map(
+        (b) =>
+          `${b.id}-${b.type}-${b.targetDate || ""}-${b.linkedProjectId || ""}-${b.sourceDate || ""}-${JSON.stringify(b.content).slice(0, 50)}`,
+      )
+      .join(",");
     if (currentIds !== blocksIdsRef.current) {
       blocksIdsRef.current = currentIds;
       setNodes(
@@ -659,15 +1035,30 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           position: { x: block.x, y: block.y },
           data: {
             block,
-            onUpdate: (updates: Partial<NoteBlock>) => updateBlock(block.id, updates),
+            onUpdate: (updates: Partial<NoteBlock>) => updateBlockWithSync(block.id, updates),
             onDelete: () => deleteBlock(block.id),
             onImageUpload: (file: File) => handleImageUpload(block.id, file),
+            onMoveToDate: (targetDate: string) => moveBlockToDate(block.id, targetDate),
+            onNavigateToDate: (date: string) => setSelectedDate(parseISO(date)),
+            projects,
+            currentProjectId: projectId,
           } as CustomBlockData,
           style: { width: block.width },
         })) as any,
       );
     }
-  }, [blocks, setNodes, updateBlock, deleteBlock, handleImageUpload, selectedBlockId]);
+  }, [
+    blocks,
+    setNodes,
+    updateBlockWithSync,
+    deleteBlock,
+    handleImageUpload,
+    moveBlockToDate,
+    setSelectedDate,
+    projects,
+    projectId,
+    selectedBlockId,
+  ]);
 
   // Sync edges
   useEffect(() => {
@@ -870,6 +1261,61 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   // ============================================
   // LOAD / SAVE DATA
   // ============================================
+
+  // Charger la liste des projets
+  const loadProjects = useCallback(async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const { data, error } = await (supabase as any)
+      .from("projects")
+      .select("id, name")
+      .eq("user_id", userData.user.id)
+      .order("name");
+
+    if (!error && data) {
+      setProjects(data);
+    }
+  }, []);
+
+  // Charger les dates qui ont des blocs avec targetDate (roadmap) pour la semaine visible
+  const loadRoadmapDates = useCallback(async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    // Récupérer toutes les notes du projet pour scanner les targetDates
+    const { data, error } = await (supabase as any)
+      .from("daily_notes")
+      .select("note_date, blocks_data")
+      .eq("project_id", projectId)
+      .eq("user_id", userData.user.id);
+
+    if (!error && data) {
+      const dates = new Set<string>();
+      data.forEach((note: any) => {
+        if (note.blocks_data) {
+          try {
+            const blocks: NoteBlock[] = JSON.parse(note.blocks_data);
+            blocks.forEach((block) => {
+              if (block.targetDate) {
+                // Cette note est une roadmap pour la date cible
+                dates.add(note.note_date);
+              }
+            });
+          } catch {}
+        }
+      });
+      setRoadmapDates(dates);
+    }
+  }, [projectId]);
+
+  // Charger les projets au montage
+  useEffect(() => {
+    if (open) {
+      loadProjects();
+      loadRoadmapDates();
+    }
+  }, [open, loadProjects, loadRoadmapDates]);
 
   const loadDayData = useCallback(async () => {
     setIsLoading(true);
@@ -1108,21 +1554,37 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
           {/* Semaine */}
           <div className="flex gap-1 mt-2">
-            {weekDays.map((day) => (
-              <Button
-                key={day.toISOString()}
-                variant={isSameDay(day, selectedDate) ? "default" : "ghost"}
-                size="sm"
-                className={`flex-1 ${isToday(day) ? "ring-2 ring-blue-300" : ""}`}
-                onClick={() => setSelectedDate(day)}
-              >
-                <span className="text-xs">
-                  {format(day, "EEE", { locale: fr })}
-                  <br />
-                  {format(day, "d")}
-                </span>
-              </Button>
-            ))}
+            {weekDays.map((day) => {
+              const dayStr = format(day, "yyyy-MM-dd");
+              const hasRoadmap = roadmapDates.has(dayStr);
+              const isSelected = isSameDay(day, selectedDate);
+
+              return (
+                <Button
+                  key={day.toISOString()}
+                  variant={isSelected ? "default" : "ghost"}
+                  size="sm"
+                  className={`flex-1 relative ${isToday(day) ? "ring-2 ring-blue-300" : ""}`}
+                  onClick={() => setSelectedDate(day)}
+                >
+                  <span className="text-xs">
+                    {format(day, "EEE", { locale: fr })}
+                    <br />
+                    {format(day, "d")}
+                  </span>
+                  {/* Indicateur roadmap */}
+                  {hasRoadmap && (
+                    <div
+                      className={`absolute -top-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center ${
+                        isSelected ? "bg-white" : "bg-purple-500"
+                      }`}
+                    >
+                      <MapPin className={`h-2 w-2 ${isSelected ? "text-purple-600" : "text-white"}`} />
+                    </div>
+                  )}
+                </Button>
+              );
+            })}
           </div>
         </DialogHeader>
 
@@ -1338,7 +1800,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               <Select
                 value={blocks.find((b) => b.id === selectedBlockId)?.style?.fontFamily || FONTS[0].value}
                 onValueChange={(value) =>
-                  updateBlock(selectedBlockId, {
+                  updateBlockWithSync(selectedBlockId, {
                     style: { ...blocks.find((b) => b.id === selectedBlockId)?.style, fontFamily: value },
                   })
                 }
@@ -1374,7 +1836,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             <Select
               value={String(blocks.find((b) => b.id === selectedBlockId)?.style?.fontSize || 14)}
               onValueChange={(value) =>
-                updateBlock(selectedBlockId, {
+                updateBlockWithSync(selectedBlockId, {
                   style: { ...blocks.find((b) => b.id === selectedBlockId)?.style, fontSize: parseInt(value) },
                 })
               }
@@ -1400,7 +1862,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               className="h-8 w-8"
               onClick={() => {
                 const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlock(selectedBlockId, { style: { ...block.style, bold: !block.style?.bold } });
+                if (block)
+                  updateBlockWithSync(selectedBlockId, { style: { ...block.style, bold: !block.style?.bold } });
               }}
             >
               <Bold className="h-4 w-4" />
@@ -1411,7 +1874,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               className="h-8 w-8"
               onClick={() => {
                 const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlock(selectedBlockId, { style: { ...block.style, italic: !block.style?.italic } });
+                if (block)
+                  updateBlockWithSync(selectedBlockId, { style: { ...block.style, italic: !block.style?.italic } });
               }}
             >
               <Italic className="h-4 w-4" />
@@ -1423,7 +1887,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               onClick={() => {
                 const block = blocks.find((b) => b.id === selectedBlockId);
                 if (block)
-                  updateBlock(selectedBlockId, { style: { ...block.style, underline: !block.style?.underline } });
+                  updateBlockWithSync(selectedBlockId, {
+                    style: { ...block.style, underline: !block.style?.underline },
+                  });
               }}
             >
               <Underline className="h-4 w-4" />
@@ -1438,7 +1904,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               className="h-8 w-8"
               onClick={() => {
                 const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlock(selectedBlockId, { style: { ...block.style, align: "left" } });
+                if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "left" } });
               }}
             >
               <AlignLeft className="h-4 w-4" />
@@ -1449,7 +1915,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               className="h-8 w-8"
               onClick={() => {
                 const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlock(selectedBlockId, { style: { ...block.style, align: "center" } });
+                if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "center" } });
               }}
             >
               <AlignCenter className="h-4 w-4" />
@@ -1460,7 +1926,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               className="h-8 w-8"
               onClick={() => {
                 const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlock(selectedBlockId, { style: { ...block.style, align: "right" } });
+                if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "right" } });
               }}
             >
               <AlignRight className="h-4 w-4" />
