@@ -16,19 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Clock, FolderOpen, Euro, Calculator } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -57,23 +47,20 @@ interface EditTaskDialogProps {
   onOpenChange: (open: boolean) => void;
   task: Task | null;
   categories: Category[];
-  onSave: (taskId: string, data: {
-    title: string;
-    description?: string | null;
-    estimated_hours?: number | null;
-    scheduled_date?: string | null;
-    category_id?: string | null;
-    forfait_ttc?: number | null;
-  }) => void;
+  onSave: (
+    taskId: string,
+    data: {
+      title: string;
+      description?: string | null;
+      estimated_hours?: number | null;
+      scheduled_date?: string | null;
+      category_id?: string | null;
+      forfait_ttc?: number | null;
+    },
+  ) => void;
 }
 
-export const EditTaskDialog = ({
-  open,
-  onOpenChange,
-  task,
-  categories,
-  onSave,
-}: EditTaskDialogProps) => {
+export const EditTaskDialog = ({ open, onOpenChange, task, categories, onSave }: EditTaskDialogProps) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
@@ -111,9 +98,7 @@ export const EditTaskDialog = ({
   };
 
   // Calcul du forfait suggéré
-  const suggestedForfait = estimatedHours 
-    ? calculateForfait(parseFloat(estimatedHours)) 
-    : null;
+  const suggestedForfait = estimatedHours ? calculateForfait(parseFloat(estimatedHours)) : null;
 
   const applySuggestedForfait = () => {
     if (suggestedForfait) {
@@ -121,16 +106,14 @@ export const EditTaskDialog = ({
     }
   };
 
-  const selectedCategory = categories.find(c => c.id === categoryId);
+  const selectedCategory = categories.find((c) => c.id === categoryId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Modifier la tâche</DialogTitle>
-          <DialogDescription>
-            Modifiez les informations de cette tâche de travail
-          </DialogDescription>
+          <DialogDescription>Modifiez les informations de cette tâche de travail</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -168,10 +151,7 @@ export const EditTaskDialog = ({
                 <SelectValue placeholder="Sélectionner une catégorie">
                   {selectedCategory && (
                     <span className="flex items-center gap-2">
-                      <span 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: selectedCategory.color }}
-                      />
+                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedCategory.color }} />
                       {selectedCategory.icon} {selectedCategory.name}
                     </span>
                   )}
@@ -181,10 +161,7 @@ export const EditTaskDialog = ({
                 {categories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     <span className="flex items-center gap-2">
-                      <span 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: category.color }}
-                      />
+                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color }} />
                       {category.icon} {category.name}
                     </span>
                   </SelectItem>
@@ -254,25 +231,15 @@ export const EditTaskDialog = ({
                   variant="outline"
                   className={cn(
                     "w-full justify-start text-left font-normal",
-                    !scheduledDate && "text-muted-foreground"
+                    !scheduledDate && "text-muted-foreground",
                   )}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
-                  {scheduledDate ? (
-                    format(scheduledDate, "PPP", { locale: fr })
-                  ) : (
-                    <span>Sélectionner une date</span>
-                  )}
+                  {scheduledDate ? format(scheduledDate, "PPP", { locale: fr }) : <span>Sélectionner une date</span>}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={scheduledDate}
-                  onSelect={setScheduledDate}
-                  locale={fr}
-                  initialFocus
-                />
+                <Calendar mode="single" selected={scheduledDate} onSelect={setScheduledDate} locale={fr} initialFocus />
                 {scheduledDate && (
                   <div className="p-2 border-t">
                     <Button
