@@ -450,11 +450,14 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
       if (!user.user) return;
 
       // Charger tous les projets
-      const { data: projectsData } = await supabase.from("projects").select("id, name").eq("user_id", user.user.id);
+      const { data: projectsData } = await (supabase as any)
+        .from("projects")
+        .select("id, name")
+        .eq("user_id", user.user.id);
       if (projectsData) setProjects(projectsData);
 
       // Charger toutes les tâches de l'utilisateur
-      const { data: todosData } = await supabase
+      const { data: todosData } = await (supabase as any)
         .from("project_todos")
         .select("*")
         .eq("user_id", user.user.id)
@@ -462,15 +465,21 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
       if (todosData) setAllTodos(todosData);
 
       // Charger tous les rendez-vous
-      const { data: appointmentsData } = await supabase.from("appointments").select("*").eq("user_id", user.user.id);
+      const { data: appointmentsData } = await (supabase as any)
+        .from("appointments")
+        .select("*")
+        .eq("user_id", user.user.id);
       if (appointmentsData) setAppointments(appointmentsData);
 
       // Charger toutes les dépenses
-      const { data: expensesData } = await supabase.from("project_expenses").select("*").eq("user_id", user.user.id);
+      const { data: expensesData } = await (supabase as any)
+        .from("project_expenses")
+        .select("*")
+        .eq("user_id", user.user.id);
       if (expensesData) setSupplierExpenses(expensesData);
 
       // Charger toutes les livraisons
-      const { data: deliveriesData } = await supabase
+      const { data: deliveriesData } = await (supabase as any)
         .from("accessories_catalog")
         .select("*")
         .eq("user_id", user.user.id)
