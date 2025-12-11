@@ -739,6 +739,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     scope.setup(canvas);
     paperScopeRef.current = scope;
 
+    // Fond transparent
+    scope.view.element.style.background = "transparent";
+
     const tool = new scope.Tool();
     let currentPath: paper.Path | null = null;
     let startPoint: paper.Point | null = null;
@@ -1225,37 +1228,24 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
           <Separator orientation="vertical" className="h-6" />
 
-          {/* Ajouter blocs */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Plus className="h-4 w-4 mr-1" />
-                Bloc
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => addBlock("text")}>
-                <Type className="h-4 w-4 mr-2" />
-                Texte
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addBlock("checklist")}>
-                <CheckSquare className="h-4 w-4 mr-2" />
-                Checklist
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addBlock("list")}>
-                <List className="h-4 w-4 mr-2" />
-                Liste
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addBlock("table")}>
-                <Table className="h-4 w-4 mr-2" />
-                Tableau
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => addBlock("image")}>
-                <ImageIcon className="h-4 w-4 mr-2" />
-                Image
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Ajouter blocs - Boutons individuels */}
+          <div className="flex items-center gap-1 border-r pr-2">
+            <Button variant="outline" size="icon" onClick={() => addBlock("text")} title="Bloc Texte">
+              <Type className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={() => addBlock("checklist")} title="Checklist">
+              <CheckSquare className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={() => addBlock("list")} title="Liste">
+              <List className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={() => addBlock("table")} title="Tableau">
+              <Table className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={() => addBlock("image")} title="Image">
+              <ImageIcon className="h-4 w-4" />
+            </Button>
+          </div>
 
           <Separator orientation="vertical" className="h-6" />
 
@@ -1288,28 +1278,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
             </div>
           ) : (
-            <>
-              {/* Paper.js Canvas (en arrière-plan) */}
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0 bg-white"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  touchAction: "none",
-                  pointerEvents: activeTool !== "select" ? "auto" : "none",
-                  zIndex: activeTool !== "select" ? 10 : 0,
-                }}
-              />
-
-              {/* ReactFlow (par-dessus pour les blocs) */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  pointerEvents: activeTool === "select" ? "auto" : "none",
-                  zIndex: activeTool === "select" ? 10 : 0,
-                }}
-              >
+            <div className="absolute inset-0 bg-white">
+              {/* ReactFlow (base - toujours visible) */}
+              <div className="absolute inset-0" style={{ zIndex: 1 }}>
                 <ReactFlow
                   nodes={nodes}
                   edges={flowEdges}
@@ -1325,18 +1296,36 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
                     style: { strokeWidth: 2, stroke: "#64748b" },
                   }}
                   proOptions={{ hideAttribution: true }}
+                  style={{
+                    pointerEvents: activeTool === "select" ? "auto" : "none",
+                  }}
                 >
                   <Background />
-                  <Controls />
-                  <MiniMap />
-                  <Panel position="top-right">
-                    <div className="bg-white/80 rounded p-2 text-xs text-gray-500">
-                      Glissez depuis les points bleus/verts pour connecter
+                  <Controls style={{ zIndex: 100 }} />
+                  <MiniMap style={{ zIndex: 100 }} />
+                  <Panel position="top-right" style={{ zIndex: 100 }}>
+                    <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border">
+                      💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les
+                      points <span className="text-blue-600 font-semibold">bleus</span>
                     </div>
                   </Panel>
                 </ReactFlow>
               </div>
-            </>
+
+              {/* Paper.js Canvas (par-dessus quand on dessine) */}
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  touchAction: "none",
+                  pointerEvents: activeTool !== "select" ? "auto" : "none",
+                  zIndex: activeTool !== "select" ? 20 : 0,
+                  background: "transparent",
+                }}
+              />
+            </div>
           )}
         </div>
 
