@@ -465,8 +465,8 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
       if (todosData) setAllTodos(todosData);
 
       // Charger tous les rendez-vous
-      const { data: appointmentsData } = await (supabase as any)
-        .from("appointments")
+      const { data: appointmentsData } = await supabase
+        .from("client_appointments")
         .select("*")
         .eq("user_id", user.user.id);
       if (appointmentsData) setAppointments(appointmentsData);
