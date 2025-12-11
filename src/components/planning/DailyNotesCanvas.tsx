@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -83,6 +84,15 @@ import {
   Unlink,
   Copy,
   MapPin,
+  Wrench,
+  Clock,
+  Search,
+  Play,
+  Check,
+  CircleDot,
+  ExternalLink,
+  FileText,
+  ListTodo,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -104,9 +114,26 @@ interface DailyNote {
   updated_at: string;
 }
 
+// Interface pour une tâche de travaux liée
+interface LinkedTask {
+  id: string;
+  title: string;
+  description?: string;
+  estimated_hours?: number;
+  actual_hours?: number;
+  completed: boolean;
+  scheduled_date?: string;
+  forfait_ttc?: number;
+  category_name?: string;
+  category_color?: string;
+  category_icon?: string;
+  project_id: string;
+  project_name?: string;
+}
+
 interface NoteBlock {
   id: string;
-  type: "text" | "checklist" | "list" | "table" | "image";
+  type: "text" | "checklist" | "list" | "table" | "image" | "task";
   x: number;
   y: number;
   width: number;
@@ -115,8 +142,12 @@ interface NoteBlock {
   targetDate?: string; // Date cible pour export vers un autre jour (format yyyy-MM-dd)
   sourceDate?: string; // Date d'origine (pour les blocs copiés depuis une roadmap)
   sourceBlockId?: string; // ID du bloc original (pour synchronisation)
+  rescheduledTo?: string; // Date vers laquelle ce bloc a été reporté (yyyy-MM-dd)
   linkedProjectId?: string; // ID du projet lié
   linkedProjectName?: string; // Nom du projet lié (pour affichage)
+  // Champs spécifiques au type "task"
+  linkedTask?: LinkedTask; // Tâche de travaux liée
+  taskStatus?: "pending" | "in_progress" | "completed"; // Statut local du bloc
   style?: {
     fontSize?: number;
     fontFamily?: string;
@@ -203,6 +234,23 @@ interface ProjectItem {
   name: string;
 }
 
+// Interface pour les tâches disponibles (résultats de recherche)
+interface AvailableTask {
+  id: string;
+  title: string;
+  description?: string;
+  estimated_hours?: number;
+  actual_hours?: number;
+  completed: boolean;
+  scheduled_date?: string;
+  forfait_ttc?: number;
+  category_name?: string;
+  category_color?: string;
+  category_icon?: string;
+  project_id: string;
+  project_name: string;
+}
+
 // ============================================
 // CUSTOM NODE COMPONENT (comme MechanicalProcedures)
 // ============================================
@@ -214,17 +262,39 @@ interface CustomBlockData {
   onImageUpload: (file: File) => void;
   onMoveToDate: (targetDate: string) => void;
   onNavigateToDate: (date: string) => void;
+  onSearchTasks: (query: string) => Promise<AvailableTask[]>;
+  onLinkTask: (task: AvailableTask) => void;
+  onUpdateTaskStatus: (taskId: string, status: "pending" | "in_progress" | "completed", actualHours?: number) => void;
+  onSendToSidebarTask: () => void;
+  onSendToSidebarNote: () => void;
   projects: ProjectItem[];
   currentProjectId: string;
   [key: string]: unknown;
 }
 
 const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
-  const { block, onUpdate, onDelete, onImageUpload, onMoveToDate, onNavigateToDate, projects, currentProjectId } =
-    data as CustomBlockData;
+  const {
+    block,
+    onUpdate,
+    onDelete,
+    onImageUpload,
+    onMoveToDate,
+    onNavigateToDate,
+    onSearchTasks,
+    onLinkTask,
+    onUpdateTaskStatus,
+    onSendToSidebarTask,
+    onSendToSidebarNote,
+    projects,
+    currentProjectId,
+  } = data as CustomBlockData;
   const [isEditing, setIsEditing] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const [showTaskSearch, setShowTaskSearch] = useState(false);
+  const [taskSearchQuery, setTaskSearchQuery] = useState("");
+  const [taskSearchResults, setTaskSearchResults] = useState<AvailableTask[]>([]);
+  const [isSearchingTasks, setIsSearchingTasks] = useState(false);
 
   const stopPropagation = (e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
@@ -457,6 +527,192 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
           </div>
         );
 
+      case "task":
+        // Si une tâche est liée
+        if (block.linkedTask) {
+          const task = block.linkedTask;
+          const status = block.taskStatus || (task.completed ? "completed" : "pending");
+
+          return (
+            <div className="p-3 space-y-2">
+              {/* Titre et projet */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1">
+                  <h4 className="font-medium text-sm">{task.title}</h4>
+                  {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
+                </div>
+                {task.category_color && (
+                  <div
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: task.category_color }}
+                    title={task.category_name}
+                  />
+                )}
+              </div>
+
+              {/* Infos */}
+              <div className="flex flex-wrap gap-2 text-xs">
+                {task.estimated_hours && (
+                  <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                    <Clock className="h-3 w-3" />
+                    {task.estimated_hours}h
+                  </span>
+                )}
+                {task.forfait_ttc && (
+                  <span className="flex items-center gap-1 bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">
+                    {task.forfait_ttc}€
+                  </span>
+                )}
+                {task.scheduled_date && (
+                  <span className="flex items-center gap-1 bg-orange-50 text-orange-700 px-1.5 py-0.5 rounded">
+                    <CalendarIcon className="h-3 w-3" />
+                    {format(parseISO(task.scheduled_date), "d MMM", { locale: fr })}
+                  </span>
+                )}
+                {task.project_name && (
+                  <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{task.project_name}</span>
+                )}
+              </div>
+
+              {/* Statut */}
+              <div className="flex items-center gap-1 pt-2 border-t">
+                <Button
+                  variant={status === "pending" ? "secondary" : "ghost"}
+                  size="sm"
+                  className={`h-7 text-xs flex-1 ${status === "pending" ? "bg-gray-200" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdate({ taskStatus: "pending" });
+                    if (onUpdateTaskStatus) onUpdateTaskStatus(task.id, "pending");
+                  }}
+                >
+                  <CircleDot className="h-3 w-3 mr-1" />À faire
+                </Button>
+                <Button
+                  variant={status === "in_progress" ? "secondary" : "ghost"}
+                  size="sm"
+                  className={`h-7 text-xs flex-1 ${status === "in_progress" ? "bg-orange-100 text-orange-700" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdate({ taskStatus: "in_progress" });
+                    if (onUpdateTaskStatus) onUpdateTaskStatus(task.id, "in_progress");
+                  }}
+                >
+                  <Play className="h-3 w-3 mr-1" />
+                  En cours
+                </Button>
+                <Button
+                  variant={status === "completed" ? "secondary" : "ghost"}
+                  size="sm"
+                  className={`h-7 text-xs flex-1 ${status === "completed" ? "bg-green-100 text-green-700" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUpdate({ taskStatus: "completed" });
+                    if (onUpdateTaskStatus) onUpdateTaskStatus(task.id, "completed", task.estimated_hours);
+                  }}
+                >
+                  <Check className="h-3 w-3 mr-1" />
+                  Fait
+                </Button>
+              </div>
+            </div>
+          );
+        }
+
+        // Si aucune tâche liée → interface de recherche
+        return (
+          <div className="p-3 space-y-2">
+            <Popover open={showTaskSearch} onOpenChange={setShowTaskSearch}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-start text-gray-500" onClick={stopPropagation}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Rechercher une tâche...
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Rechercher dans les fiches de travaux..."
+                    value={taskSearchQuery}
+                    onValueChange={async (value) => {
+                      setTaskSearchQuery(value);
+                      if (value.length >= 2 && onSearchTasks) {
+                        setIsSearchingTasks(true);
+                        try {
+                          const results = await onSearchTasks(value);
+                          setTaskSearchResults(results);
+                        } catch (error) {
+                          console.error("Erreur recherche:", error);
+                        }
+                        setIsSearchingTasks(false);
+                      } else {
+                        setTaskSearchResults([]);
+                      }
+                    }}
+                  />
+                  <CommandList>
+                    {isSearchingTasks && (
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                      </div>
+                    )}
+                    {!isSearchingTasks && taskSearchResults.length === 0 && taskSearchQuery.length >= 2 && (
+                      <CommandEmpty>Aucune tâche trouvée</CommandEmpty>
+                    )}
+                    {taskSearchResults.length > 0 && (
+                      <CommandGroup heading="Tâches disponibles">
+                        {taskSearchResults.map((task) => (
+                          <CommandItem
+                            key={task.id}
+                            value={task.id}
+                            onSelect={() => {
+                              if (onLinkTask) {
+                                onLinkTask(task);
+                                setShowTaskSearch(false);
+                                setTaskSearchQuery("");
+                                setTaskSearchResults([]);
+                              }
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2 w-full">
+                              {task.category_color && (
+                                <div
+                                  className="w-2 h-2 rounded-full shrink-0"
+                                  style={{ backgroundColor: task.category_color }}
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm truncate">{task.title}</div>
+                                <div className="text-xs text-gray-500 flex flex-wrap gap-x-2 gap-y-0.5">
+                                  <span className="font-medium">{task.project_name}</span>
+                                  {task.estimated_hours && (
+                                    <span className="text-blue-600">{task.estimated_hours}h</span>
+                                  )}
+                                  {task.forfait_ttc && <span className="text-emerald-600">{task.forfait_ttc}€</span>}
+                                  {task.scheduled_date && (
+                                    <span className="text-orange-600">
+                                      📅 {format(parseISO(task.scheduled_date), "d MMM", { locale: fr })}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {task.completed && <Check className="h-4 w-4 text-green-500" />}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-xs text-gray-400 text-center">
+              Recherchez une tâche depuis les fiches de travaux de vos projets
+            </p>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -474,6 +730,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
         return <Table className="h-3 w-3" />;
       case "image":
         return <ImageIcon className="h-3 w-3" />;
+      case "task":
+        return <Wrench className="h-3 w-3" />;
     }
   };
 
@@ -619,6 +877,33 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {/* Envoi vers sidebar - Tâche */}
+              {block.type === "task" && block.linkedTask && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSendToSidebarTask();
+                  }}
+                  className="text-blue-600"
+                >
+                  <ListTodo className="h-4 w-4 mr-2" />
+                  Envoyer vers Tâches (sidebar)
+                </DropdownMenuItem>
+              )}
+              {/* Envoi vers sidebar - Note */}
+              {block.type === "text" && block.content && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSendToSidebarNote();
+                  }}
+                  className="text-green-600"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Envoyer vers Notes (sidebar)
+                </DropdownMenuItem>
+              )}
+              {(block.type === "task" || block.type === "text") && <DropdownMenuSeparator />}
               <DropdownMenuItem
                 onClick={() => {
                   const dateStr = prompt(
@@ -873,7 +1158,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
       type,
       x: 100 + Math.random() * 200,
       y: 100 + Math.random() * 200,
-      width: type === "table" ? 300 : 200,
+      width: type === "table" ? 300 : type === "task" ? 280 : 200,
       height: 100,
       content:
         type === "checklist"
@@ -885,7 +1170,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
                   ["", ""],
                   ["", ""],
                 ]
-              : "",
+              : type === "task"
+                ? null // Le contenu sera la tâche liée
+                : "",
       style: {
         fontFamily: FONTS[0].value,
         fontSize: 14,
@@ -923,6 +1210,205 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     [userId, updateBlockWithSync],
   );
 
+  // Rechercher des tâches dans les fiches de travaux de tous les projets de l'utilisateur
+  const searchTasks = useCallback(
+    async (query: string): Promise<AvailableTask[]> => {
+      if (!userId || query.length < 2) return [];
+
+      try {
+        // D'abord récupérer les projets de l'utilisateur
+        const { data: userProjects } = await (supabase as any).from("projects").select("id").eq("user_id", userId);
+
+        if (!userProjects || userProjects.length === 0) return [];
+
+        const projectIds = userProjects.map((p: any) => p.id);
+
+        // Rechercher dans project_todos avec les infos de catégorie et projet
+        const { data: tasks, error } = await (supabase as any)
+          .from("project_todos")
+          .select(
+            `
+          id,
+          title,
+          description,
+          estimated_hours,
+          actual_hours,
+          completed,
+          scheduled_date,
+          forfait_ttc,
+          category_id,
+          project_id,
+          work_categories (
+            name,
+            color,
+            icon
+          ),
+          projects (
+            name
+          )
+        `,
+          )
+          .in("project_id", projectIds)
+          .not("category_id", "is", null)
+          .ilike("title", `%${query}%`)
+          .eq("completed", false) // Seulement les tâches non terminées
+          .order("scheduled_date", { ascending: true, nullsFirst: false })
+          .limit(20);
+
+        if (error) throw error;
+
+        return (tasks || []).map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          estimated_hours: task.estimated_hours,
+          actual_hours: task.actual_hours,
+          completed: task.completed || false,
+          scheduled_date: task.scheduled_date,
+          forfait_ttc: task.forfait_ttc,
+          category_name: task.work_categories?.name,
+          category_color: task.work_categories?.color,
+          category_icon: task.work_categories?.icon,
+          project_id: task.project_id,
+          project_name: task.projects?.name || "Projet inconnu",
+        }));
+      } catch (error) {
+        console.error("Erreur recherche tâches:", error);
+        return [];
+      }
+    },
+    [userId],
+  );
+
+  // Lier une tâche à un bloc
+  const linkTask = useCallback(
+    (blockId: string, task: AvailableTask) => {
+      const linkedTask: LinkedTask = {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        estimated_hours: task.estimated_hours,
+        actual_hours: task.actual_hours,
+        completed: task.completed,
+        scheduled_date: task.scheduled_date,
+        forfait_ttc: task.forfait_ttc,
+        category_name: task.category_name,
+        category_color: task.category_color,
+        category_icon: task.category_icon,
+        project_id: task.project_id,
+        project_name: task.project_name,
+      };
+
+      updateBlockWithSync(blockId, {
+        linkedTask,
+        taskStatus: task.completed ? "completed" : "pending",
+        linkedProjectId: task.project_id,
+        linkedProjectName: task.project_name,
+      });
+
+      toast.success(`Tâche "${task.title}" liée`);
+    },
+    [updateBlockWithSync],
+  );
+
+  // Mettre à jour le statut d'une tâche dans Supabase
+  const updateTaskStatus = useCallback(
+    async (taskId: string, status: "pending" | "in_progress" | "completed", actualHours?: number) => {
+      try {
+        const updates: any = {
+          completed: status === "completed",
+          completed_at: status === "completed" ? new Date().toISOString() : null,
+        };
+
+        if (status === "completed" && actualHours) {
+          updates.actual_hours = actualHours;
+        }
+
+        const { error } = await (supabase as any).from("project_todos").update(updates).eq("id", taskId);
+
+        if (error) throw error;
+
+        if (status === "completed") {
+          toast.success("Tâche marquée comme terminée !");
+        }
+      } catch (error) {
+        console.error("Erreur mise à jour tâche:", error);
+        toast.error("Erreur lors de la mise à jour");
+      }
+    },
+    [],
+  );
+
+  // Envoyer un bloc task vers la sidebar Tâches (crée une tâche SANS catégorie)
+  const sendToSidebarTask = useCallback(
+    async (blockId: string) => {
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block || block.type !== "task" || !block.linkedTask || !userId || !projectId) {
+        toast.error("Impossible d'envoyer cette tâche");
+        return;
+      }
+
+      try {
+        const task = block.linkedTask;
+
+        // Créer une tâche simple (SANS category_id) dans project_todos
+        const { error } = await (supabase as any).from("project_todos").insert({
+          project_id: projectId,
+          user_id: userId,
+          title: task.title,
+          description: task.description || null,
+          completed: false,
+          due_date: block.targetDate || null, // Utilise la date cible si définie
+          // PAS de category_id → apparaît dans la sidebar
+        });
+
+        if (error) throw error;
+
+        toast.success(`Tâche "${task.title}" ajoutée à la sidebar`);
+      } catch (error) {
+        console.error("Erreur envoi vers sidebar:", error);
+        toast.error("Erreur lors de l'envoi");
+      }
+    },
+    [blocks, userId, projectId],
+  );
+
+  // Envoyer un bloc texte vers la sidebar Notes
+  const sendToSidebarNote = useCallback(
+    async (blockId: string) => {
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block || block.type !== "text" || !block.content || !userId || !projectId) {
+        toast.error("Impossible d'envoyer cette note");
+        return;
+      }
+
+      try {
+        // Extraire un titre depuis le contenu (première ligne ou premiers mots)
+        const content = block.content as string;
+        const lines = content.split("\n").filter((l) => l.trim());
+        const title = lines[0]?.substring(0, 100) || `Note du ${format(selectedDate, "d MMMM yyyy", { locale: fr })}`;
+        const noteContent = lines.slice(1).join("\n") || content;
+
+        // Créer une note dans project_notes
+        const { error } = await (supabase as any).from("project_notes").insert({
+          project_id: projectId,
+          user_id: userId,
+          title: title,
+          content: noteContent,
+          archived: false,
+        });
+
+        if (error) throw error;
+
+        toast.success(`Note "${title.substring(0, 30)}..." ajoutée à la sidebar`);
+      } catch (error) {
+        console.error("Erreur envoi vers sidebar:", error);
+        toast.error("Erreur lors de l'envoi");
+      }
+    },
+    [blocks, userId, projectId, selectedDate],
+  );
+
   // Copier un bloc vers une autre date (roadmap)
   const moveBlockToDate = useCallback(
     async (blockId: string, targetDate: string) => {
@@ -950,6 +1436,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           x: 100 + Math.random() * 100,
           y: 100 + Math.random() * 100,
           targetDate: undefined, // Retirer la date cible
+          rescheduledTo: undefined, // La copie n'est pas reportée
           sourceDate: currentDateStr, // Marquer la date d'origine (roadmap)
           sourceBlockId: block.id, // Référence vers le bloc original pour sync
         };
@@ -981,10 +1468,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           });
         }
 
-        // 5. NE PAS supprimer le bloc de la date actuelle - on le garde comme roadmap
-        // Mettre à jour les indicateurs roadmap
+        // 5. Marquer le bloc original comme "reporté" pour la sidebar
+        // Ne pas supprimer le bloc - on le garde comme roadmap
+        updateBlockWithSync(blockId, { rescheduledTo: targetDate });
+
         setRoadmapDates((prev) => new Set([...prev, currentDateStr]));
-        setHasUnsavedChanges(true);
 
         toast.success(`Bloc copié vers le ${format(parseISO(targetDate), "d MMMM", { locale: fr })}`, {
           description: "Les modifications seront synchronisées avec l'original",
@@ -994,7 +1482,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         toast.error("Erreur lors de la copie");
       }
     },
-    [blocks, userId, projectId, selectedDate],
+    [blocks, userId, projectId, selectedDate, updateBlockWithSync],
   );
 
   // ============================================
@@ -1040,6 +1528,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             onImageUpload: (file: File) => handleImageUpload(block.id, file),
             onMoveToDate: (targetDate: string) => moveBlockToDate(block.id, targetDate),
             onNavigateToDate: (date: string) => setSelectedDate(parseISO(date)),
+            onSearchTasks: searchTasks,
+            onLinkTask: (task: AvailableTask) => linkTask(block.id, task),
+            onUpdateTaskStatus: updateTaskStatus,
+            onSendToSidebarTask: () => sendToSidebarTask(block.id),
+            onSendToSidebarNote: () => sendToSidebarNote(block.id),
             projects,
             currentProjectId: projectId,
           } as CustomBlockData,
@@ -1055,6 +1548,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     handleImageUpload,
     moveBlockToDate,
     setSelectedDate,
+    searchTasks,
+    linkTask,
+    updateTaskStatus,
+    sendToSidebarTask,
+    sendToSidebarNote,
     projects,
     projectId,
     selectedBlockId,
@@ -1709,6 +2207,15 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             </Button>
             <Button variant="outline" size="icon" onClick={() => addBlock("image")} title="Image">
               <ImageIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => addBlock("task")}
+              title="Tâche de travaux"
+              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+            >
+              <Wrench className="h-4 w-4" />
             </Button>
           </div>
 
