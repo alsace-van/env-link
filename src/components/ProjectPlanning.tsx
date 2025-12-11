@@ -3,7 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Euro, Package, StickyNote, UserCircle, Truck, Plus } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  CheckCircle2,
+  Euro,
+  Package,
+  StickyNote,
+  UserCircle,
+  Truck,
+  Plus,
+} from "lucide-react";
 import { format, addDays, isSameDay, parseISO, setHours, getHours } from "date-fns";
 import { fr } from "date-fns/locale";
 import { toast } from "sonner";
@@ -18,6 +29,7 @@ import { AddNoteModal } from "./planning/AddNoteModal";
 import { AddSupplierExpenseModal } from "./planning/AddSupplierExpenseModal";
 import { AddAppointmentModal } from "./planning/AddAppointmentModal";
 import { AddDeliveryModal } from "./planning/AddDeliveryModal";
+import DailyNotesButton from "./planning/DailyNotesButton";
 import { useProjectData } from "@/contexts/ProjectDataContext";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -27,7 +39,7 @@ interface ProjectPlanningProps {
 
 export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
-  
+
   // États pour les modales
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [showAddNoteModal, setShowAddNoteModal] = useState(false);
@@ -38,14 +50,8 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
 
   // Utiliser le contexte pour les données synchronisées en temps réel
-  const { 
-    todos, 
-    supplierExpenses, 
-    monthlyCharges, 
-    appointments,
-    accessoryDeliveries,
-    setCurrentProjectId 
-  } = useProjectData();
+  const { todos, supplierExpenses, monthlyCharges, appointments, accessoryDeliveries, setCurrentProjectId } =
+    useProjectData();
 
   // Mettre à jour le projectId dans le contexte quand il change
   useEffect(() => {
@@ -56,10 +62,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   const workingHours = Array.from({ length: 13 }, (_, i) => i + 8);
 
   const toggleTodoComplete = async (todoId: string, currentStatus: boolean) => {
-    const { error } = await supabase
-      .from("project_todos")
-      .update({ completed: !currentStatus })
-      .eq("id", todoId);
+    const { error } = await supabase.from("project_todos").update({ completed: !currentStatus }).eq("id", todoId);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour: " + getErrorMessage(error));
@@ -69,39 +72,33 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   };
 
   const getItemsForDateAndHour = (date: Date, hour: number) => {
-    const todosForHour = todos.filter(
-      (todo) => {
-        if (!todo.due_date) return false;
-        const todoDate = parseISO(todo.due_date);
-        return isSameDay(todoDate, date) && getHours(todoDate) === hour;
-      }
-    );
+    const todosForHour = todos.filter((todo) => {
+      if (!todo.due_date) return false;
+      const todoDate = parseISO(todo.due_date);
+      return isSameDay(todoDate, date) && getHours(todoDate) === hour;
+    });
 
     const expensesForDay = supplierExpenses.filter(
-      (expense) => expense.order_date && isSameDay(parseISO(expense.order_date), date)
+      (expense) => expense.order_date && isSameDay(parseISO(expense.order_date), date),
     );
 
-    const chargesForDay = monthlyCharges.filter(
-      (charge) => charge.jour_mois === date.getDate()
-    );
+    const chargesForDay = monthlyCharges.filter((charge) => charge.jour_mois === date.getDate());
 
-    const appointmentsForHour = appointments.filter(
-      (appointment) => {
-        const appointmentDate = parseISO(appointment.appointment_date);
-        return isSameDay(appointmentDate, date) && getHours(appointmentDate) === hour;
-      }
-    );
+    const appointmentsForHour = appointments.filter((appointment) => {
+      const appointmentDate = parseISO(appointment.appointment_date);
+      return isSameDay(appointmentDate, date) && getHours(appointmentDate) === hour;
+    });
 
     const deliveriesForDay = accessoryDeliveries.filter(
-      (delivery) => delivery.delivery_date && isSameDay(parseISO(delivery.delivery_date), date)
+      (delivery) => delivery.delivery_date && isSameDay(parseISO(delivery.delivery_date), date),
     );
 
-    return { 
-      todos: todosForHour, 
+    return {
+      todos: todosForHour,
       expenses: hour === 8 ? expensesForDay : [],
       charges: hour === 8 ? chargesForDay : [],
       appointments: appointmentsForHour,
-      deliveries: hour === 8 ? deliveriesForDay : []
+      deliveries: hour === 8 ? deliveriesForDay : [],
     };
   };
 
@@ -117,28 +114,36 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
     setCurrentDate(new Date());
   };
 
-  const handleOpenModal = (hour: number, type: 'task' | 'appointment' | 'delivery') => {
+  const handleOpenModal = (hour: number, type: "task" | "appointment" | "delivery") => {
     setSelectedHour(hour);
-    if (type === 'task') setShowAddTaskModal(true);
-    else if (type === 'appointment') setShowAddAppointmentModal(true);
-    else if (type === 'delivery') setShowAddDeliveryModal(true);
+    if (type === "task") setShowAddTaskModal(true);
+    else if (type === "appointment") setShowAddAppointmentModal(true);
+    else if (type === "delivery") setShowAddDeliveryModal(true);
   };
 
   const getAppointmentStatusColor = (status: string | null) => {
     switch (status) {
-      case 'confirmed': return 'border-green-300 bg-green-50';
-      case 'pending': return 'border-yellow-300 bg-yellow-50';
-      case 'cancelled': return 'border-red-300 bg-red-50';
-      default: return 'border-blue-300 bg-blue-50';
+      case "confirmed":
+        return "border-green-300 bg-green-50";
+      case "pending":
+        return "border-yellow-300 bg-yellow-50";
+      case "cancelled":
+        return "border-red-300 bg-red-50";
+      default:
+        return "border-blue-300 bg-blue-50";
     }
   };
 
   const getAppointmentStatusLabel = (status: string | null) => {
     switch (status) {
-      case 'confirmed': return 'Confirmé';
-      case 'pending': return 'En attente';
-      case 'cancelled': return 'Annulé';
-      default: return 'RDV';
+      case "confirmed":
+        return "Confirmé";
+      case "pending":
+        return "En attente";
+      case "cancelled":
+        return "Annulé";
+      default:
+        return "RDV";
     }
   };
 
@@ -155,6 +160,9 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
               <span className="text-xs text-green-500 font-medium animate-pulse">● En direct</span>
             </div>
             <div className="flex items-center gap-2">
+              {/* Bouton Planning Visuel */}
+              {projectId && <DailyNotesButton projectId={projectId} variant="outline" size="sm" showLabel={false} />}
+
               <Button variant="outline" size="sm" onClick={goToToday}>
                 Aujourd'hui
               </Button>
@@ -162,9 +170,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                 <Button variant="ghost" size="icon" onClick={goToPreviousDay}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <span className="text-sm font-medium px-3">
-                  {format(currentDate, "d MMM", { locale: fr })}
-                </span>
+                <span className="text-sm font-medium px-3">{format(currentDate, "d MMM", { locale: fr })}</span>
                 <Button variant="ghost" size="icon" onClick={goToNextDay}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -177,23 +183,13 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
           {/* En-tête du jour */}
           <div
             className={`text-center py-3 rounded-lg mb-3 ${
-              isToday
-                ? "bg-blue-500/10 border border-blue-500/30"
-                : "bg-gray-50"
+              isToday ? "bg-blue-500/10 border border-blue-500/30" : "bg-gray-50"
             }`}
           >
-            <div
-              className={`text-sm uppercase font-medium ${
-                isToday ? "text-blue-700" : "text-gray-500"
-              }`}
-            >
+            <div className={`text-sm uppercase font-medium ${isToday ? "text-blue-700" : "text-gray-500"}`}>
               {format(currentDate, "EEEE", { locale: fr })}
             </div>
-            <div
-              className={`text-3xl font-bold ${
-                isToday ? "text-blue-600" : "text-gray-900"
-              }`}
-            >
+            <div className={`text-3xl font-bold ${isToday ? "text-blue-600" : "text-gray-900"}`}>
               {format(currentDate, "d MMMM yyyy", { locale: fr })}
             </div>
           </div>
@@ -201,8 +197,13 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
           {/* Planning par heure */}
           <div className="space-y-1 max-h-[600px] overflow-y-auto">
             {workingHours.map((hour) => {
-              const { todos: todosForHour, expenses, charges, appointments: appointmentsForHour, deliveries } = 
-                getItemsForDateAndHour(currentDate, hour);
+              const {
+                todos: todosForHour,
+                expenses,
+                charges,
+                appointments: appointmentsForHour,
+                deliveries,
+              } = getItemsForDateAndHour(currentDate, hour);
 
               return (
                 <div
@@ -213,7 +214,11 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                 >
                   <div
                     className={`p-3 rounded-lg border-2 hover:border-blue-300 transition-all min-h-[60px] ${
-                      todosForHour.length > 0 || expenses.length > 0 || charges.length > 0 || appointmentsForHour.length > 0 || deliveries.length > 0
+                      todosForHour.length > 0 ||
+                      expenses.length > 0 ||
+                      charges.length > 0 ||
+                      appointmentsForHour.length > 0 ||
+                      deliveries.length > 0
                         ? "bg-white border-gray-200"
                         : "bg-gray-50/50 border-gray-100"
                     }`}
@@ -221,9 +226,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                     {/* Heure + Bouton Add */}
                     <div className="flex items-start gap-3">
                       <div className="flex items-center gap-2">
-                        <div className="text-sm font-semibold text-gray-500 min-w-[50px]">
-                          {`${hour}h00`}
-                        </div>
+                        <div className="text-sm font-semibold text-gray-500 min-w-[50px]">{`${hour}h00`}</div>
                         {hoveredHour === hour && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -236,15 +239,15 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
-                              <DropdownMenuItem onClick={() => handleOpenModal(hour, 'task')}>
+                              <DropdownMenuItem onClick={() => handleOpenModal(hour, "task")}>
                                 <CheckCircle2 className="mr-2 h-4 w-4 text-purple-600" />
                                 Ajouter une tâche
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenModal(hour, 'appointment')}>
+                              <DropdownMenuItem onClick={() => handleOpenModal(hour, "appointment")}>
                                 <UserCircle className="mr-2 h-4 w-4 text-blue-600" />
                                 Ajouter un rendez-vous
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenModal(hour, 'delivery')}>
+                              <DropdownMenuItem onClick={() => handleOpenModal(hour, "delivery")}>
                                 <Truck className="mr-2 h-4 w-4 text-emerald-600" />
                                 Ajouter une livraison
                               </DropdownMenuItem>
@@ -252,33 +255,27 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                           </DropdownMenu>
                         )}
                       </div>
-                      
+
                       <div className="flex-1 space-y-2">
                         {/* Tâches */}
                         {todosForHour.map((todo) => (
                           <div
                             key={todo.id}
                             className={`group p-2 rounded-lg backdrop-blur-sm bg-white border shadow-sm hover:shadow-md transition-all cursor-pointer ${
-                              todo.completed
-                                ? "opacity-60 border-green-200"
-                                : "border-purple-200"
+                              todo.completed ? "opacity-60 border-green-200" : "border-purple-200"
                             }`}
                             onClick={() => toggleTodoComplete(todo.id, todo.completed)}
                           >
                             <div className="flex items-start gap-2">
                               <CheckCircle2
                                 className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
-                                  todo.completed
-                                    ? "text-green-600 fill-green-600"
-                                    : "text-purple-400"
+                                  todo.completed ? "text-green-600 fill-green-600" : "text-purple-400"
                                 }`}
                               />
                               <div className="flex-1 min-w-0">
                                 <p
                                   className={`text-xs font-medium leading-tight ${
-                                    todo.completed
-                                      ? "line-through text-gray-500"
-                                      : "text-gray-900"
+                                    todo.completed ? "line-through text-gray-500" : "text-gray-900"
                                   }`}
                                 >
                                   {todo.title}
@@ -307,9 +304,7 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                                   {expense.product_name}
                                 </p>
                                 {expense.suppliers && (
-                                  <p className="text-[10px] text-gray-500 mt-0.5">
-                                    {expense.suppliers.name}
-                                  </p>
+                                  <p className="text-[10px] text-gray-500 mt-0.5">{expense.suppliers.name}</p>
                                 )}
                                 <div className="flex items-center gap-1 mt-1">
                                   <span className="text-xs font-bold text-orange-700">
@@ -336,13 +331,9 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                             <div className="flex items-start gap-2">
                               <Euro className="h-4 w-4 mt-0.5 text-red-600 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-gray-900 leading-tight">
-                                  {charge.nom_charge}
-                                </p>
+                                <p className="text-xs font-medium text-gray-900 leading-tight">{charge.nom_charge}</p>
                                 <div className="flex items-center gap-1 mt-1">
-                                  <span className="text-xs font-bold text-red-700">
-                                    {charge.montant.toFixed(2)} €
-                                  </span>
+                                  <span className="text-xs font-bold text-red-700">{charge.montant.toFixed(2)} €</span>
                                   <Badge
                                     variant="outline"
                                     className="text-[10px] px-1 py-0 h-4 bg-red-50 text-red-700 border-red-200"
@@ -368,15 +359,11 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                                   {appointment.client_name}
                                 </p>
                                 {appointment.description && (
-                                  <p className="text-[10px] text-gray-500 mt-0.5">
-                                    {appointment.description}
-                                  </p>
+                                  <p className="text-[10px] text-gray-500 mt-0.5">{appointment.description}</p>
                                 )}
                                 <div className="flex items-center gap-1 mt-1">
                                   {appointment.duration_minutes && (
-                                    <span className="text-xs text-blue-700">
-                                      {appointment.duration_minutes} min
-                                    </span>
+                                    <span className="text-xs text-blue-700">{appointment.duration_minutes} min</span>
                                   )}
                                   <Badge
                                     variant="outline"
@@ -399,13 +386,9 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
                             <div className="flex items-start gap-2">
                               <Truck className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-gray-900 leading-tight">
-                                  {delivery.nom}
-                                </p>
+                                <p className="text-xs font-medium text-gray-900 leading-tight">{delivery.nom}</p>
                                 {delivery.tracking_number && (
-                                  <p className="text-[10px] text-gray-500 mt-0.5">
-                                    Suivi: {delivery.tracking_number}
-                                  </p>
+                                  <p className="text-[10px] text-gray-500 mt-0.5">Suivi: {delivery.tracking_number}</p>
                                 )}
                                 <Badge
                                   variant="outline"
