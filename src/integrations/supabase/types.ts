@@ -673,6 +673,50 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_notes: {
+        Row: {
+          blocks_data: string | null
+          canvas_data: string | null
+          connections_data: string | null
+          created_at: string | null
+          id: string
+          note_date: string
+          project_id: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          blocks_data?: string | null
+          canvas_data?: string | null
+          connections_data?: string | null
+          created_at?: string | null
+          id?: string
+          note_date: string
+          project_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          blocks_data?: string | null
+          canvas_data?: string | null
+          connections_data?: string | null
+          created_at?: string | null
+          id?: string
+          note_date?: string
+          project_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_notes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       devis_snapshots: {
         Row: {
           contenu_complet: Json
@@ -834,6 +878,50 @@ export type Database = {
           version?: string | null
         }
         Relationships: []
+      }
+      evoliz_articles_sync: {
+        Row: {
+          accessory_id: string | null
+          created_at: string | null
+          evoliz_article_id: number
+          id: string
+          last_synced_at: string | null
+          sync_error: string | null
+          sync_status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          accessory_id?: string | null
+          created_at?: string | null
+          evoliz_article_id: number
+          id?: string
+          last_synced_at?: string | null
+          sync_error?: string | null
+          sync_status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          accessory_id?: string | null
+          created_at?: string | null
+          evoliz_article_id?: number
+          id?: string
+          last_synced_at?: string | null
+          sync_error?: string | null
+          sync_status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evoliz_articles_sync_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       evoliz_clients_mapping: {
         Row: {
@@ -1052,26 +1140,48 @@ export type Database = {
           expense_id: string
           id: string
           option_id: string
-          option_name: string
-          prix_vente_ttc: number
+          option_name: string | null
+          prix_vente_ttc: number | null
         }
         Insert: {
           created_at?: string | null
           expense_id: string
           id?: string
           option_id: string
-          option_name: string
-          prix_vente_ttc: number
+          option_name?: string | null
+          prix_vente_ttc?: number | null
         }
         Update: {
           created_at?: string | null
           expense_id?: string
           id?: string
           option_id?: string
-          option_name?: string
-          prix_vente_ttc?: number
+          option_name?: string | null
+          prix_vente_ttc?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "expense_selected_options_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "project_expenses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_selected_options_expense_id_fkey"
+            columns: ["expense_id"]
+            isOneToOne: false
+            referencedRelation: "view_expenses_with_scenario"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expense_selected_options_option_id_fkey"
+            columns: ["option_id"]
+            isOneToOne: false
+            referencedRelation: "accessory_options"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       expenses: {
         Row: {
@@ -1861,6 +1971,158 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "photo_templates_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planning_day_positions: {
+        Row: {
+          color: string | null
+          day_date: string
+          id: string
+          position_x: number | null
+          position_y: number | null
+          project_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          color?: string | null
+          day_date: string
+          id?: string
+          position_x?: number | null
+          position_y?: number | null
+          project_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          color?: string | null
+          day_date?: string
+          id?: string
+          position_x?: number | null
+          position_y?: number | null
+          project_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planning_day_positions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planning_task_links: {
+        Row: {
+          animated: boolean | null
+          created_at: string | null
+          edge_type: string | null
+          id: string
+          label: string | null
+          source_task_id: string | null
+          target_task_id: string | null
+        }
+        Insert: {
+          animated?: boolean | null
+          created_at?: string | null
+          edge_type?: string | null
+          id?: string
+          label?: string | null
+          source_task_id?: string | null
+          target_task_id?: string | null
+        }
+        Update: {
+          animated?: boolean | null
+          created_at?: string | null
+          edge_type?: string | null
+          id?: string
+          label?: string | null
+          source_task_id?: string | null
+          target_task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planning_task_links_source_task_id_fkey"
+            columns: ["source_task_id"]
+            isOneToOne: false
+            referencedRelation: "planning_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planning_task_links_target_task_id_fkey"
+            columns: ["target_task_id"]
+            isOneToOne: false
+            referencedRelation: "planning_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      planning_tasks: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          parent_task_id: string | null
+          position_x: number | null
+          position_y: number | null
+          project_id: string | null
+          source_date: string | null
+          status: string | null
+          task_date: string
+          title: string
+          updated_at: string | null
+          user_id: string | null
+          width: number | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          parent_task_id?: string | null
+          position_x?: number | null
+          position_y?: number | null
+          project_id?: string | null
+          source_date?: string | null
+          status?: string | null
+          task_date: string
+          title: string
+          updated_at?: string | null
+          user_id?: string | null
+          width?: number | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          parent_task_id?: string | null
+          position_x?: number | null
+          position_y?: number | null
+          project_id?: string | null
+          source_date?: string | null
+          status?: string | null
+          task_date?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "planning_tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "planning_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "planning_tasks_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -4607,6 +4869,57 @@ export type Database = {
       }
     }
     Views: {
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          company_address: string | null
+          company_city: string | null
+          company_country: string | null
+          company_name: string | null
+          company_postal_code: string | null
+          company_siret: string | null
+          created_at: string | null
+          display_name: string | null
+          first_name: string | null
+          id: string | null
+          last_name: string | null
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          company_address?: string | null
+          company_city?: string | null
+          company_country?: string | null
+          company_name?: string | null
+          company_postal_code?: string | null
+          company_siret?: string | null
+          created_at?: string | null
+          display_name?: never
+          first_name?: string | null
+          id?: string | null
+          last_name?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          company_address?: string | null
+          company_city?: string | null
+          company_country?: string | null
+          company_name?: string | null
+          company_postal_code?: string | null
+          company_siret?: string | null
+          created_at?: string | null
+          display_name?: never
+          first_name?: string | null
+          id?: string | null
+          last_name?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       view_expenses_with_scenario: {
         Row: {
           accessory_id: string | null
