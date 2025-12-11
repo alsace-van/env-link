@@ -1,29 +1,25 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ProjectTodoList } from "./ProjectTodoList";
+import { PlanningTasksList } from "./PlanningTasksList";
 import { ProjectNotes } from "./ProjectNotes";
 import { GlobalTodoList } from "./GlobalTodoList";
 import { GlobalNotes } from "./GlobalNotes";
-import { ClipboardList, FileText } from "lucide-react";
+import { ClipboardList, FileText, Wrench } from "lucide-react";
 
 interface ProjectSidebarProps {
   projectId: string | null;
   isOpen: boolean;
   onClose: () => void;
+  onNavigateToDate?: (date: string) => void;
 }
 
-export const ProjectSidebar = ({ projectId, isOpen, onClose }: ProjectSidebarProps) => {
+export const ProjectSidebar = ({ projectId, isOpen, onClose, onNavigateToDate }: ProjectSidebarProps) => {
   return (
     <>
       {/* Overlay transparent */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 z-40 transition-opacity" 
-          onClick={onClose}
-        />
-      )}
-      
+      {isOpen && <div className="fixed inset-0 z-40 transition-opacity" onClick={onClose} />}
+
       <Sheet open={isOpen} onOpenChange={onClose}>
         <SheetContent side="right" className="w-[450px] sm:w-[500px] p-0 overflow-hidden z-50">
           <SheetHeader className="px-6 py-4 border-b">
@@ -34,7 +30,7 @@ export const ProjectSidebar = ({ projectId, isOpen, onClose }: ProjectSidebarPro
             <Tabs defaultValue="project" className="h-full flex flex-col">
               <TabsList className="grid w-full grid-cols-2 flex-shrink-0 mx-6 mt-4">
                 <TabsTrigger value="project">
-                  <ClipboardList className="h-4 w-4 mr-2 text-blue-600" />
+                  <Wrench className="h-4 w-4 mr-2 text-orange-600" />
                   Ce projet
                 </TabsTrigger>
                 <TabsTrigger value="global">
@@ -46,8 +42,11 @@ export const ProjectSidebar = ({ projectId, isOpen, onClose }: ProjectSidebarPro
               <TabsContent value="project" className="flex-1 m-0 overflow-hidden">
                 <div className="h-full overflow-auto px-6 py-4 space-y-4">
                   <div>
-                    <h3 className="font-semibold mb-3">Tâches à faire</h3>
-                    <ProjectTodoList projectId={projectId} />
+                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                      <Wrench className="h-4 w-4 text-orange-600" />
+                      Tâches planifiées
+                    </h3>
+                    <PlanningTasksList projectId={projectId} onNavigateToDate={onNavigateToDate} />
                   </div>
                   <div>
                     <h3 className="font-semibold mb-3">Notes</h3>
