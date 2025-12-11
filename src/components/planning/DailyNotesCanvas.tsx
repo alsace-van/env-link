@@ -1664,6 +1664,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
 
         // 2. Préparer le bloc pour la nouvelle date avec référence vers l'original
+        // La copie est un RAPPEL, pas une duplication des tâches
         const blockForTarget: NoteBlock = {
           ...block,
           id: crypto.randomUUID(), // Nouveau ID
@@ -1673,7 +1674,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           rescheduledTo: undefined, // La copie n'est pas reportée
           sourceDate: currentDateStr, // Marquer la date d'origine (roadmap)
           sourceBlockId: block.id, // Référence vers le bloc original pour sync
+          // La copie n'a pas de tâches liées - c'est juste un rappel
+          linkedTasks: undefined,
+          linkedTask: undefined,
         };
+
+        // 2b. Mettre à jour scheduled_date de l'original pour qu'il apparaisse dans le planning mensuel
+        const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
+        if (linkedTasks.length > 0) {
+          const taskIds = linkedTasks.map((t) => t.id);
+          await (supabase as any).from("project_todos").update({ scheduled_date: currentDateStr }).in("id", taskIds);
+        }
 
         // 3. Récupérer les blocs existants de la date cible
         let targetBlocks: NoteBlock[] = [];
@@ -1748,14 +1759,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         // Forcer ReactFlow à recalculer
         blocksIdsRef.current = "";
 
-        // 6. Mettre à jour scheduled_date des travaux liés pour qu'ils apparaissent dans le planning mensuel
-        const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
-        if (linkedTasks.length > 0) {
-          const taskIds = linkedTasks.map((t) => t.id);
-          await (supabase as any).from("project_todos").update({ scheduled_date: targetDate }).in("id", taskIds);
-        }
-
-        // 7. Mettre à jour les roadmapDates pour les deux dates (origine et cible)
+        // 6. Mettre à jour les roadmapDates pour les deux dates (origine et cible)
         setRoadmapDates((prev) => {
           const newSet = new Set(prev);
           newSet.add(currentDateStr); // Date d'origine (a un bloc replanifié)
@@ -1764,7 +1768,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         });
 
         toast.success(`Bloc copié vers le ${format(parseISO(targetDate), "d MMMM", { locale: fr })}`, {
-          description: "Les modifications seront synchronisées avec l'original",
+          description: "Cliquez sur le rappel pour revenir à l'original",
         });
       } catch (error) {
         console.error("Erreur copie bloc:", error);
