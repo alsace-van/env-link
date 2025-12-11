@@ -1125,6 +1125,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   // Dates avec des blocs roadmap (pour indicateurs dans l'agenda)
   const [roadmapDates, setRoadmapDates] = useState<Set<string>>(new Set());
 
+  // Ref pour détecter les changements de blocs (ReactFlow sync)
+  const blocksIdsRef = useRef<string>("");
+
   // États dessin Paper.js
   const [activeTool, setActiveTool] = useState<DrawTool>("select");
   const [strokeColor, setStrokeColor] = useState("#000000");
@@ -1733,11 +1736,35 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           });
         }
 
-        // 5. Marquer le bloc original comme "reporté" pour la sidebar
-        // Ne pas supprimer le bloc - on le garde comme roadmap
+        // 5. Marquer le bloc original comme "reporté" et SAUVEGARDER IMMÉDIATEMENT
         console.log("[moveBlockToDate] Mise à jour bloc original avec rescheduledTo:", targetDate);
-        updateBlockWithSync(blockId, { rescheduledTo: targetDate });
-        console.log("[moveBlockToDate] updateBlockWithSync appelé");
+
+        // Mettre à jour le state local
+        const updatedOriginalBlocks = blocks.map((b) => (b.id === blockId ? { ...b, rescheduledTo: targetDate } : b));
+        setBlocks(updatedOriginalBlocks);
+
+        // Sauvegarder immédiatement dans Supabase (ne pas attendre l'auto-save)
+        const { data: currentNote } = await (supabase as any)
+          .from("daily_notes")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("user_id", userId)
+          .eq("note_date", currentDateStr)
+          .maybeSingle();
+
+        if (currentNote) {
+          await (supabase as any)
+            .from("daily_notes")
+            .update({
+              blocks_data: JSON.stringify(updatedOriginalBlocks),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", currentNote.id);
+          console.log("[moveBlockToDate] Bloc original sauvegardé avec rescheduledTo");
+        }
+
+        // Forcer ReactFlow à recalculer
+        blocksIdsRef.current = "";
 
         // 6. Mettre à jour scheduled_date des travaux liés pour qu'ils apparaissent dans le planning mensuel
         const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
@@ -1770,8 +1797,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   // ============================================
   // SYNC REACTFLOW NODES
   // ============================================
-
-  const blocksIdsRef = useRef<string>("");
 
   // Mettre à jour les indicateurs roadmap quand les blocs changent
   useEffect(() => {
