@@ -29,7 +29,6 @@ import { AddNoteModal } from "./planning/AddNoteModal";
 import { AddSupplierExpenseModal } from "./planning/AddSupplierExpenseModal";
 import { AddAppointmentModal } from "./planning/AddAppointmentModal";
 import { AddDeliveryModal } from "./planning/AddDeliveryModal";
-import DailyNotesButton from "./planning/DailyNotesButton";
 import { useProjectData } from "@/contexts/ProjectDataContext";
 import { getErrorMessage } from "@/lib/utils";
 
@@ -160,9 +159,6 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
               <span className="text-xs text-green-500 font-medium animate-pulse">● En direct</span>
             </div>
             <div className="flex items-center gap-2">
-              {/* Bouton Planning Visuel */}
-              {projectId && <DailyNotesButton projectId={projectId} variant="outline" size="sm" showLabel={false} />}
-
               <Button variant="outline" size="sm" onClick={goToToday}>
                 Aujourd'hui
               </Button>
