@@ -93,6 +93,7 @@ import {
   ExternalLink,
   FileText,
   ListTodo,
+  StickyNote,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -1029,6 +1030,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
+  // État pour la note rapide (sidebar)
+  const [showQuickNote, setShowQuickNote] = useState(false);
+  const [quickNoteTitle, setQuickNoteTitle] = useState("");
+  const [quickNoteContent, setQuickNoteContent] = useState("");
+
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const paperScopeRef = useRef<paper.PaperScope | null>(null);
@@ -1408,6 +1414,34 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     },
     [blocks, userId, projectId, selectedDate],
   );
+
+  // Créer une note rapide directement dans la sidebar
+  const createQuickNote = useCallback(async () => {
+    if (!quickNoteTitle.trim() || !userId || !projectId) {
+      toast.error("Le titre est requis");
+      return;
+    }
+
+    try {
+      const { error } = await (supabase as any).from("project_notes").insert({
+        project_id: projectId,
+        user_id: userId,
+        title: quickNoteTitle.trim(),
+        content: quickNoteContent.trim() || null,
+        archived: false,
+      });
+
+      if (error) throw error;
+
+      toast.success(`Note "${quickNoteTitle.substring(0, 30)}${quickNoteTitle.length > 30 ? "..." : ""}" créée`);
+      setQuickNoteTitle("");
+      setQuickNoteContent("");
+      setShowQuickNote(false);
+    } catch (error) {
+      console.error("Erreur création note:", error);
+      toast.error("Erreur lors de la création");
+    }
+  }, [quickNoteTitle, quickNoteContent, userId, projectId]);
 
   // Copier un bloc vers une autre date (roadmap)
   const moveBlockToDate = useCallback(
@@ -2217,6 +2251,63 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             >
               <Wrench className="h-4 w-4" />
             </Button>
+
+            {/* Note rapide → Sidebar */}
+            <Popover open={showQuickNote} onOpenChange={setShowQuickNote}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title="Note rapide (sidebar)"
+                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                >
+                  <StickyNote className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80" align="start">
+                <div className="space-y-3">
+                  <div className="font-medium text-sm flex items-center gap-2">
+                    <StickyNote className="h-4 w-4 text-green-600" />
+                    Nouvelle note (sidebar)
+                  </div>
+                  <Input
+                    placeholder="Titre de la note..."
+                    value={quickNoteTitle}
+                    onChange={(e) => setQuickNoteTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && quickNoteTitle.trim()) {
+                        createQuickNote();
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <Textarea
+                    placeholder="Contenu (optionnel)..."
+                    value={quickNoteContent}
+                    onChange={(e) => setQuickNoteContent(e.target.value)}
+                    rows={3}
+                    className="resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={createQuickNote} disabled={!quickNoteTitle.trim()} className="flex-1">
+                      <StickyNote className="h-4 w-4 mr-1" />
+                      Créer
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowQuickNote(false);
+                        setQuickNoteTitle("");
+                        setQuickNoteContent("");
+                      }}
+                    >
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <Separator orientation="vertical" className="h-6" />
