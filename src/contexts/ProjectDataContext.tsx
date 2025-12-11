@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { toast } from "sonner";
 
-interface Todo {
+export interface Todo {
   id: string;
   title: string;
   completed: boolean;
