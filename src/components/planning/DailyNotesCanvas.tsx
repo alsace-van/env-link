@@ -291,16 +291,6 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     currentProjectId,
   } = data as CustomBlockData;
 
-  // Debug: vérifier les props du bloc
-  console.log(
-    "[CustomBlockNode] Render bloc:",
-    block.id.slice(0, 8),
-    "sourceDate:",
-    block.sourceDate,
-    "rescheduledTo:",
-    block.rescheduledTo,
-  );
-
   const [isEditing, setIsEditing] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -795,16 +785,23 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     }
   };
 
+  // Déterminer la couleur de bordure selon le statut
+  const getBorderClass = () => {
+    if (selected) return "border-blue-500 shadow-lg";
+    if (block.sourceDate) return "border-purple-400 border-2"; // Copie
+    if (block.rescheduledTo) return "border-orange-400 border-2"; // Original replanifié
+    return "border-gray-200 hover:border-gray-300";
+  };
+
   return (
     <div
-      className={`bg-white rounded-lg shadow-md border-2 group relative ${
-        selected ? "border-blue-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
-      }`}
+      className={`bg-white rounded-lg shadow-md group relative ${getBorderClass()}`}
       style={{
         backgroundColor: block.style?.backgroundColor || "#fff",
         minWidth: block.width || 200,
         minHeight: 80,
         height: "auto",
+        borderWidth: block.sourceDate || block.rescheduledTo ? 3 : 2,
       }}
     >
       {/* Handles de connexion - comme MechanicalProcedures */}
@@ -813,48 +810,39 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
       <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
 
-      {/* Badge copie (depuis X) - VIOLET - à l'intérieur du bloc */}
-      {block.sourceDate && (
-        <button
-          className="w-full bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs px-2 py-1 rounded-t-md flex items-center justify-center gap-1 cursor-pointer transition-colors border-b border-purple-200"
-          onClick={(e) => {
-            e.stopPropagation();
-            onNavigateToDate(block.sourceDate!);
-          }}
-          title="Aller à la date d'origine"
-        >
-          <MapPin className="h-3 w-3" />
-          <span>depuis {format(parseISO(block.sourceDate), "d MMM", { locale: fr })}</span>
-          <ChevronRight className="h-3 w-3" />
-        </button>
-      )}
-
-      {/* Badge replanifié (→ X) - BLEU - à l'intérieur du bloc */}
-      {block.rescheduledTo && !block.sourceDate && (
-        <button
-          className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-2 py-1 rounded-t-md flex items-center justify-center gap-1 cursor-pointer transition-colors border-b border-blue-200"
-          onClick={(e) => {
-            e.stopPropagation();
-            onNavigateToDate(block.rescheduledTo!);
-          }}
-          title="Aller à la date planifiée"
-        >
-          <CalendarIcon className="h-3 w-3" />
-          <span>→ {format(parseISO(block.rescheduledTo), "d MMM", { locale: fr })}</span>
-          <ChevronRight className="h-3 w-3" />
-        </button>
-      )}
-
       {/* Header */}
-      <div
-        className={`flex items-center justify-between px-2 py-1 bg-gray-50 border-b cursor-move ${
-          !(block.sourceDate || block.rescheduledTo) ? "rounded-t-md" : ""
-        }`}
-      >
+      <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded-t-md border-b cursor-move">
         <div className="flex items-center gap-1">
           <GripVertical className="h-4 w-4 text-gray-400" />
           {getBlockIcon()}
           <span className="text-xs text-gray-500 capitalize">{block.type}</span>
+
+          {/* Indicateur simple : copie ou replanifié */}
+          {block.sourceDate && (
+            <button
+              className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-1 hover:bg-purple-200 flex items-center gap-0.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateToDate(block.sourceDate!);
+              }}
+              title="Aller à l'original"
+            >
+              ← {format(parseISO(block.sourceDate), "d/MM", { locale: fr })}
+            </button>
+          )}
+          {block.rescheduledTo && !block.sourceDate && (
+            <button
+              className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded ml-1 hover:bg-orange-200 flex items-center gap-0.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigateToDate(block.rescheduledTo!);
+              }}
+              title="Aller à la copie"
+            >
+              → {format(parseISO(block.rescheduledTo), "d/MM", { locale: fr })}
+            </button>
+          )}
+
           {/* Badge projet lié */}
           {block.linkedProjectName && (
             <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-1">
@@ -1223,7 +1211,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           })
           .eq("id", sourceNote.id);
 
-        console.log("Bloc source synchronisé");
+        // Bloc source synchronisé
       } catch (error) {
         console.error("Erreur sync bloc source:", error);
       }
@@ -1234,19 +1222,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   // Wrapper updateBlock avec sync automatique
   const updateBlockWithSync = useCallback(
     (blockId: string, updates: Partial<NoteBlock>) => {
-      console.log("[updateBlockWithSync] blockId:", blockId.slice(0, 8), "updates:", updates);
-
       // Mise à jour locale immédiate avec callback pour avoir la valeur actuelle
       setBlocks((prev) => {
         const updatedBlocks = prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b));
-
-        // Debug: vérifier la mise à jour
-        const updatedBlock = updatedBlocks.find((b) => b.id === blockId);
-        console.log("[updateBlockWithSync] Bloc après mise à jour:", {
-          id: updatedBlock?.id.slice(0, 8),
-          rescheduledTo: updatedBlock?.rescheduledTo,
-          sourceDate: updatedBlock?.sourceDate,
-        });
 
         // Sync vers le bloc source si c'est une copie
         const block = prev.find((b) => b.id === blockId);
@@ -1656,11 +1634,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
   const moveBlockToDate = useCallback(
     async (blockId: string, targetDate: string) => {
-      console.log("[moveBlockToDate] Appelé avec blockId:", blockId.slice(0, 8), "targetDate:", targetDate);
-
       // Protection contre les doubles appels
       if (isMovingBlock) {
-        console.log("[moveBlockToDate] Déjà en cours, ignoré");
         return;
       }
 
@@ -1737,7 +1712,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         }
 
         // 5. Marquer le bloc original comme "reporté" et SAUVEGARDER IMMÉDIATEMENT
-        console.log("[moveBlockToDate] Mise à jour bloc original avec rescheduledTo:", targetDate);
 
         // Mettre à jour le state local
         const updatedOriginalBlocks = blocks.map((b) => (b.id === blockId ? { ...b, rescheduledTo: targetDate } : b));
@@ -1760,7 +1734,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
               updated_at: new Date().toISOString(),
             })
             .eq("id", currentNote.id);
-          console.log("[moveBlockToDate] Bloc original sauvegardé avec rescheduledTo");
         }
 
         // Forcer ReactFlow à recalculer
@@ -1823,16 +1796,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
       )
       .join(",");
 
-    console.log(
-      "[DailyNotesCanvas] useEffect sync - blocks:",
-      blocks.length,
-      "changed:",
-      currentIds !== blocksIdsRef.current,
-    );
-
     if (currentIds !== blocksIdsRef.current) {
       blocksIdsRef.current = currentIds;
-      console.log("[DailyNotesCanvas] Mise à jour ReactFlow nodes");
       setNodes(
         blocks.map((block) => ({
           id: block.id,
@@ -2176,17 +2141,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         if (data.blocks_data) {
           try {
             const loadedBlocks = JSON.parse(data.blocks_data);
-            console.log("[DailyNotesCanvas] Chargement date:", dateStr);
-            console.log("[DailyNotesCanvas] Blocs chargés:", loadedBlocks.length);
-            loadedBlocks.forEach((b: NoteBlock, i: number) => {
-              console.log(`[DailyNotesCanvas] Bloc ${i}:`, {
-                id: b.id.slice(0, 8),
-                type: b.type,
-                sourceDate: b.sourceDate,
-                rescheduledTo: b.rescheduledTo,
-                sourceBlockId: b.sourceBlockId?.slice(0, 8),
-              });
-            });
             setBlocks(loadedBlocks);
             // Forcer ReactFlow à recalculer les nodes
             blocksIdsRef.current = "";
@@ -2195,7 +2149,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             blocksIdsRef.current = "";
           }
         } else {
-          console.log("[DailyNotesCanvas] Aucun bloc pour:", dateStr);
           setBlocks([]);
           blocksIdsRef.current = "";
         }
