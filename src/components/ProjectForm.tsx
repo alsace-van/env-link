@@ -516,15 +516,23 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     setIsLoading(false);
 
     if (error) {
-      toast.error("Erreur lors de la création du projet");
+      toast.error(isEditMode ? "Erreur lors de la modification du projet" : "Erreur lors de la création du projet");
       console.error(error);
       return;
     }
 
-    toast.success(isEditMode ? "Projet modifié avec succès !" : "Projet créé avec succès !");
+    // En mode édition, on appelle directement le callback (la modale va se fermer)
+    if (isEditMode) {
+      onProjectCreated();
+      return;
+    }
+
+    // En mode création seulement : reset du formulaire
+    toast.success("Projet créé avec succès !");
     e.currentTarget.reset();
     setSelectedMarque("");
     setSelectedModele("");
+    setSelectedDimension("");
     setSelectedVehicle(null);
     setCustomPoidsVide("");
     setCustomPtac("");
@@ -653,9 +661,14 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
               <h3 className="text-sm font-semibold text-muted-foreground">Informations Véhicule</h3>
 
               <div className="space-y-2">
-                <Label htmlFor="marque">Marque *</Label>
+                <Label htmlFor="marque">Marque {!isEditMode && "*"}</Label>
                 <div className="flex gap-2">
-                  <Select value={selectedMarque} onValueChange={handleMarqueChange} required disabled={isLoading}>
+                  <Select
+                    value={selectedMarque}
+                    onValueChange={handleMarqueChange}
+                    required={!isEditMode}
+                    disabled={isLoading}
+                  >
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Sélectionnez une marque" />
                     </SelectTrigger>
@@ -682,9 +695,14 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
 
               {selectedMarque && (
                 <div className="space-y-2">
-                  <Label htmlFor="modele">Modèle *</Label>
+                  <Label htmlFor="modele">Modèle {!isEditMode && "*"}</Label>
                   <div className="flex gap-2">
-                    <Select value={selectedModele} onValueChange={handleModeleChange} required disabled={isLoading}>
+                    <Select
+                      value={selectedModele}
+                      onValueChange={handleModeleChange}
+                      required={!isEditMode}
+                      disabled={isLoading}
+                    >
                       <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Sélectionnez un modèle" />
                       </SelectTrigger>
@@ -712,8 +730,13 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
 
               {selectedMarque && selectedModele && availableDimensions.length > 0 && (
                 <div className="space-y-2">
-                  <Label htmlFor="dimension">Dimensions (L×H) *</Label>
-                  <Select value={selectedDimension} onValueChange={handleDimensionChange} required disabled={isLoading}>
+                  <Label htmlFor="dimension">Dimensions (L×H) {!isEditMode && "*"}</Label>
+                  <Select
+                    value={selectedDimension}
+                    onValueChange={handleDimensionChange}
+                    required={!isEditMode}
+                    disabled={isLoading}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Sélectionnez les dimensions" />
                     </SelectTrigger>
