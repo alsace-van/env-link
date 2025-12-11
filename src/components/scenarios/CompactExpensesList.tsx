@@ -44,6 +44,18 @@ interface Expense {
   intensite_amperes?: number;
 }
 
+// Interface pour les données du catalogue
+interface CatalogItem {
+  id: string;
+  type_electrique?: string;
+  puissance_watts?: number;
+  intensite_amperes?: number;
+  poids_kg?: number;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
+}
+
 const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange }: CompactExpensesListProps) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -112,11 +124,11 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
   // ✅ NOUVELLE FONCTION: Synchroniser les données techniques depuis le catalogue
   const syncFromCatalog = async () => {
     setIsSyncing(true);
-
+    
     try {
       // Récupérer les dépenses avec accessory_id
-      const expensesWithAccessoryId = expenses.filter((e) => e.accessory_id);
-
+      const expensesWithAccessoryId = expenses.filter(e => e.accessory_id);
+      
       if (expensesWithAccessoryId.length === 0) {
         toast.info("Aucun article n'est lié au catalogue. Utilisez la sélection catalogue lors de l'ajout.");
         setIsSyncing(false);
@@ -124,12 +136,10 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
       }
 
       // Récupérer les données du catalogue
-      const accessoryIds = expensesWithAccessoryId.map((e) => e.accessory_id);
+      const accessoryIds = expensesWithAccessoryId.map(e => e.accessory_id!);
       const { data: catalogData, error: catalogError } = await (supabase as any)
         .from("accessories_catalog")
-        .select(
-          "id, type_electrique, puissance_watts, intensite_amperes, poids_kg, longueur_mm, largeur_mm, hauteur_mm",
-        )
+        .select("id, type_electrique, puissance_watts, intensite_amperes, poids_kg, longueur_mm, largeur_mm, hauteur_mm")
         .in("id", accessoryIds);
 
       if (catalogError) {
@@ -140,7 +150,9 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
       }
 
       // Créer un map pour accès rapide
-      const catalogMap = new Map(catalogData.map((item: any) => [item.id, item]));
+      const catalogMap = new Map<string, CatalogItem>(
+        catalogData.map((item: CatalogItem) => [item.id, item])
+      );
 
       // Compter les mises à jour
       let updatedCount = 0;
@@ -148,8 +160,8 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
 
       // Mettre à jour chaque dépense
       for (const expense of expensesWithAccessoryId) {
-        const catalogItem = catalogMap.get(expense.accessory_id);
-
+        const catalogItem = catalogMap.get(expense.accessory_id!);
+        
         if (!catalogItem) {
           skippedCount++;
           continue;
@@ -157,7 +169,7 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
 
         // Vérifier si au moins un champ technique est rempli dans le catalogue
         const hasData = catalogItem.type_electrique || catalogItem.puissance_watts || catalogItem.intensite_amperes;
-
+        
         if (!hasData) {
           skippedCount++;
           continue;
@@ -187,12 +199,11 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
         loadExpenses();
         onExpenseChange();
       } else if (skippedCount > 0) {
-        toast.warning(
-          `Aucune donnée technique trouvée dans le catalogue. Remplissez d'abord les champs techniques dans le catalogue.`,
-        );
+        toast.warning(`Aucune donnée technique trouvée dans le catalogue. Remplissez d'abord les champs techniques dans le catalogue.`);
       } else {
         toast.info("Tous les articles sont déjà à jour");
       }
+
     } catch (err) {
       console.error("Erreur sync catalogue:", err);
       toast.error("Erreur lors de la synchronisation");
@@ -301,25 +312,25 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     if (!expense.type_electrique) return null;
 
     const typeConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-      producteur: {
-        color: "bg-yellow-100 text-yellow-700 border-yellow-300",
-        icon: <Sun className="h-3 w-3" />,
-        label: "Prod",
+      producteur: { 
+        color: "bg-yellow-100 text-yellow-700 border-yellow-300", 
+        icon: <Sun className="h-3 w-3" />, 
+        label: "Prod" 
       },
-      stockage: {
-        color: "bg-blue-100 text-blue-700 border-blue-300",
-        icon: <Battery className="h-3 w-3" />,
-        label: "Stock",
+      stockage: { 
+        color: "bg-blue-100 text-blue-700 border-blue-300", 
+        icon: <Battery className="h-3 w-3" />, 
+        label: "Stock" 
       },
-      consommateur: {
-        color: "bg-red-100 text-red-700 border-red-300",
-        icon: <Zap className="h-3 w-3" />,
-        label: "Conso",
+      consommateur: { 
+        color: "bg-red-100 text-red-700 border-red-300", 
+        icon: <Zap className="h-3 w-3" />, 
+        label: "Conso" 
       },
-      convertisseur: {
-        color: "bg-purple-100 text-purple-700 border-purple-300",
-        icon: <RefreshCw className="h-3 w-3" />,
-        label: "Conv",
+      convertisseur: { 
+        color: "bg-purple-100 text-purple-700 border-purple-300", 
+        icon: <RefreshCw className="h-3 w-3" />, 
+        label: "Conv" 
       },
     };
 
@@ -354,8 +365,8 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     : expenses;
 
   // Compter les articles avec/sans données techniques
-  const articlesWithTechData = expenses.filter((e) => e.type_electrique || e.puissance_watts).length;
-  const articlesWithAccessoryId = expenses.filter((e) => e.accessory_id).length;
+  const articlesWithTechData = expenses.filter(e => e.type_electrique || e.puissance_watts).length;
+  const articlesWithAccessoryId = expenses.filter(e => e.accessory_id).length;
 
   if (isLoading) {
     return <div className="text-center py-4 text-sm text-muted-foreground">Chargement...</div>;
@@ -370,19 +381,19 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
             <Plus className="h-4 w-4 mr-2" />
             Ajouter un article
           </Button>
-
+          
           {/* ✅ NOUVEAU: Bouton synchronisation catalogue */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  size="sm"
+                <Button 
+                  size="sm" 
                   variant="outline"
                   onClick={syncFromCatalog}
                   disabled={isSyncing || articlesWithAccessoryId === 0}
                   className="gap-1"
                 >
-                  <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
                   Sync
                 </Button>
               </TooltipTrigger>
@@ -452,10 +463,10 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
                         {expense.marque}
                       </Badge>
                     )}
-
+                    
                     {/* ✅ NOUVEAU: Badge type électrique */}
                     {getElectricTypeBadge(expense)}
-
+                    
                     <span>{(expense.prix || 0).toFixed(2)} € × </span>
                     <Input
                       type="number"
