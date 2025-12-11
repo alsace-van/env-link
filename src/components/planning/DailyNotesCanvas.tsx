@@ -1782,27 +1782,19 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
   // Mettre à jour les indicateurs roadmap quand les blocs changent
   useEffect(() => {
-    const hasTargetDate = blocks.some((b) => b.targetDate);
+    // Vérifier si la date actuelle a des blocs avec des liens (copie ou original)
+    const hasLinkedBlocks = blocks.some((b) => b.sourceDate || b.rescheduledTo);
     const currentDateStr = format(selectedDate, "yyyy-MM-dd");
 
     setRoadmapDates((prev) => {
       const newSet = new Set(prev);
-      if (hasTargetDate) {
+      if (hasLinkedBlocks) {
         newSet.add(currentDateStr);
-      } else {
-        newSet.delete(currentDateStr);
       }
+      // Ne PAS supprimer - loadRoadmapDates gère la liste complète
       return newSet;
     });
   }, [blocks, selectedDate]);
-
-  // Compteur pour forcer le re-render des nodes
-  const [nodeVersion, setNodeVersion] = useState(0);
-
-  // Incrémenter le compteur quand la date change pour forcer le re-render
-  useEffect(() => {
-    setNodeVersion((v) => v + 1);
-  }, [selectedDate]);
 
   useEffect(() => {
     // Toujours recréer les nodes (plus de comparaison qui peut bugger)
@@ -1831,7 +1823,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     setNodes(newNodes);
   }, [
     blocks,
-    nodeVersion, // Force re-render quand la date change
     setNodes,
     updateBlockWithSync,
     deleteBlock,
