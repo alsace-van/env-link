@@ -1796,43 +1796,42 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     });
   }, [blocks, selectedDate]);
 
-  useEffect(() => {
-    // Inclure linkedTasks et rescheduledTo dans la comparaison pour détecter les changements
-    const currentIds = blocks
-      .map(
-        (b) =>
-          `${b.id}-${b.type}-${b.targetDate || ""}-${b.linkedProjectId || ""}-${b.sourceDate || ""}-${b.rescheduledTo || ""}-${JSON.stringify(b.linkedTasks || [])}-${JSON.stringify(b.content).slice(0, 50)}`,
-      )
-      .join(",");
+  // Compteur pour forcer le re-render des nodes
+  const [nodeVersion, setNodeVersion] = useState(0);
 
-    if (currentIds !== blocksIdsRef.current) {
-      blocksIdsRef.current = currentIds;
-      setNodes(
-        blocks.map((block) => ({
-          id: block.id,
-          type: "customBlock",
-          position: { x: block.x, y: block.y },
-          data: {
-            block: { ...block }, // Nouvelle référence pour garantir le re-render
-            onUpdate: (updates: Partial<NoteBlock>) => updateBlockWithSync(block.id, updates),
-            onDelete: () => deleteBlock(block.id),
-            onImageUpload: (file: File) => handleImageUpload(block.id, file),
-            onMoveToDate: (targetDate: string) => moveBlockToDate(block.id, targetDate),
-            onNavigateToDate: (date: string) => setSelectedDate(parseISO(date)),
-            onSearchTasks: searchTasks,
-            onLinkTask: (task: AvailableTask) => linkTask(block.id, task),
-            onUpdateTaskStatus: updateTaskStatus,
-            onSendToSidebarTask: () => sendToSidebarTask(block.id),
-            onSendToSidebarNote: () => sendToSidebarNote(block.id),
-            projects,
-            currentProjectId: projectId,
-          } as CustomBlockData,
-          style: { width: block.width, height: "auto" },
-        })) as any,
-      );
-    }
+  // Incrémenter le compteur quand la date change pour forcer le re-render
+  useEffect(() => {
+    setNodeVersion((v) => v + 1);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    // Toujours recréer les nodes (plus de comparaison qui peut bugger)
+    const newNodes = blocks.map((block) => ({
+      id: block.id,
+      type: "customBlock",
+      position: { x: block.x, y: block.y },
+      data: {
+        block: { ...block },
+        onUpdate: (updates: Partial<NoteBlock>) => updateBlockWithSync(block.id, updates),
+        onDelete: () => deleteBlock(block.id),
+        onImageUpload: (file: File) => handleImageUpload(block.id, file),
+        onMoveToDate: (targetDate: string) => moveBlockToDate(block.id, targetDate),
+        onNavigateToDate: (date: string) => setSelectedDate(parseISO(date)),
+        onSearchTasks: searchTasks,
+        onLinkTask: (task: AvailableTask) => linkTask(block.id, task),
+        onUpdateTaskStatus: updateTaskStatus,
+        onSendToSidebarTask: () => sendToSidebarTask(block.id),
+        onSendToSidebarNote: () => sendToSidebarNote(block.id),
+        projects,
+        currentProjectId: projectId,
+      } as CustomBlockData,
+      style: { width: block.width, height: "auto" },
+    })) as any;
+
+    setNodes(newNodes);
   }, [
     blocks,
+    nodeVersion, // Force re-render quand la date change
     setNodes,
     updateBlockWithSync,
     deleteBlock,
