@@ -881,13 +881,13 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                       onClick={() => {
                         onUpdate({
                           linkedProjectId: project.id,
-                          linkedProjectName: project.nom || project.name,
+                          linkedProjectName: project.name,
                         });
                         setShowProjectPicker(false);
                       }}
                     >
                       <FolderOpen className="h-3 w-3" />
-                      {project.nom || project.name}
+                      {project.name}
                       {project.id === currentProjectId && (
                         <span className="text-xs text-gray-400 ml-auto">(actuel)</span>
                       )}
@@ -1941,12 +1941,13 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
     const { data, error } = await (supabase as any)
       .from("projects")
-      .select("id, name")
+      .select("id, nom")
       .eq("user_id", userData.user.id)
-      .order("name");
+      .order("nom");
 
     if (!error && data) {
-      setProjects(data);
+      // Mapper nom vers name pour l'interface
+      setProjects(data.map((p: any) => ({ id: p.id, name: p.nom })));
     }
   }, []);
 
