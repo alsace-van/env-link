@@ -2,7 +2,7 @@
 // Outil de prise de notes journalières complet
 // ReactFlow pour les blocs et connexions + Paper.js pour le dessin libre
 
-import { useState, useEffect, useCallback, useRef, memo, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import paper from "paper";
 import {
@@ -274,7 +274,7 @@ interface CustomBlockData {
   [key: string]: unknown;
 }
 
-const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
+const CustomBlockNode = ({ data, selected }: NodeProps) => {
   const {
     block,
     onUpdate,
@@ -290,6 +290,17 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
     projects,
     currentProjectId,
   } = data as CustomBlockData;
+
+  // Debug: vérifier les props du bloc
+  console.log(
+    "[CustomBlockNode] Render bloc:",
+    block.id.slice(0, 8),
+    "sourceDate:",
+    block.sourceDate,
+    "rescheduledTo:",
+    block.rescheduledTo,
+  );
+
   const [isEditing, setIsEditing] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -1081,9 +1092,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
       )}
     </div>
   );
-});
-
-CustomBlockNode.displayName = "CustomBlockNode";
+};
 
 // Node types pour ReactFlow
 const nodeTypes = {
@@ -1222,9 +1231,19 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   // Wrapper updateBlock avec sync automatique
   const updateBlockWithSync = useCallback(
     (blockId: string, updates: Partial<NoteBlock>) => {
+      console.log("[updateBlockWithSync] blockId:", blockId.slice(0, 8), "updates:", updates);
+
       // Mise à jour locale immédiate avec callback pour avoir la valeur actuelle
       setBlocks((prev) => {
         const updatedBlocks = prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b));
+
+        // Debug: vérifier la mise à jour
+        const updatedBlock = updatedBlocks.find((b) => b.id === blockId);
+        console.log("[updateBlockWithSync] Bloc après mise à jour:", {
+          id: updatedBlock?.id.slice(0, 8),
+          rescheduledTo: updatedBlock?.rescheduledTo,
+          sourceDate: updatedBlock?.sourceDate,
+        });
 
         // Sync vers le bloc source si c'est une copie
         const block = prev.find((b) => b.id === blockId);
@@ -1634,9 +1653,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
   const moveBlockToDate = useCallback(
     async (blockId: string, targetDate: string) => {
+      console.log("[moveBlockToDate] Appelé avec blockId:", blockId.slice(0, 8), "targetDate:", targetDate);
+
       // Protection contre les doubles appels
       if (isMovingBlock) {
-        console.log("moveBlockToDate déjà en cours, ignoré");
+        console.log("[moveBlockToDate] Déjà en cours, ignoré");
         return;
       }
 
@@ -1714,7 +1735,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
         // 5. Marquer le bloc original comme "reporté" pour la sidebar
         // Ne pas supprimer le bloc - on le garde comme roadmap
+        console.log("[moveBlockToDate] Mise à jour bloc original avec rescheduledTo:", targetDate);
         updateBlockWithSync(blockId, { rescheduledTo: targetDate });
+        console.log("[moveBlockToDate] updateBlockWithSync appelé");
 
         // 6. Mettre à jour scheduled_date des travaux liés pour qu'ils apparaissent dans le planning mensuel
         const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
@@ -1774,15 +1797,24 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           `${b.id}-${b.type}-${b.targetDate || ""}-${b.linkedProjectId || ""}-${b.sourceDate || ""}-${b.rescheduledTo || ""}-${JSON.stringify(b.linkedTasks || [])}-${JSON.stringify(b.content).slice(0, 50)}`,
       )
       .join(",");
+
+    console.log(
+      "[DailyNotesCanvas] useEffect sync - blocks:",
+      blocks.length,
+      "changed:",
+      currentIds !== blocksIdsRef.current,
+    );
+
     if (currentIds !== blocksIdsRef.current) {
       blocksIdsRef.current = currentIds;
+      console.log("[DailyNotesCanvas] Mise à jour ReactFlow nodes");
       setNodes(
         blocks.map((block) => ({
           id: block.id,
           type: "customBlock",
           position: { x: block.x, y: block.y },
           data: {
-            block: { ...block }, // Créer une nouvelle référence pour que memo détecte le changement
+            block: { ...block }, // Nouvelle référence pour garantir le re-render
             onUpdate: (updates: Partial<NoteBlock>) => updateBlockWithSync(block.id, updates),
             onDelete: () => deleteBlock(block.id),
             onImageUpload: (file: File) => handleImageUpload(block.id, file),
@@ -2119,6 +2151,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         if (data.blocks_data) {
           try {
             const loadedBlocks = JSON.parse(data.blocks_data);
+            console.log("[DailyNotesCanvas] Chargement date:", dateStr);
+            console.log("[DailyNotesCanvas] Blocs chargés:", loadedBlocks.length);
+            loadedBlocks.forEach((b: NoteBlock, i: number) => {
+              console.log(`[DailyNotesCanvas] Bloc ${i}:`, {
+                id: b.id.slice(0, 8),
+                type: b.type,
+                sourceDate: b.sourceDate,
+                rescheduledTo: b.rescheduledTo,
+                sourceBlockId: b.sourceBlockId?.slice(0, 8),
+              });
+            });
             setBlocks(loadedBlocks);
             // Forcer ReactFlow à recalculer les nodes
             blocksIdsRef.current = "";
@@ -2127,6 +2170,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             blocksIdsRef.current = "";
           }
         } else {
+          console.log("[DailyNotesCanvas] Aucun bloc pour:", dateStr);
           setBlocks([]);
           blocksIdsRef.current = "";
         }
