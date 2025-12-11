@@ -547,9 +547,13 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
 
         return (
           <div className="p-3 space-y-2">
-            {/* Liste des tâches liées */}
+            {/* Liste des tâches liées - avec scroll si beaucoup */}
             {hasTasks && (
-              <div className="space-y-2">
+              <div
+                className="space-y-2 max-h-[300px] overflow-y-auto"
+                onClick={stopPropagation}
+                onPointerDown={stopPropagation}
+              >
                 {tasks.map((task, index) => {
                   const status = task.completed ? "completed" : "pending";
                   return (
@@ -776,6 +780,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
         backgroundColor: block.style?.backgroundColor || "#fff",
         minWidth: block.width || 200,
         minHeight: 80,
+        height: "auto", // Permet au bloc de s'étendre
       }}
     >
       {/* Handles de connexion - comme MechanicalProcedures */}
@@ -1630,7 +1635,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             projects,
             currentProjectId: projectId,
           } as CustomBlockData,
-          style: { width: block.width },
+          style: { width: block.width, height: "auto" },
         })) as any,
       );
     }
