@@ -172,15 +172,29 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
   };
 
   // 🔥 CORRECTION : Charge maintenant les tâches du projet ET les tâches globales
+  // Si aucun projet n'est sélectionné, charge TOUTES les tâches pour le planning mensuel
   const loadTodos = async () => {
-    if (!currentProjectId) {
-      setTodos([]);
-      return;
-    }
-
-    // Récupérer l'utilisateur pour filtrer les tâches globales
+    // Récupérer l'utilisateur
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) return;
+
+    if (!currentProjectId) {
+      // Aucun projet sélectionné → charger TOUTES les tâches de l'utilisateur
+      const { data: allTodos, error } = await supabase
+        .from("project_todos")
+        .select("*")
+        .eq("user_id", user.user.id)
+        .order("due_date", { ascending: true });
+
+      if (error) {
+        console.error("Error loading all todos:", error);
+        setTodos([]);
+        return;
+      }
+
+      setTodos((allTodos || []).map((todo) => ({ ...todo, is_global: !todo.project_id })));
+      return;
+    }
 
     // 1. Charger les tâches du projet
     const { data: projectTodos, error: projectError } = await supabase
