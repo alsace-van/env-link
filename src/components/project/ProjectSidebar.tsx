@@ -1,7 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { PlanningTasksList } from "./PlanningTasksList";
+import { PlanningTasksList } from "@/components/daily-notes/PlanningTasksList";
 import { ProjectNotes } from "./ProjectNotes";
 import { GlobalTodoList } from "./GlobalTodoList";
 import { GlobalNotes } from "./GlobalNotes";
