@@ -25,12 +25,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,11 +36,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import {
   CalendarDays,
@@ -129,10 +120,10 @@ const STATUS_CONFIG = {
 const DayNode = memo(({ data, selected }: NodeProps) => {
   const day = data.day as { date: string; tasks: PlanningTask[]; position: DayPosition | null };
   const onDoubleClick = data.onDoubleClick as (date: string) => void;
-  const colorConfig = COLORS.find(c => c.value === (day.position?.color || "blue")) || COLORS[0];
-  
+  const colorConfig = COLORS.find((c) => c.value === (day.position?.color || "blue")) || COLORS[0];
+
   const taskCount = day.tasks.length;
-  const doneCount = day.tasks.filter(t => t.status === "done").length;
+  const doneCount = day.tasks.filter((t) => t.status === "done").length;
   const dateObj = parseISO(day.date);
   const isCurrentDay = isToday(dateObj);
 
@@ -152,20 +143,14 @@ const DayNode = memo(({ data, selected }: NodeProps) => {
 
       {/* Header avec date */}
       <div className={`px-4 py-2 rounded-t-xl ${colorConfig.class} text-white`}>
-        <div className="text-xs uppercase opacity-80">
-          {format(dateObj, "EEEE", { locale: fr })}
-        </div>
-        <div className="text-xl font-bold">
-          {format(dateObj, "d MMMM", { locale: fr })}
-        </div>
+        <div className="text-xs uppercase opacity-80">{format(dateObj, "EEEE", { locale: fr })}</div>
+        <div className="text-xl font-bold">{format(dateObj, "d MMMM", { locale: fr })}</div>
       </div>
 
       {/* Contenu */}
       <div className="p-3">
         {taskCount === 0 ? (
-          <div className="text-center text-gray-400 text-sm py-2">
-            Double-clic pour ajouter
-          </div>
+          <div className="text-center text-gray-400 text-sm py-2">Double-clic pour ajouter</div>
         ) : (
           <div className="space-y-1">
             <div className="flex justify-between items-center text-sm">
@@ -176,7 +161,7 @@ const DayNode = memo(({ data, selected }: NodeProps) => {
             </div>
             {/* Aperçu des 3 premières tâches */}
             <div className="space-y-0.5 mt-2">
-              {day.tasks.slice(0, 3).map(task => (
+              {day.tasks.slice(0, 3).map((task) => (
                 <div key={task.id} className="flex items-center gap-1 text-xs">
                   {task.status === "done" ? (
                     <Check className="h-3 w-3 text-green-500" />
@@ -188,11 +173,7 @@ const DayNode = memo(({ data, selected }: NodeProps) => {
                   </span>
                 </div>
               ))}
-              {taskCount > 3 && (
-                <div className="text-xs text-gray-400 pl-4">
-                  +{taskCount - 3} autres...
-                </div>
-              )}
+              {taskCount > 3 && <div className="text-xs text-gray-400 pl-4">+{taskCount - 3} autres...</div>}
             </div>
           </div>
         )}
@@ -215,14 +196,14 @@ const TaskNode = memo(({ data, selected }: NodeProps) => {
   const onUpdate = data.onUpdate as (id: string, updates: Partial<PlanningTask>) => void;
   const onDelete = data.onDelete as (id: string) => void;
   const onCreateLinkedTask = data.onCreateLinkedTask as (sourceTaskId: string, targetDate: Date, title: string) => void;
-  
+
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDate, setNewTaskDate] = useState<Date | undefined>();
 
-  const colorConfig = COLORS.find(c => c.value === task.color) || COLORS[0];
+  const colorConfig = COLORS.find((c) => c.value === task.color) || COLORS[0];
   const statusConfig = STATUS_CONFIG[task.status];
   const StatusIcon = statusConfig.icon;
 
@@ -261,7 +242,7 @@ const TaskNode = memo(({ data, selected }: NodeProps) => {
       {/* Header */}
       <div className={`flex items-center gap-2 px-3 py-2 ${colorConfig.class} text-white rounded-t-md cursor-grab`}>
         <GripVertical className="h-4 w-4 opacity-70" />
-        
+
         {isEditing ? (
           <input
             autoFocus
@@ -276,42 +257,28 @@ const TaskNode = memo(({ data, selected }: NodeProps) => {
             className="flex-1 bg-white/20 border-0 rounded px-1 text-sm text-white placeholder-white/50 focus:outline-none focus:ring-1 focus:ring-white/50 nodrag"
           />
         ) : (
-          <span
-            className="flex-1 text-sm font-medium truncate cursor-text"
-            onDoubleClick={() => setIsEditing(true)}
-          >
+          <span className="flex-1 text-sm font-medium truncate cursor-text" onDoubleClick={() => setIsEditing(true)}>
             {task.title}
           </span>
         )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
-              onPointerDown={stopDrag}
-              className="p-1 hover:bg-white/20 rounded"
-            >
+            <button onPointerDown={stopDrag} className="p-1 hover:bg-white/20 rounded">
               <MoreHorizontal className="h-4 w-4" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setIsEditing(true)}>
-              Renommer
-            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setIsEditing(true)}>Renommer</DropdownMenuItem>
             <DropdownMenuSeparator />
             {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-              <DropdownMenuItem
-                key={key}
-                onClick={() => onUpdate(task.id, { status: key as PlanningTask["status"] })}
-              >
+              <DropdownMenuItem key={key} onClick={() => onUpdate(task.id, { status: key as PlanningTask["status"] })}>
                 <config.icon className={`h-4 w-4 mr-2 ${config.color}`} />
                 {config.label}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => onDelete(task.id)}
-              className="text-red-500"
-            >
+            <DropdownMenuItem onClick={() => onDelete(task.id)} className="text-red-500">
               <Trash2 className="h-4 w-4 mr-2" />
               Supprimer
             </DropdownMenuItem>
@@ -323,7 +290,9 @@ const TaskNode = memo(({ data, selected }: NodeProps) => {
       <div className="p-2 space-y-2 nodrag" onPointerDown={stopDrag}>
         {/* Status badge */}
         <div className="flex items-center gap-2">
-          <StatusIcon className={`h-4 w-4 ${statusConfig.color} ${task.status === "in_progress" ? "animate-spin" : ""}`} />
+          <StatusIcon
+            className={`h-4 w-4 ${statusConfig.color} ${task.status === "in_progress" ? "animate-spin" : ""}`}
+          />
           <span className={`text-xs ${statusConfig.color}`}>{statusConfig.label}</span>
         </div>
 
@@ -364,11 +333,7 @@ const TaskNode = memo(({ data, selected }: NodeProps) => {
                   className="rounded-md border mt-1"
                 />
               </div>
-              <Button
-                onClick={handleCreateLink}
-                disabled={!newTaskDate || !newTaskTitle.trim()}
-                className="w-full"
-              >
+              <Button onClick={handleCreateLink} disabled={!newTaskDate || !newTaskTitle.trim()} className="w-full">
                 <Plus className="h-4 w-4 mr-2" />
                 Créer la suite
               </Button>
@@ -415,30 +380,31 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   // Charger les données
+  // NOTE: Les tables planning_tasks, planning_task_links, planning_day_positions
+  // doivent être créées dans Supabase avec le script SQL fourni.
+  // Après création, régénérer les types: npx supabase gen types typescript --project-id <ID> > src/integrations/supabase/types.ts
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    
+
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
     setUserId(userData.user.id);
 
-    // Charger les tâches
-    const { data: tasksData } = await supabase
-      .from("planning_tasks")
+    // Charger les tâches (cast as any pour éviter erreur TS avant génération des types)
+    const { data: tasksData } = await (supabase
+      .from("planning_tasks" as any)
       .select("*")
       .eq("project_id", projectId)
-      .order("task_date");
+      .order("task_date") as any);
 
     // Charger les liens
-    const { data: linksData } = await supabase
-      .from("planning_task_links")
-      .select("*");
+    const { data: linksData } = await (supabase.from("planning_task_links" as any).select("*") as any);
 
     // Charger les positions des jours
-    const { data: positionsData } = await supabase
-      .from("planning_day_positions")
+    const { data: positionsData } = await (supabase
+      .from("planning_day_positions" as any)
       .select("*")
-      .eq("project_id", projectId);
+      .eq("project_id", projectId) as any);
 
     setTasks((tasksData || []) as PlanningTask[]);
     setLinks((linksData || []) as TaskLink[]);
@@ -455,17 +421,20 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
   // Construire les nodes pour la vue calendrier
   const buildCalendarNodes = useCallback(() => {
     // Grouper les tâches par jour
-    const tasksByDay = tasks.reduce((acc, task) => {
-      if (!acc[task.task_date]) acc[task.task_date] = [];
-      acc[task.task_date].push(task);
-      return acc;
-    }, {} as Record<string, PlanningTask[]>);
+    const tasksByDay = tasks.reduce(
+      (acc, task) => {
+        if (!acc[task.task_date]) acc[task.task_date] = [];
+        acc[task.task_date].push(task);
+        return acc;
+      },
+      {} as Record<string, PlanningTask[]>,
+    );
 
     // Créer un node par jour qui a des tâches
     const daysWithTasks = Object.keys(tasksByDay);
-    
+
     const flowNodes: Node[] = daysWithTasks.map((date, index) => {
-      const position = dayPositions.find(p => p.day_date === date);
+      const position = dayPositions.find((p) => p.day_date === date);
       return {
         id: `day-${date}`,
         type: "dayNode",
@@ -486,12 +455,12 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
 
     // Créer les edges entre jours (basé sur les liens parent_task)
     const flowEdges: Edge[] = [];
-    tasks.forEach(task => {
+    tasks.forEach((task) => {
       if (task.parent_task_id) {
-        const parentTask = tasks.find(t => t.id === task.parent_task_id);
+        const parentTask = tasks.find((t) => t.id === task.parent_task_id);
         if (parentTask && parentTask.task_date !== task.task_date) {
           const edgeId = `day-edge-${parentTask.task_date}-${task.task_date}`;
-          if (!flowEdges.find(e => e.id === edgeId)) {
+          if (!flowEdges.find((e) => e.id === edgeId)) {
             flowEdges.push({
               id: edgeId,
               source: `day-${parentTask.task_date}`,
@@ -514,9 +483,9 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
   const buildDayNodes = useCallback(() => {
     if (!selectedDate) return;
 
-    const dayTasks = tasks.filter(t => t.task_date === selectedDate);
-    
-    const flowNodes: Node[] = dayTasks.map(task => ({
+    const dayTasks = tasks.filter((t) => t.task_date === selectedDate);
+
+    const flowNodes: Node[] = dayTasks.map((task) => ({
       id: task.id,
       type: "taskNode",
       position: { x: task.position_x, y: task.position_y },
@@ -529,13 +498,13 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
     }));
 
     // Edges entre tâches du même jour
-    const dayLinks = links.filter(link => {
-      const source = dayTasks.find(t => t.id === link.source_task_id);
-      const target = dayTasks.find(t => t.id === link.target_task_id);
+    const dayLinks = links.filter((link) => {
+      const source = dayTasks.find((t) => t.id === link.source_task_id);
+      const target = dayTasks.find((t) => t.id === link.target_task_id);
       return source && target;
     });
 
-    const flowEdges: Edge[] = dayLinks.map(link => ({
+    const flowEdges: Edge[] = dayLinks.map((link) => ({
       id: link.id,
       source: link.source_task_id,
       target: link.target_task_id,
@@ -577,18 +546,18 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
       project_id: projectId,
       task_date: selectedDate,
       title: "Nouvelle tâche",
-      position_x: 100 + tasks.filter(t => t.task_date === selectedDate).length * 30,
-      position_y: 100 + tasks.filter(t => t.task_date === selectedDate).length * 30,
+      position_x: 100 + tasks.filter((t) => t.task_date === selectedDate).length * 30,
+      position_y: 100 + tasks.filter((t) => t.task_date === selectedDate).length * 30,
       color: "blue",
       width: 220,
       status: "todo" as const,
     };
 
-    const { data, error } = await supabase
-      .from("planning_tasks")
+    const { data, error } = await (supabase
+      .from("planning_tasks" as any)
       .insert(newTask)
       .select()
-      .single();
+      .single() as any);
 
     if (!error && data) {
       setTasks([...tasks, data as PlanningTask]);
@@ -598,11 +567,11 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
 
   const handleAddDay = async (date: Date) => {
     if (!userId) return;
-    
+
     const dateStr = format(date, "yyyy-MM-dd");
-    
+
     // Vérifier si le jour existe déjà
-    if (tasks.some(t => t.task_date === dateStr)) {
+    if (tasks.some((t) => t.task_date === dateStr)) {
       toast.info("Ce jour a déjà des tâches");
       return;
     }
@@ -620,11 +589,11 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
       status: "todo" as const,
     };
 
-    const { data, error } = await supabase
-      .from("planning_tasks")
+    const { data, error } = await (supabase
+      .from("planning_tasks" as any)
       .insert(newTask)
       .select()
-      .single();
+      .single() as any);
 
     if (!error && data) {
       setTasks([...tasks, data as PlanningTask]);
@@ -633,112 +602,132 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
   };
 
   const handleUpdateTask = useCallback(async (id: string, updates: Partial<PlanningTask>) => {
-    await supabase.from("planning_tasks").update(updates).eq("id", id);
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    await (supabase
+      .from("planning_tasks" as any)
+      .update(updates)
+      .eq("id", id) as any);
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
   }, []);
 
   const handleDeleteTask = useCallback(async (id: string) => {
-    await supabase.from("planning_tasks").delete().eq("id", id);
-    setTasks(prev => prev.filter(t => t.id !== id));
+    await (supabase
+      .from("planning_tasks" as any)
+      .delete()
+      .eq("id", id) as any);
+    setTasks((prev) => prev.filter((t) => t.id !== id));
     toast.success("Tâche supprimée");
   }, []);
 
-  const handleCreateLinkedTask = useCallback(async (sourceTaskId: string, targetDate: Date, title: string) => {
-    if (!userId) return;
+  const handleCreateLinkedTask = useCallback(
+    async (sourceTaskId: string, targetDate: Date, title: string) => {
+      if (!userId) return;
 
-    const sourceTask = tasks.find(t => t.id === sourceTaskId);
-    if (!sourceTask) return;
+      const sourceTask = tasks.find((t) => t.id === sourceTaskId);
+      if (!sourceTask) return;
 
-    const dateStr = format(targetDate, "yyyy-MM-dd");
-    const existingTasksForDay = tasks.filter(t => t.task_date === dateStr);
+      const dateStr = format(targetDate, "yyyy-MM-dd");
+      const existingTasksForDay = tasks.filter((t) => t.task_date === dateStr);
 
-    // Créer la nouvelle tâche liée
-    const newTask = {
-      user_id: userId,
-      project_id: projectId,
-      task_date: dateStr,
-      title,
-      position_x: 100 + existingTasksForDay.length * 30,
-      position_y: 100 + existingTasksForDay.length * 30,
-      color: sourceTask.color,
-      width: 220,
-      status: "todo" as const,
-      parent_task_id: sourceTaskId,
-      source_date: sourceTask.task_date,
-    };
+      // Créer la nouvelle tâche liée
+      const newTask = {
+        user_id: userId,
+        project_id: projectId,
+        task_date: dateStr,
+        title,
+        position_x: 100 + existingTasksForDay.length * 30,
+        position_y: 100 + existingTasksForDay.length * 30,
+        color: sourceTask.color,
+        width: 220,
+        status: "todo" as const,
+        parent_task_id: sourceTaskId,
+        source_date: sourceTask.task_date,
+      };
 
-    const { data, error } = await supabase
-      .from("planning_tasks")
-      .insert(newTask)
-      .select()
-      .single();
+      const { data, error } = await (supabase
+        .from("planning_tasks" as any)
+        .insert(newTask)
+        .select()
+        .single() as any);
 
-    if (!error && data) {
-      setTasks([...tasks, data as PlanningTask]);
-      
-      // Créer le lien
-      await supabase.from("planning_task_links").insert({
-        source_task_id: sourceTaskId,
-        target_task_id: data.id,
-        animated: true,
-      });
+      if (!error && data) {
+        setTasks([...tasks, data as PlanningTask]);
 
-      toast.success(`Tâche créée pour le ${format(targetDate, "d MMMM", { locale: fr })}`);
-    }
-  }, [tasks, userId, projectId]);
+        // Créer le lien
+        await (supabase.from("planning_task_links" as any).insert({
+          source_task_id: sourceTaskId,
+          target_task_id: data.id,
+          animated: true,
+        }) as any);
+
+        toast.success(`Tâche créée pour le ${format(targetDate, "d MMMM", { locale: fr })}`);
+      }
+    },
+    [tasks, userId, projectId],
+  );
 
   // Sauvegarder la position des nodes
-  const onNodeDragStop = useCallback(async (_: any, node: Node) => {
-    if (viewMode === "calendar") {
-      // Sauvegarder position du jour
-      const date = node.id.replace("day-", "");
-      const existing = dayPositions.find(p => p.day_date === date);
-      
-      if (existing) {
-        await supabase
-          .from("planning_day_positions")
+  const onNodeDragStop = useCallback(
+    async (_: any, node: Node) => {
+      if (viewMode === "calendar") {
+        // Sauvegarder position du jour
+        const date = node.id.replace("day-", "");
+        const existing = dayPositions.find((p) => p.day_date === date);
+
+        if (existing) {
+          await (supabase
+            .from("planning_day_positions" as any)
+            .update({ position_x: node.position.x, position_y: node.position.y })
+            .eq("id", existing.id) as any);
+        } else if (userId) {
+          await (supabase.from("planning_day_positions" as any).insert({
+            user_id: userId,
+            project_id: projectId,
+            day_date: date,
+            position_x: node.position.x,
+            position_y: node.position.y,
+          }) as any);
+        }
+      } else {
+        // Sauvegarder position de la tâche
+        await (supabase
+          .from("planning_tasks" as any)
           .update({ position_x: node.position.x, position_y: node.position.y })
-          .eq("id", existing.id);
-      } else if (userId) {
-        await supabase.from("planning_day_positions").insert({
-          user_id: userId,
-          project_id: projectId,
-          day_date: date,
-          position_x: node.position.x,
-          position_y: node.position.y,
-        });
+          .eq("id", node.id) as any);
       }
-    } else {
-      // Sauvegarder position de la tâche
-      await supabase
-        .from("planning_tasks")
-        .update({ position_x: node.position.x, position_y: node.position.y })
-        .eq("id", node.id);
-    }
-  }, [viewMode, dayPositions, userId, projectId]);
+    },
+    [viewMode, dayPositions, userId, projectId],
+  );
 
   // Connexion entre tâches
-  const onConnect = useCallback(async (params: Connection) => {
-    if (viewMode === "day" && params.source && params.target) {
-      const { data } = await supabase
-        .from("planning_task_links")
-        .insert({
-          source_task_id: params.source,
-          target_task_id: params.target,
-        })
-        .select()
-        .single();
+  const onConnect = useCallback(
+    async (params: Connection) => {
+      if (viewMode === "day" && params.source && params.target) {
+        const { data } = await (supabase
+          .from("planning_task_links" as any)
+          .insert({
+            source_task_id: params.source,
+            target_task_id: params.target,
+          })
+          .select()
+          .single() as any);
 
-      if (data) {
-        setEdges(eds => addEdge({
-          ...params,
-          id: data.id,
-          type: "smoothstep",
-          markerEnd: { type: MarkerType.ArrowClosed },
-        }, eds));
+        if (data) {
+          setEdges((eds) =>
+            addEdge(
+              {
+                ...params,
+                id: data.id,
+                type: "smoothstep",
+                markerEnd: { type: MarkerType.ArrowClosed },
+              },
+              eds,
+            ),
+          );
+        }
       }
-    }
-  }, [viewMode]);
+    },
+    [viewMode],
+  );
 
   // Auto-layout avec DAGRE
   const handleAutoLayout = useCallback(async () => {
@@ -746,7 +735,7 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
 
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
-    
+
     // Configuration selon le mode
     if (viewMode === "calendar") {
       // Vue calendrier : layout horizontal par date
@@ -783,31 +772,31 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
       // Sauvegarder en base
       if (viewMode === "calendar") {
         const date = node.id.replace("day-", "");
-        const existing = dayPositions.find(p => p.day_date === date);
+        const existing = dayPositions.find((p) => p.day_date === date);
         if (existing) {
           updates.push(
             supabase
-              .from("planning_day_positions")
+              .from("planning_day_positions" as any)
               .update({ position_x: newX, position_y: newY })
-              .eq("id", existing.id)
+              .eq("id", existing.id) as any,
           );
         } else if (userId) {
           updates.push(
-            supabase.from("planning_day_positions").insert({
+            supabase.from("planning_day_positions" as any).insert({
               user_id: userId,
               project_id: projectId,
               day_date: date,
               position_x: newX,
               position_y: newY,
-            })
+            }) as any,
           );
         }
       } else {
         updates.push(
           supabase
-            .from("planning_tasks")
+            .from("planning_tasks" as any)
             .update({ position_x: newX, position_y: newY })
-            .eq("id", node.id)
+            .eq("id", node.id) as any,
         );
       }
 
@@ -866,11 +855,7 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="end">
-                    <Calendar
-                      mode="single"
-                      onSelect={(date) => date && handleAddDay(date)}
-                      locale={fr}
-                    />
+                    <Calendar mode="single" onSelect={(date) => date && handleAddDay(date)} locale={fr} />
                   </PopoverContent>
                 </Popover>
               ) : (
@@ -908,7 +893,7 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
             >
               <Background gap={20} />
               <Controls />
-              <MiniMap 
+              <MiniMap
                 nodeColor={(node) => {
                   if (node.type === "dayNode") return "#3b82f6";
                   return "#10b981";
@@ -919,22 +904,14 @@ const VisualPlanningCanvas = ({ open, onOpenChange, projectId }: VisualPlanningC
                   {viewMode === "calendar" ? (
                     <>
                       <div className="font-medium">Vue Calendrier</div>
-                      <div className="text-gray-500 text-xs">
-                        Double-clic sur un jour pour voir les détails
-                      </div>
-                      <div className="text-gray-500 text-xs">
-                        {tasks.length} tâche(s) au total
-                      </div>
+                      <div className="text-gray-500 text-xs">Double-clic sur un jour pour voir les détails</div>
+                      <div className="text-gray-500 text-xs">{tasks.length} tâche(s) au total</div>
                     </>
                   ) : (
                     <>
                       <div className="font-medium">Vue Jour</div>
-                      <div className="text-gray-500 text-xs">
-                        Glissez les tâches pour les organiser
-                      </div>
-                      <div className="text-gray-500 text-xs">
-                        Créez des liens vers d'autres jours
-                      </div>
+                      <div className="text-gray-500 text-xs">Glissez les tâches pour les organiser</div>
+                      <div className="text-gray-500 text-xs">Créez des liens vers d'autres jours</div>
                     </>
                   )}
                 </div>
