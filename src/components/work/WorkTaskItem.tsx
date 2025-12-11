@@ -9,11 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Clock, Calendar, BookOpen, AlertCircle, Trash2, Plus, X, Euro, Calculator, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -39,18 +35,12 @@ interface WorkTaskItemProps {
     forfait_ttc?: number;
   };
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
-  onEditTime: (taskId: string) => void;
+  onEditTask: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onForfaitChange?: (taskId: string, forfait: number | null) => void;
 }
 
-export const WorkTaskItem = ({ 
-  task, 
-  onToggleComplete, 
-  onEditTime, 
-  onDelete,
-  onForfaitChange 
-}: WorkTaskItemProps) => {
+export const WorkTaskItem = ({ task, onToggleComplete, onEditTask, onDelete, onForfaitChange }: WorkTaskItemProps) => {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [subtasks, setSubtasks] = useState<ProjectTodoSubtask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -61,9 +51,7 @@ export const WorkTaskItem = ({
   const { hourlyRateTTC, calculateForfait } = useHourlyRate();
 
   // Calcul du forfait suggéré
-  const suggestedForfait = task.estimated_hours 
-    ? calculateForfait(task.estimated_hours) 
-    : null;
+  const suggestedForfait = task.estimated_hours ? calculateForfait(task.estimated_hours) : null;
 
   useEffect(() => {
     loadSubtasks();
@@ -90,13 +78,11 @@ export const WorkTaskItem = ({
   const addSubtask = async () => {
     if (!newSubtaskTitle.trim()) return;
 
-    const { error } = await supabase
-      .from("project_todo_subtasks" as any)
-      .insert({
-        todo_id: task.id,
-        title: newSubtaskTitle,
-        display_order: subtasks.length,
-      });
+    const { error } = await supabase.from("project_todo_subtasks" as any).insert({
+      todo_id: task.id,
+      title: newSubtaskTitle,
+      display_order: subtasks.length,
+    });
 
     if (error) {
       toast.error("Erreur lors de l'ajout de la sous-tâche");
@@ -135,11 +121,8 @@ export const WorkTaskItem = ({
 
   const saveForfait = async () => {
     const forfait = forfaitInput ? parseFloat(forfaitInput) : null;
-    
-    const { error } = await (supabase as any)
-      .from("project_todos")
-      .update({ forfait_ttc: forfait })
-      .eq("id", task.id);
+
+    const { error } = await (supabase as any).from("project_todos").update({ forfait_ttc: forfait }).eq("id", task.id);
 
     if (error) {
       toast.error("Erreur lors de la sauvegarde");
@@ -156,7 +139,7 @@ export const WorkTaskItem = ({
     }
   };
 
-  const completedSubtasks = subtasks.filter(s => s.completed).length;
+  const completedSubtasks = subtasks.filter((s) => s.completed).length;
   const totalSubtasks = subtasks.length;
 
   const handleCheckChange = (checked: boolean) => {
@@ -171,13 +154,11 @@ export const WorkTaskItem = ({
     onToggleComplete(task.id, actualHours);
   };
 
-  const isOverdue = task.scheduled_date && !task.completed && 
-    new Date(task.scheduled_date) < new Date();
+  const isOverdue = task.scheduled_date && !task.completed && new Date(task.scheduled_date) < new Date();
 
   // Calcul rentabilité si terminé
-  const rentabilite = task.completed && task.actual_hours && task.forfait_ttc
-    ? task.forfait_ttc / task.actual_hours
-    : null;
+  const rentabilite =
+    task.completed && task.actual_hours && task.forfait_ttc ? task.forfait_ttc / task.actual_hours : null;
 
   return (
     <>
@@ -186,11 +167,7 @@ export const WorkTaskItem = ({
           task.completed ? "bg-muted/50 border-muted" : "bg-background hover:border-primary/50"
         }`}
       >
-        <Checkbox
-          checked={task.completed}
-          onCheckedChange={handleCheckChange}
-          className="mt-1"
-        />
+        <Checkbox checked={task.completed} onCheckedChange={handleCheckChange} className="mt-1" />
 
         <div className="flex-1 space-y-2">
           <div className="flex items-start justify-between gap-2">
@@ -198,21 +175,15 @@ export const WorkTaskItem = ({
               <h4 className={`font-medium ${task.completed ? "line-through text-muted-foreground" : ""}`}>
                 {task.title}
               </h4>
-              {task.description && (
-                <p className="text-sm text-muted-foreground mt-1">{task.description}</p>
-              )}
+              {task.description && <p className="text-sm text-muted-foreground mt-1">{task.description}</p>}
             </div>
-            
+
             {task.completed && (
               <Badge variant="default" className="bg-green-600">
                 ✓ Terminé
               </Badge>
             )}
-            {isOverdue && (
-              <Badge variant="destructive">
-                ⏰ En retard
-              </Badge>
-            )}
+            {isOverdue && <Badge variant="destructive">⏰ En retard</Badge>}
           </div>
 
           <div className="flex flex-wrap gap-2 text-xs">
@@ -226,7 +197,10 @@ export const WorkTaskItem = ({
             {task.completed ? (
               <>
                 {task.actual_hours !== null && task.actual_hours !== undefined ? (
-                  <Badge variant="secondary" className="gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                  <Badge
+                    variant="secondary"
+                    className="gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100"
+                  >
                     <Clock className="h-3 w-3" />
                     {task.actual_hours}h réelles
                     {task.estimated_hours && ` (estimé: ${task.estimated_hours}h)`}
@@ -247,7 +221,10 @@ export const WorkTaskItem = ({
             ) : (
               <>
                 {task.estimated_hours && (
-                  <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+                  <Badge
+                    variant="secondary"
+                    className="gap-1 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100"
+                  >
                     <Clock className="h-3 w-3" />
                     {task.estimated_hours}h estimées
                   </Badge>
@@ -265,8 +242,8 @@ export const WorkTaskItem = ({
             {task.forfait_ttc ? (
               <Popover open={showForfaitPopover} onOpenChange={setShowForfaitPopover}>
                 <PopoverTrigger asChild>
-                  <Badge 
-                    variant="secondary" 
+                  <Badge
+                    variant="secondary"
                     className="gap-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100 cursor-pointer hover:bg-emerald-200"
                   >
                     <Euro className="h-3 w-3" />
@@ -292,12 +269,7 @@ export const WorkTaskItem = ({
                       <span className="flex items-center text-sm text-muted-foreground">€ TTC</span>
                     </div>
                     {suggestedForfait && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs"
-                        onClick={applySuggestedForfait}
-                      >
+                      <Button variant="outline" size="sm" className="w-full text-xs" onClick={applySuggestedForfait}>
                         <Calculator className="h-3 w-3 mr-1" />
                         Suggéré: {task.estimated_hours}h × {hourlyRateTTC}€ = {suggestedForfait}€
                       </Button>
@@ -306,11 +278,7 @@ export const WorkTaskItem = ({
                       <Button size="sm" onClick={saveForfait} className="flex-1">
                         Enregistrer
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => setShowForfaitPopover(false)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => setShowForfaitPopover(false)}>
                         Annuler
                       </Button>
                     </div>
@@ -320,10 +288,7 @@ export const WorkTaskItem = ({
             ) : (
               <Popover open={showForfaitPopover} onOpenChange={setShowForfaitPopover}>
                 <PopoverTrigger asChild>
-                  <Badge 
-                    variant="outline" 
-                    className="gap-1 cursor-pointer hover:bg-muted border-dashed"
-                  >
+                  <Badge variant="outline" className="gap-1 cursor-pointer hover:bg-muted border-dashed">
                     <Euro className="h-3 w-3" />
                     Définir forfait
                   </Badge>
@@ -342,12 +307,7 @@ export const WorkTaskItem = ({
                       <span className="flex items-center text-sm text-muted-foreground">€ TTC</span>
                     </div>
                     {suggestedForfait && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs"
-                        onClick={applySuggestedForfait}
-                      >
+                      <Button variant="outline" size="sm" className="w-full text-xs" onClick={applySuggestedForfait}>
                         <Calculator className="h-3 w-3 mr-1" />
                         Suggéré: {task.estimated_hours}h × {hourlyRateTTC}€ = {suggestedForfait}€
                       </Button>
@@ -361,11 +321,7 @@ export const WorkTaskItem = ({
                       <Button size="sm" onClick={saveForfait} className="flex-1">
                         Enregistrer
                       </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => setShowForfaitPopover(false)}
-                      >
+                      <Button size="sm" variant="outline" onClick={() => setShowForfaitPopover(false)}>
                         Annuler
                       </Button>
                     </div>
@@ -442,22 +398,22 @@ export const WorkTaskItem = ({
           )}
         </div>
 
-        <div className="flex gap-2">
-          {task.completed && task.actual_hours === null && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onEditTime(task.id)}
-              className="text-xs"
-            >
-              Ajouter le temps
-            </Button>
-          )}
+        <div className="flex gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onEditTask(task.id)}
+            className="text-xs h-8 px-2"
+            title="Modifier la tâche"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
           <Button
             size="sm"
             variant="ghost"
             onClick={() => onDelete(task.id)}
-            className="text-xs text-destructive hover:text-destructive"
+            className="text-xs text-destructive hover:text-destructive h-8 px-2"
+            title="Supprimer la tâche"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
