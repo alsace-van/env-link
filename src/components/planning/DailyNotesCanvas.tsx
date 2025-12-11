@@ -75,7 +75,6 @@ import {
   Loader2,
   GripVertical,
   X,
-  Plus,
   MoreHorizontal,
   Move,
   Link2,
