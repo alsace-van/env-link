@@ -1245,14 +1245,53 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   );
 
   const deleteBlock = useCallback(
-    (blockId: string) => {
+    async (blockId: string) => {
+      // Trouver le bloc avant de le supprimer pour vérifier si c'est une copie
+      const blockToDelete = blocks.find((b) => b.id === blockId);
+
+      // Supprimer le bloc localement
       setBlocks((prev) => prev.filter((b) => b.id !== blockId));
       // Supprimer les edges liées
       setEdges((prev) => prev.filter((e) => e.source_block_id !== blockId && e.target_block_id !== blockId));
       if (selectedBlockId === blockId) setSelectedBlockId(null);
       setHasUnsavedChanges(true);
+
+      // Si c'était une copie, nettoyer le rescheduledTo de l'original
+      if (blockToDelete?.sourceDate && blockToDelete?.sourceBlockId && userId) {
+        try {
+          // Charger la note de la date d'origine
+          const { data: sourceNote } = await (supabase as any)
+            .from("daily_notes")
+            .select("id, blocks_data")
+            .eq("project_id", projectId)
+            .eq("user_id", userId)
+            .eq("note_date", blockToDelete.sourceDate)
+            .maybeSingle();
+
+          if (sourceNote?.blocks_data) {
+            const sourceBlocks: NoteBlock[] = JSON.parse(sourceNote.blocks_data);
+            // Trouver et mettre à jour le bloc original
+            const updatedBlocks = sourceBlocks.map((b) =>
+              b.id === blockToDelete.sourceBlockId ? { ...b, rescheduledTo: undefined } : b,
+            );
+
+            // Sauvegarder la note source mise à jour
+            await (supabase as any)
+              .from("daily_notes")
+              .update({
+                blocks_data: JSON.stringify(updatedBlocks),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", sourceNote.id);
+
+            toast.success("Lien avec l'original supprimé");
+          }
+        } catch (error) {
+          console.error("Erreur nettoyage original:", error);
+        }
+      }
     },
-    [selectedBlockId],
+    [blocks, selectedBlockId, userId, projectId],
   );
 
   const addBlock = useCallback((type: NoteBlock["type"]) => {
