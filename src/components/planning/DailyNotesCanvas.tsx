@@ -1171,21 +1171,25 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   // Wrapper updateBlock avec sync automatique
   const updateBlockWithSync = useCallback(
     (blockId: string, updates: Partial<NoteBlock>) => {
-      // Mise à jour locale immédiate
-      setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
-      setHasUnsavedChanges(true);
-
-      // Sync vers le bloc source si c'est une copie (avec debounce implicite via save)
-      const block = blocks.find((b) => b.id === blockId);
-      if (block?.sourceBlockId && block?.sourceDate) {
-        // Sync seulement les modifications de contenu, pas la position
-        const { x, y, ...contentUpdates } = updates;
-        if (Object.keys(contentUpdates).length > 0) {
-          syncBlockToSource(blockId, contentUpdates);
+      // Mise à jour locale immédiate avec callback pour avoir la valeur actuelle
+      setBlocks((prev) => {
+        const updatedBlocks = prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b));
+        
+        // Sync vers le bloc source si c'est une copie
+        const block = prev.find((b) => b.id === blockId);
+        if (block?.sourceBlockId && block?.sourceDate) {
+          const { x, y, ...contentUpdates } = updates;
+          if (Object.keys(contentUpdates).length > 0) {
+            // Appeler la sync de manière asynchrone pour éviter les problèmes
+            setTimeout(() => syncBlockToSource(blockId, contentUpdates), 0);
+          }
         }
-      }
+        
+        return updatedBlocks;
+      });
+      setHasUnsavedChanges(true);
     },
-    [blocks, syncBlockToSource],
+    [syncBlockToSource],
   );
 
   const deleteBlock = useCallback(
@@ -1619,10 +1623,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   }, [blocks, selectedDate]);
 
   useEffect(() => {
+    // Inclure linkedTasks dans la comparaison pour détecter les changements
     const currentIds = blocks
       .map(
         (b) =>
-          `${b.id}-${b.type}-${b.targetDate || ""}-${b.linkedProjectId || ""}-${b.sourceDate || ""}-${JSON.stringify(b.content).slice(0, 50)}`,
+          `${b.id}-${b.type}-${b.targetDate || ""}-${b.linkedProjectId || ""}-${b.sourceDate || ""}-${JSON.stringify(b.linkedTasks || [])}-${JSON.stringify(b.content).slice(0, 50)}`,
       )
       .join(",");
     if (currentIds !== blocksIdsRef.current) {
