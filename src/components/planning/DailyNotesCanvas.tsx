@@ -85,7 +85,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
-import { format, parseISO, addDays, subDays, startOfWeek, endOfWeek, isToday, isSameDay } from "date-fns";
+import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
 import { fr } from "date-fns/locale";
 
 // ============================================
@@ -1480,10 +1480,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   const goToNextDay = () => setSelectedDate((d) => addDays(d, 1));
   const goToToday = () => setSelectedDate(new Date());
 
-  // Week days
-  const weekDays = useMemo(() => {
-    const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
-    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  // Days to display (2 weeks centered on selected date)
+  const visibleDays = useMemo(() => {
+    // Afficher 14 jours : 7 avant et 6 après la date sélectionnée
+    return Array.from({ length: 14 }, (_, i) => addDays(selectedDate, i - 7));
   }, [selectedDate]);
 
   // Export
@@ -1503,7 +1503,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 flex flex-col">
-        <DialogHeader className="px-4 py-2 border-b shrink-0">
+        <DialogHeader className="px-4 py-2 border-b shrink-0 pr-12">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5" />
@@ -1516,14 +1516,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             </DialogTitle>
 
             {/* Navigation */}
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={goToPreviousDay}>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToPreviousDay}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
 
               <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" className="h-8">
                     {format(selectedDate, "dd/MM/yyyy")}
                   </Button>
                 </PopoverTrigger>
@@ -1542,44 +1542,47 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
                 </PopoverContent>
               </Popover>
 
-              <Button variant="outline" size="icon" onClick={goToNextDay}>
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToNextDay}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
 
-              <Button variant="outline" size="sm" onClick={goToToday}>
+              <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
                 Aujourd'hui
               </Button>
             </div>
           </div>
 
-          {/* Semaine */}
-          <div className="flex gap-1 mt-2">
-            {weekDays.map((day) => {
+          {/* Jours - 2 semaines centrées */}
+          <div className="flex gap-0.5 mt-2 max-w-5xl mx-auto w-full">
+            {visibleDays.map((day) => {
               const dayStr = format(day, "yyyy-MM-dd");
               const hasRoadmap = roadmapDates.has(dayStr);
               const isSelected = isSameDay(day, selectedDate);
+              const isMonday = day.getDay() === 1;
 
               return (
                 <Button
                   key={day.toISOString()}
                   variant={isSelected ? "default" : "ghost"}
                   size="sm"
-                  className={`flex-1 relative ${isToday(day) ? "ring-2 ring-blue-300" : ""}`}
+                  className={`flex-1 relative px-1 h-10 min-w-0 ${isToday(day) ? "ring-2 ring-blue-300" : ""} ${isMonday && !isSelected ? "border-l-2 border-gray-300" : ""}`}
                   onClick={() => setSelectedDate(day)}
                 >
-                  <span className="text-xs">
-                    {format(day, "EEE", { locale: fr })}
+                  <span className="text-xs leading-tight">
+                    <span className={isMonday ? "font-semibold" : "text-gray-500"}>
+                      {format(day, "EEEEE", { locale: fr })}
+                    </span>
                     <br />
                     {format(day, "d")}
                   </span>
                   {/* Indicateur roadmap */}
                   {hasRoadmap && (
                     <div
-                      className={`absolute -top-1 -right-1 w-3 h-3 rounded-full flex items-center justify-center ${
+                      className={`absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center ${
                         isSelected ? "bg-white" : "bg-purple-500"
                       }`}
                     >
-                      <MapPin className={`h-2 w-2 ${isSelected ? "text-purple-600" : "text-white"}`} />
+                      <MapPin className={`h-1.5 w-1.5 ${isSelected ? "text-purple-600" : "text-white"}`} />
                     </div>
                   )}
                 </Button>
