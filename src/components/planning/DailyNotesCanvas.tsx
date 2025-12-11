@@ -5,12 +5,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import paper from "paper";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,18 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,6 +58,7 @@ import {
   X,
   MoreHorizontal,
   Move,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, startOfWeek, endOfWeek, isToday, isSameDay } from "date-fns";
@@ -89,6 +75,7 @@ interface DailyNote {
   note_date: string;
   canvas_data?: string; // JSON Paper.js
   blocks_data?: string; // JSON des blocs
+  connections_data?: string; // JSON des connexions
   created_at: string;
   updated_at: string;
 }
@@ -113,14 +100,37 @@ interface NoteBlock {
   };
 }
 
-type DrawTool = "select" | "pencil" | "line" | "arrow" | "rectangle" | "circle" | "eraser" | "text";
+// Connexion entre deux blocs
+interface BlockConnection {
+  id: string;
+  sourceBlockId: string;
+  sourceAnchor: "top" | "right" | "bottom" | "left";
+  targetBlockId: string;
+  targetAnchor: "top" | "right" | "bottom" | "left";
+  color?: string;
+  strokeWidth?: number;
+  label?: string;
+}
+
+type DrawTool = "select" | "pencil" | "line" | "arrow" | "rectangle" | "circle" | "eraser" | "text" | "connect";
 
 // Couleurs disponibles
 const COLORS = [
-  "#000000", "#374151", "#6B7280", "#9CA3AF",
-  "#EF4444", "#F97316", "#EAB308", "#22C55E",
-  "#14B8A6", "#3B82F6", "#6366F1", "#A855F7",
-  "#EC4899", "#F43F5E", "#FFFFFF",
+  "#000000",
+  "#374151",
+  "#6B7280",
+  "#9CA3AF",
+  "#EF4444",
+  "#F97316",
+  "#EAB308",
+  "#22C55E",
+  "#14B8A6",
+  "#3B82F6",
+  "#6366F1",
+  "#A855F7",
+  "#EC4899",
+  "#F43F5E",
+  "#FFFFFF",
 ];
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48];
@@ -160,7 +170,8 @@ const FONTS = [
 ];
 
 // URL Google Fonts à charger
-const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Fira+Code:wght@400;700&family=Indie+Flower&family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Lato:wght@400;700&family=Libre+Baskerville:wght@400;700&family=Lora:wght@400;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;700&family=Nunito:wght@400;700&family=Open+Sans:wght@400;700&family=Oswald:wght@400;700&family=PT+Serif:wght@400;700&family=Pacifico&family=Patrick+Hand&family=Permanent+Marker&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;700&family=Raleway:wght@400;700&family=Roboto:wght@400;700&family=Shadows+Into+Light&family=Source+Code+Pro:wght@400;700&family=Ubuntu:wght@400;700&display=swap";
+const GOOGLE_FONTS_URL =
+  "https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bebas+Neue&family=Caveat:wght@400;700&family=Dancing+Script:wght@400;700&family=Fira+Code:wght@400;700&family=Indie+Flower&family=Inter:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Lato:wght@400;700&family=Libre+Baskerville:wght@400;700&family=Lora:wght@400;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;700&family=Nunito:wght@400;700&family=Open+Sans:wght@400;700&family=Oswald:wght@400;700&family=PT+Serif:wght@400;700&family=Pacifico&family=Patrick+Hand&family=Permanent+Marker&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;700&family=Raleway:wght@400;700&family=Roboto:wght@400;700&family=Shadows+Into+Light&family=Source+Code+Pro:wght@400;700&family=Ubuntu:wght@400;700&display=swap";
 
 // ============================================
 // BLOCK COMPONENT
@@ -169,255 +180,342 @@ const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Archivo+Black
 interface BlockProps {
   block: NoteBlock;
   isSelected: boolean;
+  isConnectMode: boolean;
   onSelect: () => void;
   onUpdate: (updates: Partial<NoteBlock>) => void;
   onDelete: () => void;
   onDragStart: (e: React.PointerEvent) => void;
+  onAnchorDragStart: (blockId: string, anchor: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => void;
+  onAnchorDrop: (blockId: string, anchor: "top" | "right" | "bottom" | "left") => void;
 }
 
-const Block = memo(({ block, isSelected, onSelect, onUpdate, onDelete, onDragStart }: BlockProps) => {
-  const [isEditing, setIsEditing] = useState(false);
-
-  const handleDoubleClick = () => {
-    setIsEditing(true);
-  };
-
-  const stopPropagation = (e: React.MouseEvent | React.PointerEvent) => {
-    e.stopPropagation();
-  };
-
-  const renderContent = () => {
-    switch (block.type) {
-      case "text":
-        return isEditing ? (
-          <Textarea
-            autoFocus
-            value={block.content.text || ""}
-            onChange={(e) => onUpdate({ content: { ...block.content, text: e.target.value } })}
-            onBlur={() => setIsEditing(false)}
-            onClick={stopPropagation}
-            className="w-full h-full resize-none border-0 focus:ring-0 bg-transparent"
-            style={{
-              fontSize: block.style?.fontSize || 14,
-              fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif",
-              fontWeight: block.style?.bold ? "bold" : "normal",
-              fontStyle: block.style?.italic ? "italic" : "normal",
-              textDecoration: block.style?.underline ? "underline" : "none",
-              textAlign: block.style?.align || "left",
-              color: block.style?.color || "#000",
-            }}
-          />
-        ) : (
-          <div
-            className="w-full h-full p-2 whitespace-pre-wrap overflow-auto"
-            style={{
-              fontSize: block.style?.fontSize || 14,
-              fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif",
-              fontWeight: block.style?.bold ? "bold" : "normal",
-              fontStyle: block.style?.italic ? "italic" : "normal",
-              textDecoration: block.style?.underline ? "underline" : "none",
-              textAlign: block.style?.align || "left",
-              color: block.style?.color || "#000",
-            }}
-          >
-            {block.content.text || "Double-clic pour éditer..."}
-          </div>
-        );
-
-      case "checklist":
-        const items = block.content.items || [{ id: "1", text: "", checked: false }];
-        return (
-          <div className="p-2 space-y-1">
-            {items.map((item: any, index: number) => (
-              <div key={item.id} className="flex items-center gap-2">
-                <Checkbox
-                  checked={item.checked}
-                  onCheckedChange={(checked) => {
-                    const newItems = [...items];
-                    newItems[index] = { ...item, checked };
-                    onUpdate({ content: { items: newItems } });
-                  }}
-                  onClick={stopPropagation}
-                />
-                <Input
-                  value={item.text}
-                  onChange={(e) => {
-                    const newItems = [...items];
-                    newItems[index] = { ...item, text: e.target.value };
-                    onUpdate({ content: { items: newItems } });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const newItems = [...items];
-                      newItems.splice(index + 1, 0, { id: crypto.randomUUID(), text: "", checked: false });
-                      onUpdate({ content: { items: newItems } });
-                    }
-                    if (e.key === "Backspace" && item.text === "" && items.length > 1) {
-                      e.preventDefault();
-                      const newItems = items.filter((_: any, i: number) => i !== index);
-                      onUpdate({ content: { items: newItems } });
-                    }
-                  }}
-                  onClick={stopPropagation}
-                  className={`flex-1 h-7 text-sm border-0 focus:ring-0 ${item.checked ? "line-through text-gray-400" : ""}`}
-                  style={{ fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif" }}
-                  placeholder="Nouvel élément..."
-                />
-              </div>
-            ))}
-          </div>
-        );
-
-      case "list":
-        const listItems = block.content.items || [{ id: "1", text: "" }];
-        return (
-          <div className="p-2 space-y-1">
-            {listItems.map((item: any, index: number) => (
-              <div key={item.id} className="flex items-center gap-2">
-                <span className="text-gray-500">•</span>
-                <Input
-                  value={item.text}
-                  onChange={(e) => {
-                    const newItems = [...listItems];
-                    newItems[index] = { ...item, text: e.target.value };
-                    onUpdate({ content: { items: newItems } });
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      const newItems = [...listItems];
-                      newItems.splice(index + 1, 0, { id: crypto.randomUUID(), text: "" });
-                      onUpdate({ content: { items: newItems } });
-                    }
-                    if (e.key === "Backspace" && item.text === "" && listItems.length > 1) {
-                      e.preventDefault();
-                      const newItems = listItems.filter((_: any, i: number) => i !== index);
-                      onUpdate({ content: { items: newItems } });
-                    }
-                  }}
-                  onClick={stopPropagation}
-                  className="flex-1 h-7 text-sm border-0 focus:ring-0"
-                  style={{ fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif" }}
-                  placeholder="Nouvel élément..."
-                />
-              </div>
-            ))}
-          </div>
-        );
-
-      case "table":
-        const rows = block.content.rows || 3;
-        const cols = block.content.cols || 3;
-        const cells = block.content.cells || Array(rows).fill(null).map(() => Array(cols).fill(""));
-        return (
-          <div className="p-2 overflow-auto">
-            <table className="w-full border-collapse">
-              <tbody>
-                {cells.map((row: string[], rowIndex: number) => (
-                  <tr key={rowIndex}>
-                    {row.map((cell: string, colIndex: number) => (
-                      <td key={colIndex} className="border border-gray-300 p-0">
-                        <Input
-                          value={cell}
-                          onChange={(e) => {
-                            const newCells = cells.map((r: string[], ri: number) =>
-                              ri === rowIndex
-                                ? r.map((c: string, ci: number) => (ci === colIndex ? e.target.value : c))
-                                : r
-                            );
-                            onUpdate({ content: { ...block.content, cells: newCells } });
-                          }}
-                          onClick={stopPropagation}
-                          className="w-full h-8 text-xs border-0 rounded-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-
-      case "image":
-        return block.content.url ? (
-          <img
-            src={block.content.url}
-            alt="Note image"
-            className="w-full h-full object-contain"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400">
-            <ImageIcon className="h-8 w-8" />
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  return (
+// Composant pour les points d'ancrage
+const AnchorPoint = memo(
+  ({
+    position,
+    blockId,
+    anchor,
+    isConnectMode,
+    onDragStart,
+    onDrop,
+  }: {
+    position: { top?: string; right?: string; bottom?: string; left?: string; transform: string };
+    blockId: string;
+    anchor: "top" | "right" | "bottom" | "left";
+    isConnectMode: boolean;
+    onDragStart: (blockId: string, anchor: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => void;
+    onDrop: (blockId: string, anchor: "top" | "right" | "bottom" | "left") => void;
+  }) => (
     <div
-      className={`absolute bg-white rounded-lg shadow-md border-2 transition-all ${
-        isSelected ? "border-blue-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
+      className={`absolute w-4 h-4 rounded-full border-2 cursor-crosshair transition-all z-20
+      ${
+        isConnectMode
+          ? "bg-blue-500 border-blue-600 opacity-100 scale-110"
+          : "bg-white border-gray-400 opacity-0 group-hover:opacity-100 hover:bg-blue-100 hover:border-blue-500"
       }`}
-      style={{
-        left: block.x,
-        top: block.y,
-        width: block.width,
-        height: block.height,
-        backgroundColor: block.style?.backgroundColor || "#fff",
-      }}
-      onClick={(e) => {
+      style={position}
+      onPointerDown={(e) => {
         e.stopPropagation();
-        onSelect();
+        e.preventDefault();
+        onDragStart(blockId, anchor, e);
       }}
-      onDoubleClick={handleDoubleClick}
-    >
-      {/* Header avec drag handle */}
+      onPointerUp={(e) => {
+        e.stopPropagation();
+        onDrop(blockId, anchor);
+      }}
+      onPointerEnter={(e) => {
+        if (e.buttons > 0) {
+          // Survol pendant le drag
+          (e.target as HTMLElement).classList.add("bg-green-500", "border-green-600", "scale-125");
+        }
+      }}
+      onPointerLeave={(e) => {
+        (e.target as HTMLElement).classList.remove("bg-green-500", "border-green-600", "scale-125");
+      }}
+    />
+  ),
+);
+
+AnchorPoint.displayName = "AnchorPoint";
+
+const Block = memo(
+  ({
+    block,
+    isSelected,
+    isConnectMode,
+    onSelect,
+    onUpdate,
+    onDelete,
+    onDragStart,
+    onAnchorDragStart,
+    onAnchorDrop,
+  }: BlockProps) => {
+    const [isEditing, setIsEditing] = useState(false);
+
+    const handleDoubleClick = () => {
+      setIsEditing(true);
+    };
+
+    const stopPropagation = (e: React.MouseEvent | React.PointerEvent) => {
+      e.stopPropagation();
+    };
+
+    // Positions des ancres
+    const anchorPositions = {
+      top: { top: "-8px", left: "50%", transform: "translateX(-50%)" },
+      right: { top: "50%", right: "-8px", transform: "translateY(-50%)" },
+      bottom: { bottom: "-8px", left: "50%", transform: "translateX(-50%)" },
+      left: { top: "50%", left: "-8px", transform: "translateY(-50%)" },
+    };
+
+    const renderContent = () => {
+      switch (block.type) {
+        case "text":
+          return isEditing ? (
+            <Textarea
+              autoFocus
+              value={block.content.text || ""}
+              onChange={(e) => onUpdate({ content: { ...block.content, text: e.target.value } })}
+              onBlur={() => setIsEditing(false)}
+              onClick={stopPropagation}
+              className="w-full h-full resize-none border-0 focus:ring-0 bg-transparent"
+              style={{
+                fontSize: block.style?.fontSize || 14,
+                fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif",
+                fontWeight: block.style?.bold ? "bold" : "normal",
+                fontStyle: block.style?.italic ? "italic" : "normal",
+                textDecoration: block.style?.underline ? "underline" : "none",
+                textAlign: block.style?.align || "left",
+                color: block.style?.color || "#000",
+              }}
+            />
+          ) : (
+            <div
+              className="w-full h-full p-2 whitespace-pre-wrap overflow-auto"
+              style={{
+                fontSize: block.style?.fontSize || 14,
+                fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif",
+                fontWeight: block.style?.bold ? "bold" : "normal",
+                fontStyle: block.style?.italic ? "italic" : "normal",
+                textDecoration: block.style?.underline ? "underline" : "none",
+                textAlign: block.style?.align || "left",
+                color: block.style?.color || "#000",
+              }}
+            >
+              {block.content.text || "Double-clic pour éditer..."}
+            </div>
+          );
+
+        case "checklist":
+          const items = block.content.items || [{ id: "1", text: "", checked: false }];
+          return (
+            <div className="p-2 space-y-1">
+              {items.map((item: any, index: number) => (
+                <div key={item.id} className="flex items-center gap-2">
+                  <Checkbox
+                    checked={item.checked}
+                    onCheckedChange={(checked) => {
+                      const newItems = [...items];
+                      newItems[index] = { ...item, checked };
+                      onUpdate({ content: { items: newItems } });
+                    }}
+                    onClick={stopPropagation}
+                  />
+                  <Input
+                    value={item.text}
+                    onChange={(e) => {
+                      const newItems = [...items];
+                      newItems[index] = { ...item, text: e.target.value };
+                      onUpdate({ content: { items: newItems } });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const newItems = [...items];
+                        newItems.splice(index + 1, 0, { id: crypto.randomUUID(), text: "", checked: false });
+                        onUpdate({ content: { items: newItems } });
+                      }
+                      if (e.key === "Backspace" && item.text === "" && items.length > 1) {
+                        e.preventDefault();
+                        const newItems = items.filter((_: any, i: number) => i !== index);
+                        onUpdate({ content: { items: newItems } });
+                      }
+                    }}
+                    onClick={stopPropagation}
+                    className={`flex-1 h-7 text-sm border-0 focus:ring-0 ${item.checked ? "line-through text-gray-400" : ""}`}
+                    style={{ fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif" }}
+                    placeholder="Nouvel élément..."
+                  />
+                </div>
+              ))}
+            </div>
+          );
+
+        case "list":
+          const listItems = block.content.items || [{ id: "1", text: "" }];
+          return (
+            <div className="p-2 space-y-1">
+              {listItems.map((item: any, index: number) => (
+                <div key={item.id} className="flex items-center gap-2">
+                  <span className="text-gray-500">•</span>
+                  <Input
+                    value={item.text}
+                    onChange={(e) => {
+                      const newItems = [...listItems];
+                      newItems[index] = { ...item, text: e.target.value };
+                      onUpdate({ content: { items: newItems } });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const newItems = [...listItems];
+                        newItems.splice(index + 1, 0, { id: crypto.randomUUID(), text: "" });
+                        onUpdate({ content: { items: newItems } });
+                      }
+                      if (e.key === "Backspace" && item.text === "" && listItems.length > 1) {
+                        e.preventDefault();
+                        const newItems = listItems.filter((_: any, i: number) => i !== index);
+                        onUpdate({ content: { items: newItems } });
+                      }
+                    }}
+                    onClick={stopPropagation}
+                    className="flex-1 h-7 text-sm border-0 focus:ring-0"
+                    style={{ fontFamily: block.style?.fontFamily || "system-ui, -apple-system, sans-serif" }}
+                    placeholder="Nouvel élément..."
+                  />
+                </div>
+              ))}
+            </div>
+          );
+
+        case "table":
+          const rows = block.content.rows || 3;
+          const cols = block.content.cols || 3;
+          const cells =
+            block.content.cells ||
+            Array(rows)
+              .fill(null)
+              .map(() => Array(cols).fill(""));
+          return (
+            <div className="p-2 overflow-auto">
+              <table className="w-full border-collapse">
+                <tbody>
+                  {cells.map((row: string[], rowIndex: number) => (
+                    <tr key={rowIndex}>
+                      {row.map((cell: string, colIndex: number) => (
+                        <td key={colIndex} className="border border-gray-300 p-0">
+                          <Input
+                            value={cell}
+                            onChange={(e) => {
+                              const newCells = cells.map((r: string[], ri: number) =>
+                                ri === rowIndex
+                                  ? r.map((c: string, ci: number) => (ci === colIndex ? e.target.value : c))
+                                  : r,
+                              );
+                              onUpdate({ content: { ...block.content, cells: newCells } });
+                            }}
+                            onClick={stopPropagation}
+                            className="w-full h-8 text-xs border-0 rounded-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+
+        case "image":
+          return block.content.url ? (
+            <img src={block.content.url} alt="Note image" className="w-full h-full object-contain" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400">
+              <ImageIcon className="h-8 w-8" />
+            </div>
+          );
+
+        default:
+          return null;
+      }
+    };
+
+    return (
       <div
-        className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded-t-md cursor-move border-b"
-        onPointerDown={onDragStart}
+        className={`absolute bg-white rounded-lg shadow-md border-2 transition-all group ${
+          isSelected ? "border-blue-500 shadow-lg" : "border-gray-200 hover:border-gray-300"
+        } ${isConnectMode ? "ring-2 ring-blue-200" : ""}`}
+        style={{
+          left: block.x,
+          top: block.y,
+          width: block.width,
+          height: block.height,
+          backgroundColor: block.style?.backgroundColor || "#fff",
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+        onDoubleClick={handleDoubleClick}
       >
-        <div className="flex items-center gap-1">
-          <GripVertical className="h-4 w-4 text-gray-400" />
-          <span className="text-xs text-gray-500 capitalize">{block.type}</span>
+        {/* Points d'ancrage pour les connexions */}
+        {(Object.entries(anchorPositions) as [keyof typeof anchorPositions, typeof anchorPositions.top][]).map(
+          ([anchor, position]) => (
+            <AnchorPoint
+              key={anchor}
+              position={position}
+              blockId={block.id}
+              anchor={anchor}
+              isConnectMode={isConnectMode}
+              onDragStart={onAnchorDragStart}
+              onDrop={onAnchorDrop}
+            />
+          ),
+        )}
+
+        {/* Header avec drag handle */}
+        <div
+          className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded-t-md cursor-move border-b"
+          onPointerDown={onDragStart}
+        >
+          <div className="flex items-center gap-1">
+            <GripVertical className="h-4 w-4 text-gray-400" />
+            <span className="text-xs text-gray-500 capitalize">{block.type}</span>
+          </div>
+          {isSelected && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
         </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden" style={{ height: block.height - 32 }}>
+          {renderContent()}
+        </div>
+
+        {/* Resize handle */}
         {isSelected && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-5 w-5"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
+          <div
+            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+            style={{
+              background: "linear-gradient(135deg, transparent 50%, #3B82F6 50%)",
+              borderBottomRightRadius: "0.5rem",
             }}
-          >
-            <X className="h-3 w-3" />
-          </Button>
+          />
         )}
       </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-hidden" style={{ height: block.height - 32 }}>
-        {renderContent()}
-      </div>
-
-      {/* Resize handle */}
-      {isSelected && (
-        <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-          style={{
-            background: "linear-gradient(135deg, transparent 50%, #3B82F6 50%)",
-            borderBottomRightRadius: "0.5rem",
-          }}
-        />
-      )}
-    </div>
-  );
-});
+    );
+  },
+);
 
 Block.displayName = "Block";
 
@@ -440,6 +538,15 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+
+  // Connexions entre blocs
+  const [connections, setConnections] = useState<BlockConnection[]>([]);
+  const [pendingConnection, setPendingConnection] = useState<{
+    sourceBlockId: string;
+    sourceAnchor: "top" | "right" | "bottom" | "left";
+    mouseX: number;
+    mouseY: number;
+  } | null>(null);
 
   // Outils de dessin
   const [activeTool, setActiveTool] = useState<DrawTool>("select");
@@ -662,7 +769,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
 
     if (data) {
       setCurrentNote(data as DailyNote);
-      
+
       // Charger les blocs
       if (data.blocks_data) {
         try {
@@ -672,6 +779,17 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
         }
       } else {
         setBlocks([]);
+      }
+
+      // Charger les connexions
+      if (data.connections_data) {
+        try {
+          setConnections(JSON.parse(data.connections_data));
+        } catch {
+          setConnections([]);
+        }
+      } else {
+        setConnections([]);
       }
 
       // Charger le canvas Paper.js
@@ -686,6 +804,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
     } else {
       setCurrentNote(null);
       setBlocks([]);
+      setConnections([]);
       if (paperScopeRef.current) {
         paperScopeRef.current.project.activeLayer.removeChildren();
       }
@@ -709,6 +828,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const canvasData = paperScopeRef.current?.project.activeLayer.exportJSON() || null;
     const blocksData = JSON.stringify(blocks);
+    const connectionsData = JSON.stringify(connections);
 
     if (currentNote) {
       // Mettre à jour
@@ -717,6 +837,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
         .update({
           canvas_data: canvasData,
           blocks_data: blocksData,
+          connections_data: connectionsData,
           updated_at: new Date().toISOString(),
         })
         .eq("id", currentNote.id) as any);
@@ -730,6 +851,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
           note_date: dateStr,
           canvas_data: canvasData,
           blocks_data: blocksData,
+          connections_data: connectionsData,
         })
         .select()
         .single() as any);
@@ -741,7 +863,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
 
     setIsSaving(false);
     toast.success("Note sauvegardée");
-  }, [userId, selectedDate, projectId, currentNote, blocks]);
+  }, [userId, selectedDate, projectId, currentNote, blocks, connections]);
 
   // Auto-save toutes les 30 secondes
   useEffect(() => {
@@ -754,12 +876,12 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
   const saveToHistory = useCallback(() => {
     if (!paperScopeRef.current) return;
     const json = paperScopeRef.current.project.activeLayer.exportJSON();
-    setHistory(prev => {
+    setHistory((prev) => {
       const newHistory = prev.slice(0, historyIndex + 1);
       newHistory.push(json);
       return newHistory.slice(-50); // Garder les 50 derniers états
     });
-    setHistoryIndex(prev => Math.min(prev + 1, 49));
+    setHistoryIndex((prev) => Math.min(prev + 1, 49));
   }, [historyIndex]);
 
   const undo = useCallback(() => {
@@ -779,96 +901,207 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
   }, [historyIndex, history]);
 
   // Ajouter un bloc
-  const addBlock = useCallback((type: NoteBlock["type"]) => {
-    const newBlock: NoteBlock = {
-      id: crypto.randomUUID(),
-      type,
-      x: 50 + blocks.length * 20,
-      y: 50 + blocks.length * 20,
-      width: type === "table" ? 400 : 250,
-      height: type === "table" ? 200 : type === "text" ? 150 : 180,
-      content: type === "checklist" || type === "list"
-        ? { items: [{ id: "1", text: "", checked: false }] }
-        : type === "table"
-        ? { rows: 3, cols: 3, cells: Array(3).fill(null).map(() => Array(3).fill("")) }
-        : type === "image"
-        ? { url: "" }
-        : { text: "" },
-      style: {
-        fontSize: 14,
-        color: "#000000",
-        backgroundColor: "#ffffff",
-      },
-    };
+  const addBlock = useCallback(
+    (type: NoteBlock["type"]) => {
+      const newBlock: NoteBlock = {
+        id: crypto.randomUUID(),
+        type,
+        x: 50 + blocks.length * 20,
+        y: 50 + blocks.length * 20,
+        width: type === "table" ? 400 : 250,
+        height: type === "table" ? 200 : type === "text" ? 150 : 180,
+        content:
+          type === "checklist" || type === "list"
+            ? { items: [{ id: "1", text: "", checked: false }] }
+            : type === "table"
+              ? {
+                  rows: 3,
+                  cols: 3,
+                  cells: Array(3)
+                    .fill(null)
+                    .map(() => Array(3).fill("")),
+                }
+              : type === "image"
+                ? { url: "" }
+                : { text: "" },
+        style: {
+          fontSize: 14,
+          color: "#000000",
+          backgroundColor: "#ffffff",
+        },
+      };
 
-    setBlocks(prev => [...prev, newBlock]);
-    setSelectedBlockId(newBlock.id);
-  }, [blocks]);
+      setBlocks((prev) => [...prev, newBlock]);
+      setSelectedBlockId(newBlock.id);
+    },
+    [blocks],
+  );
 
   // Mettre à jour un bloc
   const updateBlock = useCallback((id: string, updates: Partial<NoteBlock>) => {
-    setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
   }, []);
 
   // Supprimer un bloc
   const deleteBlock = useCallback((id: string) => {
-    setBlocks(prev => prev.filter(b => b.id !== id));
+    setBlocks((prev) => prev.filter((b) => b.id !== id));
     setSelectedBlockId(null);
   }, []);
 
   // Drag block
-  const handleBlockDragStart = useCallback((blockId: string, e: React.PointerEvent) => {
-    e.preventDefault();
-    const block = blocks.find(b => b.id === blockId);
-    if (!block) return;
+  const handleBlockDragStart = useCallback(
+    (blockId: string, e: React.PointerEvent) => {
+      e.preventDefault();
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block) return;
 
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startBlockX = block.x;
-    const startBlockY = block.y;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startBlockX = block.x;
+      const startBlockY = block.y;
 
-    const handleMove = (moveEvent: PointerEvent) => {
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      updateBlock(blockId, {
-        x: Math.max(0, startBlockX + dx),
-        y: Math.max(0, startBlockY + dy),
+      const handleMove = (moveEvent: PointerEvent) => {
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        updateBlock(blockId, {
+          x: Math.max(0, startBlockX + dx),
+          y: Math.max(0, startBlockY + dy),
+        });
+      };
+
+      const handleUp = () => {
+        document.removeEventListener("pointermove", handleMove);
+        document.removeEventListener("pointerup", handleUp);
+      };
+
+      document.addEventListener("pointermove", handleMove);
+      document.addEventListener("pointerup", handleUp);
+    },
+    [blocks, updateBlock],
+  );
+
+  // === CONNEXIONS ENTRE BLOCS ===
+
+  // Calculer la position d'un ancrage
+  const getAnchorPosition = useCallback((block: NoteBlock, anchor: "top" | "right" | "bottom" | "left") => {
+    switch (anchor) {
+      case "top":
+        return { x: block.x + block.width / 2, y: block.y };
+      case "right":
+        return { x: block.x + block.width, y: block.y + block.height / 2 };
+      case "bottom":
+        return { x: block.x + block.width / 2, y: block.y + block.height };
+      case "left":
+        return { x: block.x, y: block.y + block.height / 2 };
+    }
+  }, []);
+
+  // Démarrer une connexion depuis un ancrage
+  const handleAnchorDragStart = useCallback(
+    (blockId: string, anchor: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => {
+      const block = blocks.find((b) => b.id === blockId);
+      if (!block || !containerRef.current) return;
+
+      const rect = containerRef.current.getBoundingClientRect();
+      const scrollLeft = containerRef.current.scrollLeft;
+      const scrollTop = containerRef.current.scrollTop;
+
+      setPendingConnection({
+        sourceBlockId: blockId,
+        sourceAnchor: anchor,
+        mouseX: e.clientX - rect.left + scrollLeft,
+        mouseY: e.clientY - rect.top + scrollTop,
       });
-    };
 
-    const handleUp = () => {
-      document.removeEventListener("pointermove", handleMove);
-      document.removeEventListener("pointerup", handleUp);
-    };
+      const handleMove = (moveEvent: PointerEvent) => {
+        setPendingConnection((prev) =>
+          prev
+            ? {
+                ...prev,
+                mouseX: moveEvent.clientX - rect.left + scrollLeft,
+                mouseY: moveEvent.clientY - rect.top + scrollTop,
+              }
+            : null,
+        );
+      };
 
-    document.addEventListener("pointermove", handleMove);
-    document.addEventListener("pointerup", handleUp);
-  }, [blocks, updateBlock]);
+      const handleUp = () => {
+        document.removeEventListener("pointermove", handleMove);
+        document.removeEventListener("pointerup", handleUp);
+        // Si on relâche sans être sur un ancrage, annuler
+        setTimeout(() => {
+          setPendingConnection(null);
+        }, 100);
+      };
+
+      document.addEventListener("pointermove", handleMove);
+      document.addEventListener("pointerup", handleUp);
+    },
+    [blocks],
+  );
+
+  // Terminer une connexion sur un ancrage cible
+  const handleAnchorDrop = useCallback(
+    (targetBlockId: string, targetAnchor: "top" | "right" | "bottom" | "left") => {
+      if (!pendingConnection) return;
+      if (pendingConnection.sourceBlockId === targetBlockId) {
+        setPendingConnection(null);
+        return; // Pas de connexion sur soi-même
+      }
+
+      // Vérifier si la connexion existe déjà
+      const exists = connections.some(
+        (c) => c.sourceBlockId === pendingConnection.sourceBlockId && c.targetBlockId === targetBlockId,
+      );
+
+      if (!exists) {
+        const newConnection: BlockConnection = {
+          id: crypto.randomUUID(),
+          sourceBlockId: pendingConnection.sourceBlockId,
+          sourceAnchor: pendingConnection.sourceAnchor,
+          targetBlockId,
+          targetAnchor,
+          color: strokeColor,
+          strokeWidth: 2,
+        };
+
+        setConnections((prev) => [...prev, newConnection]);
+        toast.success("Connexion créée");
+      }
+
+      setPendingConnection(null);
+    },
+    [pendingConnection, connections, strokeColor],
+  );
+
+  // Supprimer une connexion
+  const deleteConnection = useCallback((connectionId: string) => {
+    setConnections((prev) => prev.filter((c) => c.id !== connectionId));
+  }, []);
 
   // Upload image
-  const handleImageUpload = useCallback(async (blockId: string, file: File) => {
-    const timestamp = Date.now();
-    const filePath = `daily-notes/${userId}/${timestamp}-${file.name}`;
+  const handleImageUpload = useCallback(
+    async (blockId: string, file: File) => {
+      const timestamp = Date.now();
+      const filePath = `daily-notes/${userId}/${timestamp}-${file.name}`;
 
-    const { error } = await supabase.storage
-      .from("project-photos")
-      .upload(filePath, file);
+      const { error } = await supabase.storage.from("project-photos").upload(filePath, file);
 
-    if (error) {
-      toast.error("Erreur upload image");
-      return;
-    }
+      if (error) {
+        toast.error("Erreur upload image");
+        return;
+      }
 
-    const { data: urlData } = supabase.storage
-      .from("project-photos")
-      .getPublicUrl(filePath);
+      const { data: urlData } = supabase.storage.from("project-photos").getPublicUrl(filePath);
 
-    updateBlock(blockId, { content: { url: urlData.publicUrl } });
-  }, [userId, updateBlock]);
+      updateBlock(blockId, { content: { url: urlData.publicUrl } });
+    },
+    [userId, updateBlock],
+  );
 
   // Navigation dates
-  const goToPreviousDay = () => setSelectedDate(prev => subDays(prev, 1));
-  const goToNextDay = () => setSelectedDate(prev => addDays(prev, 1));
+  const goToPreviousDay = () => setSelectedDate((prev) => subDays(prev, 1));
+  const goToNextDay = () => setSelectedDate((prev) => addDays(prev, 1));
   const goToToday = () => setSelectedDate(new Date());
 
   // Effacer le canvas
@@ -905,7 +1138,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
               <Button variant="outline" size="sm" onClick={goToPreviousDay}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              
+
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="min-w-[180px]">
@@ -1014,6 +1247,15 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
             >
               <Eraser className="h-4 w-4" />
             </Button>
+            <Button
+              variant={activeTool === "connect" ? "default" : "outline"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setActiveTool("connect")}
+              title="Connecter des blocs"
+            >
+              <Link2 className="h-4 w-4" />
+            </Button>
           </div>
 
           <Separator orientation="vertical" className="h-8" />
@@ -1022,10 +1264,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-8 gap-2">
-                <div
-                  className="w-4 h-4 rounded border"
-                  style={{ backgroundColor: strokeColor }}
-                />
+                <div className="w-4 h-4 rounded border" style={{ backgroundColor: strokeColor }} />
                 Couleur
               </Button>
             </PopoverTrigger>
@@ -1048,10 +1287,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
           {/* Épaisseur */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Épaisseur:</span>
-            <Select
-              value={strokeWidth.toString()}
-              onValueChange={(v) => setStrokeWidth(parseInt(v))}
-            >
+            <Select value={strokeWidth.toString()} onValueChange={(v) => setStrokeWidth(parseInt(v))}>
               <SelectTrigger className="w-16 h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -1069,48 +1305,23 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
 
           {/* Blocs */}
           <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => addBlock("text")}
-            >
+            <Button variant="outline" size="sm" className="h-8" onClick={() => addBlock("text")}>
               <Type className="h-4 w-4 mr-1" />
               Texte
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => addBlock("checklist")}
-            >
+            <Button variant="outline" size="sm" className="h-8" onClick={() => addBlock("checklist")}>
               <CheckSquare className="h-4 w-4 mr-1" />
               Checklist
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => addBlock("list")}
-            >
+            <Button variant="outline" size="sm" className="h-8" onClick={() => addBlock("list")}>
               <List className="h-4 w-4 mr-1" />
               Liste
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => addBlock("table")}
-            >
+            <Button variant="outline" size="sm" className="h-8" onClick={() => addBlock("table")}>
               <Table className="h-4 w-4 mr-1" />
               Tableau
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8"
-              onClick={() => addBlock("image")}
-            >
+            <Button variant="outline" size="sm" className="h-8" onClick={() => addBlock("image")}>
               <ImageIcon className="h-4 w-4 mr-1" />
               Image
             </Button>
@@ -1140,13 +1351,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
             >
               <Redo className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-8 w-8"
-              onClick={clearCanvas}
-              title="Effacer le dessin"
-            >
+            <Button variant="outline" size="icon" className="h-8 w-8" onClick={clearCanvas} title="Effacer le dessin">
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
@@ -1175,16 +1380,133 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 }}
               />
 
+              {/* SVG pour les connexions */}
+              <svg
+                className="absolute inset-0 pointer-events-none"
+                style={{ width: "100%", height: "100%", overflow: "visible" }}
+              >
+                <defs>
+                  <marker
+                    id="arrowhead"
+                    markerWidth="10"
+                    markerHeight="7"
+                    refX="9"
+                    refY="3.5"
+                    orient="auto"
+                    fill={strokeColor}
+                  >
+                    <polygon points="0 0, 10 3.5, 0 7" />
+                  </marker>
+                </defs>
+
+                {/* Connexions existantes */}
+                {connections.map((conn) => {
+                  const sourceBlock = blocks.find((b) => b.id === conn.sourceBlockId);
+                  const targetBlock = blocks.find((b) => b.id === conn.targetBlockId);
+                  if (!sourceBlock || !targetBlock) return null;
+
+                  const start = getAnchorPosition(sourceBlock, conn.sourceAnchor);
+                  const end = getAnchorPosition(targetBlock, conn.targetAnchor);
+
+                  // Calcul des points de contrôle pour une courbe de Bézier
+                  const dx = end.x - start.x;
+                  const dy = end.y - start.y;
+                  const controlOffset = Math.min(Math.abs(dx), Math.abs(dy), 100) / 2 + 50;
+
+                  let ctrl1 = { x: start.x, y: start.y };
+                  let ctrl2 = { x: end.x, y: end.y };
+
+                  // Ajuster les points de contrôle selon les ancrages
+                  switch (conn.sourceAnchor) {
+                    case "top":
+                      ctrl1 = { x: start.x, y: start.y - controlOffset };
+                      break;
+                    case "bottom":
+                      ctrl1 = { x: start.x, y: start.y + controlOffset };
+                      break;
+                    case "left":
+                      ctrl1 = { x: start.x - controlOffset, y: start.y };
+                      break;
+                    case "right":
+                      ctrl1 = { x: start.x + controlOffset, y: start.y };
+                      break;
+                  }
+                  switch (conn.targetAnchor) {
+                    case "top":
+                      ctrl2 = { x: end.x, y: end.y - controlOffset };
+                      break;
+                    case "bottom":
+                      ctrl2 = { x: end.x, y: end.y + controlOffset };
+                      break;
+                    case "left":
+                      ctrl2 = { x: end.x - controlOffset, y: end.y };
+                      break;
+                    case "right":
+                      ctrl2 = { x: end.x + controlOffset, y: end.y };
+                      break;
+                  }
+
+                  return (
+                    <g
+                      key={conn.id}
+                      className="pointer-events-auto cursor-pointer"
+                      onClick={() => deleteConnection(conn.id)}
+                    >
+                      {/* Zone de clic plus large */}
+                      <path
+                        d={`M ${start.x} ${start.y} C ${ctrl1.x} ${ctrl1.y}, ${ctrl2.x} ${ctrl2.y}, ${end.x} ${end.y}`}
+                        fill="none"
+                        stroke="transparent"
+                        strokeWidth="15"
+                      />
+                      {/* Ligne visible */}
+                      <path
+                        d={`M ${start.x} ${start.y} C ${ctrl1.x} ${ctrl1.y}, ${ctrl2.x} ${ctrl2.y}, ${end.x} ${end.y}`}
+                        fill="none"
+                        stroke={conn.color || "#3B82F6"}
+                        strokeWidth={conn.strokeWidth || 2}
+                        markerEnd="url(#arrowhead)"
+                        className="transition-all hover:stroke-red-500"
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* Connexion en cours de création */}
+                {pendingConnection &&
+                  (() => {
+                    const sourceBlock = blocks.find((b) => b.id === pendingConnection.sourceBlockId);
+                    if (!sourceBlock) return null;
+
+                    const start = getAnchorPosition(sourceBlock, pendingConnection.sourceAnchor);
+
+                    return (
+                      <line
+                        x1={start.x}
+                        y1={start.y}
+                        x2={pendingConnection.mouseX}
+                        y2={pendingConnection.mouseY}
+                        stroke={strokeColor}
+                        strokeWidth="2"
+                        strokeDasharray="5,5"
+                      />
+                    );
+                  })()}
+              </svg>
+
               {/* Blocs */}
               {blocks.map((block) => (
                 <Block
                   key={block.id}
                   block={block}
                   isSelected={selectedBlockId === block.id}
+                  isConnectMode={activeTool === "connect"}
                   onSelect={() => setSelectedBlockId(block.id)}
                   onUpdate={(updates) => updateBlock(block.id, updates)}
                   onDelete={() => deleteBlock(block.id)}
                   onDragStart={(e) => handleBlockDragStart(block.id, e)}
+                  onAnchorDragStart={handleAnchorDragStart}
+                  onAnchorDrop={handleAnchorDrop}
                 />
               ))}
             </>
@@ -1192,18 +1514,21 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
         </div>
 
         {/* Barre de style bloc sélectionné */}
-        {selectedBlockId && blocks.find(b => b.id === selectedBlockId)?.type === "text" && (
+        {selectedBlockId && blocks.find((b) => b.id === selectedBlockId)?.type === "text" && (
           <div className="px-4 py-2 border-t bg-gray-50 flex items-center gap-4 shrink-0 flex-wrap">
             {/* Sélecteur de police */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">Police:</span>
               <Select
-                value={blocks.find(b => b.id === selectedBlockId)?.style?.fontFamily || "system-ui, -apple-system, sans-serif"}
+                value={
+                  blocks.find((b) => b.id === selectedBlockId)?.style?.fontFamily ||
+                  "system-ui, -apple-system, sans-serif"
+                }
                 onValueChange={(v) => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, fontFamily: v }
+                      style: { ...block.style, fontFamily: v },
                     });
                   }
                 }}
@@ -1214,31 +1539,31 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 <SelectContent className="max-h-80">
                   {/* Grouper par catégorie */}
                   <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Sans-serif</div>
-                  {FONTS.filter(f => f.category === "Sans").map((font) => (
+                  {FONTS.filter((f) => f.category === "Sans").map((font) => (
                     <SelectItem key={font.value} value={font.value}>
                       <span style={{ fontFamily: font.value }}>{font.name}</span>
                     </SelectItem>
                   ))}
                   <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Serif</div>
-                  {FONTS.filter(f => f.category === "Serif").map((font) => (
+                  {FONTS.filter((f) => f.category === "Serif").map((font) => (
                     <SelectItem key={font.value} value={font.value}>
                       <span style={{ fontFamily: font.value }}>{font.name}</span>
                     </SelectItem>
                   ))}
                   <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Monospace</div>
-                  {FONTS.filter(f => f.category === "Mono").map((font) => (
+                  {FONTS.filter((f) => f.category === "Mono").map((font) => (
                     <SelectItem key={font.value} value={font.value}>
                       <span style={{ fontFamily: font.value }}>{font.name}</span>
                     </SelectItem>
                   ))}
                   <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Script / Manuscrit</div>
-                  {FONTS.filter(f => f.category === "Script").map((font) => (
+                  {FONTS.filter((f) => f.category === "Script").map((font) => (
                     <SelectItem key={font.value} value={font.value}>
                       <span style={{ fontFamily: font.value }}>{font.name}</span>
                     </SelectItem>
                   ))}
                   <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Display / Titrage</div>
-                  {FONTS.filter(f => f.category === "Display").map((font) => (
+                  {FONTS.filter((f) => f.category === "Display").map((font) => (
                     <SelectItem key={font.value} value={font.value}>
                       <span style={{ fontFamily: font.value }}>{font.name}</span>
                     </SelectItem>
@@ -1252,12 +1577,12 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">Taille:</span>
               <Select
-                value={(blocks.find(b => b.id === selectedBlockId)?.style?.fontSize || 14).toString()}
+                value={(blocks.find((b) => b.id === selectedBlockId)?.style?.fontSize || 14).toString()}
                 onValueChange={(v) => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, fontSize: parseInt(v) }
+                      style: { ...block.style, fontSize: parseInt(v) },
                     });
                   }
                 }}
@@ -1279,14 +1604,14 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
 
             <div className="flex items-center gap-1">
               <Button
-                variant={blocks.find(b => b.id === selectedBlockId)?.style?.bold ? "default" : "outline"}
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.bold ? "default" : "outline"}
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, bold: !block.style?.bold }
+                      style: { ...block.style, bold: !block.style?.bold },
                     });
                   }
                 }}
@@ -1294,14 +1619,14 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 <Bold className="h-4 w-4" />
               </Button>
               <Button
-                variant={blocks.find(b => b.id === selectedBlockId)?.style?.italic ? "default" : "outline"}
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.italic ? "default" : "outline"}
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, italic: !block.style?.italic }
+                      style: { ...block.style, italic: !block.style?.italic },
                     });
                   }
                 }}
@@ -1309,14 +1634,14 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 <Italic className="h-4 w-4" />
               </Button>
               <Button
-                variant={blocks.find(b => b.id === selectedBlockId)?.style?.underline ? "default" : "outline"}
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.underline ? "default" : "outline"}
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, underline: !block.style?.underline }
+                      style: { ...block.style, underline: !block.style?.underline },
                     });
                   }
                 }}
@@ -1329,14 +1654,14 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
 
             <div className="flex items-center gap-1">
               <Button
-                variant={blocks.find(b => b.id === selectedBlockId)?.style?.align === "left" ? "default" : "outline"}
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "left" ? "default" : "outline"}
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, align: "left" }
+                      style: { ...block.style, align: "left" },
                     });
                   }
                 }}
@@ -1344,14 +1669,16 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 <AlignLeft className="h-4 w-4" />
               </Button>
               <Button
-                variant={blocks.find(b => b.id === selectedBlockId)?.style?.align === "center" ? "default" : "outline"}
+                variant={
+                  blocks.find((b) => b.id === selectedBlockId)?.style?.align === "center" ? "default" : "outline"
+                }
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, align: "center" }
+                      style: { ...block.style, align: "center" },
                     });
                   }
                 }}
@@ -1359,14 +1686,14 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 <AlignCenter className="h-4 w-4" />
               </Button>
               <Button
-                variant={blocks.find(b => b.id === selectedBlockId)?.style?.align === "right" ? "default" : "outline"}
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "right" ? "default" : "outline"}
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
+                  const block = blocks.find((b) => b.id === selectedBlockId);
                   if (block) {
                     updateBlock(block.id, {
-                      style: { ...block.style, align: "right" }
+                      style: { ...block.style, align: "right" },
                     });
                   }
                 }}
@@ -1383,7 +1710,7 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 <Button variant="outline" size="sm" className="h-8 gap-2">
                   <div
                     className="w-4 h-4 rounded border"
-                    style={{ backgroundColor: blocks.find(b => b.id === selectedBlockId)?.style?.color || "#000" }}
+                    style={{ backgroundColor: blocks.find((b) => b.id === selectedBlockId)?.style?.color || "#000" }}
                   />
                   Texte
                 </Button>
@@ -1396,10 +1723,10 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                       className={`w-6 h-6 rounded border-2 border-gray-200`}
                       style={{ backgroundColor: color }}
                       onClick={() => {
-                        const block = blocks.find(b => b.id === selectedBlockId);
+                        const block = blocks.find((b) => b.id === selectedBlockId);
                         if (block) {
                           updateBlock(block.id, {
-                            style: { ...block.style, color }
+                            style: { ...block.style, color },
                           });
                         }
                       }}
@@ -1415,7 +1742,9 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                 <Button variant="outline" size="sm" className="h-8 gap-2">
                   <div
                     className="w-4 h-4 rounded border"
-                    style={{ backgroundColor: blocks.find(b => b.id === selectedBlockId)?.style?.backgroundColor || "#fff" }}
+                    style={{
+                      backgroundColor: blocks.find((b) => b.id === selectedBlockId)?.style?.backgroundColor || "#fff",
+                    }}
                   />
                   Fond
                 </Button>
@@ -1428,10 +1757,10 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
                       className={`w-6 h-6 rounded border-2 border-gray-200`}
                       style={{ backgroundColor: color }}
                       onClick={() => {
-                        const block = blocks.find(b => b.id === selectedBlockId);
+                        const block = blocks.find((b) => b.id === selectedBlockId);
                         if (block) {
                           updateBlock(block.id, {
-                            style: { ...block.style, backgroundColor: color }
+                            style: { ...block.style, backgroundColor: color },
                           });
                         }
                       }}
@@ -1444,61 +1773,66 @@ const DailyNotesCanvas = ({ open, onOpenChange, projectId }: DailyNotesCanvasPro
         )}
 
         {/* Barre de style pour checklist et liste */}
-        {selectedBlockId && (blocks.find(b => b.id === selectedBlockId)?.type === "checklist" || blocks.find(b => b.id === selectedBlockId)?.type === "list") && (
-          <div className="px-4 py-2 border-t bg-gray-50 flex items-center gap-4 shrink-0">
-            {/* Sélecteur de police */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Police:</span>
-              <Select
-                value={blocks.find(b => b.id === selectedBlockId)?.style?.fontFamily || "system-ui, -apple-system, sans-serif"}
-                onValueChange={(v) => {
-                  const block = blocks.find(b => b.id === selectedBlockId);
-                  if (block) {
-                    updateBlock(block.id, {
-                      style: { ...block.style, fontFamily: v }
-                    });
+        {selectedBlockId &&
+          (blocks.find((b) => b.id === selectedBlockId)?.type === "checklist" ||
+            blocks.find((b) => b.id === selectedBlockId)?.type === "list") && (
+            <div className="px-4 py-2 border-t bg-gray-50 flex items-center gap-4 shrink-0">
+              {/* Sélecteur de police */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Police:</span>
+                <Select
+                  value={
+                    blocks.find((b) => b.id === selectedBlockId)?.style?.fontFamily ||
+                    "system-ui, -apple-system, sans-serif"
                   }
-                }}
-              >
-                <SelectTrigger className="w-44 h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-80">
-                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Sans-serif</div>
-                  {FONTS.filter(f => f.category === "Sans").map((font) => (
-                    <SelectItem key={font.value} value={font.value}>
-                      <span style={{ fontFamily: font.value }}>{font.name}</span>
-                    </SelectItem>
-                  ))}
-                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Serif</div>
-                  {FONTS.filter(f => f.category === "Serif").map((font) => (
-                    <SelectItem key={font.value} value={font.value}>
-                      <span style={{ fontFamily: font.value }}>{font.name}</span>
-                    </SelectItem>
-                  ))}
-                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Monospace</div>
-                  {FONTS.filter(f => f.category === "Mono").map((font) => (
-                    <SelectItem key={font.value} value={font.value}>
-                      <span style={{ fontFamily: font.value }}>{font.name}</span>
-                    </SelectItem>
-                  ))}
-                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Script / Manuscrit</div>
-                  {FONTS.filter(f => f.category === "Script").map((font) => (
-                    <SelectItem key={font.value} value={font.value}>
-                      <span style={{ fontFamily: font.value }}>{font.name}</span>
-                    </SelectItem>
-                  ))}
-                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Display / Titrage</div>
-                  {FONTS.filter(f => f.category === "Display").map((font) => (
-                    <SelectItem key={font.value} value={font.value}>
-                      <span style={{ fontFamily: font.value }}>{font.name}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  onValueChange={(v) => {
+                    const block = blocks.find((b) => b.id === selectedBlockId);
+                    if (block) {
+                      updateBlock(block.id, {
+                        style: { ...block.style, fontFamily: v },
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-44 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Sans-serif</div>
+                    {FONTS.filter((f) => f.category === "Sans").map((font) => (
+                      <SelectItem key={font.value} value={font.value}>
+                        <span style={{ fontFamily: font.value }}>{font.name}</span>
+                      </SelectItem>
+                    ))}
+                    <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Serif</div>
+                    {FONTS.filter((f) => f.category === "Serif").map((font) => (
+                      <SelectItem key={font.value} value={font.value}>
+                        <span style={{ fontFamily: font.value }}>{font.name}</span>
+                      </SelectItem>
+                    ))}
+                    <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Monospace</div>
+                    {FONTS.filter((f) => f.category === "Mono").map((font) => (
+                      <SelectItem key={font.value} value={font.value}>
+                        <span style={{ fontFamily: font.value }}>{font.name}</span>
+                      </SelectItem>
+                    ))}
+                    <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Script / Manuscrit</div>
+                    {FONTS.filter((f) => f.category === "Script").map((font) => (
+                      <SelectItem key={font.value} value={font.value}>
+                        <span style={{ fontFamily: font.value }}>{font.name}</span>
+                      </SelectItem>
+                    ))}
+                    <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-100">Display / Titrage</div>
+                    {FONTS.filter((f) => f.category === "Display").map((font) => (
+                      <SelectItem key={font.value} value={font.value}>
+                        <span style={{ fontFamily: font.value }}>{font.name}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </DialogContent>
     </Dialog>
   );
