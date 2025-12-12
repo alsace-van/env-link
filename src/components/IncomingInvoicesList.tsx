@@ -52,6 +52,7 @@ import {
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { InvoiceBatchExport } from "@/components/evoliz/InvoiceBatchExport";
 
 interface IncomingInvoice {
   id: string;
@@ -61,6 +62,13 @@ interface IncomingInvoice {
   mime_type: string | null;
   supplier_name: string | null;
   supplier_siret: string | null;
+  supplier_tva: string | null;
+  supplier_address: {
+    addr?: string;
+    postcode?: string;
+    town?: string;
+    country_iso2?: string;
+  } | null;
   invoice_number: string | null;
   invoice_date: string | null;
   due_date: string | null;
@@ -106,6 +114,7 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
   const [deletingMultiple, setDeletingMultiple] = useState(false);
   const [annotatorOpen, setAnnotatorOpen] = useState(false);
   const [invoiceToAnnotate, setInvoiceToAnnotate] = useState<IncomingInvoice | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!asDialog || dialogOpen) {
@@ -561,37 +570,77 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
       {selectedIds.size > 0 && (
         <div className="flex items-center justify-between p-3 mb-4 bg-muted rounded-lg">
           <span className="text-sm font-medium">{selectedIds.size} facture(s) sélectionnée(s)</span>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={deletingMultiple}>
-                {deletingMultiple ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Trash2 className="h-4 w-4 mr-2" />
-                )}
-                Supprimer la sélection
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Supprimer {selectedIds.size} facture(s) ?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Cette action est irréversible. Tous les fichiers et données seront supprimés.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Annuler</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={deleteSelected}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Supprimer {selectedIds.size} facture(s)
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <div className="flex gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setExportDialogOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Exporter vers Evoliz
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" disabled={deletingMultiple}>
+                  {deletingMultiple ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
+                  Supprimer la sélection
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Supprimer {selectedIds.size} facture(s) ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Cette action est irréversible. Tous les fichiers et données seront supprimés.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Annuler</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={deleteSelected}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Supprimer {selectedIds.size} facture(s)
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
       )}
+
+      {/* Dialog d'export Evoliz */}
+      <InvoiceBatchExport
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        invoices={invoices
+          .filter((i) => selectedIds.has(i.id))
+          .map((i) => ({
+            id: i.id,
+            supplier_name: i.supplier_name,
+            supplier_siret: i.supplier_siret,
+            supplier_tva: i.supplier_tva,
+            supplier_address: i.supplier_address,
+            invoice_number: i.invoice_number,
+            invoice_date: i.invoice_date,
+            due_date: i.due_date,
+            total_ht: i.total_ht,
+            total_ttc: i.total_ttc,
+            tva_amount: i.tva_amount,
+            tva_rate: i.tva_rate,
+            description: i.description,
+            file_path: i.file_path,
+            evoliz_status: i.evoliz_status,
+          }))}
+        onExportComplete={() => {
+          loadInvoices();
+          setSelectedIds(new Set());
+        }}
+      />
 
       {loading ? (
         <div className="flex items-center justify-center py-8">
