@@ -171,74 +171,34 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     }
   };
 
-  // 🔥 CORRECTION : Charge maintenant les tâches du projet ET les tâches globales
-  // Si aucun projet n'est sélectionné, charge TOUTES les tâches pour le planning mensuel
+  // 🔥 CORRECTION : Charge TOUTES les tâches de l'utilisateur pour le calendrier mensuel
+  // Ajoute un flag is_current_project pour identifier les tâches du projet sélectionné
   const loadTodos = async () => {
     // Récupérer l'utilisateur
     const { data: user } = await supabase.auth.getUser();
     if (!user.user) return;
 
-    if (!currentProjectId) {
-      // Aucun projet sélectionné → charger TOUTES les tâches de l'utilisateur
-      const { data: allTodos, error } = await supabase
-        .from("project_todos")
-        .select("*")
-        .eq("user_id", user.user.id)
-        .order("due_date", { ascending: true });
-
-      if (error) {
-        console.error("Error loading all todos:", error);
-        setTodos([]);
-        return;
-      }
-
-      setTodos((allTodos || []).map((todo) => ({ ...todo, is_global: !todo.project_id })));
-      return;
-    }
-
-    // 1. Charger les tâches du projet
-    const { data: projectTodos, error: projectError } = await supabase
+    // Toujours charger TOUTES les tâches de l'utilisateur
+    const { data: allTodos, error } = await supabase
       .from("project_todos")
       .select("*")
-      .eq("project_id", currentProjectId)
-      .order("due_date", { ascending: true });
-
-    if (projectError) {
-      console.error("Error loading project todos:", projectError);
-      return;
-    }
-
-    // 2. Charger les tâches globales (project_id = null)
-    const { data: globalTodos, error: globalError } = await supabase
-      .from("project_todos")
-      .select("*")
-      .is("project_id", null)
       .eq("user_id", user.user.id)
       .order("due_date", { ascending: true });
 
-    if (globalError) {
-      console.error("Error loading global todos:", globalError);
+    if (error) {
+      console.error("Error loading all todos:", error);
+      setTodos([]);
+      return;
     }
 
-    // 3. Combiner les deux listes et marquer les tâches globales
-    const projectTodosWithFlag = (projectTodos || []).map((todo) => ({
+    // Marquer les tâches avec des flags utiles
+    const todosWithFlags = (allTodos || []).map((todo) => ({
       ...todo,
-      is_global: false,
+      is_global: !todo.project_id,
+      is_current_project: currentProjectId ? todo.project_id === currentProjectId : true,
     }));
 
-    const globalTodosWithFlag = (globalTodos || []).map((todo) => ({
-      ...todo,
-      is_global: true,
-    }));
-
-    // 4. Fusionner et trier par date
-    const allTodos = [...projectTodosWithFlag, ...globalTodosWithFlag].sort((a, b) => {
-      if (!a.due_date) return 1;
-      if (!b.due_date) return -1;
-      return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-    });
-
-    setTodos(allTodos);
+    setTodos(todosWithFlags);
   };
 
   const loadNotes = async () => {
