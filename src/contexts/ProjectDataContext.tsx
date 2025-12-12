@@ -360,8 +360,8 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
             filter: `project_id=eq.${currentProjectId}`,
           },
           (payload) => {
-            console.log("Project todos change:", payload);
-            loadTodos();
+            console.log("Project todos change:", payload.eventType, payload);
+            loadTodos(); // Toujours recharger pour INSERT, UPDATE et DELETE
           },
         )
         .subscribe();
@@ -385,12 +385,10 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
             filter: `user_id=eq.${user.user.id}`,
           },
           (payload) => {
-            console.log("Global todos change:", payload);
-            // Vérifier si c'est une tâche globale (project_id = null)
-            const record = payload.new as any;
-            if (!record.project_id || record.project_id === null) {
-              loadTodos();
-            }
+            console.log("Global todos change:", payload.eventType, payload);
+            // Toujours recharger pour INSERT, UPDATE et DELETE
+            // Car les modifications peuvent affecter le calendrier mensuel (scheduled_date, etc.)
+            loadTodos();
           },
         )
         .subscribe();
