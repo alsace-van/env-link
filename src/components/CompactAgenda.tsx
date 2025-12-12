@@ -92,9 +92,15 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   // Charger tous les projets pour afficher leurs noms
   useEffect(() => {
     const loadProjects = async () => {
-      const { data } = await supabase.from("projects").select("id, name");
+      const { data } = await supabase.from("projects").select("id, name, nom");
       if (data) {
-        setProjects(data);
+        // Utiliser name ou nom selon ce qui est disponible
+        setProjects(
+          data.map((p) => ({
+            id: p.id,
+            name: p.name || p.nom || "Sans nom",
+          })),
+        );
       }
     };
     loadProjects();
@@ -121,11 +127,13 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       }
     });
 
-    // Convertir les IDs en noms
-    const projectNames = Array.from(projectIds).map((id) => {
-      const project = projects.find((p) => p.id === id);
-      return project?.name || "Projet inconnu";
-    });
+    // Convertir les IDs en noms (ignorer les projets non trouvés)
+    const projectNames = Array.from(projectIds)
+      .map((id) => {
+        const project = projects.find((p) => p.id === id);
+        return project?.name || null;
+      })
+      .filter((name): name is string => name !== null);
 
     return {
       projectNames,
