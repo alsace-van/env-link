@@ -176,7 +176,12 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
   const loadTodos = async () => {
     // Récupérer l'utilisateur
     const { data: user } = await supabase.auth.getUser();
-    if (!user.user) return;
+    if (!user.user) {
+      console.log("❌ Pas d'utilisateur connecté");
+      return;
+    }
+
+    console.log("📋 Chargement des tâches pour user:", user.user.id);
 
     // Toujours charger TOUTES les tâches de l'utilisateur
     const { data: allTodos, error } = await supabase
@@ -186,10 +191,13 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
       .order("due_date", { ascending: true });
 
     if (error) {
-      console.error("Error loading all todos:", error);
+      console.error("❌ Error loading all todos:", error);
       setTodos([]);
       return;
     }
+
+    console.log("✅ Tâches chargées:", allTodos?.length || 0);
+    console.log("📅 Tâches avec scheduled_date:", allTodos?.filter((t) => t.scheduled_date)?.length || 0);
 
     // Marquer les tâches avec des flags utiles
     const todosWithFlags = (allTodos || []).map((todo) => ({
