@@ -258,7 +258,6 @@ export function SupplierInvoiceScannerDialog({
       if (isNewSupplier || !selectedSupplierId) {
         const newSupplier = await evolizApi.createSupplier({
           name: editedData.supplier_name,
-          type: "Professionnel",
         });
         supplierId = newSupplier.supplierid;
         toast.success(`Fournisseur "${editedData.supplier_name}" créé`);
