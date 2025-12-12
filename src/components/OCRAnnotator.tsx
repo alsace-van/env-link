@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -181,14 +181,17 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
         const pdfjsLib = await import("pdfjs-dist");
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
+        console.log("📄 Chargement PDF...", data.signedUrl);
         const loadingTask = pdfjsLib.getDocument(data.signedUrl);
         const pdf = await loadingTask.promise;
+        console.log("✅ PDF chargé, pages:", pdf.numPages);
+
         setPdfDoc(pdf);
         setTotalPages(pdf.numPages);
         setCurrentPage(1);
       }
     } catch (err) {
-      console.error("Erreur chargement PDF:", err);
+      console.error("❌ Erreur chargement PDF:", err);
       toast.error("Impossible de charger le PDF");
     } finally {
       setLoading(false);
@@ -196,46 +199,50 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
   };
 
   // Rendre une page du PDF
-  const renderPage = useCallback(
-    async (pageNum: number) => {
-      if (!pdfDoc || !canvasRef.current || pageRendering) return;
+  const renderPage = async (pageNum: number) => {
+    if (!pdfDoc || !canvasRef.current) return;
+    if (pageRendering) return; // Éviter les appels multiples
 
-      setPageRendering(true);
-      try {
-        const page = await pdfDoc.getPage(pageNum);
-        const canvas = canvasRef.current;
-        const context = canvas.getContext("2d");
+    setPageRendering(true);
+    try {
+      console.log("🖼️ Rendu page", pageNum);
+      const page = await pdfDoc.getPage(pageNum);
+      const canvas = canvasRef.current;
+      const context = canvas.getContext("2d");
 
-        if (!context) return;
-
-        // Calculer l'échelle pour que le PDF rentre bien
-        const viewport = page.getViewport({ scale: zoom * 1.5 });
-
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        setCanvasSize({ width: viewport.width, height: viewport.height });
-
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport,
-        };
-
-        await page.render(renderContext).promise;
-      } catch (err) {
-        console.error("Erreur rendu page:", err);
-      } finally {
-        setPageRendering(false);
+      if (!context) {
+        console.error("❌ Pas de contexte canvas");
+        return;
       }
-    },
-    [pdfDoc, zoom, pageRendering],
-  );
+
+      // Calculer l'échelle pour que le PDF rentre bien
+      const viewport = page.getViewport({ scale: zoom * 1.5 });
+
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      setCanvasSize({ width: viewport.width, height: viewport.height });
+
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      };
+
+      await page.render(renderContext).promise;
+      console.log("✅ Page rendue", pageNum);
+    } catch (err) {
+      console.error("❌ Erreur rendu page:", err);
+    } finally {
+      setPageRendering(false);
+    }
+  };
 
   // Rendre la page quand le PDF est chargé ou quand on change de page/zoom
   useEffect(() => {
-    if (pdfDoc && !loading) {
+    if (pdfDoc && !loading && !pageRendering) {
       renderPage(currentPage);
     }
-  }, [pdfDoc, currentPage, zoom, loading, renderPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfDoc, currentPage, zoom, loading]);
 
   const initializeZones = () => {
     // Initialiser les zones à partir des données détectées
