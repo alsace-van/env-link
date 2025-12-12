@@ -1810,6 +1810,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         toast.success(`Bloc copié vers le ${format(parseISO(targetDate), "d MMMM", { locale: fr })}`, {
           description: "Cliquez sur le rappel pour revenir à l'original",
         });
+
+        // 🔥 Rafraîchir le calendrier mensuel
+        refreshData();
       } catch (error) {
         console.error("Erreur copie bloc:", error);
         toast.error("Erreur lors de la copie");
@@ -1817,7 +1820,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         setIsMovingBlock(false);
       }
     },
-    [blocks, userId, projectId, selectedDate, updateBlockWithSync, isMovingBlock],
+    [blocks, userId, projectId, selectedDate, updateBlockWithSync, isMovingBlock, refreshData],
   );
 
   // ============================================
