@@ -115,6 +115,7 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
   const [annotatorOpen, setAnnotatorOpen] = useState(false);
   const [invoiceToAnnotate, setInvoiceToAnnotate] = useState<IncomingInvoice | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [rescanning, setRescanning] = useState<string | null>(null);
 
   useEffect(() => {
     if (!asDialog || dialogOpen) {
@@ -215,6 +216,67 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
       toast.error("Erreur lors de la suppression");
     } finally {
       setDeletingMultiple(false);
+    }
+  };
+
+  // Rescanner une facture (relancer l'OCR)
+  const rescanInvoice = async (invoice: IncomingInvoice) => {
+    setRescanning(invoice.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("rescan-invoice", {
+        body: { invoice_id: invoice.id },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success(data.message || "Rescan réussi");
+        // Recharger les factures pour voir les nouvelles données
+        await loadInvoices();
+      } else {
+        toast.error(data.error || "Erreur lors du rescan");
+      }
+    } catch (err) {
+      console.error("Erreur rescan:", err);
+      toast.error("Erreur lors du rescan");
+    } finally {
+      setRescanning(null);
+    }
+  };
+
+  // Rescanner toutes les factures sélectionnées
+  const rescanSelected = async () => {
+    if (selectedIds.size === 0) return;
+
+    const toRescan = invoices.filter((i) => selectedIds.has(i.id));
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const invoice of toRescan) {
+      setRescanning(invoice.id);
+      try {
+        const { data, error } = await supabase.functions.invoke("rescan-invoice", {
+          body: { invoice_id: invoice.id },
+        });
+
+        if (error || !data.success) {
+          errorCount++;
+        } else {
+          successCount++;
+        }
+      } catch {
+        errorCount++;
+      }
+    }
+
+    setRescanning(null);
+    await loadInvoices();
+
+    if (successCount > 0) {
+      toast.success(`${successCount} facture(s) rescannée(s)`);
+    }
+    if (errorCount > 0) {
+      toast.error(`${errorCount} erreur(s) lors du rescan`);
     }
   };
 
@@ -346,6 +408,19 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Voir le PDF
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => rescanInvoice(selectedInvoice)}
+                  disabled={rescanning === selectedInvoice.id}
+                >
+                  {rescanning === selectedInvoice.id ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  Rescanner
+                </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm">
@@ -428,6 +503,21 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
                     important
                   />
                   <DetailRow label="SIRET" value={selectedInvoice.supplier_siret} icon={<Hash className="h-3 w-3" />} />
+                  <DetailRow label="N° TVA" value={selectedInvoice.supplier_tva} icon={<Hash className="h-3 w-3" />} />
+                  {selectedInvoice.supplier_address && (
+                    <DetailRow
+                      label="Adresse"
+                      value={[
+                        selectedInvoice.supplier_address.addr,
+                        [selectedInvoice.supplier_address.postcode, selectedInvoice.supplier_address.town]
+                          .filter(Boolean)
+                          .join(" "),
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                      icon={<Receipt className="h-3 w-3" />}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -571,6 +661,14 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
         <div className="flex items-center justify-between p-3 mb-4 bg-muted rounded-lg">
           <span className="text-sm font-medium">{selectedIds.size} facture(s) sélectionnée(s)</span>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={rescanSelected} disabled={rescanning !== null}>
+              {rescanning !== null ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Rescanner
+            </Button>
             <Button
               variant="default"
               size="sm"
@@ -738,6 +836,19 @@ export function IncomingInvoicesList({ asDialog = false, trigger }: IncomingInvo
                       title="Voir le fichier"
                     >
                       <ExternalLink className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => rescanInvoice(invoice)}
+                      disabled={rescanning === invoice.id}
+                      title="Rescanner (relancer OCR)"
+                    >
+                      {rescanning === invoice.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
                     </Button>
                     <Button
                       variant="ghost"
