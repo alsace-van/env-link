@@ -177,11 +177,14 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
       if (data?.signedUrl) {
         setPdfUrl(data.signedUrl);
 
-        // Charger pdf.js dynamiquement
+        // Charger pdf.js
         const pdfjsLib = await import("pdfjs-dist");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
-        console.log("📄 Chargement PDF...", data.signedUrl);
+        // Importer le worker comme module et créer une URL blob
+        const pdfjsWorker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker.default;
+
+        console.log("📄 Chargement PDF...");
         const loadingTask = pdfjsLib.getDocument(data.signedUrl);
         const pdf = await loadingTask.promise;
         console.log("✅ PDF chargé, pages:", pdf.numPages);
