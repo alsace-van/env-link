@@ -10,14 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Clock, 
-  Calendar as CalendarIcon, 
+import {
+  Clock,
+  Calendar as CalendarIcon,
   AlertTriangle,
   CheckCircle2,
   ArrowRight,
   Wrench,
-  RefreshCw
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, isToday, isBefore, startOfDay } from "date-fns";
@@ -83,10 +83,12 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
 
   const loadPlannedTasks = async () => {
     if (!projectId) return;
-    
+
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       // Charger toutes les daily_notes du projet
@@ -107,15 +109,19 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
 
         try {
           const blocks: NoteBlock[] = JSON.parse(note.blocks_data);
-          
+
           for (const block of blocks) {
-            // Ne garder que les blocs de type "task" avec une tâche liée
-            if (block.type !== "task" || !block.linkedTask) continue;
+            // Ne garder que les blocs de type "task"
+            if (block.type !== "task") continue;
+
+            // 🔥 Supporter linkedTasks (nouveau) et linkedTask (ancien)
+            const blockLinkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
+            if (blockLinkedTasks.length === 0) continue;
 
             // Calculer la date effective
             const effectiveDate = block.targetDate || note.note_date;
             const effectiveDateObj = parseISO(effectiveDate);
-            
+
             // Ignorer les blocs reportés vers une date future
             if (block.rescheduledTo) {
               const rescheduledDateObj = parseISO(block.rescheduledTo);
@@ -130,18 +136,21 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
               continue; // Date future, pas encore à afficher
             }
 
-            tasks.push({
-              blockId: block.id,
-              noteId: note.id,
-              noteDate: note.note_date,
-              targetDate: block.targetDate,
-              effectiveDate,
-              linkedTask: block.linkedTask,
-              taskStatus: block.taskStatus || "pending",
-              rescheduledTo: block.rescheduledTo,
-              isOverdue: isBefore(effectiveDateObj, today) && !isToday(effectiveDateObj),
-              isToday: isToday(effectiveDateObj),
-            });
+            // 🔥 Ajouter chaque tâche liée
+            for (const linkedTask of blockLinkedTasks) {
+              tasks.push({
+                blockId: block.id,
+                noteId: note.id,
+                noteDate: note.note_date,
+                targetDate: block.targetDate,
+                effectiveDate,
+                linkedTask: linkedTask,
+                taskStatus: block.taskStatus || "pending",
+                rescheduledTo: block.rescheduledTo,
+                isOverdue: isBefore(effectiveDateObj, today) && !isToday(effectiveDateObj),
+                isToday: isToday(effectiveDateObj),
+              });
+            }
           }
         } catch (e) {
           console.error("Erreur parsing blocks_data:", e);
@@ -182,8 +191,8 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
 
       // 2. Parser et mettre à jour le bloc
       const blocks: NoteBlock[] = JSON.parse(note.blocks_data);
-      const blockIndex = blocks.findIndex(b => b.id === task.blockId);
-      
+      const blockIndex = blocks.findIndex((b) => b.id === task.blockId);
+
       if (blockIndex === -1) {
         toast.error("Bloc non trouvé");
         return;
@@ -197,9 +206,9 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
       // 3. Sauvegarder
       const { error: updateError } = await (supabase as any)
         .from("daily_notes")
-        .update({ 
+        .update({
           blocks_data: JSON.stringify(blocks),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq("id", task.noteId);
 
@@ -218,7 +227,7 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
 
       // 5. Rafraîchir la liste
       loadPlannedTasks();
-      
+
       if (newStatus === "completed") {
         toast.success("Tâche terminée !");
       }
@@ -230,14 +239,14 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
 
   // Filtrer selon l'onglet actif
   const filteredTasks = useMemo(() => {
-    return plannedTasks.filter(task => 
-      showCompleted ? task.taskStatus === "completed" : task.taskStatus !== "completed"
+    return plannedTasks.filter((task) =>
+      showCompleted ? task.taskStatus === "completed" : task.taskStatus !== "completed",
     );
   }, [plannedTasks, showCompleted]);
 
   // Stats
-  const todayCount = plannedTasks.filter(t => t.isToday && t.taskStatus !== "completed").length;
-  const overdueCount = plannedTasks.filter(t => t.isOverdue && t.taskStatus !== "completed").length;
+  const todayCount = plannedTasks.filter((t) => t.isToday && t.taskStatus !== "completed").length;
+  const overdueCount = plannedTasks.filter((t) => t.isOverdue && t.taskStatus !== "completed").length;
 
   if (!projectId) {
     return <p className="text-sm text-muted-foreground p-4">Sélectionnez un projet</p>;
@@ -253,18 +262,9 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
               {todayCount} aujourd'hui
             </Badge>
           )}
-          {overdueCount > 0 && (
-            <Badge variant="destructive">
-              {overdueCount} en retard
-            </Badge>
-          )}
+          {overdueCount > 0 && <Badge variant="destructive">{overdueCount} en retard</Badge>}
         </div>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={loadPlannedTasks}
-          disabled={loading}
-        >
+        <Button variant="ghost" size="sm" onClick={loadPlannedTasks} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </div>
@@ -277,8 +277,7 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
           className="flex-1"
           onClick={() => setShowCompleted(false)}
         >
-          <Wrench className="h-4 w-4 mr-2" />
-          À faire ({plannedTasks.filter(t => t.taskStatus !== "completed").length})
+          <Wrench className="h-4 w-4 mr-2" />À faire ({plannedTasks.filter((t) => t.taskStatus !== "completed").length})
         </Button>
         <Button
           variant={showCompleted ? "default" : "outline"}
@@ -287,7 +286,7 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
           onClick={() => setShowCompleted(true)}
         >
           <CheckCircle2 className="h-4 w-4 mr-2" />
-          Terminées ({plannedTasks.filter(t => t.taskStatus === "completed").length})
+          Terminées ({plannedTasks.filter((t) => t.taskStatus === "completed").length})
         </Button>
       </div>
 
@@ -295,9 +294,7 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
       <ScrollArea className="h-[400px]">
         <div className="space-y-2 pr-4">
           {loading ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              Chargement...
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-8">Chargement...</p>
           ) : filteredTasks.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               {showCompleted ? "Aucune tâche terminée" : "Aucune tâche planifiée pour aujourd'hui"}
@@ -307,8 +304,8 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
               <div
                 key={`${task.noteId}-${task.blockId}`}
                 className={`p-3 rounded-lg border transition-colors ${
-                  task.taskStatus === "completed" 
-                    ? "bg-muted/50 border-muted" 
+                  task.taskStatus === "completed"
+                    ? "bg-muted/50 border-muted"
                     : task.isOverdue
                       ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900"
                       : "bg-background hover:border-primary/50"
@@ -322,17 +319,19 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
                     }}
                     className="mt-1"
                   />
-                  
+
                   <div className="flex-1 min-w-0 space-y-1">
                     {/* Titre */}
                     <div className="flex items-start justify-between gap-2">
-                      <h4 className={`font-medium text-sm ${
-                        task.taskStatus === "completed" ? "line-through text-muted-foreground" : ""
-                      }`}>
+                      <h4
+                        className={`font-medium text-sm ${
+                          task.taskStatus === "completed" ? "line-through text-muted-foreground" : ""
+                        }`}
+                      >
                         {task.linkedTask.title}
                       </h4>
                       {task.linkedTask.category_color && (
-                        <div 
+                        <div
                           className="w-3 h-3 rounded-full shrink-0 mt-1"
                           style={{ backgroundColor: task.linkedTask.category_color }}
                           title={task.linkedTask.category_name}
@@ -342,23 +341,19 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
 
                     {/* Description */}
                     {task.linkedTask.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {task.linkedTask.description}
-                      </p>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{task.linkedTask.description}</p>
                     )}
 
                     {/* Badges */}
                     <div className="flex flex-wrap gap-1.5">
                       {/* Date */}
-                      <Badge 
+                      <Badge
                         variant={task.isOverdue ? "destructive" : task.isToday ? "default" : "secondary"}
                         className="text-xs gap-1"
                       >
                         {task.isOverdue && <AlertTriangle className="h-3 w-3" />}
                         <CalendarIcon className="h-3 w-3" />
-                        {task.isToday 
-                          ? "Aujourd'hui" 
-                          : format(parseISO(task.effectiveDate), "d MMM", { locale: fr })}
+                        {task.isToday ? "Aujourd'hui" : format(parseISO(task.effectiveDate), "d MMM", { locale: fr })}
                       </Badge>
 
                       {/* Heures estimées */}
