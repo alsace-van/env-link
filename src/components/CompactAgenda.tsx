@@ -104,12 +104,12 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       const { data } = await supabase.from("projects").select("id, name, nom");
       if (data) {
         // Utiliser name ou nom selon ce qui est disponible
-        setProjects(
-          data.map((p) => ({
-            id: p.id,
-            name: p.name || p.nom || "Sans nom",
-          })),
-        );
+        const mappedProjects = data.map((p) => ({
+          id: p.id,
+          name: p.name || p.nom || "Sans nom",
+        }));
+        console.log("🏠 Projets chargés:", mappedProjects);
+        setProjects(mappedProjects);
       }
     };
     loadProjects();
@@ -136,10 +136,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       }
     });
 
-    // Convertir les IDs en noms (ignorer les projets non trouvés)
+    // Convertir les IDs en noms
     const projectNames = Array.from(projectIds)
       .map((id) => {
         const project = projects.find((p) => p.id === id);
+        if (!project) {
+          console.warn(
+            "⚠️ Projet non trouvé pour ID:",
+            id,
+            "- Projets disponibles:",
+            projects.map((p) => p.id),
+          );
+        }
         return project?.name || null;
       })
       .filter((name): name is string => name !== null);
