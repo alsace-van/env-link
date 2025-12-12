@@ -92,6 +92,12 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
     setCurrentProjectId(projectId);
   }, [projectId, setCurrentProjectId]);
 
+  // Debug: afficher les todos
+  useEffect(() => {
+    console.log("📆 CompactAgenda - todos reçus:", todos.length);
+    console.log("📅 Todos avec scheduled_date:", todos.filter((t) => t.scheduled_date).length);
+  }, [todos]);
+
   // Charger tous les projets pour afficher leurs noms
   useEffect(() => {
     const loadProjects = async () => {
@@ -1406,14 +1412,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       />
 
       {/* Planning visuel - ouvert par double-clic sur un jour */}
-      {projectId && (
-        <DailyNotesCanvas
-          projectId={projectId}
-          open={isPlanningOpen}
-          onOpenChange={setIsPlanningOpen}
-          initialDate={planningDate}
-        />
-      )}
+      {projectId && <DailyNotesCanvas projectId={projectId} open={isPlanningOpen} onOpenChange={setIsPlanningOpen} />}
     </>
   );
 };
