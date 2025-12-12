@@ -1728,8 +1728,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
         if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
 
-        // 2. Préparer le bloc pour la nouvelle date avec référence vers l'original
-        // La copie est un RAPPEL, pas une duplication des tâches
+        // 2. Préparer le bloc pour la nouvelle date AVEC les tâches liées
         const blockForTarget: NoteBlock = {
           ...block,
           id: crypto.randomUUID(), // Nouveau ID
@@ -1739,16 +1738,18 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           rescheduledTo: undefined, // La copie n'est pas reportée
           sourceDate: currentDateStr, // Marquer la date d'origine (roadmap)
           sourceBlockId: block.id, // Référence vers le bloc original pour sync
-          // La copie n'a pas de tâches liées - c'est juste un rappel
-          linkedTasks: undefined,
-          linkedTask: undefined,
+          // 🔥 GARDER les tâches liées dans la copie
+          linkedTasks: block.linkedTasks,
+          linkedTask: block.linkedTask,
         };
 
-        // 2b. Mettre à jour scheduled_date de l'original pour qu'il apparaisse dans le planning mensuel
+        // 2b. Mettre à jour scheduled_date des tâches vers la NOUVELLE date
         const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
         if (linkedTasks.length > 0) {
           const taskIds = linkedTasks.map((t) => t.id);
-          await (supabase as any).from("project_todos").update({ scheduled_date: currentDateStr }).in("id", taskIds);
+          // 🔥 Mettre à jour scheduled_date vers la NOUVELLE date
+          await (supabase as any).from("project_todos").update({ scheduled_date: targetDate }).in("id", taskIds);
+          console.log("📅 scheduled_date mis à jour vers", targetDate, "pour", taskIds.length, "tâches");
         }
 
         // 3. Récupérer les blocs existants de la date cible
