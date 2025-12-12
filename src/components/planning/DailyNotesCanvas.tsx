@@ -98,6 +98,7 @@ import {
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useProjectData } from "@/contexts/ProjectDataContext";
 
 // ============================================
 // TYPES
@@ -1108,6 +1109,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   const [isLoading, setIsLoading] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Hook pour rafraîchir les données du contexte (calendrier mensuel)
+  const { refreshData } = useProjectData();
+
   // Liste des projets pour le sélecteur
   const [projects, setProjects] = useState<ProjectItem[]>([]);
 
@@ -1321,8 +1325,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           console.error("Erreur nettoyage original:", error);
         }
       }
+
+      // 🔥 Rafraîchir le contexte pour mettre à jour le calendrier mensuel
+      refreshData();
     },
-    [blocks, selectedBlockId, userId, projectId],
+    [blocks, selectedBlockId, userId, projectId, refreshData],
   );
 
   const addBlock = useCallback((type: NoteBlock["type"]) => {
@@ -2291,11 +2298,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
       setHasUnsavedChanges(false);
       toast.success("Notes sauvegardées");
+
+      // 🔥 Rafraîchir le contexte pour mettre à jour le calendrier mensuel
+      refreshData();
     } catch (error) {
       console.error("Erreur sauvegarde:", error);
       toast.error("Erreur lors de la sauvegarde");
     }
-  }, [userId, selectedDate, projectId, blocks, edges]);
+  }, [userId, selectedDate, projectId, blocks, edges, refreshData]);
 
   // Auto-save
   useEffect(() => {
