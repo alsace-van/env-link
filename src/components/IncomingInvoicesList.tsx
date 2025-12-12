@@ -978,12 +978,14 @@ function DetailRow({
   highlight?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between p-2 rounded ${highlight ? "bg-primary/10" : "bg-muted/50"}`}>
+    <div className={`flex flex-col gap-1 p-2 rounded ${highlight ? "bg-primary/10" : "bg-muted/50"}`}>
       <span className="text-xs text-muted-foreground flex items-center gap-1.5">
         {icon}
         {label}
       </span>
-      <span className={`text-sm ${important ? "font-semibold" : ""} ${highlight ? "text-primary font-bold" : ""}`}>
+      <span
+        className={`text-sm break-all ${important ? "font-semibold" : ""} ${highlight ? "text-primary font-bold" : ""}`}
+      >
         {value || <span className="text-muted-foreground">-</span>}
       </span>
     </div>
