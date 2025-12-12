@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useProjectData } from "@/contexts/ProjectDataContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -7,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Trash2, Plus, Calendar as CalendarIcon, History, ListTodo } from "lucide-react";
+import { Trash2, Plus, Calendar as CalendarIcon, History, ListTodo, CalendarX } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -19,8 +20,13 @@ interface Todo {
   completed: boolean;
   priority: string;
   due_date: string | null;
+  scheduled_date: string | null;
   created_at: string;
   updated_at: string;
+  projects?: {
+    name?: string;
+    nom?: string;
+  };
 }
 
 export const GlobalTodoList = () => {
@@ -29,6 +35,7 @@ export const GlobalTodoList = () => {
   const [newTodo, setNewTodo] = useState("");
   const [dueDate, setDueDate] = useState<Date>();
   const [showCompleted, setShowCompleted] = useState(false);
+  const { refreshData } = useProjectData();
 
   useEffect(() => {
     loadTodos();
@@ -40,11 +47,13 @@ export const GlobalTodoList = () => {
     } = await supabase.auth.getUser();
     if (!user) return;
 
+    // 🔥 Ne charger que les tâches PLANIFIÉES (avec scheduled_date)
     const { data, error } = await supabase
       .from("project_todos")
-      .select("*")
+      .select("*, projects(name, nom)")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      .not("scheduled_date", "is", null)
+      .order("scheduled_date", { ascending: true });
 
     if (error) {
       console.error(error);
@@ -62,12 +71,20 @@ export const GlobalTodoList = () => {
   const toggleTodo = async (id: string, completed: boolean) => {
     const { error } = await supabase.from("project_todos").update({ completed: !completed }).eq("id", id);
 
-    if (!error) loadTodos();
+    if (!error) {
+      loadTodos();
+      refreshData(); // Mettre à jour le calendrier
+    }
   };
 
   const deleteTodo = async (id: string) => {
-    const { error } = await supabase.from("project_todos").delete().eq("id", id);
-    if (!error) loadTodos();
+    // 🔥 Déplanifier au lieu de supprimer (retirer scheduled_date)
+    const { error } = await supabase.from("project_todos").update({ scheduled_date: null }).eq("id", id);
+    if (!error) {
+      toast.success("Tâche retirée du planning");
+      loadTodos();
+      refreshData(); // Mettre à jour le calendrier
+    }
   };
 
   return (
@@ -110,19 +127,17 @@ export const GlobalTodoList = () => {
 
       {/* Bouton pour basculer entre actives et historique */}
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">
-          {showCompleted ? "Historique des tâches" : "Toutes les tâches actives"}
-        </h3>
+        <h3 className="text-sm font-semibold">{showCompleted ? "Tâches terminées" : "Tâches planifiées"}</h3>
         <Button variant="outline" size="sm" onClick={() => setShowCompleted(!showCompleted)} className="gap-2">
           {showCompleted ? (
             <>
               <ListTodo className="h-4 w-4" />
-              Tâches actives
+              Actives
             </>
           ) : (
             <>
               <History className="h-4 w-4" />
-              Historique
+              Terminées
             </>
           )}
         </Button>
@@ -138,30 +153,31 @@ export const GlobalTodoList = () => {
                 <span className={`flex-1 text-sm ${todo.completed ? "line-through text-muted-foreground" : ""}`}>
                   {todo.title}
                 </span>
-                <Button variant="ghost" size="sm" onClick={() => deleteTodo(todo.id)}>
-                  <Trash2 className="h-4 w-4" />
+                <Button variant="ghost" size="sm" onClick={() => deleteTodo(todo.id)} title="Retirer du planning">
+                  <CalendarX className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex items-center gap-2 ml-6 text-xs text-muted-foreground">
-                {todo.due_date && (
-                  <Badge variant={new Date(todo.due_date) < new Date() && !todo.completed ? "destructive" : "outline"}>
-                    <CalendarIcon className="h-3 w-3 mr-1" />
-                    {format(new Date(todo.due_date), "dd MMM yyyy", { locale: fr })}
+              <div className="flex items-center gap-2 ml-6 text-xs text-muted-foreground flex-wrap">
+                {/* Nom du projet */}
+                {todo.projects && (
+                  <Badge variant="secondary" className="text-xs">
+                    {todo.projects.name || todo.projects.nom || "Sans projet"}
                   </Badge>
                 )}
-                {todo.completed ? (
-                  <span className="text-green-600 dark:text-green-400 font-medium">
-                    ✓ Validée le {format(new Date(todo.updated_at), "dd/MM/yyyy à HH:mm", { locale: fr })}
-                  </span>
-                ) : (
-                  <span>Créée le {format(new Date(todo.created_at), "dd/MM/yyyy à HH:mm", { locale: fr })}</span>
+                {/* Date planifiée */}
+                {todo.scheduled_date && (
+                  <Badge variant="outline" className="text-xs">
+                    <CalendarIcon className="h-3 w-3 mr-1" />
+                    {format(new Date(todo.scheduled_date), "dd MMM", { locale: fr })}
+                  </Badge>
                 )}
+                {todo.completed && <span className="text-green-600 dark:text-green-400 font-medium">✓ Terminée</span>}
               </div>
             </div>
           ))}
         {todos.filter((todo) => (showCompleted ? todo.completed : !todo.completed)).length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">
-            {showCompleted ? "Aucune tâche accomplie" : "Aucune tâche active"}
+            {showCompleted ? "Aucune tâche terminée" : "Aucune tâche planifiée"}
           </p>
         )}
       </div>
