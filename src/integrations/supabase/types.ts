@@ -1289,6 +1289,7 @@ export type Database = {
           due_date: string | null
           evoliz_error: string | null
           evoliz_expense_id: string | null
+          evoliz_exported_at: string | null
           evoliz_sent_at: string | null
           evoliz_status: string | null
           file_name: string
@@ -1302,8 +1303,10 @@ export type Database = {
           ocr_result: Json | null
           source: string | null
           status: string | null
+          supplier_address: Json | null
           supplier_name: string | null
           supplier_siret: string | null
+          supplier_tva: string | null
           template_id: string | null
           tokens_used: number | null
           total_ht: number | null
@@ -1324,6 +1327,7 @@ export type Database = {
           due_date?: string | null
           evoliz_error?: string | null
           evoliz_expense_id?: string | null
+          evoliz_exported_at?: string | null
           evoliz_sent_at?: string | null
           evoliz_status?: string | null
           file_name: string
@@ -1337,8 +1341,10 @@ export type Database = {
           ocr_result?: Json | null
           source?: string | null
           status?: string | null
+          supplier_address?: Json | null
           supplier_name?: string | null
           supplier_siret?: string | null
+          supplier_tva?: string | null
           template_id?: string | null
           tokens_used?: number | null
           total_ht?: number | null
@@ -1359,6 +1365,7 @@ export type Database = {
           due_date?: string | null
           evoliz_error?: string | null
           evoliz_expense_id?: string | null
+          evoliz_exported_at?: string | null
           evoliz_sent_at?: string | null
           evoliz_status?: string | null
           file_name?: string
@@ -1372,8 +1379,10 @@ export type Database = {
           ocr_result?: Json | null
           source?: string | null
           status?: string | null
+          supplier_address?: Json | null
           supplier_name?: string | null
           supplier_siret?: string | null
+          supplier_tva?: string | null
           template_id?: string | null
           tokens_used?: number | null
           total_ht?: number | null
@@ -3855,9 +3864,11 @@ export type Database = {
           identification_patterns: Json | null
           last_used_at: string | null
           success_rate: number | null
+          supplier_address: Json | null
           supplier_name: string
           supplier_name_normalized: string | null
           supplier_siret: string | null
+          supplier_tva: string | null
           times_used: number | null
           updated_at: string | null
           user_id: string
@@ -3869,9 +3880,11 @@ export type Database = {
           identification_patterns?: Json | null
           last_used_at?: string | null
           success_rate?: number | null
+          supplier_address?: Json | null
           supplier_name: string
           supplier_name_normalized?: string | null
           supplier_siret?: string | null
+          supplier_tva?: string | null
           times_used?: number | null
           updated_at?: string | null
           user_id: string
@@ -3883,9 +3896,11 @@ export type Database = {
           identification_patterns?: Json | null
           last_used_at?: string | null
           success_rate?: number | null
+          supplier_address?: Json | null
           supplier_name?: string
           supplier_name_normalized?: string | null
           supplier_siret?: string | null
+          supplier_tva?: string | null
           times_used?: number | null
           updated_at?: string | null
           user_id?: string
