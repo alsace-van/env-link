@@ -45,6 +45,7 @@ import { AddNoteModal } from "@/components/planning/AddNoteModal";
 import { AddSupplierExpenseModal } from "@/components/planning/AddSupplierExpenseModal";
 import { AddAppointmentModal } from "@/components/planning/AddAppointmentModal";
 import { AddDeliveryModal } from "@/components/planning/AddDeliveryModal";
+import DailyNotesCanvas from "@/components/planning/DailyNotesCanvas";
 
 interface CompactAgendaProps {
   projectId: string | null;
@@ -64,6 +65,8 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   const [currentTime, setCurrentTime] = useState(new Date()); // Pour rafraîchir l'heure actuelle
   const [isLegendOpen, setIsLegendOpen] = useState(false); // Modal de légende des couleurs
   const [showDailyViewInModal, setShowDailyViewInModal] = useState(false); // Afficher le planning journalier dans la modal
+  const [isPlanningOpen, setIsPlanningOpen] = useState(false); // Ouvrir le planning visuel (DailyNotesCanvas)
+  const [planningDate, setPlanningDate] = useState<Date>(new Date()); // Date pour le planning
 
   // États pour les modales
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -899,7 +902,17 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                     }`}
                     onClick={() => {
                       setCurrentDate(day);
-                      setShowDailyViewInModal(true); // Afficher le planning journalier
+                      setShowDailyViewInModal(true); // Afficher le résumé du jour
+                    }}
+                    onDoubleClick={() => {
+                      // Double-clic : ouvrir le planning visuel
+                      if (projectId) {
+                        setPlanningDate(day);
+                        setIsPlanningOpen(true);
+                        setIsMonthViewOpen(false); // Fermer la modal mensuelle
+                      } else {
+                        toast.info("Sélectionnez un projet pour ouvrir le planning");
+                      }
                     }}
                     onMouseEnter={() => setHoveredDay(day.toISOString())}
                     onMouseLeave={() => setHoveredDay(null)}
@@ -1391,6 +1404,16 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
         projectId={projectId}
         selectedDate={currentDate}
       />
+
+      {/* Planning visuel - ouvert par double-clic sur un jour */}
+      {projectId && (
+        <DailyNotesCanvas
+          projectId={projectId}
+          open={isPlanningOpen}
+          onOpenChange={setIsPlanningOpen}
+          initialDate={planningDate}
+        />
+      )}
     </>
   );
 };
