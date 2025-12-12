@@ -26,10 +26,10 @@ serve(async (req) => {
     const { invoice_id } = await req.json();
 
     if (!invoice_id) {
-      return new Response(
-        JSON.stringify({ success: false, error: "invoice_id requis" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "invoice_id requis" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     console.log(`🔄 Rescan facture: ${invoice_id}`);
@@ -42,36 +42,51 @@ serve(async (req) => {
       .single();
 
     if (fetchError || !invoice) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Facture non trouvée" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Facture non trouvée" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // 2. Télécharger le fichier depuis le storage
+    console.log(`📥 Téléchargement: ${invoice.file_path}`);
     const { data: fileData, error: downloadError } = await supabase.storage
-      .from("invoices")
+      .from("incoming-invoices")
       .download(invoice.file_path);
 
     if (downloadError || !fileData) {
       console.error("Erreur téléchargement:", downloadError);
       return new Response(
-        JSON.stringify({ success: false, error: "Impossible de télécharger le fichier" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({
+          success: false,
+          error: `Impossible de télécharger le fichier: ${downloadError?.message || "fichier non trouvé"}`,
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // 3. Convertir en base64
+    console.log(`📦 Fichier téléchargé: ${fileData.size} bytes`);
+
+    // 3. Convertir en base64 (méthode compatible avec gros fichiers)
     const arrayBuffer = await fileData.arrayBuffer();
-    const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let binary = "";
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const base64Data = btoa(binary);
     const mimeType = invoice.mime_type || "application/pdf";
+
+    console.log(`🔄 Base64 généré, lancement OCR Gemini...`);
 
     // 4. Appeler Gemini pour l'OCR
     if (!geminiApiKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: "GEMINI_API_KEY non configurée" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "GEMINI_API_KEY non configurée" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const invoicePrompt = `Tu es un expert en extraction de données de factures fournisseurs françaises.
@@ -119,15 +134,12 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
           body: JSON.stringify({
             contents: [
               {
-                parts: [
-                  { text: invoicePrompt },
-                  { inline_data: { mime_type: mimeType, data: base64Data } }
-                ],
+                parts: [{ text: invoicePrompt }, { inline_data: { mime_type: mimeType, data: base64Data } }],
               },
             ],
             generationConfig: { temperature: 0, maxOutputTokens: 4096 },
           }),
-        }
+        },
       );
 
       if (geminiResponse.ok) {
@@ -187,17 +199,14 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
       updateData.confidence = ocrResult.confidence ?? invoice.confidence;
     }
 
-    const { error: updateError } = await supabase
-      .from("incoming_invoices")
-      .update(updateData)
-      .eq("id", invoice_id);
+    const { error: updateError } = await supabase.from("incoming_invoices").update(updateData).eq("id", invoice_id);
 
     if (updateError) {
       console.error("Erreur mise à jour:", updateError);
-      return new Response(
-        JSON.stringify({ success: false, error: "Erreur mise à jour: " + updateError.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Erreur mise à jour: " + updateError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // 6. Mettre à jour le quota tokens
@@ -227,9 +236,8 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
           supplier_address: ocrResult?.supplier_address || null,
         },
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-
   } catch (error) {
     console.error("Error in rescan-invoice:", error);
     return new Response(
@@ -237,7 +245,7 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
         success: false,
         error: error instanceof Error ? error.message : "Erreur inconnue",
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
