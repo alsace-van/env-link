@@ -123,37 +123,30 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       return false;
     });
 
-    // Regrouper par projet
-    const projectIds = new Set<string>();
+    // Regrouper par nom de projet
+    const projectNamesSet = new Set<string>();
     const tasksWithoutProject: string[] = [];
 
-    todosForDate.forEach((todo) => {
-      if (todo.project_id) {
-        projectIds.add(todo.project_id);
+    todosForDate.forEach((todo: any) => {
+      // 🔥 Utiliser project_name directement depuis le todo
+      if (todo.project_name) {
+        projectNamesSet.add(todo.project_name);
+      } else if (todo.project_id) {
+        // Fallback: chercher dans la liste des projets
+        const project = projects.find((p) => p.id === todo.project_id);
+        if (project?.name) {
+          projectNamesSet.add(project.name);
+        } else {
+          console.warn("⚠️ Projet non trouvé pour ID:", todo.project_id);
+        }
       } else {
         // Tâche sans projet - ajouter le titre
         tasksWithoutProject.push(todo.title);
       }
     });
 
-    // Convertir les IDs en noms
-    const projectNames = Array.from(projectIds)
-      .map((id) => {
-        const project = projects.find((p) => p.id === id);
-        if (!project) {
-          console.warn(
-            "⚠️ Projet non trouvé pour ID:",
-            id,
-            "- Projets disponibles:",
-            projects.map((p) => p.id),
-          );
-        }
-        return project?.name || null;
-      })
-      .filter((name): name is string => name !== null);
-
     return {
-      projectNames,
+      projectNames: Array.from(projectNamesSet),
       tasksWithoutProject,
       totalTodos: todosForDate.length,
     };
