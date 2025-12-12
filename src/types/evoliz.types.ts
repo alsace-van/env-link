@@ -327,17 +327,39 @@ export interface EvolizArticleInput {
 export interface EvolizSupplier {
   supplierid: number;
   name: string;
+  code?: string;
   address?: {
     postcode: string;
     town: string;
     country: string;
     addr: string;
+    addr2?: string;
   };
   email?: string | null;
   phone?: string | null;
-  siret?: string | null;
+  business_number?: string | null; // SIRET
   vat_number?: string | null;
   comment?: string | null;
+}
+
+export interface EvolizSupplierInput {
+  name: string;
+  code?: string;
+  legalform?: string;
+  business_number?: string; // SIRET
+  vat_number?: string;
+  activity_number?: string;
+  address?: {
+    addr?: string;
+    addr2?: string;
+    postcode?: string;
+    town?: string;
+    iso2?: string; // FR, DE, etc.
+  };
+  phone?: string;
+  mobile?: string;
+  website?: string;
+  comment?: string;
 }
 
 // --- BUYS (ACHATS/DÉPENSES) ---
