@@ -177,6 +177,13 @@ CHAMPS À EXTRAIRE :
 {
   "supplier_name": "Nom du fournisseur",
   "supplier_siret": "SIRET si visible ou null",
+  "supplier_tva": "N° TVA intracommunautaire (FRxxx) si visible ou null",
+  "supplier_address": {
+    "addr": "Adresse rue ou null",
+    "postcode": "Code postal ou null",
+    "town": "Ville ou null",
+    "country_iso2": "FR par défaut"
+  },
   "invoice_number": "Numéro de facture ou null",
   "invoice_date": "YYYY-MM-DD ou null",
   "due_date": "YYYY-MM-DD ou null",
@@ -246,7 +253,47 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
     }
 
     // =========================================
-    // 6. ENREGISTRER DANS LA BASE
+    // 6. VÉRIFIER LES DOUBLONS
+    // =========================================
+    let isDuplicate = false;
+    let duplicateId: string | null = null;
+
+    if (ocrResult?.invoice_number && ocrResult?.supplier_name) {
+      // Chercher une facture existante avec même fournisseur + numéro
+      const { data: existing } = await supabase
+        .from("incoming_invoices")
+        .select("id, invoice_number, supplier_name, total_ttc")
+        .eq("user_id", userId)
+        .eq("invoice_number", ocrResult.invoice_number)
+        .ilike("supplier_name", `%${ocrResult.supplier_name.substring(0, 10)}%`)
+        .limit(1)
+        .single();
+
+      if (existing) {
+        isDuplicate = true;
+        duplicateId = existing.id;
+        console.log(`⚠️ Doublon détecté: ${existing.supplier_name} - ${existing.invoice_number}`);
+      }
+    }
+
+    // Si doublon, ne pas insérer mais retourner un avertissement
+    if (isDuplicate) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          warning: "duplicate",
+          message: `⚠️ Facture déjà reçue (${ocrResult?.supplier_name} - ${ocrResult?.invoice_number})`,
+          duplicate_id: duplicateId,
+          ocr_result: ocrResult,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // =========================================
+    // 7. ENREGISTRER DANS LA BASE
     // =========================================
     const invoiceRecord = {
       file_path: storagePath,
@@ -257,6 +304,9 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
       ocr_result: ocrResult,
       ocr_error: ocrError,
       supplier_name: ocrResult?.supplier_name || null,
+      supplier_siret: ocrResult?.supplier_siret || null,
+      supplier_tva: ocrResult?.supplier_tva || null,
+      supplier_address: ocrResult?.supplier_address || null,
       invoice_number: ocrResult?.invoice_number || null,
       invoice_date: ocrResult?.invoice_date || null,
       total_ht: ocrResult?.total_ht || null,
@@ -280,7 +330,7 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
     }
 
     // =========================================
-    // 7. METTRE À JOUR LE QUOTA TOKENS (optionnel)
+    // 8. METTRE À JOUR LE QUOTA TOKENS (optionnel)
     // =========================================
     if (tokensUsed > 0) {
       try {
@@ -294,7 +344,7 @@ Retourne UNIQUEMENT le JSON sans backticks ni texte.`;
     }
 
     // =========================================
-    // 8. RÉPONSE
+    // 9. RÉPONSE
     // =========================================
     return new Response(
       JSON.stringify({
