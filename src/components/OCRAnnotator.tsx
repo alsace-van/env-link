@@ -29,6 +29,8 @@ import {
   Percent,
   AlertCircle,
   MapPin,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 // Types
@@ -137,6 +139,7 @@ const FIELD_ICONS: { [key: string]: React.ReactNode } = {
 
 export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotatorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -146,6 +149,13 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [tempZone, setTempZone] = useState<BoundingBox | null>(null);
+
+  // PDF.js states
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageRendering, setPageRendering] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   // Zones éditables
   const [zones, setZones] = useState<{ [key: string]: DetectedZone }>({});
@@ -166,6 +176,16 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
 
       if (data?.signedUrl) {
         setPdfUrl(data.signedUrl);
+
+        // Charger pdf.js dynamiquement
+        const pdfjsLib = await import("pdfjs-dist");
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+        const loadingTask = pdfjsLib.getDocument(data.signedUrl);
+        const pdf = await loadingTask.promise;
+        setPdfDoc(pdf);
+        setTotalPages(pdf.numPages);
+        setCurrentPage(1);
       }
     } catch (err) {
       console.error("Erreur chargement PDF:", err);
@@ -174,6 +194,48 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
       setLoading(false);
     }
   };
+
+  // Rendre une page du PDF
+  const renderPage = useCallback(
+    async (pageNum: number) => {
+      if (!pdfDoc || !canvasRef.current || pageRendering) return;
+
+      setPageRendering(true);
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const canvas = canvasRef.current;
+        const context = canvas.getContext("2d");
+
+        if (!context) return;
+
+        // Calculer l'échelle pour que le PDF rentre bien
+        const viewport = page.getViewport({ scale: zoom * 1.5 });
+
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        setCanvasSize({ width: viewport.width, height: viewport.height });
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+
+        await page.render(renderContext).promise;
+      } catch (err) {
+        console.error("Erreur rendu page:", err);
+      } finally {
+        setPageRendering(false);
+      }
+    },
+    [pdfDoc, zoom, pageRendering],
+  );
+
+  // Rendre la page quand le PDF est chargé ou quand on change de page/zoom
+  useEffect(() => {
+    if (pdfDoc && !loading) {
+      renderPage(currentPage);
+    }
+  }, [pdfDoc, currentPage, zoom, loading, renderPage]);
 
   const initializeZones = () => {
     // Initialiser les zones à partir des données détectées
@@ -200,21 +262,21 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
 
   // Gestion du dessin de zone
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!selectedField || !containerRef.current) return;
+    if (!selectedField || !canvasRef.current) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
+    const rect = canvasRef.current.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
 
     setIsDrawing(true);
     setDrawStart({ x, y });
-    setTempZone({ x, y, width: 0, height: 0 });
+    setTempZone({ x, y, width: 0, height: 0, page: currentPage });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDrawing || !drawStart || !containerRef.current) return;
+    if (!isDrawing || !drawStart || !canvasRef.current) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
+    const rect = canvasRef.current.getBoundingClientRect();
     const currentX = (e.clientX - rect.left) / rect.width;
     const currentY = (e.clientY - rect.top) / rect.height;
 
@@ -223,7 +285,7 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
     const width = Math.abs(currentX - drawStart.x);
     const height = Math.abs(currentY - drawStart.y);
 
-    setTempZone({ x, y, width, height });
+    setTempZone({ x, y, width, height, page: currentPage });
   };
 
   const handleMouseUp = () => {
@@ -413,28 +475,30 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
 
     return (
       <>
-        {/* Zones existantes */}
-        {Object.entries(zones).map(([field, data]) => (
-          <div
-            key={field}
-            className="absolute border-2 pointer-events-none"
-            style={{
-              left: `${data.zone.x * 100}%`,
-              top: `${data.zone.y * 100}%`,
-              width: `${data.zone.width * 100}%`,
-              height: `${data.zone.height * 100}%`,
-              borderColor: FIELD_COLORS[field] || "#888",
-              backgroundColor: `${FIELD_COLORS[field]}20` || "#88888820",
-            }}
-          >
-            <span
-              className="absolute -top-5 left-0 text-[10px] px-1 rounded text-white whitespace-nowrap"
-              style={{ backgroundColor: FIELD_COLORS[field] || "#888" }}
+        {/* Zones existantes - filtrées par page courante */}
+        {Object.entries(zones)
+          .filter(([_, data]) => !data.zone.page || data.zone.page === currentPage)
+          .map(([field, data]) => (
+            <div
+              key={field}
+              className="absolute border-2 pointer-events-none"
+              style={{
+                left: `${data.zone.x * 100}%`,
+                top: `${data.zone.y * 100}%`,
+                width: `${data.zone.width * 100}%`,
+                height: `${data.zone.height * 100}%`,
+                borderColor: FIELD_COLORS[field] || "#888",
+                backgroundColor: `${FIELD_COLORS[field]}20` || "#88888820",
+              }}
             >
-              {FIELD_LABELS[field]}
-            </span>
-          </div>
-        ))}
+              <span
+                className="absolute -top-5 left-0 text-[10px] px-1 rounded text-white whitespace-nowrap"
+                style={{ backgroundColor: FIELD_COLORS[field] || "#888" }}
+              >
+                {FIELD_LABELS[field]}
+              </span>
+            </div>
+          ))}
 
         {/* Zone en cours de dessin */}
         {tempZone && (
@@ -471,12 +535,40 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
                   <ZoomIn className="h-4 w-4" />
                 </Button>
                 <Separator orientation="vertical" className="h-6" />
+
+                {/* Navigation des pages */}
+                {totalPages > 1 && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1 || pageRendering}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm w-20 text-center">
+                      Page {currentPage}/{totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages || pageRendering}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Separator orientation="vertical" className="h-6" />
+                  </>
+                )}
+
                 <Button variant={showZones ? "default" : "outline"} size="sm" onClick={() => setShowZones(!showZones)}>
                   {showZones ? <Eye className="h-4 w-4 mr-1" /> : <EyeOff className="h-4 w-4 mr-1" />}
                   Zones
                 </Button>
               </div>
               <div className="flex items-center gap-2">
+                {pageRendering && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                 {selectedField && (
                   <Badge style={{ backgroundColor: FIELD_COLORS[selectedField] }}>
                     <Square className="h-3 w-3 mr-1" />
@@ -486,36 +578,36 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
               </div>
             </div>
 
-            {/* Zone PDF */}
-            <div className="flex-1 overflow-hidden p-4">
+            {/* Zone PDF avec canvas */}
+            <div className="flex-1 overflow-auto p-4">
               {loading ? (
                 <div className="flex items-center justify-center h-full">
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
-              ) : pdfUrl ? (
+              ) : pdfDoc ? (
                 <div
                   ref={containerRef}
-                  className={`relative mx-auto bg-white shadow-lg h-full ${selectedField ? "cursor-crosshair" : "cursor-default"}`}
+                  className={`relative mx-auto bg-white shadow-lg ${selectedField ? "cursor-crosshair" : "cursor-default"}`}
                   style={{
-                    width: `${zoom * 100}%`,
-                    maxWidth: `${zoom * 800}px`,
+                    width: canvasSize.width || "auto",
+                    height: canvasSize.height || "auto",
                   }}
                   onMouseDown={selectedField ? handleMouseDown : undefined}
                   onMouseMove={selectedField ? handleMouseMove : undefined}
                   onMouseUp={selectedField ? handleMouseUp : undefined}
                   onMouseLeave={selectedField ? handleMouseUp : undefined}
                 >
-                  {/* PDF viewer - interactif seulement quand on n'est pas en mode dessin */}
-                  <iframe
-                    src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=1`}
-                    className={`w-full h-full border-0 ${selectedField ? "pointer-events-none" : ""}`}
-                    style={{ minHeight: "calc(90vh - 180px)" }}
-                    title="PDF Preview"
-                  />
+                  {/* Canvas pour le PDF */}
+                  <canvas ref={canvasRef} className="block" />
 
-                  {/* Overlay pour les zones - seulement en mode dessin ou si zones visibles */}
-                  {(selectedField || showZones) && (
-                    <div className="absolute inset-0 pointer-events-none">{renderZones()}</div>
+                  {/* Overlay pour les zones - directement sur le canvas */}
+                  {showZones && (
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ width: canvasSize.width, height: canvasSize.height }}
+                    >
+                      {renderZones()}
+                    </div>
                   )}
                 </div>
               ) : (
