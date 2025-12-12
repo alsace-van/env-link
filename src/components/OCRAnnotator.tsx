@@ -28,6 +28,7 @@ import {
   Calendar,
   Percent,
   AlertCircle,
+  MapPin,
 } from "lucide-react";
 
 // Types
@@ -55,6 +56,13 @@ interface InvoiceData {
   file_path: string;
   supplier_name: string | null;
   supplier_siret: string | null;
+  supplier_tva: string | null;
+  supplier_address?: {
+    addr?: string;
+    postcode?: string;
+    town?: string;
+    country_iso2?: string;
+  } | null;
   invoice_number: string | null;
   invoice_date: string | null;
   due_date: string | null;
@@ -79,6 +87,10 @@ interface OCRAnnotatorProps {
 const FIELD_COLORS: { [key: string]: string } = {
   supplier_name: "#3b82f6", // blue
   supplier_siret: "#6366f1", // indigo
+  supplier_tva: "#06b6d4", // cyan
+  supplier_addr: "#0891b2", // cyan-600
+  supplier_postcode: "#0e7490", // cyan-700
+  supplier_town: "#155e75", // cyan-800
   invoice_number: "#8b5cf6", // violet
   invoice_date: "#a855f7", // purple
   due_date: "#d946ef", // fuchsia
@@ -92,6 +104,10 @@ const FIELD_COLORS: { [key: string]: string } = {
 const FIELD_LABELS: { [key: string]: string } = {
   supplier_name: "Fournisseur",
   supplier_siret: "SIRET",
+  supplier_tva: "N° TVA",
+  supplier_addr: "Adresse",
+  supplier_postcode: "Code postal",
+  supplier_town: "Ville",
   invoice_number: "N° Facture",
   invoice_date: "Date facture",
   due_date: "Échéance",
@@ -105,6 +121,10 @@ const FIELD_LABELS: { [key: string]: string } = {
 const FIELD_ICONS: { [key: string]: React.ReactNode } = {
   supplier_name: <Building2 className="h-3 w-3" />,
   supplier_siret: <Hash className="h-3 w-3" />,
+  supplier_tva: <Hash className="h-3 w-3" />,
+  supplier_addr: <MapPin className="h-3 w-3" />,
+  supplier_postcode: <MapPin className="h-3 w-3" />,
+  supplier_town: <MapPin className="h-3 w-3" />,
   invoice_number: <FileText className="h-3 w-3" />,
   invoice_date: <Calendar className="h-3 w-3" />,
   due_date: <Calendar className="h-3 w-3" />,
@@ -163,8 +183,17 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
     // Initialiser les valeurs
     const initialValues: { [key: string]: string } = {};
     Object.keys(FIELD_LABELS).forEach((field) => {
-      const value = (invoice as any)[field];
-      initialValues[field] = value !== null && value !== undefined ? String(value) : "";
+      // Gérer les champs d'adresse imbriqués
+      if (field === "supplier_addr") {
+        initialValues[field] = invoice.supplier_address?.addr || "";
+      } else if (field === "supplier_postcode") {
+        initialValues[field] = invoice.supplier_address?.postcode || "";
+      } else if (field === "supplier_town") {
+        initialValues[field] = invoice.supplier_address?.town || "";
+      } else {
+        const value = (invoice as any)[field];
+        initialValues[field] = value !== null && value !== undefined ? String(value) : "";
+      }
     });
     setValues(initialValues);
   };
@@ -236,6 +265,17 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
   const handleSave = async (createTemplate: boolean = false) => {
     setSaving(true);
     try {
+      // Construire l'objet supplier_address
+      const supplierAddress =
+        values.supplier_addr || values.supplier_postcode || values.supplier_town
+          ? {
+              addr: values.supplier_addr || null,
+              postcode: values.supplier_postcode || null,
+              town: values.supplier_town || null,
+              country_iso2: "FR",
+            }
+          : null;
+
       // Mettre à jour les zones détectées
       const { error: updateError } = await (supabase as any)
         .from("incoming_invoices")
@@ -245,6 +285,8 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
           // Mettre à jour les valeurs aussi
           supplier_name: values.supplier_name || null,
           supplier_siret: values.supplier_siret || null,
+          supplier_tva: values.supplier_tva || null,
+          supplier_address: supplierAddress,
           invoice_number: values.invoice_number || null,
           invoice_date: values.invoice_date || null,
           due_date: values.due_date || null,
@@ -306,6 +348,18 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
       // Patterns d'identification
       const patterns = [values.supplier_name];
       if (values.supplier_siret) patterns.push(values.supplier_siret);
+      if (values.supplier_tva) patterns.push(values.supplier_tva);
+
+      // Construire l'objet supplier_address
+      const supplierAddress =
+        values.supplier_addr || values.supplier_postcode || values.supplier_town
+          ? {
+              addr: values.supplier_addr || null,
+              postcode: values.supplier_postcode || null,
+              town: values.supplier_town || null,
+              country_iso2: "FR",
+            }
+          : null;
 
       // Upsert le template
       const { error } = await (supabase as any).from("supplier_ocr_templates").upsert(
@@ -313,6 +367,8 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
           user_id: user.id,
           supplier_name: values.supplier_name,
           supplier_siret: values.supplier_siret || null,
+          supplier_tva: values.supplier_tva || null,
+          supplier_address: supplierAddress,
           field_zones: fieldZones,
           identification_patterns: patterns,
         },
@@ -342,6 +398,8 @@ export function OCRAnnotator({ invoice, open, onOpenChange, onSave }: OCRAnnotat
         return "currency";
       case "supplier_siret":
         return "siret";
+      case "supplier_tva":
+        return "tva_number";
       case "invoice_number":
         return "alphanumeric";
       default:
