@@ -290,7 +290,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     projects,
     currentProjectId,
   } = data as CustomBlockData;
-
+  
   const [isEditing, setIsEditing] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -644,25 +644,22 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
             )}
 
             {/* Bouton pour ajouter des tâches */}
-            <Popover
-              open={showTaskSearch}
-              onOpenChange={async (open) => {
-                setShowTaskSearch(open);
-                // Recharger les travaux à chaque ouverture
-                if (open && onSearchTasks) {
-                  setIsSearchingTasks(true);
-                  try {
-                    const results = await onSearchTasks("");
-                    // Filtrer les tâches déjà ajoutées dans le bloc
-                    const existingIds = tasks.map((t) => t.id);
-                    setTaskSearchResults(results.filter((r) => !existingIds.includes(r.id)));
-                  } catch (error) {
-                    console.error("Erreur chargement initial:", error);
-                  }
-                  setIsSearchingTasks(false);
+            <Popover open={showTaskSearch} onOpenChange={async (open) => {
+              setShowTaskSearch(open);
+              // Recharger les travaux à chaque ouverture
+              if (open && onSearchTasks) {
+                setIsSearchingTasks(true);
+                try {
+                  const results = await onSearchTasks("");
+                  // Filtrer les tâches déjà ajoutées dans le bloc
+                  const existingIds = tasks.map((t) => t.id);
+                  setTaskSearchResults(results.filter((r) => !existingIds.includes(r.id)));
+                } catch (error) {
+                  console.error("Erreur chargement initial:", error);
                 }
-              }}
-            >
+                setIsSearchingTasks(false);
+              }
+            }}>
               <PopoverTrigger asChild>
                 <Button
                   variant={hasTasks ? "ghost" : "outline"}
@@ -674,8 +671,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   {hasTasks ? "Ajouter un travail" : "Rechercher des travaux..."}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent
-                className="w-80 p-0"
+              <PopoverContent 
+                className="w-80 p-0" 
                 align="start"
                 onPointerDown={stopPropagation}
                 onClick={stopPropagation}
@@ -801,7 +798,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         minWidth: block.width || 200,
         minHeight: 80,
         height: "auto",
-        borderWidth: block.sourceDate || block.rescheduledTo ? 3 : 2,
+        borderWidth: (block.sourceDate || block.rescheduledTo) ? 3 : 2,
       }}
     >
       {/* Handles de connexion - comme MechanicalProcedures */}
@@ -816,7 +813,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           <GripVertical className="h-4 w-4 text-gray-400" />
           {getBlockIcon()}
           <span className="text-xs text-gray-500 capitalize">{block.type}</span>
-
+          
           {/* Indicateur simple : copie ou replanifié */}
           {block.sourceDate && (
             <button
@@ -842,7 +839,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               → {format(parseISO(block.rescheduledTo), "d/MM", { locale: fr })}
             </button>
           )}
-
+          
           {/* Badge projet lié */}
           {block.linkedProjectName && (
             <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-1">
@@ -925,12 +922,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 <CalendarIcon className="h-3 w-3" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent
-              className="w-auto p-0"
-              align="end"
-              onClick={stopPropagation}
-              onPointerDown={stopPropagation}
-            >
+            <PopoverContent className="w-auto p-0" align="end" onClick={stopPropagation} onPointerDown={stopPropagation}>
               <div className="p-2 border-b bg-gray-50">
                 <p className="text-xs text-gray-600 font-medium">📅 Planifier ce bloc pour :</p>
               </div>
@@ -1225,7 +1217,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
       // Mise à jour locale immédiate avec callback pour avoir la valeur actuelle
       setBlocks((prev) => {
         const updatedBlocks = prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b));
-
+        
         // Sync vers le bloc source si c'est une copie
         const block = prev.find((b) => b.id === blockId);
         if (block?.sourceBlockId && block?.sourceDate) {
@@ -1235,7 +1227,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             setTimeout(() => syncBlockToSource(blockId, contentUpdates), 0);
           }
         }
-
+        
         return updatedBlocks;
       });
       setHasUnsavedChanges(true);
@@ -1247,14 +1239,41 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
     async (blockId: string) => {
       // Trouver le bloc avant de le supprimer pour vérifier si c'est une copie
       const blockToDelete = blocks.find((b) => b.id === blockId);
-
+      
+      // Si le bloc a des tâches liées, retirer leur scheduled_date
+      if (blockToDelete?.linkedTasks && blockToDelete.linkedTasks.length > 0) {
+        const taskIds = blockToDelete.linkedTasks.map((t) => t.id);
+        try {
+          await (supabase as any)
+            .from("project_todos")
+            .update({ scheduled_date: null })
+            .in("id", taskIds);
+          console.log("🗓️ Tâches déliées du planning:", taskIds);
+        } catch (error) {
+          console.error("Erreur déliaison tâches:", error);
+        }
+      }
+      
+      // Ancienne syntaxe linkedTask (rétrocompatibilité)
+      if (blockToDelete?.linkedTask) {
+        try {
+          await (supabase as any)
+            .from("project_todos")
+            .update({ scheduled_date: null })
+            .eq("id", blockToDelete.linkedTask.id);
+          console.log("🗓️ Tâche déliée du planning:", blockToDelete.linkedTask.id);
+        } catch (error) {
+          console.error("Erreur déliaison tâche:", error);
+        }
+      }
+      
       // Supprimer le bloc localement
       setBlocks((prev) => prev.filter((b) => b.id !== blockId));
       // Supprimer les edges liées
       setEdges((prev) => prev.filter((e) => e.source_block_id !== blockId && e.target_block_id !== blockId));
       if (selectedBlockId === blockId) setSelectedBlockId(null);
       setHasUnsavedChanges(true);
-
+      
       // Si c'était une copie, nettoyer le rescheduledTo de l'original
       if (blockToDelete?.sourceDate && blockToDelete?.sourceBlockId && userId) {
         try {
@@ -1266,14 +1285,16 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             .eq("user_id", userId)
             .eq("note_date", blockToDelete.sourceDate)
             .maybeSingle();
-
+          
           if (sourceNote?.blocks_data) {
             const sourceBlocks: NoteBlock[] = JSON.parse(sourceNote.blocks_data);
             // Trouver et mettre à jour le bloc original
-            const updatedBlocks = sourceBlocks.map((b) =>
-              b.id === blockToDelete.sourceBlockId ? { ...b, rescheduledTo: undefined } : b,
+            const updatedBlocks = sourceBlocks.map((b) => 
+              b.id === blockToDelete.sourceBlockId 
+                ? { ...b, rescheduledTo: undefined }
+                : b
             );
-
+            
             // Sauvegarder la note source mise à jour
             await (supabase as any)
               .from("daily_notes")
@@ -1282,7 +1303,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
                 updated_at: new Date().toISOString(),
               })
               .eq("id", sourceNote.id);
-
+            
             toast.success("Lien avec l'original supprimé");
           }
         } catch (error) {
@@ -1403,6 +1424,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             icon
           ),
           projects (
+            name,
             nom
           )
         `,
@@ -1440,7 +1462,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           category_color: task.work_categories?.color,
           category_icon: task.work_categories?.icon,
           project_id: task.project_id,
-          project_name: cleanHtmlEntities(task.projects?.nom) || "Projet inconnu",
+          project_name: cleanHtmlEntities(task.projects?.name || task.projects?.nom) || "Projet inconnu",
         }));
       } catch (error) {
         console.error("Erreur recherche tâches:", error);
@@ -1631,17 +1653,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
   // Copier un bloc vers une autre date (roadmap)
   const [isMovingBlock, setIsMovingBlock] = useState(false);
-
+  
   const moveBlockToDate = useCallback(
     async (blockId: string, targetDate: string) => {
       // Protection contre les doubles appels
       if (isMovingBlock) {
         return;
       }
-
+      
       const block = blocks.find((b) => b.id === blockId);
       if (!block || !userId) return;
-
+      
       // Vérifier si le bloc a déjà été replanifié vers cette date
       if (block.rescheduledTo === targetDate) {
         toast.info("Ce bloc est déjà planifié pour cette date");
@@ -1682,8 +1704,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         // 2b. Mettre à jour scheduled_date de l'original pour qu'il apparaisse dans le planning mensuel
         const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
         if (linkedTasks.length > 0) {
-          const taskIds = linkedTasks.map((t) => t.id);
-          await (supabase as any).from("project_todos").update({ scheduled_date: currentDateStr }).in("id", taskIds);
+          const taskIds = linkedTasks.map(t => t.id);
+          await (supabase as any)
+            .from("project_todos")
+            .update({ scheduled_date: currentDateStr })
+            .in("id", taskIds);
         }
 
         // 3. Récupérer les blocs existants de la date cible
@@ -1693,15 +1718,15 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             targetBlocks = JSON.parse(targetNote.blocks_data);
           } catch {}
         }
-
+        
         // Vérifier qu'on n'a pas déjà copié ce bloc vers cette date
-        const alreadyCopied = targetBlocks.some((b) => b.sourceBlockId === block.id);
+        const alreadyCopied = targetBlocks.some(b => b.sourceBlockId === block.id);
         if (alreadyCopied) {
           toast.info("Ce bloc existe déjà à cette date");
           setIsMovingBlock(false);
           return;
         }
-
+        
         targetBlocks.push(blockForTarget);
 
         // 4. Sauvegarder dans la date cible
@@ -1723,11 +1748,13 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         }
 
         // 5. Marquer le bloc original comme "reporté" et SAUVEGARDER IMMÉDIATEMENT
-
+        
         // Mettre à jour le state local
-        const updatedOriginalBlocks = blocks.map((b) => (b.id === blockId ? { ...b, rescheduledTo: targetDate } : b));
+        const updatedOriginalBlocks = blocks.map((b) =>
+          b.id === blockId ? { ...b, rescheduledTo: targetDate } : b
+        );
         setBlocks(updatedOriginalBlocks);
-
+        
         // Sauvegarder immédiatement dans Supabase (ne pas attendre l'auto-save)
         const { data: currentNote } = await (supabase as any)
           .from("daily_notes")
@@ -1736,7 +1763,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
           .eq("user_id", userId)
           .eq("note_date", currentDateStr)
           .maybeSingle();
-
+        
         if (currentNote) {
           // Mettre à jour la note existante
           await (supabase as any)
@@ -1748,14 +1775,16 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
             .eq("id", currentNote.id);
         } else {
           // Créer la note si elle n'existe pas encore
-          await (supabase as any).from("daily_notes").insert({
-            project_id: projectId,
-            user_id: userId,
-            note_date: currentDateStr,
-            blocks_data: JSON.stringify(updatedOriginalBlocks),
-          });
+          await (supabase as any)
+            .from("daily_notes")
+            .insert({
+              project_id: projectId,
+              user_id: userId,
+              note_date: currentDateStr,
+              blocks_data: JSON.stringify(updatedOriginalBlocks),
+            });
         }
-
+        
         // Forcer ReactFlow à recalculer
         blocksIdsRef.current = "";
 
@@ -1763,7 +1792,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
         setRoadmapDates((prev) => {
           const newSet = new Set(prev);
           newSet.add(currentDateStr); // Date d'origine (a un bloc replanifié)
-          newSet.add(targetDate); // Date cible (a une copie)
+          newSet.add(targetDate);     // Date cible (a une copie)
           return newSet;
         });
 
@@ -1823,7 +1852,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
       } as CustomBlockData,
       style: { width: block.width, height: "auto" },
     })) as any;
-
+    
     setNodes(newNodes);
   }, [
     blocks,
@@ -2186,15 +2215,15 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange }: Dail
 
   // Charger les données quand la date ou le dialog change
   const previousDateRef = useRef<string | null>(null);
-
+  
   useEffect(() => {
     if (!open) {
       previousDateRef.current = null;
       return;
     }
-
+    
     const currentDateStr = format(selectedDate, "yyyy-MM-dd");
-
+    
     // Charger si c'est la première ouverture ou si la date a changé
     if (!previousDateRef.current || previousDateRef.current !== currentDateStr) {
       loadDayData();
