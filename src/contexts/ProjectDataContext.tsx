@@ -183,10 +183,19 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
 
     console.log("📋 Chargement des tâches pour user:", user.user.id);
 
-    // Toujours charger TOUTES les tâches de l'utilisateur
+    // Toujours charger TOUTES les tâches de l'utilisateur AVEC le nom du projet
     const { data: allTodos, error } = await supabase
       .from("project_todos")
-      .select("*")
+      .select(
+        `
+        *,
+        projects (
+          id,
+          name,
+          nom
+        )
+      `,
+      )
       .eq("user_id", user.user.id)
       .order("due_date", { ascending: true });
 
@@ -199,11 +208,13 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     console.log("✅ Tâches chargées:", allTodos?.length || 0);
     console.log("📅 Tâches avec scheduled_date:", allTodos?.filter((t) => t.scheduled_date)?.length || 0);
 
-    // Marquer les tâches avec des flags utiles
-    const todosWithFlags = (allTodos || []).map((todo) => ({
+    // Marquer les tâches avec des flags utiles ET le nom du projet
+    const todosWithFlags = (allTodos || []).map((todo: any) => ({
       ...todo,
       is_global: !todo.project_id,
       is_current_project: currentProjectId ? todo.project_id === currentProjectId : true,
+      // 🔥 Ajouter le nom du projet directement
+      project_name: todo.projects?.name || todo.projects?.nom || null,
     }));
 
     setTodos(todosWithFlags);
