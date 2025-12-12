@@ -16,6 +16,13 @@ Retourne un JSON avec cette structure EXACTE :
   "data": {
     "supplier_name": "Nom du fournisseur",
     "supplier_siret": "12345678901234",
+    "supplier_tva": "FR12345678901",
+    "supplier_address": {
+      "addr": "176 avenue Joseph Lambot",
+      "postcode": "83130",
+      "town": "La Garde",
+      "country_iso2": "FR"
+    },
     "invoice_number": "FA-2024-001",
     "invoice_date": "2024-01-15",
     "due_date": "2024-02-15",
@@ -45,6 +52,26 @@ Retourne un JSON avec cette structure EXACTE :
       "raw_text": "SIRET: 123 456 789 01234",
       "confidence": 0.95,
       "label_found": "SIRET"
+    },
+    "supplier_tva": {
+      "x": 0.05,
+      "y": 0.18,
+      "width": 0.3,
+      "height": 0.03,
+      "page": 1,
+      "raw_text": "TVA Intra: FR 12 345678901",
+      "confidence": 0.95,
+      "label_found": "TVA Intra"
+    },
+    "supplier_address": {
+      "x": 0.05,
+      "y": 0.10,
+      "width": 0.4,
+      "height": 0.10,
+      "page": 1,
+      "raw_text": "176 avenue Joseph Lambot\\n83130 La Garde\\nFrance",
+      "confidence": 0.90,
+      "label_found": "Adresse fournisseur"
     },
     "invoice_number": {
       "x": 0.6,
@@ -119,7 +146,8 @@ Retourne un JSON avec cette structure EXACTE :
   },
   "identification_patterns": [
     "VISSERIE SERVICE",
-    "SIRET 123456789"
+    "SIRET 123456789",
+    "FR12345678901"
   ]
 }
 
@@ -133,7 +161,9 @@ RÈGLES IMPORTANTES:
 7. Les dates doivent être au format ISO (YYYY-MM-DD)
 8. Les montants sont des nombres décimaux (pas de symbole €)
 9. Le SIRET doit contenir 14 chiffres (sans espaces)
-10. identification_patterns = textes uniques pour identifier ce fournisseur
+10. Le N° TVA intracommunautaire commence par FR suivi de 11 chiffres (sans espaces)
+11. L'adresse fournisseur: extrais addr (rue), postcode (code postal), town (ville), country_iso2 (FR par défaut)
+12. identification_patterns = textes uniques pour identifier ce fournisseur
 
 Si un champ n'est pas trouvé, mets null pour la valeur et n'inclus pas la zone.
 
@@ -145,7 +175,9 @@ Si la facture est illisible ou n'est pas une facture:
 }`;
 
 // Prompt pour extraction AVEC un template existant
-export const OCR_PROMPT_WITH_TEMPLATE = (template: any) => `Tu es un expert en extraction de données de factures fournisseurs françaises.
+export const OCR_PROMPT_WITH_TEMPLATE = (
+  template: any,
+) => `Tu es un expert en extraction de données de factures fournisseurs françaises.
 
 Cette facture provient du fournisseur "${template.supplier_name}".
 J'ai déjà un template avec les zones habituelles pour ce fournisseur.
@@ -163,13 +195,13 @@ ${OCR_PROMPT_WITH_ZONES}`;
 
 // Types TypeScript
 export interface BoundingBox {
-  x: number;      // 0-1, position horizontale du coin supérieur gauche
-  y: number;      // 0-1, position verticale du coin supérieur gauche
-  width: number;  // 0-1, largeur de la zone
+  x: number; // 0-1, position horizontale du coin supérieur gauche
+  y: number; // 0-1, position verticale du coin supérieur gauche
+  width: number; // 0-1, largeur de la zone
   height: number; // 0-1, hauteur de la zone
-  page: number;   // numéro de page (1-indexed)
-  raw_text: string;    // texte brut trouvé
-  confidence: number;  // confiance 0-1
+  page: number; // numéro de page (1-indexed)
+  raw_text: string; // texte brut trouvé
+  confidence: number; // confiance 0-1
   label_found: string; // libellé identifié
 }
 
@@ -180,6 +212,7 @@ export interface OCRResultWithZones {
   data?: {
     supplier_name: string | null;
     supplier_siret: string | null;
+    supplier_tva: string | null;
     invoice_number: string | null;
     invoice_date: string | null;
     due_date: string | null;
@@ -199,11 +232,12 @@ export interface SupplierTemplate {
   id: string;
   supplier_name: string;
   supplier_siret: string | null;
+  supplier_tva: string | null;
   field_zones: {
     [field: string]: {
-      zone: Omit<BoundingBox, 'raw_text' | 'label_found'>;
+      zone: Omit<BoundingBox, "raw_text" | "label_found">;
       label_patterns: string[];
-      value_format: 'text' | 'alphanumeric' | 'date' | 'currency' | 'siret';
+      value_format: "text" | "alphanumeric" | "date" | "currency" | "siret" | "tva_number";
       confidence: number;
     };
   };
