@@ -328,7 +328,25 @@ class EvolizApiService {
     });
   }
 
-  async createSupplier(data: { name: string; type?: string }): Promise<EvolizSupplier> {
+  async createSupplier(data: {
+    name: string;
+    code?: string;
+    legalform?: string;
+    business_number?: string; // SIRET
+    vat_number?: string;
+    activity_number?: string;
+    address?: {
+      addr?: string;
+      addr2?: string;
+      postcode?: string;
+      town?: string;
+      iso2?: string;
+    };
+    phone?: string;
+    mobile?: string;
+    website?: string;
+    comment?: string;
+  }): Promise<EvolizSupplier> {
     return this.callProxy<EvolizSupplier>({
       endpoint: "/suppliers",
       method: "POST",
@@ -342,16 +360,29 @@ class EvolizApiService {
     page?: number;
     per_page?: number;
     supplierid?: number;
+    search?: string;
   }): Promise<EvolizApiResponse<EvolizBuy[]>> {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set("page", params.page.toString());
     if (params?.per_page) searchParams.set("per_page", params.per_page.toString());
     if (params?.supplierid) searchParams.set("supplierid", params.supplierid.toString());
+    if (params?.search) searchParams.set("search", params.search);
 
     const query = searchParams.toString();
     return this.callProxy<EvolizApiResponse<EvolizBuy[]>>({
       endpoint: `/buys${query ? `?${query}` : ""}`,
     });
+  }
+
+  // Vérifier si une facture existe déjà dans Evoliz
+  async checkBuyExists(invoiceNumber: string): Promise<boolean> {
+    try {
+      const response = await this.getBuys({ search: invoiceNumber, per_page: 5 });
+      // Vérifier si un des résultats a exactement le même numéro de facture
+      return (response.data || []).some((buy) => buy.external_document_number === invoiceNumber);
+    } catch {
+      return false;
+    }
   }
 
   async createBuy(data: EvolizBuyInput): Promise<EvolizBuy> {
