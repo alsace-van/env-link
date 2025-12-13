@@ -94,6 +94,10 @@ import {
   FileText,
   ListTodo,
   StickyNote,
+  Package,
+  Truck,
+  ShoppingCart,
+  Store,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -133,9 +137,25 @@ interface LinkedTask {
   project_name?: string;
 }
 
+// 🔥 Interface pour les dépenses/commandes liées
+interface LinkedExpense {
+  id: string;
+  nom: string;
+  marque?: string;
+  prix: number;
+  quantite: number;
+  categorie?: string;
+  fournisseur?: string;
+  statut_livraison: "commande" | "en_livraison" | "livre" | "a_commander";
+  date_achat?: string;
+  expected_delivery_date?: string;
+  project_id: string;
+  project_name?: string;
+}
+
 interface NoteBlock {
   id: string;
-  type: "text" | "checklist" | "list" | "table" | "image" | "task";
+  type: "text" | "checklist" | "list" | "table" | "image" | "task" | "order";
   x: number;
   y: number;
   width: number;
@@ -151,6 +171,8 @@ interface NoteBlock {
   linkedTasks?: LinkedTask[]; // Tâches de travaux liées (plusieurs possibles)
   linkedTask?: LinkedTask; // DEPRECATED: pour compatibilité ascendante
   taskStatus?: "pending" | "in_progress" | "completed"; // Statut local du bloc
+  // 🔥 Champs spécifiques au type "order"
+  linkedExpenses?: LinkedExpense[]; // Dépenses/commandes liées
   style?: {
     fontSize?: number;
     fontFamily?: string;
@@ -270,6 +292,11 @@ interface CustomBlockData {
   onUpdateTaskStatus: (taskId: string, status: "pending" | "in_progress" | "completed", actualHours?: number) => void;
   onSendToSidebarTask: () => void;
   onSendToSidebarNote: () => void;
+  // 🔥 Props pour les dépenses/commandes
+  onSearchExpenses: (query: string) => Promise<LinkedExpense[]>;
+  onLinkExpense: (expense: LinkedExpense) => void;
+  onUpdateExpense: (expenseId: string, updates: Partial<LinkedExpense>) => void;
+  suppliers: string[]; // 🔥 Liste des fournisseurs enregistrés
   projects: ProjectItem[];
   currentProjectId: string;
   [key: string]: unknown;
@@ -288,6 +315,10 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     onUpdateTaskStatus,
     onSendToSidebarTask,
     onSendToSidebarNote,
+    onSearchExpenses,
+    onLinkExpense,
+    onUpdateExpense,
+    suppliers,
     projects,
     currentProjectId,
   } = data as CustomBlockData;
@@ -299,6 +330,16 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   const [taskSearchQuery, setTaskSearchQuery] = useState("");
   const [taskSearchResults, setTaskSearchResults] = useState<AvailableTask[]>([]);
   const [isSearchingTasks, setIsSearchingTasks] = useState(false);
+  // 🔥 États pour la recherche de dépenses
+  const [showExpenseSearch, setShowExpenseSearch] = useState(false);
+  const [expenseSearchQuery, setExpenseSearchQuery] = useState("");
+  const [expenseSearchResults, setExpenseSearchResults] = useState<LinkedExpense[]>([]);
+  const [isSearchingExpenses, setIsSearchingExpenses] = useState(false);
+  // 🔥 États pour les popovers des dépenses (date commande, date livraison, fournisseur)
+  const [openPopover, setOpenPopover] = useState<{
+    expenseId: string;
+    type: "orderDate" | "deliveryDate" | "supplier";
+  } | null>(null);
 
   const stopPropagation = (e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
@@ -764,6 +805,445 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           </div>
         );
 
+      case "order":
+        // Récupérer les dépenses liées
+        const expenses = block.linkedExpenses || [];
+        const hasExpenses = expenses.length > 0;
+
+        // Calculs totaux
+        const totalAmount = expenses.reduce((sum, e) => sum + e.prix * e.quantite, 0);
+        const deliveredCount = expenses.filter((e) => e.statut_livraison === "livre").length;
+        const orderedCount = expenses.filter(
+          (e) => e.statut_livraison === "commande" || e.statut_livraison === "en_livraison",
+        ).length;
+
+        // Fonction pour supprimer une dépense du bloc
+        const removeExpenseFromBlock = (expenseId: string) => {
+          const newExpenses = expenses.filter((e) => e.id !== expenseId);
+          onUpdate({ linkedExpenses: newExpenses });
+        };
+
+        // Couleur selon statut
+        const getStatusColor = (status: string) => {
+          switch (status) {
+            case "livre":
+              return "bg-green-100 text-green-700 border-green-200";
+            case "en_livraison":
+              return "bg-blue-100 text-blue-700 border-blue-200";
+            case "commande":
+              return "bg-orange-100 text-orange-700 border-orange-200";
+            default:
+              return "bg-gray-100 text-gray-700 border-gray-200";
+          }
+        };
+
+        const getStatusLabel = (status: string) => {
+          switch (status) {
+            case "livre":
+              return "Livré";
+            case "en_livraison":
+              return "En livraison";
+            case "commande":
+              return "Commandé";
+            case "a_commander":
+              return "À commander";
+            default:
+              return status;
+          }
+        };
+
+        // Helper pour mettre à jour une dépense
+        const updateExpenseField = (expenseId: string, field: keyof LinkedExpense, value: any) => {
+          const newExpenses = expenses.map((e) => (e.id === expenseId ? { ...e, [field]: value } : e));
+          onUpdate({ linkedExpenses: newExpenses });
+          if (onUpdateExpense) {
+            onUpdateExpense(expenseId, { [field]: value });
+          }
+        };
+
+        return (
+          <div className="p-3 space-y-2">
+            {/* Liste des dépenses liées */}
+            {hasExpenses && (
+              <div
+                className="space-y-2 max-h-[350px] overflow-y-auto"
+                onClick={stopPropagation}
+                onPointerDown={stopPropagation}
+              >
+                {expenses.map((expense) => (
+                  <div key={expense.id} className={`p-2 rounded-lg border ${getStatusColor(expense.statut_livraison)}`}>
+                    <div className="flex items-start gap-2">
+                      {/* Icône statut cliquable */}
+                      <Select
+                        value={expense.statut_livraison}
+                        onValueChange={(value) => updateExpenseField(expense.id, "statut_livraison", value)}
+                      >
+                        <SelectTrigger className="h-6 w-6 p-0 border-0 bg-transparent">
+                          <div className="mt-0.5">
+                            {expense.statut_livraison === "livre" ? (
+                              <Check className="h-4 w-4 text-green-600" />
+                            ) : expense.statut_livraison === "en_livraison" ? (
+                              <Truck className="h-4 w-4 text-blue-600" />
+                            ) : expense.statut_livraison === "commande" ? (
+                              <ShoppingCart className="h-4 w-4 text-orange-600" />
+                            ) : (
+                              <Package className="h-4 w-4 text-gray-400" />
+                            )}
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="a_commander">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-gray-400" />À commander
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="commande">
+                            <div className="flex items-center gap-2">
+                              <ShoppingCart className="h-4 w-4 text-orange-600" />
+                              Commandé
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="en_livraison">
+                            <div className="flex items-center gap-2">
+                              <Truck className="h-4 w-4 text-blue-600" />
+                              En livraison
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="livre">
+                            <div className="flex items-center gap-2">
+                              <Check className="h-4 w-4 text-green-600" />
+                              Livré
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      {/* Contenu */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{expense.nom}</div>
+                        <div className="text-xs space-y-1 mt-1">
+                          {expense.marque && <span className="text-gray-600">{expense.marque}</span>}
+                          <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                            <span className="font-medium">
+                              {expense.prix.toFixed(2)}€ x{expense.quantite}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Icônes d'actions */}
+                        <div className="flex items-center gap-1 mt-2">
+                          {/* 🏪 Fournisseur */}
+                          <Popover
+                            open={openPopover?.expenseId === expense.id && openPopover?.type === "supplier"}
+                            onOpenChange={(open) =>
+                              setOpenPopover(open ? { expenseId: expense.id, type: "supplier" } : null)
+                            }
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={`h-7 px-2 text-xs ${expense.fournisseur ? "text-purple-600" : "text-gray-400"}`}
+                                onClick={stopPropagation}
+                              >
+                                <Store className="h-3.5 w-3.5 mr-1" />
+                                {expense.fournisseur || "Fournisseur"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56 p-2" align="start" onClick={stopPropagation}>
+                              <div className="space-y-2">
+                                <p className="text-xs font-medium text-gray-600">Fournisseur</p>
+                                <Input
+                                  placeholder="Nom du fournisseur..."
+                                  value={expense.fournisseur || ""}
+                                  onChange={(e) => {
+                                    const newExpenses = expenses.map((exp) =>
+                                      exp.id === expense.id ? { ...exp, fournisseur: e.target.value } : exp,
+                                    );
+                                    onUpdate({ linkedExpenses: newExpenses });
+                                  }}
+                                  onBlur={() => {
+                                    if (onUpdateExpense) {
+                                      onUpdateExpense(expense.id, { fournisseur: expense.fournisseur });
+                                    }
+                                  }}
+                                  className="h-8 text-sm"
+                                  autoFocus
+                                />
+                                {suppliers && suppliers.length > 0 && (
+                                  <div className="border-t pt-2 mt-2">
+                                    <p className="text-xs text-gray-500 mb-1">Fournisseurs récents</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {suppliers.slice(0, 6).map((supplier) => (
+                                        <Button
+                                          key={supplier}
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-6 text-xs"
+                                          onClick={() => {
+                                            updateExpenseField(expense.id, "fournisseur", supplier);
+                                            setOpenPopover(null);
+                                          }}
+                                        >
+                                          {supplier}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+
+                          {/* 📅 Date de commande */}
+                          <Popover
+                            open={openPopover?.expenseId === expense.id && openPopover?.type === "orderDate"}
+                            onOpenChange={(open) =>
+                              setOpenPopover(open ? { expenseId: expense.id, type: "orderDate" } : null)
+                            }
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={`h-7 px-2 text-xs ${expense.date_achat ? "text-orange-600" : "text-gray-400"}`}
+                                onClick={stopPropagation}
+                              >
+                                <CalendarIcon className="h-3.5 w-3.5 mr-1" />
+                                {expense.date_achat ? format(parseISO(expense.date_achat), "dd/MM") : "Cmd"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start" onClick={stopPropagation}>
+                              <div className="p-2 border-b">
+                                <p className="text-xs font-medium text-gray-600">Date de commande</p>
+                              </div>
+                              <Calendar
+                                mode="single"
+                                selected={expense.date_achat ? parseISO(expense.date_achat) : undefined}
+                                onSelect={(date) => {
+                                  if (date) {
+                                    updateExpenseField(expense.id, "date_achat", format(date, "yyyy-MM-dd"));
+                                    setOpenPopover(null);
+                                  }
+                                }}
+                                locale={fr}
+                              />
+                              {expense.date_achat && (
+                                <div className="p-2 border-t">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full text-xs text-red-500"
+                                    onClick={() => {
+                                      updateExpenseField(expense.id, "date_achat", null);
+                                      setOpenPopover(null);
+                                    }}
+                                  >
+                                    Effacer la date
+                                  </Button>
+                                </div>
+                              )}
+                            </PopoverContent>
+                          </Popover>
+
+                          {/* 🚚 Date de livraison */}
+                          <Popover
+                            open={openPopover?.expenseId === expense.id && openPopover?.type === "deliveryDate"}
+                            onOpenChange={(open) =>
+                              setOpenPopover(open ? { expenseId: expense.id, type: "deliveryDate" } : null)
+                            }
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={`h-7 px-2 text-xs ${expense.expected_delivery_date ? "text-blue-600" : "text-gray-400"}`}
+                                onClick={stopPropagation}
+                              >
+                                <Truck className="h-3.5 w-3.5 mr-1" />
+                                {expense.expected_delivery_date
+                                  ? format(parseISO(expense.expected_delivery_date), "dd/MM")
+                                  : "Liv"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start" onClick={stopPropagation}>
+                              <div className="p-2 border-b">
+                                <p className="text-xs font-medium text-gray-600">Date de livraison prévue</p>
+                              </div>
+                              <Calendar
+                                mode="single"
+                                selected={
+                                  expense.expected_delivery_date ? parseISO(expense.expected_delivery_date) : undefined
+                                }
+                                onSelect={(date) => {
+                                  if (date) {
+                                    updateExpenseField(
+                                      expense.id,
+                                      "expected_delivery_date",
+                                      format(date, "yyyy-MM-dd"),
+                                    );
+                                    setOpenPopover(null);
+                                  }
+                                }}
+                                locale={fr}
+                              />
+                              {expense.expected_delivery_date && (
+                                <div className="p-2 border-t">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="w-full text-xs text-red-500"
+                                    onClick={() => {
+                                      updateExpenseField(expense.id, "expected_delivery_date", null);
+                                      setOpenPopover(null);
+                                    }}
+                                  >
+                                    Effacer la date
+                                  </Button>
+                                </div>
+                              )}
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+
+                      {/* Bouton supprimer */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-gray-400 hover:text-red-500"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeExpenseFromBlock(expense.id);
+                        }}
+                        onPointerDown={stopPropagation}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Résumé */}
+                {expenses.length > 1 && (
+                  <div className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t">
+                    <span>
+                      {deliveredCount}/{expenses.length} livrés
+                    </span>
+                    <span className="text-emerald-600 font-medium">{totalAmount.toFixed(2)}€ total</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bouton pour ajouter des dépenses */}
+            <Popover
+              open={showExpenseSearch}
+              onOpenChange={async (open) => {
+                setShowExpenseSearch(open);
+                if (open && onSearchExpenses) {
+                  setIsSearchingExpenses(true);
+                  try {
+                    const results = await onSearchExpenses("");
+                    const existingIds = expenses.map((e) => e.id);
+                    setExpenseSearchResults(results.filter((r) => !existingIds.includes(r.id)));
+                  } catch (error) {
+                    console.error("Erreur chargement dépenses:", error);
+                  }
+                  setIsSearchingExpenses(false);
+                }
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant={hasExpenses ? "ghost" : "outline"}
+                  size={hasExpenses ? "sm" : "default"}
+                  className={hasExpenses ? "w-full h-7 text-xs text-gray-500" : "w-full justify-start text-gray-500"}
+                  onClick={stopPropagation}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  {hasExpenses ? "Ajouter un article" : "Rechercher des articles..."}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-80 p-0"
+                align="start"
+                onPointerDown={stopPropagation}
+                onClick={stopPropagation}
+              >
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    placeholder="Rechercher dans les dépenses du projet..."
+                    value={expenseSearchQuery}
+                    onValueChange={async (value) => {
+                      setExpenseSearchQuery(value);
+                      if (onSearchExpenses) {
+                        setIsSearchingExpenses(true);
+                        try {
+                          const results = await onSearchExpenses(value);
+                          const existingIds = expenses.map((e) => e.id);
+                          setExpenseSearchResults(results.filter((r) => !existingIds.includes(r.id)));
+                        } catch (error) {
+                          console.error("Erreur recherche:", error);
+                        }
+                        setIsSearchingExpenses(false);
+                      }
+                    }}
+                  />
+                  <CommandList className="max-h-[300px] overflow-y-auto">
+                    {isSearchingExpenses && (
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                      </div>
+                    )}
+                    {!isSearchingExpenses && expenseSearchResults.length === 0 && (
+                      <div className="p-4 text-center text-sm text-gray-500">
+                        <p>Aucun article trouvé</p>
+                        <p className="text-xs mt-1">Ajoutez des dépenses dans le scénario de votre projet</p>
+                      </div>
+                    )}
+                    {expenseSearchResults.length > 0 && (
+                      <CommandGroup heading={`Articles disponibles (${expenseSearchResults.length})`}>
+                        {expenseSearchResults.map((expense) => (
+                          <CommandItem
+                            key={expense.id}
+                            value={expense.nom}
+                            onSelect={() => {
+                              if (onLinkExpense) {
+                                onLinkExpense(expense);
+                                setExpenseSearchQuery("");
+                                setExpenseSearchResults((prev) => prev.filter((e) => e.id !== expense.id));
+                              }
+                            }}
+                            className="cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2 w-full">
+                              <Package className="h-4 w-4 text-blue-500 shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm truncate">{expense.nom}</div>
+                                <div className="text-xs text-gray-500 flex flex-wrap gap-x-2">
+                                  {expense.marque && <span>{expense.marque}</span>}
+                                  <span className="text-emerald-600">{expense.prix.toFixed(2)}€</span>
+                                  <span>x{expense.quantite}</span>
+                                </div>
+                              </div>
+                              <Plus className="h-4 w-4 text-gray-400" />
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    )}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            {!hasExpenses && (
+              <p className="text-xs text-gray-400 text-center">Ajoutez des articles depuis le scénario du projet</p>
+            )}
+          </div>
+        );
+
       default:
         return null;
     }
@@ -783,6 +1263,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         return <ImageIcon className="h-3 w-3" />;
       case "task":
         return <Wrench className="h-3 w-3" />;
+      case "order":
+        return <Package className="h-3 w-3" />;
     }
   };
 
@@ -1115,6 +1597,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   // Liste des projets pour le sélecteur
   const [projects, setProjects] = useState<ProjectItem[]>([]);
 
+  // 🔥 Liste des fournisseurs enregistrés
+  const [suppliers, setSuppliers] = useState<string[]>([]);
+
   // Dates avec des blocs roadmap (pour indicateurs dans l'agenda)
   const [roadmapDates, setRoadmapDates] = useState<Set<string>>(new Set());
 
@@ -1414,8 +1899,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       type,
       x: 100 + Math.random() * 200,
       y: 100 + Math.random() * 200,
-      width: type === "table" ? 300 : type === "task" ? 280 : 200,
-      height: 100,
+      width: type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
+      height: type === "order" ? 150 : 100,
       content:
         type === "checklist"
           ? [{ id: crypto.randomUUID(), text: "", checked: false }]
@@ -1428,13 +1913,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
                 ]
               : type === "task"
                 ? null // Le contenu sera la tâche liée
-                : "",
+                : type === "order"
+                  ? null // Le contenu sera les dépenses liées
+                  : "",
       style: {
         fontFamily: FONTS[0].value,
         fontSize: 14,
         color: "#000000",
         backgroundColor: "#ffffff",
       },
+      // Initialiser linkedExpenses pour le type order
+      linkedExpenses: type === "order" ? [] : undefined,
     };
     setBlocks((prev) => [...prev, newBlock]);
     setSelectedBlockId(newBlock.id);
@@ -1667,6 +2156,183 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       }
     },
     [userId, refreshData],
+  );
+
+  // 🔥 Rechercher des dépenses du projet pour les blocs order
+  const searchExpenses = useCallback(
+    async (query: string): Promise<LinkedExpense[]> => {
+      if (!userId || !projectId) return [];
+
+      // Fonction pour nettoyer les entités HTML
+      const cleanHtmlEntities = (str: string | null | undefined): string => {
+        if (!str) return "";
+        return str
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&apos;/g, "'")
+          .replace(/\s+/g, " ")
+          .trim();
+      };
+
+      // Récupérer les IDs des dépenses déjà liées aux blocs
+      const linkedExpenseIds: string[] = [];
+      blocks.forEach((block) => {
+        if (block.linkedExpenses) {
+          block.linkedExpenses.forEach((expense) => {
+            if (expense.id && !linkedExpenseIds.includes(expense.id)) {
+              linkedExpenseIds.push(expense.id);
+            }
+          });
+        }
+      });
+
+      try {
+        // D'abord récupérer le scénario validé du projet
+        const { data: scenario } = await (supabase as any)
+          .from("project_scenarios")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("is_selected", true)
+          .maybeSingle();
+
+        if (!scenario) {
+          // Essayer de récupérer n'importe quel scénario du projet
+          const { data: anyScenario } = await (supabase as any)
+            .from("project_scenarios")
+            .select("id")
+            .eq("project_id", projectId)
+            .limit(1)
+            .maybeSingle();
+
+          if (!anyScenario) return [];
+        }
+
+        const scenarioId = scenario?.id;
+
+        // Construire la requête de base
+        let queryBuilder = (supabase as any)
+          .from("project_expenses")
+          .select(
+            `
+            id,
+            nom,
+            marque,
+            prix,
+            quantite,
+            categorie,
+            fournisseur,
+            statut_livraison,
+            date_achat,
+            expected_delivery_date,
+            project_id,
+            projects (
+              name,
+              nom
+            )
+          `,
+          )
+          .eq("project_id", projectId);
+
+        // Si recherche active, filtrer par nom
+        if (query.length >= 2) {
+          queryBuilder = queryBuilder.ilike("nom", `%${query}%`);
+        }
+
+        const { data: expenses, error } = await queryBuilder.order("created_at", { ascending: false }).limit(30);
+
+        if (error) throw error;
+
+        // Filtrer les dépenses déjà liées
+        const filteredExpenses = (expenses || []).filter((e: any) => !linkedExpenseIds.includes(e.id));
+
+        return filteredExpenses.map((expense: any) => ({
+          id: expense.id,
+          nom: cleanHtmlEntities(expense.nom),
+          marque: cleanHtmlEntities(expense.marque),
+          prix: expense.prix || 0,
+          quantite: expense.quantite || 1,
+          categorie: expense.categorie,
+          fournisseur: expense.fournisseur,
+          statut_livraison: expense.statut_livraison || "a_commander",
+          date_achat: expense.date_achat,
+          expected_delivery_date: expense.expected_delivery_date,
+          project_id: expense.project_id,
+          project_name: cleanHtmlEntities(expense.projects?.name || expense.projects?.nom),
+        }));
+      } catch (error) {
+        console.error("Erreur recherche dépenses:", error);
+        return [];
+      }
+    },
+    [userId, projectId, blocks],
+  );
+
+  // Lier une dépense à un bloc order
+  const linkExpense = useCallback((blockId: string, expense: LinkedExpense) => {
+    setBlocks((prevBlocks) => {
+      const currentBlock = prevBlocks.find((b) => b.id === blockId);
+      if (!currentBlock) return prevBlocks;
+
+      const existingExpenses = currentBlock.linkedExpenses || [];
+
+      // Vérifier si la dépense n'est pas déjà dans la liste
+      if (existingExpenses.some((e) => e.id === expense.id)) {
+        toast.error("Cet article est déjà dans la liste");
+        return prevBlocks;
+      }
+
+      const newLinkedExpenses = [...existingExpenses, expense];
+
+      return prevBlocks.map((b) =>
+        b.id === blockId
+          ? {
+              ...b,
+              linkedExpenses: newLinkedExpenses,
+              linkedProjectId: expense.project_id,
+              linkedProjectName: expense.project_name,
+            }
+          : b,
+      );
+    });
+
+    setHasUnsavedChanges(true);
+    toast.success(`"${expense.nom}" ajouté`);
+  }, []);
+
+  // Mettre à jour une dépense dans Supabase
+  const updateExpense = useCallback(
+    async (expenseId: string, updates: Partial<LinkedExpense>) => {
+      try {
+        // Préparer les champs à mettre à jour dans Supabase
+        const supabaseUpdates: Record<string, any> = {};
+
+        if (updates.fournisseur !== undefined) supabaseUpdates.fournisseur = updates.fournisseur;
+        if (updates.statut_livraison !== undefined) supabaseUpdates.statut_livraison = updates.statut_livraison;
+        if (updates.date_achat !== undefined) supabaseUpdates.date_achat = updates.date_achat || null;
+        if (updates.expected_delivery_date !== undefined)
+          supabaseUpdates.expected_delivery_date = updates.expected_delivery_date || null;
+
+        if (Object.keys(supabaseUpdates).length > 0) {
+          const { error } = await (supabase as any)
+            .from("project_expenses")
+            .update(supabaseUpdates)
+            .eq("id", expenseId);
+
+          if (error) throw error;
+        }
+
+        // Rafraîchir pour la sidebar
+        refreshData();
+      } catch (error) {
+        console.error("Erreur mise à jour dépense:", error);
+        toast.error("Erreur lors de la mise à jour");
+      }
+    },
+    [refreshData],
   );
 
   // Envoyer un bloc task vers la sidebar Tâches (crée une tâche SANS catégorie)
@@ -2017,6 +2683,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         onUpdateTaskStatus: updateTaskStatus,
         onSendToSidebarTask: () => sendToSidebarTask(block.id),
         onSendToSidebarNote: () => sendToSidebarNote(block.id),
+        // 🔥 Props pour les dépenses/commandes
+        onSearchExpenses: searchExpenses,
+        onLinkExpense: (expense: LinkedExpense) => linkExpense(block.id, expense),
+        onUpdateExpense: updateExpense,
+        suppliers,
         projects,
         currentProjectId: projectId,
       } as CustomBlockData,
@@ -2037,6 +2708,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     updateTaskStatus,
     sendToSidebarTask,
     sendToSidebarNote,
+    searchExpenses,
+    linkExpense,
+    updateExpense,
+    suppliers,
     projects,
     projectId,
     selectedBlockId,
@@ -2261,6 +2936,25 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, []);
 
+  // 🔥 Charger la liste des fournisseurs uniques
+  const loadSuppliers = useCallback(async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const { data, error } = await (supabase as any)
+      .from("project_expenses")
+      .select("fournisseur")
+      .eq("user_id", userData.user.id)
+      .not("fournisseur", "is", null)
+      .not("fournisseur", "eq", "");
+
+    if (!error && data) {
+      // Extraire les fournisseurs uniques
+      const uniqueSuppliers = [...new Set(data.map((d: any) => d.fournisseur).filter(Boolean))];
+      setSuppliers(uniqueSuppliers as string[]);
+    }
+  }, []);
+
   // Charger les dates qui ont des blocs avec targetDate (roadmap) pour la semaine visible
   const loadRoadmapDates = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
@@ -2300,13 +2994,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, [projectId]);
 
-  // Charger les projets au montage
+  // Charger les projets et fournisseurs au montage
   useEffect(() => {
     if (open) {
       loadProjects();
+      loadSuppliers();
       loadRoadmapDates();
     }
-  }, [open, loadProjects, loadRoadmapDates]);
+  }, [open, loadProjects, loadSuppliers, loadRoadmapDates]);
 
   const loadDayData = useCallback(async () => {
     setIsLoading(true);
@@ -2746,6 +3441,15 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
               className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
             >
               <Wrench className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => addBlock("order")}
+              title="Suivi commandes"
+              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            >
+              <Package className="h-4 w-4" />
             </Button>
 
             {/* Note rapide → Sidebar */}
