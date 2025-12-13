@@ -284,11 +284,12 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
 
     setHasValidScenarios(true);
 
-    // Charger uniquement les dépenses des scénarios principaux
+    // Charger uniquement les dépenses avec un statut de livraison défini
     const { data: expenses, error } = await (supabase as any)
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
+      .not("statut_livraison", "is", null)
       .order("date_achat", { ascending: false });
 
     if (error) {
@@ -304,11 +305,9 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }));
 
     // Séparer par statut
-    // Les articles "a_commander" et "commande" vont dans shoppingList
     setShoppingList(
       expensesWithProjectName.filter(
-        (e: OrderItem) =>
-          e.statut_livraison === "commande" || e.statut_livraison === "a_commander" || !e.statut_livraison,
+        (e: OrderItem) => e.statut_livraison === "a_commander" || e.statut_livraison === "commande",
       ),
     );
     setOrdersInProgress(expensesWithProjectName.filter((e: OrderItem) => e.statut_livraison === "en_livraison"));
