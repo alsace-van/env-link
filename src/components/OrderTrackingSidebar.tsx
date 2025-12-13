@@ -28,6 +28,7 @@ import {
   Euro,
   TrendingDown,
   Maximize2,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, subMonths, startOfMonth, endOfMonth, parseISO } from "date-fns";
@@ -93,11 +94,160 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   const [customDateStart, setCustomDateStart] = useState<string>("");
   const [customDateEnd, setCustomDateEnd] = useState<string>("");
 
+  // 🔥 Formulaire d'ajout d'achat général
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemBrand, setNewItemBrand] = useState("");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [newItemQuantity, setNewItemQuantity] = useState("1");
+  const [newItemSupplier, setNewItemSupplier] = useState("");
+  const [newItemCategory, setNewItemCategory] = useState("Fournitures");
+  const [isAddingItem, setIsAddingItem] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       loadAllOrders();
     }
   }, [isOpen]);
+
+  // 🔥 Récupérer ou créer le projet "Achats généraux"
+  const getOrCreateGeneralPurchasesProject = async (userId: string) => {
+    // Chercher un projet existant "Achats généraux"
+    const { data: existingProject } = await (supabase as any)
+      .from("projects")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("nom_projet", "📦 Achats généraux")
+      .maybeSingle();
+
+    if (existingProject) {
+      // Vérifier qu'il a un scénario principal verrouillé
+      const { data: scenario } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", existingProject.id)
+        .eq("est_principal", true)
+        .eq("is_locked", true)
+        .maybeSingle();
+
+      if (scenario) {
+        return { projectId: existingProject.id, scenarioId: scenario.id };
+      }
+
+      // Créer ou mettre à jour le scénario
+      const { data: anyScenario } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", existingProject.id)
+        .maybeSingle();
+
+      if (anyScenario) {
+        await (supabase as any)
+          .from("project_scenarios")
+          .update({ est_principal: true, is_locked: true })
+          .eq("id", anyScenario.id);
+        return { projectId: existingProject.id, scenarioId: anyScenario.id };
+      }
+
+      // Créer le scénario
+      const { data: newScenario } = await (supabase as any)
+        .from("project_scenarios")
+        .insert({
+          project_id: existingProject.id,
+          nom: "Liste principale",
+          est_principal: true,
+          is_locked: true,
+        })
+        .select("id")
+        .single();
+
+      return { projectId: existingProject.id, scenarioId: newScenario.id };
+    }
+
+    // Créer le projet
+    const { data: newProject, error: projectError } = await (supabase as any)
+      .from("projects")
+      .insert({
+        user_id: userId,
+        nom_projet: "📦 Achats généraux",
+        nom_proprietaire: "Achats généraux",
+        statut: "actif",
+      })
+      .select("id")
+      .single();
+
+    if (projectError) throw projectError;
+
+    // Créer le scénario principal verrouillé
+    const { data: newScenario, error: scenarioError } = await (supabase as any)
+      .from("project_scenarios")
+      .insert({
+        project_id: newProject.id,
+        nom: "Liste principale",
+        est_principal: true,
+        is_locked: true,
+      })
+      .select("id")
+      .single();
+
+    if (scenarioError) throw scenarioError;
+
+    return { projectId: newProject.id, scenarioId: newScenario.id };
+  };
+
+  // 🔥 Ajouter un achat général
+  const addGeneralPurchase = async () => {
+    if (!newItemName.trim()) {
+      toast.error("Veuillez saisir un nom d'article");
+      return;
+    }
+
+    setIsAddingItem(true);
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error("Non connecté");
+
+      // Récupérer ou créer le projet "Achats généraux"
+      const { projectId, scenarioId } = await getOrCreateGeneralPurchasesProject(userData.user.id);
+
+      // Créer la dépense
+      const { error } = await (supabase as any).from("project_expenses").insert({
+        project_id: projectId,
+        scenario_id: scenarioId,
+        nom_accessoire: newItemName.trim(),
+        marque: newItemBrand.trim() || null,
+        prix: parseFloat(newItemPrice) || 0,
+        quantite: parseInt(newItemQuantity) || 1,
+        fournisseur: newItemSupplier.trim() || null,
+        categorie: newItemCategory,
+        statut_livraison: "a_commander",
+        date_achat: format(new Date(), "yyyy-MM-dd"),
+      });
+
+      if (error) throw error;
+
+      toast.success("Article ajouté à la liste d'achats");
+
+      // Réinitialiser le formulaire
+      setNewItemName("");
+      setNewItemBrand("");
+      setNewItemPrice("");
+      setNewItemQuantity("1");
+      setNewItemSupplier("");
+      setNewItemCategory("Fournitures");
+      setShowAddDialog(false);
+
+      // Rafraîchir la liste
+      loadAllOrders();
+      if (onOrderChange) onOrderChange();
+    } catch (error) {
+      console.error("Erreur ajout achat:", error);
+      toast.error("Erreur lors de l'ajout");
+    } finally {
+      setIsAddingItem(false);
+    }
+  };
 
   const loadAllOrders = async () => {
     setIsLoading(true);
@@ -629,6 +779,16 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                 <h2 className="text-lg font-semibold">Suivi des Commandes</h2>
               </div>
               <div className="flex items-center gap-1">
+                {/* 🔥 Bouton ajouter un achat général */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowAddDialog(true)}
+                  title="Ajouter un achat (fournitures, consommables...)"
+                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1103,6 +1263,99 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                   %
                 </div>
               </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 🔥 Dialog d'ajout d'achat général */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-green-600" />
+              Ajouter un achat
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Ajoutez des fournitures, consommables ou autres achats qui ne sont pas liés à un projet spécifique.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="itemName">Nom de l'article *</Label>
+                <Input
+                  id="itemName"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  placeholder="ex: Ruban adhésif, Gants, Vis..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="itemBrand">Marque</Label>
+                  <Input
+                    id="itemBrand"
+                    value={newItemBrand}
+                    onChange={(e) => setNewItemBrand(e.target.value)}
+                    placeholder="ex: 3M, Bosch..."
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="itemCategory">Catégorie</Label>
+                  <Input
+                    id="itemCategory"
+                    value={newItemCategory}
+                    onChange={(e) => setNewItemCategory(e.target.value)}
+                    placeholder="ex: Fournitures"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="itemPrice">Prix unitaire (€)</Label>
+                  <Input
+                    id="itemPrice"
+                    type="number"
+                    step="0.01"
+                    value={newItemPrice}
+                    onChange={(e) => setNewItemPrice(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="itemQuantity">Quantité</Label>
+                  <Input
+                    id="itemQuantity"
+                    type="number"
+                    min="1"
+                    value={newItemQuantity}
+                    onChange={(e) => setNewItemQuantity(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="itemSupplier">Fournisseur</Label>
+                <Input
+                  id="itemSupplier"
+                  value={newItemSupplier}
+                  onChange={(e) => setNewItemSupplier(e.target.value)}
+                  placeholder="ex: Amazon, Leroy Merlin..."
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                Annuler
+              </Button>
+              <Button onClick={addGeneralPurchase} disabled={isAddingItem}>
+                {isAddingItem ? "Ajout..." : "Ajouter"}
+              </Button>
             </div>
           </div>
         </DialogContent>
