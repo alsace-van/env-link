@@ -2474,6 +2474,54 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, [quickNoteTitle, quickNoteContent, userId, projectId]);
 
+  // 🔥 Charger les projets disponibles avec scénario principal
+  const loadAvailableProjectsForPurchase = useCallback(async () => {
+    if (!userId) return;
+
+    const { data: projects } = await supabase
+      .from("projects")
+      .select("id, nom_projet, nom_proprietaire")
+      .eq("user_id", userId);
+
+    if (!projects) return;
+
+    const projectsWithScenario: { id: string; name: string; scenarioId: string }[] = [];
+
+    for (const project of projects) {
+      const { data: scenario } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", project.id)
+        .eq("est_principal", true)
+        .maybeSingle();
+
+      if (scenario) {
+        projectsWithScenario.push({
+          id: project.id,
+          name: project.nom_projet || project.nom_proprietaire || "Projet sans nom",
+          scenarioId: scenario.id,
+        });
+      }
+    }
+
+    setAvailableProjectsForPurchase(projectsWithScenario);
+
+    // Sélectionner le projet actuel par défaut s'il est dans la liste
+    const currentInList = projectsWithScenario.find((p) => p.id === projectId);
+    if (currentInList) {
+      setSelectedProjectForPurchase(currentInList.id);
+    } else if (projectsWithScenario.length > 0) {
+      setSelectedProjectForPurchase(projectsWithScenario[0].id);
+    }
+  }, [userId, projectId]);
+
+  // Charger les projets quand le dialog d'achat s'ouvre
+  useEffect(() => {
+    if (showQuickPurchase) {
+      loadAvailableProjectsForPurchase();
+    }
+  }, [showQuickPurchase, loadAvailableProjectsForPurchase]);
+
   // 🔥 Ajouter un achat rapide au projet sélectionné + créer un bloc
   const addQuickPurchase = useCallback(async () => {
     if (!quickPurchaseName.trim()) {
@@ -2489,7 +2537,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     // Trouver le projet et scénario sélectionnés
     const selectedProject = availableProjectsForPurchase.find((p) => p.id === selectedProjectForPurchase);
     if (!selectedProject) {
-      toast.error("Veuillez sélectionner un projet avec scénario verrouillé");
+      toast.error("Veuillez sélectionner un projet");
       return;
     }
 
@@ -4073,9 +4121,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
               <div className="text-center py-4">
                 <Package className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  Aucun projet avec scénario verrouillé.
+                  Aucun projet avec scénario principal.
                   <br />
-                  Verrouillez d'abord un scénario dans un projet.
+                  Créez d'abord un scénario dans un projet.
                 </p>
               </div>
             ) : (
@@ -4097,7 +4145,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
                       ))}
                     </select>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Seuls les projets avec scénario verrouillé sont disponibles
+                      Seuls les projets avec scénario principal sont disponibles
                     </p>
                   </div>
 
