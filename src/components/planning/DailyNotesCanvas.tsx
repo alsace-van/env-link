@@ -288,13 +288,13 @@ interface CustomBlockData {
   onImageUpload: (file: File) => void;
   onMoveToDate: (targetDate: string) => void;
   onNavigateToDate: (date: string) => void;
-  onSearchTasks: (query: string) => Promise<AvailableTask[]>;
+  onSearchTasks: (query: string, linkedProjectId?: string) => Promise<AvailableTask[]>;
   onLinkTask: (task: AvailableTask) => void;
   onUpdateTaskStatus: (taskId: string, status: "pending" | "in_progress" | "completed", actualHours?: number) => void;
   onSendToSidebarTask: () => void;
   onSendToSidebarNote: () => void;
   // 🔥 Props pour les dépenses/commandes
-  onSearchExpenses: (query: string) => Promise<LinkedExpense[]>;
+  onSearchExpenses: (query: string, linkedProjectId?: string) => Promise<LinkedExpense[]>;
   onLinkExpense: (expense: LinkedExpense) => void;
   onUpdateExpense: (expenseId: string, updates: Partial<LinkedExpense>) => void;
   suppliers: string[]; // 🔥 Liste des fournisseurs enregistrés
@@ -695,7 +695,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 if (open && onSearchTasks) {
                   setIsSearchingTasks(true);
                   try {
-                    const results = await onSearchTasks("");
+                    // 🔥 Passer le linkedProjectId du bloc pour filtrer les tâches
+                    const results = await onSearchTasks("", block.linkedProjectId);
                     // Filtrer les tâches déjà ajoutées dans le bloc
                     const existingIds = tasks.map((t) => t.id);
                     setTaskSearchResults(results.filter((r) => !existingIds.includes(r.id)));
@@ -732,7 +733,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                       if (onSearchTasks) {
                         setIsSearchingTasks(true);
                         try {
-                          const results = await onSearchTasks(value);
+                          // 🔥 Passer le linkedProjectId du bloc pour filtrer les tâches
+                          const results = await onSearchTasks(value, block.linkedProjectId);
                           // Filtrer les tâches déjà ajoutées
                           const existingIds = tasks.map((t) => t.id);
                           setTaskSearchResults(results.filter((r) => !existingIds.includes(r.id)));
@@ -1145,7 +1147,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 if (open && onSearchExpenses) {
                   setIsSearchingExpenses(true);
                   try {
-                    const results = await onSearchExpenses("");
+                    // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
+                    const results = await onSearchExpenses("", block.linkedProjectId);
                     const existingIds = expenses.map((e) => e.id);
                     setExpenseSearchResults(results.filter((r) => !existingIds.includes(r.id)));
                   } catch (error) {
@@ -1181,7 +1184,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                       if (onSearchExpenses) {
                         setIsSearchingExpenses(true);
                         try {
-                          const results = await onSearchExpenses(value);
+                          // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
+                          const results = await onSearchExpenses(value, block.linkedProjectId);
                           const existingIds = expenses.map((e) => e.id);
                           setExpenseSearchResults(results.filter((r) => !existingIds.includes(r.id)));
                         } catch (error) {
@@ -1969,9 +1973,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     [userId, updateBlockWithSync],
   );
 
-  // Rechercher des tâches dans les fiches de travaux de tous les projets de l'utilisateur
+  // Rechercher des tâches dans les fiches de travaux
   const searchTasks = useCallback(
-    async (query: string): Promise<AvailableTask[]> => {
+    async (query: string, linkedProjectId?: string): Promise<AvailableTask[]> => {
       if (!userId) return [];
 
       // Fonction pour nettoyer les entités HTML
@@ -2000,16 +2004,22 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         });
       });
 
-      // Si query vide ou trop court, retourner les travaux récents du projet actuel
+      // Si query vide ou trop court, retourner les travaux récents
       const minQueryLength = query.length >= 2;
 
       try {
-        // D'abord récupérer les projets de l'utilisateur
-        const { data: userProjects } = await (supabase as any).from("projects").select("id").eq("user_id", userId);
+        // 🔥 Si le bloc est lié à un projet, filtrer uniquement sur ce projet
+        let targetProjectIds: string[];
 
-        if (!userProjects || userProjects.length === 0) return [];
-
-        const projectIds = userProjects.map((p: any) => p.id);
+        if (linkedProjectId) {
+          // Bloc lié à un projet spécifique → filtrer sur ce projet
+          targetProjectIds = [linkedProjectId];
+        } else {
+          // Pas de projet lié → tous les projets de l'utilisateur
+          const { data: userProjects } = await (supabase as any).from("projects").select("id").eq("user_id", userId);
+          if (!userProjects || userProjects.length === 0) return [];
+          targetProjectIds = userProjects.map((p: any) => p.id);
+        }
 
         // Construire la requête de base
         let queryBuilder = (supabase as any)
@@ -2037,7 +2047,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           )
         `,
           )
-          .in("project_id", projectIds)
+          .in("project_id", targetProjectIds)
           .not("category_id", "is", null) // Seulement les travaux (avec catégorie)
           .eq("completed", false) // Seulement les tâches non terminées
           .is("scheduled_date", null); // 🔥 Seulement les tâches NON planifiées
@@ -2045,11 +2055,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         // Si recherche active, filtrer par titre
         if (minQueryLength) {
           queryBuilder = queryBuilder.ilike("title", `%${query}%`);
-        } else {
-          // Sinon, privilégier le projet actuel
-          if (projectId) {
-            queryBuilder = queryBuilder.eq("project_id", projectId);
-          }
         }
 
         const { data: tasks, error } = await queryBuilder
@@ -2081,7 +2086,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         return [];
       }
     },
-    [userId, projectId, blocks],
+    [userId, blocks],
   );
 
   // Lier une tâche à un bloc (ajoute à la liste existante)
@@ -2174,8 +2179,12 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
   // 🔥 Rechercher des dépenses du projet pour les blocs order
   const searchExpenses = useCallback(
-    async (query: string): Promise<LinkedExpense[]> => {
-      if (!userId || !projectId) return [];
+    async (query: string, linkedProjectId?: string): Promise<LinkedExpense[]> => {
+      if (!userId) return [];
+
+      // 🔥 Utiliser le projet lié au bloc, sinon le projet actuel
+      const targetProjectId = linkedProjectId || projectId;
+      if (!targetProjectId) return [];
 
       // Fonction pour nettoyer les entités HTML
       const cleanHtmlEntities = (str: string | null | undefined): string => {
@@ -2205,14 +2214,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       });
 
       try {
-        // 🔥 D'abord récupérer le scénario principal (est_principal) du projet
+        // 🔥 D'abord récupérer le scénario principal (est_principal) du projet ciblé
         let scenarioId: string | null = null;
 
         // Essayer le scénario principal
         const { data: principalScenario } = await (supabase as any)
           .from("project_scenarios")
           .select("id")
-          .eq("project_id", projectId)
+          .eq("project_id", targetProjectId)
           .eq("est_principal", true)
           .maybeSingle();
 
@@ -2224,7 +2233,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           const { data: anyScenario } = await (supabase as any)
             .from("project_scenarios")
             .select("id")
-            .eq("project_id", projectId)
+            .eq("project_id", targetProjectId)
             .order("created_at", { ascending: true })
             .limit(1)
             .maybeSingle();
@@ -2236,7 +2245,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         }
 
         if (!scenarioId) {
-          console.log("❌ Aucun scénario trouvé pour le projet", projectId);
+          console.log("❌ Aucun scénario trouvé pour le projet", targetProjectId);
           return [];
         }
 
