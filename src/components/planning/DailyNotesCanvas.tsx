@@ -1266,16 +1266,17 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
       case "zone":
         // Zone de travail - grande zone colorée avec titre
+        // Le corps est pointer-events-none pour laisser passer les clics aux blocs au-dessus
         return (
           <div
-            className="w-full h-full p-0 pointer-events-none"
+            className="w-full h-full p-0"
             style={{
               backgroundColor: "transparent",
             }}
           >
-            {/* Titre de la zone */}
+            {/* Titre de la zone - interactif pour édition */}
             <div
-              className="px-3 py-2 border-b flex items-center justify-between pointer-events-auto"
+              className="px-3 py-2 border-b flex items-center justify-between cursor-move"
               style={{
                 backgroundColor: block.zoneBorderColor || "#d1d5db",
                 borderColor: block.zoneBorderColor || "#d1d5db",
@@ -1290,13 +1291,13 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     if (e.key === "Enter") setIsEditing(false);
                   }}
                   autoFocus
-                  className="h-6 text-sm font-semibold border-0 bg-white/50 focus-visible:ring-0"
+                  className="h-6 text-sm font-semibold border-0 bg-white/50 focus-visible:ring-0 nodrag"
                   onClick={stopPropagation}
                   onPointerDown={stopPropagation}
                 />
               ) : (
                 <span
-                  className="text-sm font-semibold text-gray-700 cursor-text"
+                  className="text-sm font-semibold text-gray-700 cursor-text nodrag"
                   onDoubleClick={() => setIsEditing(true)}
                 >
                   {block.content?.title || "Zone de travail"}
@@ -1306,7 +1307,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               {/* Sélecteur de couleur */}
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={stopPropagation}>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 nodrag" onClick={stopPropagation}>
                     <Palette className="h-3 w-3" />
                   </Button>
                 </PopoverTrigger>
@@ -1333,14 +1334,14 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               </Popover>
             </div>
 
-            {/* Corps de la zone - zone vide pour le contenu visuel */}
+            {/* Corps de la zone - pointer-events-none pour laisser passer les clics */}
             <div
-              className="p-2 min-h-[100px] pointer-events-auto"
+              className="p-2 min-h-[100px] pointer-events-none"
               style={{
                 backgroundColor: block.zoneColor || "#f3f4f6",
               }}
             >
-              <p className="text-xs text-gray-400 italic text-center">
+              <p className="text-xs text-gray-400 italic text-center select-none">
                 {block.content?.description || "Glissez des blocs ici pour les organiser"}
               </p>
             </div>
@@ -1403,9 +1404,9 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
         {renderContent()}
 
-        {/* Handle de redimensionnement - nodrag nopan pour empêcher ReactFlow de capturer */}
+        {/* Handle de redimensionnement */}
         <div
-          className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize opacity-30 group-hover:opacity-100 transition-opacity nodrag nopan z-50"
+          className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize opacity-30 group-hover:opacity-100 transition-opacity nodrag nopan"
           style={{
             background: "linear-gradient(135deg, transparent 40%, #6b7280 40%, #6b7280 60%, #4b5563 60%)",
             borderTopLeftRadius: "4px",
@@ -3075,7 +3076,12 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         projects,
         currentProjectId: projectId,
       } as CustomBlockData,
-      style: { width: block.width, height: "auto" },
+      // 🔥 Zone de travail en arrière-plan (zIndex: 0), autres blocs au-dessus (zIndex: 10)
+      style: {
+        width: block.width,
+        height: block.type === "zone" ? block.height : "auto",
+      },
+      zIndex: block.type === "zone" ? 0 : 10,
     })) as any;
 
     setNodes(newNodes);
