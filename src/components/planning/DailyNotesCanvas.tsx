@@ -2311,7 +2311,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   );
 
   // Lier une dépense à un bloc order
-  const linkExpense = useCallback((blockId: string, expense: LinkedExpense) => {
+  const linkExpense = useCallback(async (blockId: string, expense: LinkedExpense) => {
     setBlocks((prevBlocks) => {
       const currentBlock = prevBlocks.find((b) => b.id === blockId);
       if (!currentBlock) return prevBlocks;
@@ -2338,8 +2338,19 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       );
     });
 
+    // 🔥 Marquer l'article comme "en suivi de commande" dans Supabase
+    if (expense.id) {
+      await (supabase as any)
+        .from("project_expenses")
+        .update({
+          in_order_tracking: true,
+          statut_livraison: expense.statut_livraison || "a_commander",
+        })
+        .eq("id", expense.id);
+    }
+
     setHasUnsavedChanges(true);
-    toast.success(`"${expense.nom}" ajouté`);
+    toast.success(`"${expense.nom}" ajouté au suivi`);
   }, []);
 
   // Mettre à jour une dépense dans Supabase
@@ -2558,6 +2569,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           fournisseur: quickPurchaseSupplier.trim() || null,
           categorie: quickPurchaseCategory || "Achats généraux",
           statut_livraison: "a_commander",
+          in_order_tracking: true, // 🔥 Marquer comme en suivi
           date_achat: format(new Date(), "yyyy-MM-dd"),
         })
         .select("id")
