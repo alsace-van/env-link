@@ -1545,7 +1545,14 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       />
 
       {/* Planning visuel - ouvert par double-clic sur un jour */}
-      {projectId && <DailyNotesCanvas projectId={projectId} open={isPlanningOpen} onOpenChange={setIsPlanningOpen} />}
+      {projectId && (
+        <DailyNotesCanvas
+          projectId={projectId}
+          open={isPlanningOpen}
+          onOpenChange={setIsPlanningOpen}
+          initialDate={planningDate}
+        />
+      )}
     </>
   );
 };
