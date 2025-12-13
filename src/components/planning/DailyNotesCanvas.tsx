@@ -2470,119 +2470,47 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, [quickNoteTitle, quickNoteContent, userId, projectId]);
 
-  // 🔥 Récupérer ou créer le projet "Achats généraux"
-  const getOrCreateGeneralPurchasesProject = useCallback(async (userIdParam: string) => {
-    // Chercher un projet existant "Achats généraux"
-    const { data: existingProject } = await (supabase as any)
-      .from("projects")
-      .select("id")
-      .eq("user_id", userIdParam)
-      .eq("nom_projet", "📦 Achats généraux")
-      .maybeSingle();
-
-    if (existingProject) {
-      // Vérifier qu'il a un scénario principal verrouillé
-      const { data: scenario } = await (supabase as any)
-        .from("project_scenarios")
-        .select("id")
-        .eq("project_id", existingProject.id)
-        .eq("est_principal", true)
-        .eq("is_locked", true)
-        .maybeSingle();
-
-      if (scenario) {
-        return { projectId: existingProject.id, scenarioId: scenario.id };
-      }
-
-      // Créer ou mettre à jour le scénario
-      const { data: anyScenario } = await (supabase as any)
-        .from("project_scenarios")
-        .select("id")
-        .eq("project_id", existingProject.id)
-        .maybeSingle();
-
-      if (anyScenario) {
-        await (supabase as any)
-          .from("project_scenarios")
-          .update({ est_principal: true, is_locked: true })
-          .eq("id", anyScenario.id);
-        return { projectId: existingProject.id, scenarioId: anyScenario.id };
-      }
-
-      // Créer le scénario
-      const { data: newScenario } = await (supabase as any)
-        .from("project_scenarios")
-        .insert({
-          project_id: existingProject.id,
-          nom: "Liste principale",
-          est_principal: true,
-          is_locked: true,
-        })
-        .select("id")
-        .single();
-
-      return { projectId: existingProject.id, scenarioId: newScenario.id };
-    }
-
-    // Créer le projet
-    const { data: newProject, error: projectError } = await (supabase as any)
-      .from("projects")
-      .insert({
-        user_id: userIdParam,
-        nom_projet: "📦 Achats généraux",
-        nom_proprietaire: "Achats généraux",
-        statut: "actif",
-      })
-      .select("id")
-      .single();
-
-    if (projectError) throw projectError;
-
-    // Créer le scénario principal verrouillé
-    const { data: newScenario, error: scenarioError } = await (supabase as any)
-      .from("project_scenarios")
-      .insert({
-        project_id: newProject.id,
-        nom: "Liste principale",
-        est_principal: true,
-        is_locked: true,
-      })
-      .select("id")
-      .single();
-
-    if (scenarioError) throw scenarioError;
-
-    return { projectId: newProject.id, scenarioId: newScenario.id };
-  }, []);
-
-  // 🔥 Ajouter un achat rapide
+  // 🔥 Ajouter un achat rapide (au projet actuel)
   const addQuickPurchase = useCallback(async () => {
     if (!quickPurchaseName.trim()) {
       toast.error("Veuillez saisir un nom d'article");
       return;
     }
 
-    if (!userId) {
-      toast.error("Non connecté");
+    if (!userId || !projectId) {
+      toast.error("Non connecté ou projet non sélectionné");
       return;
     }
 
     setIsAddingPurchase(true);
 
     try {
-      // Récupérer ou créer le projet "Achats généraux"
-      const { projectId: generalProjectId, scenarioId } = await getOrCreateGeneralPurchasesProject(userId);
+      // Récupérer le scénario principal du projet actuel
+      const { data: principalScenario, error: scenarioError } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("est_principal", true)
+        .maybeSingle();
 
-      // Créer la dépense
+      if (scenarioError) throw scenarioError;
+
+      if (!principalScenario) {
+        toast.error("Aucun scénario principal trouvé. Créez d'abord un scénario.");
+        setIsAddingPurchase(false);
+        return;
+      }
+
+      // Créer la dépense dans le projet actuel
       const { error } = await (supabase as any).from("project_expenses").insert({
-        project_id: generalProjectId,
-        scenario_id: scenarioId,
+        project_id: projectId,
+        scenario_id: principalScenario.id,
         nom_accessoire: quickPurchaseName.trim(),
         marque: quickPurchaseBrand.trim() || null,
         prix: parseFloat(quickPurchasePrice) || 0,
         quantite: parseInt(quickPurchaseQuantity) || 1,
         fournisseur: quickPurchaseSupplier.trim() || null,
-        categorie: quickPurchaseCategory,
+        categorie: quickPurchaseCategory || "Achats généraux",
         statut_livraison: "a_commander",
         date_achat: format(new Date(), "yyyy-MM-dd"),
       });
@@ -2616,7 +2544,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     quickPurchaseSupplier,
     quickPurchaseCategory,
     userId,
-    getOrCreateGeneralPurchasesProject,
+    projectId,
     refreshData,
   ]);
 
