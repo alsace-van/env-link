@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useProjectData } from "@/contexts/ProjectDataContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -77,6 +78,7 @@ interface PlanningTasksListProps {
 }
 
 export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasksListProps) => {
+  const { refreshData } = useProjectData();
   const [plannedTasks, setPlannedTasks] = useState<PlannedTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -199,8 +201,17 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
       }
 
       blocks[blockIndex].taskStatus = newStatus;
+
+      // 🔥 Mettre à jour linkedTask (ancien format)
       if (blocks[blockIndex].linkedTask) {
         blocks[blockIndex].linkedTask!.completed = newStatus === "completed";
+      }
+
+      // 🔥 Mettre à jour linkedTasks (nouveau format)
+      if (blocks[blockIndex].linkedTasks) {
+        blocks[blockIndex].linkedTasks = blocks[blockIndex].linkedTasks!.map((t) =>
+          t.id === task.linkedTask.id ? { ...t, completed: newStatus === "completed" } : t,
+        );
       }
 
       // 3. Sauvegarder
@@ -225,8 +236,9 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
           .eq("id", task.linkedTask.id);
       }
 
-      // 5. Rafraîchir la liste
+      // 5. Rafraîchir la liste ET le calendrier
       loadPlannedTasks();
+      refreshData(); // 🔥 Rafraîchir le calendrier mensuel
 
       if (newStatus === "completed") {
         toast.success("Tâche terminée !");
