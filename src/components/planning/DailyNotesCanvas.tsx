@@ -1704,11 +1704,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       if (!block?.sourceBlockId || !block?.sourceDate || !userId) return;
 
       try {
-        // Charger la note de la date source
+        // Charger la note de la date source (GLOBAL)
         const { data: sourceNote, error } = await (supabase as any)
           .from("daily_notes")
           .select("*")
-          .eq("project_id", projectId)
           .eq("user_id", userId)
           .eq("note_date", block.sourceDate)
           .maybeSingle();
@@ -1810,7 +1809,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         const { data: currentNote } = await (supabase as any)
           .from("daily_notes")
           .select("id")
-          .eq("project_id", projectId)
           .eq("user_id", userId)
           .eq("note_date", dateStr)
           .maybeSingle();
@@ -1838,7 +1836,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           const { data: targetNote } = await (supabase as any)
             .from("daily_notes")
             .select("id, blocks_data")
-            .eq("project_id", projectId)
             .eq("user_id", userId)
             .eq("note_date", blockToDelete.rescheduledTo)
             .maybeSingle();
@@ -1870,7 +1867,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           const { data: sourceNote } = await (supabase as any)
             .from("daily_notes")
             .select("id, blocks_data")
-            .eq("project_id", projectId)
             .eq("user_id", userId)
             .eq("note_date", blockToDelete.sourceDate)
             .maybeSingle();
@@ -2664,11 +2660,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       const currentDateStr = format(selectedDate, "yyyy-MM-dd");
 
       try {
-        // 1. Charger ou créer la note de la date cible
+        // 1. Charger ou créer la note de la date cible (GLOBAL)
         const { data: targetNote, error: fetchError } = await (supabase as any)
           .from("daily_notes")
           .select("*")
-          .eq("project_id", projectId)
           .eq("user_id", userId)
           .eq("note_date", targetDate)
           .maybeSingle();
@@ -2800,7 +2795,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         const { data: currentNote } = await (supabase as any)
           .from("daily_notes")
           .select("id")
-          .eq("project_id", projectId)
           .eq("user_id", userId)
           .eq("note_date", currentDateStr)
           .maybeSingle();
@@ -2815,7 +2809,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
             })
             .eq("id", currentNote.id);
         } else {
-          // Créer la note si elle n'existe pas encore
+          // Créer la note si elle n'existe pas encore (avec project_id pour rétrocompat)
           await (supabase as any).from("daily_notes").insert({
             project_id: projectId,
             user_id: userId,
@@ -3178,11 +3172,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
     const dates = new Set<string>();
 
-    // 1. Récupérer toutes les notes du projet pour scanner les dates avec contenu
+    // 1. Récupérer toutes les notes de l'utilisateur (GLOBAL, tous projets)
     const { data, error } = await (supabase as any)
       .from("daily_notes")
       .select("note_date, blocks_data")
-      .eq("project_id", projectId)
       .eq("user_id", userData.user.id);
 
     if (!error && data) {
@@ -3209,35 +3202,47 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       });
     }
 
-    // 🔥 2. Récupérer les dates de livraison prévues (séparément)
+    // 🔥 2. Récupérer les dates de livraison prévues (de TOUS les projets)
     const deliveryDatesSet = new Set<string>();
 
-    const { data: principalScenario } = await (supabase as any)
-      .from("project_scenarios")
+    // Récupérer tous les projets de l'utilisateur
+    const { data: userProjects } = await (supabase as any)
+      .from("projects")
       .select("id")
-      .eq("project_id", projectId)
-      .eq("est_principal", true)
-      .maybeSingle();
+      .eq("user_id", userData.user.id);
 
-    if (principalScenario) {
-      const { data: deliveries } = await (supabase as any)
-        .from("project_expenses")
-        .select("expected_delivery_date")
-        .eq("scenario_id", principalScenario.id)
-        .not("expected_delivery_date", "is", null);
+    const projectIds = userProjects?.map((p: any) => p.id) || [];
 
-      if (deliveries) {
-        deliveries.forEach((d: any) => {
-          if (d.expected_delivery_date) {
-            deliveryDatesSet.add(d.expected_delivery_date);
-          }
-        });
+    if (projectIds.length > 0) {
+      // Récupérer tous les scénarios principaux
+      const { data: scenarios } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .in("project_id", projectIds)
+        .eq("est_principal", true);
+
+      const scenarioIds = scenarios?.map((s: any) => s.id) || [];
+
+      if (scenarioIds.length > 0) {
+        const { data: deliveries } = await (supabase as any)
+          .from("project_expenses")
+          .select("expected_delivery_date")
+          .in("scenario_id", scenarioIds)
+          .not("expected_delivery_date", "is", null);
+
+        if (deliveries) {
+          deliveries.forEach((d: any) => {
+            if (d.expected_delivery_date) {
+              deliveryDatesSet.add(d.expected_delivery_date);
+            }
+          });
+        }
       }
     }
 
     setRoadmapDates(dates);
     setDeliveryDates(deliveryDatesSet);
-  }, [projectId]);
+  }, []); // Plus de dépendance à projectId
 
   // Charger les projets et fournisseurs au montage
   useEffect(() => {
@@ -3258,11 +3263,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     const dateStr = format(selectedDate, "yyyy-MM-dd");
 
     try {
-      // 🔥 1. Charger les notes du jour
+      // 🔥 1. Charger les notes du jour (GLOBAL à l'utilisateur, pas par projet)
       const { data, error } = await (supabase as any)
         .from("daily_notes")
         .select("*")
-        .eq("project_id", projectId)
         .eq("user_id", userData.user.id)
         .eq("note_date", dateStr)
         .maybeSingle();
@@ -3309,16 +3313,27 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         setEdges([]);
       }
 
-      // 🔥 2. Charger les livraisons prévues pour ce jour
-      // D'abord récupérer le scénario principal
-      const { data: principalScenario } = await (supabase as any)
-        .from("project_scenarios")
+      // 🔥 2. Charger les livraisons prévues pour ce jour (de TOUS les projets)
+      // Récupérer tous les scénarios principaux de l'utilisateur
+      const { data: userProjects } = await (supabase as any)
+        .from("projects")
         .select("id")
-        .eq("project_id", projectId)
-        .eq("est_principal", true)
-        .maybeSingle();
+        .eq("user_id", userData.user.id);
 
-      if (principalScenario) {
+      const projectIds = userProjects?.map((p: any) => p.id) || [];
+
+      let principalScenarioIds: string[] = [];
+      if (projectIds.length > 0) {
+        const { data: scenarios } = await (supabase as any)
+          .from("project_scenarios")
+          .select("id")
+          .in("project_id", projectIds)
+          .eq("est_principal", true);
+
+        principalScenarioIds = scenarios?.map((s: any) => s.id) || [];
+      }
+
+      if (principalScenarioIds.length > 0) {
         const { data: deliveries } = await (supabase as any)
           .from("project_expenses")
           .select(
@@ -3336,7 +3351,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
             project_id
           `,
           )
-          .eq("scenario_id", principalScenario.id)
+          .in("scenario_id", principalScenarioIds)
           .eq("expected_delivery_date", dateStr);
 
         if (deliveries && deliveries.length > 0) {
@@ -3492,10 +3507,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         console.log("📦 in_order_tracking mis à jour pour", allLinkedExpenseIds.length, "articles");
       }
 
+      // 🔥 Chercher une note existante par user_id + note_date (GLOBAL)
       const { data: existing } = await (supabase as any)
         .from("daily_notes")
         .select("id")
-        .eq("project_id", projectId)
         .eq("user_id", userId)
         .eq("note_date", dateStr)
         .maybeSingle();
@@ -3511,6 +3526,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           })
           .eq("id", existing.id);
       } else {
+        // Créer avec project_id pour rétrocompatibilité
         await (supabase as any).from("daily_notes").insert({
           project_id: projectId,
           user_id: userId,
