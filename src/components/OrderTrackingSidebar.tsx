@@ -174,6 +174,14 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     setIsAddingItem(true);
 
     try {
+      // Récupérer l'utilisateur connecté
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error("Non connecté");
+        setIsAddingItem(false);
+        return;
+      }
+
       // Récupérer le scénario principal verrouillé du projet sélectionné
       const { data: scenario, error: scenarioError } = await (supabase as any)
         .from("project_scenarios")
@@ -193,6 +201,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       const { error } = await (supabase as any).from("project_expenses").insert({
         project_id: selectedProjectId,
         scenario_id: scenario.id,
+        user_id: userData.user.id, // 🔥 Requis pour la politique RLS
         nom_accessoire: newItemName.trim(),
         marque: newItemBrand.trim() || null,
         prix: parseFloat(newItemPrice) || 0,
