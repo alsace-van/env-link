@@ -449,12 +449,19 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) return;
 
-      // Charger tous les projets
+      // Charger tous les projets EN PREMIER
       const { data: projectsData } = await (supabase as any)
         .from("projects")
-        .select("id, name")
+        .select("id, name, nom")
         .eq("user_id", user.user.id);
-      if (projectsData) setProjects(projectsData);
+
+      // 🔥 Créer un map pour les noms de projets
+      const projectsWithNames = (projectsData || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || p.nom || "Sans nom",
+      }));
+      console.log("📅 ProjectDetail - Projets chargés:", projectsWithNames.length, projectsWithNames);
+      setProjects(projectsWithNames);
 
       // Charger toutes les tâches de l'utilisateur
       const { data: todosData } = await (supabase as any)
@@ -462,6 +469,7 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
         .select("*")
         .eq("user_id", user.user.id)
         .order("due_date", { ascending: true });
+      console.log("📅 ProjectDetail - Todos chargés:", todosData?.length);
       if (todosData) setAllTodos(todosData);
 
       // Charger tous les rendez-vous
@@ -512,25 +520,34 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
       return false;
     });
 
-    // Regrouper par projet
-    const projectIds = new Set<string>();
+    // Regrouper par projet - utiliser les noms directement
+    const projectNamesSet = new Set<string>();
     const tasksWithoutProject: string[] = [];
 
     todosForDate.forEach((todo: any) => {
       if (todo.project_id) {
-        projectIds.add(todo.project_id);
+        // Chercher le nom du projet
+        const project = projects.find((p) => p.id === todo.project_id);
+        if (project?.name) {
+          projectNamesSet.add(project.name);
+        } else {
+          // Fallback: chercher dans les projets ou marquer comme inconnu
+          console.warn("⚠️ Projet non trouvé pour ID:", todo.project_id, "- Projets disponibles:", projects.length);
+          // Ne pas ajouter "Projet inconnu" si les projets ne sont pas encore chargés
+          if (projects.length > 0) {
+            projectNamesSet.add("Projet inconnu");
+          }
+        }
       } else {
         tasksWithoutProject.push(todo.title);
       }
     });
 
-    // Convertir les IDs en noms
-    const projectNames = Array.from(projectIds).map((id) => {
-      const project = projects.find((p) => p.id === id);
-      return project?.name || "Projet inconnu";
-    });
-
-    return { projectNames, tasksWithoutProject, totalTodos: todosForDate.length };
+    return {
+      projectNames: Array.from(projectNamesSet),
+      tasksWithoutProject,
+      totalTodos: todosForDate.length,
+    };
   };
 
   const getEventsForDate = (date: Date) => {
