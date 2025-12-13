@@ -182,66 +182,30 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
   // Mettre à jour le statut d'un bloc dans daily_notes
   const updateTaskStatus = async (task: PlannedTask, newStatus: "pending" | "in_progress" | "completed") => {
     try {
-      // 1. Charger la note
-      const { data: note, error: fetchError } = await (supabase as any)
-        .from("daily_notes")
-        .select("blocks_data")
-        .eq("id", task.noteId)
-        .single();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-      if (fetchError) throw fetchError;
+      const newCompleted = newStatus === "completed";
 
-      // 2. Parser et mettre à jour le bloc
-      const blocks: NoteBlock[] = JSON.parse(note.blocks_data);
-      const blockIndex = blocks.findIndex((b) => b.id === task.blockId);
+      // 🔥 Utiliser la fonction de synchronisation globale
+      // Elle met à jour project_todos ET tous les daily_notes contenant cette tâche
+      const { syncTaskCompleted } = await import("@/utils/taskSync");
+      const success = await syncTaskCompleted(task.linkedTask.id, newCompleted, user.id);
 
-      if (blockIndex === -1) {
-        toast.error("Bloc non trouvé");
-        return;
+      if (!success) {
+        throw new Error("Échec de la synchronisation");
       }
 
-      blocks[blockIndex].taskStatus = newStatus;
-
-      // 🔥 Mettre à jour linkedTask (ancien format)
-      if (blocks[blockIndex].linkedTask) {
-        blocks[blockIndex].linkedTask!.completed = newStatus === "completed";
-      }
-
-      // 🔥 Mettre à jour linkedTasks (nouveau format)
-      if (blocks[blockIndex].linkedTasks) {
-        blocks[blockIndex].linkedTasks = blocks[blockIndex].linkedTasks!.map((t) =>
-          t.id === task.linkedTask.id ? { ...t, completed: newStatus === "completed" } : t,
-        );
-      }
-
-      // 3. Sauvegarder
-      const { error: updateError } = await (supabase as any)
-        .from("daily_notes")
-        .update({
-          blocks_data: JSON.stringify(blocks),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", task.noteId);
-
-      if (updateError) throw updateError;
-
-      // 4. Mettre à jour aussi dans project_todos
-      if (task.linkedTask.id) {
-        await (supabase as any)
-          .from("project_todos")
-          .update({
-            completed: newStatus === "completed",
-            completed_at: newStatus === "completed" ? new Date().toISOString() : null,
-          })
-          .eq("id", task.linkedTask.id);
-      }
-
-      // 5. Rafraîchir la liste ET le calendrier
+      // Rafraîchir la liste ET le calendrier
       loadPlannedTasks();
-      refreshData(); // 🔥 Rafraîchir le calendrier mensuel
+      refreshData();
 
-      if (newStatus === "completed") {
+      if (newCompleted) {
         toast.success("Tâche terminée !");
+      } else {
+        toast.success("Tâche réactivée");
       }
     } catch (error) {
       console.error("Erreur mise à jour statut:", error);
