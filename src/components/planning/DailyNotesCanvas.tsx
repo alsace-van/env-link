@@ -3472,6 +3472,26 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         console.log("📅 scheduled_date mis à jour pour", allLinkedTaskIds.length, "tâches");
       }
 
+      // 🔥 Mettre à jour in_order_tracking pour tous les articles des blocs order
+      const allLinkedExpenseIds: string[] = [];
+      blocks.forEach((block) => {
+        if (block.type === "order" && block.linkedExpenses) {
+          block.linkedExpenses.forEach((expense) => {
+            if (expense.id && !allLinkedExpenseIds.includes(expense.id)) {
+              allLinkedExpenseIds.push(expense.id);
+            }
+          });
+        }
+      });
+
+      if (allLinkedExpenseIds.length > 0) {
+        await (supabase as any)
+          .from("project_expenses")
+          .update({ in_order_tracking: true })
+          .in("id", allLinkedExpenseIds);
+        console.log("📦 in_order_tracking mis à jour pour", allLinkedExpenseIds.length, "articles");
+      }
+
       const { data: existing } = await (supabase as any)
         .from("daily_notes")
         .select("id")
