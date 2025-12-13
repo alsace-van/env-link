@@ -1268,14 +1268,14 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         // Zone de travail - grande zone colorée avec titre
         return (
           <div
-            className="w-full h-full min-h-[200px] p-0"
+            className="w-full h-full p-0 pointer-events-none"
             style={{
               backgroundColor: "transparent",
             }}
           >
             {/* Titre de la zone */}
             <div
-              className="px-3 py-2 border-b flex items-center justify-between"
+              className="px-3 py-2 border-b flex items-center justify-between pointer-events-auto"
               style={{
                 backgroundColor: block.zoneBorderColor || "#d1d5db",
                 borderColor: block.zoneBorderColor || "#d1d5db",
@@ -1335,7 +1335,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
             {/* Corps de la zone - zone vide pour le contenu visuel */}
             <div
-              className="p-2 min-h-[150px]"
+              className="p-2 min-h-[100px] pointer-events-auto"
               style={{
                 backgroundColor: block.zoneColor || "#f3f4f6",
               }}
@@ -1385,11 +1385,13 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   if (block.type === "zone") {
     return (
       <div
-        className={`rounded-lg group relative ${selected ? "ring-2 ring-blue-500" : ""}`}
+        className={`rounded-lg group relative overflow-hidden ${selected ? "ring-2 ring-blue-500" : ""}`}
         style={{
           backgroundColor: block.zoneColor || "#f3f4f6",
-          minWidth: block.width || 400,
-          minHeight: block.height || 300,
+          width: block.width || 400,
+          height: block.height || 300,
+          minWidth: 200,
+          minHeight: 150,
           border: `2px dashed ${block.zoneBorderColor || "#d1d5db"}`,
         }}
       >
@@ -1401,18 +1403,23 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
         {renderContent()}
 
-        {/* Handle de redimensionnement */}
+        {/* Handle de redimensionnement - nodrag nopan pour empêcher ReactFlow de capturer */}
         <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ background: "linear-gradient(135deg, transparent 50%, #9ca3af 50%)" }}
+          className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize opacity-30 group-hover:opacity-100 transition-opacity nodrag nopan z-50"
+          style={{
+            background: "linear-gradient(135deg, transparent 40%, #6b7280 40%, #6b7280 60%, #4b5563 60%)",
+            borderTopLeftRadius: "4px",
+          }}
           onMouseDown={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             const startX = e.clientX;
             const startY = e.clientY;
             const startWidth = block.width || 400;
             const startHeight = block.height || 300;
 
             const onMouseMove = (moveEvent: MouseEvent) => {
+              moveEvent.preventDefault();
               const newWidth = Math.max(200, startWidth + (moveEvent.clientX - startX));
               const newHeight = Math.max(150, startHeight + (moveEvent.clientY - startY));
               onUpdate({ width: newWidth, height: newHeight });
@@ -1425,6 +1432,9 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
             document.addEventListener("mousemove", onMouseMove);
             document.addEventListener("mouseup", onMouseUp);
+          }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
           }}
         />
 
