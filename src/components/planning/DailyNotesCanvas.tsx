@@ -1270,28 +1270,26 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     async (blockId: string) => {
       // Trouver le bloc avant de le supprimer pour vérifier si c'est une copie
       const blockToDelete = blocks.find((b) => b.id === blockId);
+      if (!blockToDelete) return;
 
-      // Si le bloc a des tâches liées, retirer leur scheduled_date
-      if (blockToDelete?.linkedTasks && blockToDelete.linkedTasks.length > 0) {
-        const taskIds = blockToDelete.linkedTasks.map((t) => t.id);
-        try {
-          await (supabase as any).from("project_todos").update({ scheduled_date: null }).in("id", taskIds);
-          console.log("🗓️ Tâches déliées du planning:", taskIds);
-        } catch (error) {
-          console.error("Erreur déliaison tâches:", error);
-        }
-      }
+      // 🔥 Récupérer toutes les tâches liées
+      const linkedTasks = blockToDelete.linkedTasks || (blockToDelete.linkedTask ? [blockToDelete.linkedTask] : []);
+      const taskIds = linkedTasks.map((t) => t.id);
 
-      // Ancienne syntaxe linkedTask (rétrocompatibilité)
-      if (blockToDelete?.linkedTask) {
+      // 🔥 Remettre les tâches à l'état initial (non planifiées, non complétées)
+      if (taskIds.length > 0) {
         try {
           await (supabase as any)
             .from("project_todos")
-            .update({ scheduled_date: null })
-            .eq("id", blockToDelete.linkedTask.id);
-          console.log("🗓️ Tâche déliée du planning:", blockToDelete.linkedTask.id);
+            .update({
+              scheduled_date: null,
+              completed: false,
+              completed_at: null,
+            })
+            .in("id", taskIds);
+          console.log("🔄 Tâches réinitialisées:", taskIds);
         } catch (error) {
-          console.error("Erreur déliaison tâche:", error);
+          console.error("Erreur réinitialisation tâches:", error);
         }
       }
 
@@ -1329,12 +1327,43 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         console.error("Erreur sauvegarde après suppression:", error);
       }
 
-      setHasUnsavedChanges(false); // Plus de changements non sauvegardés
+      setHasUnsavedChanges(false);
 
-      // Si c'était une copie, nettoyer le rescheduledTo de l'original
-      if (blockToDelete?.sourceDate && blockToDelete?.sourceBlockId && userId) {
+      // 🔥 Si c'est un ORIGINAL avec une copie (rescheduledTo), supprimer aussi la copie
+      if (blockToDelete.rescheduledTo && userId) {
         try {
-          // Charger la note de la date d'origine
+          const { data: targetNote } = await (supabase as any)
+            .from("daily_notes")
+            .select("id, blocks_data")
+            .eq("project_id", projectId)
+            .eq("user_id", userId)
+            .eq("note_date", blockToDelete.rescheduledTo)
+            .maybeSingle();
+
+          if (targetNote?.blocks_data) {
+            const targetBlocks: NoteBlock[] = JSON.parse(targetNote.blocks_data);
+            // Supprimer le bloc copié (celui qui a sourceBlockId = blockId)
+            const updatedTargetBlocks = targetBlocks.filter((b) => b.sourceBlockId !== blockId);
+
+            await (supabase as any)
+              .from("daily_notes")
+              .update({
+                blocks_data: JSON.stringify(updatedTargetBlocks),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", targetNote.id);
+
+            console.log("🗑️ Copie supprimée de la date:", blockToDelete.rescheduledTo);
+            toast.success("Bloc et sa copie supprimés");
+          }
+        } catch (error) {
+          console.error("Erreur suppression copie:", error);
+        }
+      }
+
+      // 🔥 Si c'était une COPIE, nettoyer le rescheduledTo de l'original
+      if (blockToDelete.sourceDate && blockToDelete.sourceBlockId && userId) {
+        try {
           const { data: sourceNote } = await (supabase as any)
             .from("daily_notes")
             .select("id, blocks_data")
@@ -1345,12 +1374,19 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
           if (sourceNote?.blocks_data) {
             const sourceBlocks: NoteBlock[] = JSON.parse(sourceNote.blocks_data);
-            // Trouver et mettre à jour le bloc original
+            // Remettre l'original à l'état initial (pas de rescheduledTo, pas completed)
             const updatedBlocks = sourceBlocks.map((b) =>
-              b.id === blockToDelete.sourceBlockId ? { ...b, rescheduledTo: undefined } : b,
+              b.id === blockToDelete.sourceBlockId
+                ? {
+                    ...b,
+                    rescheduledTo: undefined,
+                    taskStatus: "pending" as const,
+                    linkedTasks: b.linkedTasks?.map((t) => ({ ...t, completed: false })),
+                    linkedTask: b.linkedTask ? { ...b.linkedTask, completed: false } : undefined,
+                  }
+                : b,
             );
 
-            // Sauvegarder la note source mise à jour
             await (supabase as any)
               .from("daily_notes")
               .update({
@@ -1366,7 +1402,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         }
       }
 
-      // 🔥 Rafraîchir le contexte pour mettre à jour le calendrier mensuel
+      // 🔥 Rafraîchir le contexte pour mettre à jour le calendrier et la fiche travaux
       refreshData();
     },
     [blocks, edges, selectedBlockId, userId, projectId, selectedDate, refreshData],
@@ -1860,8 +1896,32 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
         // 5. Marquer le bloc original comme "reporté" et SAUVEGARDER IMMÉDIATEMENT
 
-        // Mettre à jour le state local
-        const updatedOriginalBlocks = blocks.map((b) => (b.id === blockId ? { ...b, rescheduledTo: targetDate } : b));
+        // 🔥 Vérifier si la date cible est dans le passé
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const targetDateObj = parseISO(targetDate);
+        const isPastDate = targetDateObj < today;
+
+        // Mettre à jour le state local - inclure le statut completed si date passée
+        const updatedOriginalBlocks = blocks.map((b) => {
+          if (b.id === blockId) {
+            const updatedBlock: NoteBlock = { ...b, rescheduledTo: targetDate };
+
+            // 🔥 Si date passée, marquer aussi le bloc original comme complété
+            if (isPastDate) {
+              updatedBlock.taskStatus = "completed";
+              if (updatedBlock.linkedTasks) {
+                updatedBlock.linkedTasks = updatedBlock.linkedTasks.map((t) => ({ ...t, completed: true }));
+              }
+              if (updatedBlock.linkedTask) {
+                updatedBlock.linkedTask = { ...updatedBlock.linkedTask, completed: true };
+              }
+            }
+
+            return updatedBlock;
+          }
+          return b;
+        });
         setBlocks(updatedOriginalBlocks);
 
         // Sauvegarder immédiatement dans Supabase (ne pas attendre l'auto-save)
