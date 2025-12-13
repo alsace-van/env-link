@@ -68,6 +68,7 @@ import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleIns
 import { WorkTabMain } from "@/components/work/WorkTabMain";
 import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
 import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
+import DailyNotesCanvas from "@/components/planning/DailyNotesCanvas";
 import ScenarioManager from "@/components/scenarios/ScenarioManager";
 import OrderTrackingSidebar from "@/components/OrderTrackingSidebar";
 import MechanicalProcedures from "@/components/MechanicalProcedures";
@@ -443,6 +444,20 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
   const [supplierExpenses, setSupplierExpenses] = useState<any[]>([]);
   const [accessoryDeliveries, setAccessoryDeliveries] = useState<any[]>([]);
 
+  // 🔥 États pour ouvrir le planning au double-clic
+  const [isPlanningOpen, setIsPlanningOpen] = useState(false);
+  const [planningDate, setPlanningDate] = useState<Date>(new Date());
+
+  // Fonction pour ouvrir le planning sur une date
+  const openPlanningForDate = (date: Date) => {
+    if (projectId) {
+      setPlanningDate(date);
+      setIsPlanningOpen(true);
+    } else {
+      toast.info("Sélectionnez un projet pour ouvrir le planning");
+    }
+  };
+
   // Charger TOUTES les données pour le planning mensuel (tous les projets)
   useEffect(() => {
     const loadAllData = async () => {
@@ -647,8 +662,12 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
                         {projectNames.slice(0, 2).map((name, idx) => (
                           <div
                             key={`proj-${idx}`}
-                            className="flex items-center gap-1 text-xs bg-purple-50 dark:bg-purple-950/30 px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40"
-                            title={name}
+                            className="flex items-center gap-1 text-xs bg-purple-50 dark:bg-purple-950/30 px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/40 cursor-pointer"
+                            title={`${name} - Double-clic pour ouvrir le planning`}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              openPlanningForDate(day);
+                            }}
                           >
                             <CheckCircle2 className="h-3 w-3 text-purple-500 flex-shrink-0" />
                             <span className="truncate text-purple-700 dark:text-purple-300 font-medium">{name}</span>
@@ -657,8 +676,12 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
                         {tasksWithoutProject.slice(0, 2 - Math.min(projectNames.length, 2)).map((title, idx) => (
                           <div
                             key={`task-${idx}`}
-                            className="flex items-center gap-1 text-xs bg-purple-50/50 dark:bg-purple-950/20 px-1.5 py-0.5 rounded hover:bg-purple-100/50 dark:hover:bg-purple-900/30"
-                            title={title}
+                            className="flex items-center gap-1 text-xs bg-purple-50/50 dark:bg-purple-950/20 px-1.5 py-0.5 rounded hover:bg-purple-100/50 dark:hover:bg-purple-900/30 cursor-pointer"
+                            title={`${title} - Double-clic pour ouvrir le planning`}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              openPlanningForDate(day);
+                            }}
                           >
                             <CheckCircle2 className="h-3 w-3 text-purple-400 flex-shrink-0" />
                             <span className="truncate text-purple-600 dark:text-purple-400">{title}</span>
@@ -677,8 +700,12 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
                   {events.appointments.slice(0, 2).map((appointment, idx) => (
                     <div
                       key={`appt-${idx}`}
-                      className="flex items-center gap-1 text-xs bg-green-50 dark:bg-green-950/30 px-1.5 py-0.5 rounded hover:bg-green-100 dark:hover:bg-green-900/40"
-                      title={appointment.client_name}
+                      className="flex items-center gap-1 text-xs bg-green-50 dark:bg-green-950/30 px-1.5 py-0.5 rounded hover:bg-green-100 dark:hover:bg-green-900/40 cursor-pointer"
+                      title={`${appointment.client_name} - Double-clic pour ouvrir le planning`}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        openPlanningForDate(day);
+                      }}
                     >
                       <UserCircle className="h-3 w-3 text-green-600 flex-shrink-0" />
                       <span className="truncate text-green-700 dark:text-green-300">{appointment.client_name}</span>
@@ -694,8 +721,12 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
                   {events.expenses.slice(0, 2).map((expense, idx) => (
                     <div
                       key={`expense-${idx}`}
-                      className="flex items-center gap-1 text-xs bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/40"
-                      title={expense.product_name}
+                      className="flex items-center gap-1 text-xs bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/40 cursor-pointer"
+                      title={`${expense.product_name} - Double-clic pour ouvrir le planning`}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        openPlanningForDate(day);
+                      }}
                     >
                       <Package className="h-3 w-3 text-red-600 flex-shrink-0" />
                       <span className="truncate text-red-700 dark:text-red-300">{expense.product_name}</span>
@@ -711,8 +742,12 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
                   {events.deliveries.slice(0, 2).map((delivery, idx) => (
                     <div
                       key={`delivery-${idx}`}
-                      className="flex items-center gap-1 text-xs bg-orange-50 dark:bg-orange-950/30 px-1.5 py-0.5 rounded hover:bg-orange-100 dark:hover:bg-orange-900/40"
-                      title={delivery.nom}
+                      className="flex items-center gap-1 text-xs bg-orange-50 dark:bg-orange-950/30 px-1.5 py-0.5 rounded hover:bg-orange-100 dark:hover:bg-orange-900/40 cursor-pointer"
+                      title={`${delivery.nom} - Double-clic pour ouvrir le planning`}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        openPlanningForDate(day);
+                      }}
                     >
                       <Truck className="h-3 w-3 text-orange-600 flex-shrink-0" />
                       <span className="truncate text-orange-700 dark:text-orange-300">{delivery.nom}</span>
@@ -729,6 +764,16 @@ const SimpleMonthView = ({ projectId }: MonthViewProps) => {
           );
         })}
       </div>
+
+      {/* 🔥 Planning visuel - ouvert par double-clic sur un élément */}
+      {projectId && (
+        <DailyNotesCanvas
+          projectId={projectId}
+          open={isPlanningOpen}
+          onOpenChange={setIsPlanningOpen}
+          initialDate={planningDate}
+        />
+      )}
     </div>
   );
 };
