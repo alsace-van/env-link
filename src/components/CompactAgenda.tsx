@@ -96,6 +96,17 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   useEffect(() => {
     console.log("📆 CompactAgenda - todos reçus:", todos.length);
     console.log("📅 Todos avec scheduled_date:", todos.filter((t) => t.scheduled_date).length);
+    // 🔥 Afficher les détails des todos avec scheduled_date
+    const scheduledTodos = todos.filter((t: any) => t.scheduled_date);
+    scheduledTodos.forEach((t: any) => {
+      console.log("🔍 Todo planifié:", {
+        title: t.title?.substring(0, 30),
+        scheduled_date: t.scheduled_date,
+        project_id: t.project_id,
+        project_name: t.project_name,
+        has_project_name: !!t.project_name,
+      });
+    });
   }, [todos]);
 
   // Charger tous les projets pour afficher leurs noms
@@ -123,6 +134,20 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
       return false;
     });
 
+    // 🔥 Debug
+    if (todosForDate.length > 0) {
+      console.log(
+        "📅 Todos pour",
+        format(date, "dd/MM"),
+        ":",
+        todosForDate.map((t: any) => ({
+          title: t.title?.substring(0, 20),
+          project_name: t.project_name,
+          project_id: t.project_id,
+        })),
+      );
+    }
+
     // Regrouper par nom de projet
     const projectNamesSet = new Set<string>();
     const tasksWithoutProject: string[] = [];
@@ -138,6 +163,7 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
           projectNamesSet.add(project.name);
         } else {
           console.warn("⚠️ Projet non trouvé pour ID:", todo.project_id);
+          tasksWithoutProject.push(todo.title || "Sans titre");
         }
       } else {
         // Tâche sans projet - ajouter le titre
