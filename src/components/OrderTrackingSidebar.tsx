@@ -103,6 +103,8 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   const [newItemSupplier, setNewItemSupplier] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("Fournitures");
   const [isAddingItem, setIsAddingItem] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [availableProjects, setAvailableProjects] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -110,111 +112,87 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
   }, [isOpen]);
 
-  // 🔥 Récupérer ou créer le projet "Achats généraux"
-  const getOrCreateGeneralPurchasesProject = async (userId: string) => {
-    // Chercher un projet existant "Achats généraux"
-    const { data: existingProject } = await (supabase as any)
-      .from("projects")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("nom_projet", "📦 Achats généraux")
-      .maybeSingle();
+  // 🔥 Charger les projets disponibles avec scénario verrouillé
+  const loadAvailableProjects = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
 
-    if (existingProject) {
-      // Vérifier qu'il a un scénario principal verrouillé
+    // Charger les projets avec leurs scénarios
+    const { data: projects } = await supabase
+      .from("projects")
+      .select("id, nom_projet, nom_proprietaire")
+      .eq("user_id", userData.user.id);
+
+    if (!projects) return;
+
+    // Vérifier quels projets ont un scénario principal verrouillé
+    const projectsWithScenario: { id: string; name: string }[] = [];
+
+    for (const project of projects) {
       const { data: scenario } = await (supabase as any)
         .from("project_scenarios")
         .select("id")
-        .eq("project_id", existingProject.id)
+        .eq("project_id", project.id)
         .eq("est_principal", true)
         .eq("is_locked", true)
         .maybeSingle();
 
       if (scenario) {
-        return { projectId: existingProject.id, scenarioId: scenario.id };
+        projectsWithScenario.push({
+          id: project.id,
+          name: project.nom_projet || project.nom_proprietaire || "Projet sans nom",
+        });
       }
-
-      // Créer ou mettre à jour le scénario
-      const { data: anyScenario } = await (supabase as any)
-        .from("project_scenarios")
-        .select("id")
-        .eq("project_id", existingProject.id)
-        .maybeSingle();
-
-      if (anyScenario) {
-        await (supabase as any)
-          .from("project_scenarios")
-          .update({ est_principal: true, is_locked: true })
-          .eq("id", anyScenario.id);
-        return { projectId: existingProject.id, scenarioId: anyScenario.id };
-      }
-
-      // Créer le scénario
-      const { data: newScenario } = await (supabase as any)
-        .from("project_scenarios")
-        .insert({
-          project_id: existingProject.id,
-          nom: "Liste principale",
-          est_principal: true,
-          is_locked: true,
-        })
-        .select("id")
-        .single();
-
-      return { projectId: existingProject.id, scenarioId: newScenario.id };
     }
 
-    // Créer le projet
-    const { data: newProject, error: projectError } = await (supabase as any)
-      .from("projects")
-      .insert({
-        user_id: userId,
-        nom_projet: "📦 Achats généraux",
-        nom_proprietaire: "Achats généraux",
-        statut: "actif",
-      })
-      .select("id")
-      .single();
+    setAvailableProjects(projectsWithScenario);
 
-    if (projectError) throw projectError;
-
-    // Créer le scénario principal verrouillé
-    const { data: newScenario, error: scenarioError } = await (supabase as any)
-      .from("project_scenarios")
-      .insert({
-        project_id: newProject.id,
-        nom: "Liste principale",
-        est_principal: true,
-        is_locked: true,
-      })
-      .select("id")
-      .single();
-
-    if (scenarioError) throw scenarioError;
-
-    return { projectId: newProject.id, scenarioId: newScenario.id };
+    // Sélectionner le premier projet par défaut
+    if (projectsWithScenario.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projectsWithScenario[0].id);
+    }
   };
 
-  // 🔥 Ajouter un achat général
+  useEffect(() => {
+    if (showAddDialog) {
+      loadAvailableProjects();
+    }
+  }, [showAddDialog]);
+
+  // 🔥 Ajouter un achat au projet sélectionné
   const addGeneralPurchase = async () => {
     if (!newItemName.trim()) {
       toast.error("Veuillez saisir un nom d'article");
       return;
     }
 
+    if (!selectedProjectId) {
+      toast.error("Veuillez sélectionner un projet");
+      return;
+    }
+
     setIsAddingItem(true);
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error("Non connecté");
+      // Récupérer le scénario principal verrouillé du projet sélectionné
+      const { data: scenario, error: scenarioError } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", selectedProjectId)
+        .eq("est_principal", true)
+        .eq("is_locked", true)
+        .maybeSingle();
 
-      // Récupérer ou créer le projet "Achats généraux"
-      const { projectId, scenarioId } = await getOrCreateGeneralPurchasesProject(userData.user.id);
+      if (scenarioError || !scenario) {
+        toast.error("Aucun scénario verrouillé trouvé pour ce projet");
+        setIsAddingItem(false);
+        return;
+      }
 
       // Créer la dépense
       const { error } = await (supabase as any).from("project_expenses").insert({
-        project_id: projectId,
-        scenario_id: scenarioId,
+        project_id: selectedProjectId,
+        scenario_id: scenario.id,
         nom_accessoire: newItemName.trim(),
         marque: newItemBrand.trim() || null,
         prix: parseFloat(newItemPrice) || 0,
@@ -1278,85 +1256,114 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
-              Ajoutez des fournitures, consommables ou autres achats qui ne sont pas liés à un projet spécifique.
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="itemName">Nom de l'article *</Label>
-                <Input
-                  id="itemName"
-                  value={newItemName}
-                  onChange={(e) => setNewItemName(e.target.value)}
-                  placeholder="ex: Ruban adhésif, Gants, Vis..."
-                />
+            {availableProjects.length === 0 ? (
+              <div className="text-center py-4">
+                <Package className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Aucun projet avec scénario verrouillé.
+                  <br />
+                  Verrouillez d'abord un scénario dans un projet.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {/* Sélection du projet */}
+                  <div>
+                    <Label htmlFor="projectSelect">Projet *</Label>
+                    <select
+                      id="projectSelect"
+                      value={selectedProjectId}
+                      onChange={(e) => setSelectedProjectId(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                    >
+                      {availableProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="itemBrand">Marque</Label>
-                  <Input
-                    id="itemBrand"
-                    value={newItemBrand}
-                    onChange={(e) => setNewItemBrand(e.target.value)}
-                    placeholder="ex: 3M, Bosch..."
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="itemCategory">Catégorie</Label>
-                  <Input
-                    id="itemCategory"
-                    value={newItemCategory}
-                    onChange={(e) => setNewItemCategory(e.target.value)}
-                    placeholder="ex: Fournitures"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <Label htmlFor="itemName">Nom de l'article *</Label>
+                    <Input
+                      id="itemName"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      placeholder="ex: Ruban adhésif, Gants, Vis..."
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="itemPrice">Prix unitaire (€)</Label>
-                  <Input
-                    id="itemPrice"
-                    type="number"
-                    step="0.01"
-                    value={newItemPrice}
-                    onChange={(e) => setNewItemPrice(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="itemQuantity">Quantité</Label>
-                  <Input
-                    id="itemQuantity"
-                    type="number"
-                    min="1"
-                    value={newItemQuantity}
-                    onChange={(e) => setNewItemQuantity(e.target.value)}
-                  />
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="itemBrand">Marque</Label>
+                      <Input
+                        id="itemBrand"
+                        value={newItemBrand}
+                        onChange={(e) => setNewItemBrand(e.target.value)}
+                        placeholder="ex: 3M, Bosch..."
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="itemCategory">Catégorie</Label>
+                      <Input
+                        id="itemCategory"
+                        value={newItemCategory}
+                        onChange={(e) => setNewItemCategory(e.target.value)}
+                        placeholder="ex: Fournitures"
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <Label htmlFor="itemSupplier">Fournisseur</Label>
-                <Input
-                  id="itemSupplier"
-                  value={newItemSupplier}
-                  onChange={(e) => setNewItemSupplier(e.target.value)}
-                  placeholder="ex: Amazon, Leroy Merlin..."
-                />
-              </div>
-            </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="itemPrice">Prix unitaire (€)</Label>
+                      <Input
+                        id="itemPrice"
+                        type="number"
+                        step="0.01"
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="itemQuantity">Quantité</Label>
+                      <Input
+                        id="itemQuantity"
+                        type="number"
+                        min="1"
+                        value={newItemQuantity}
+                        onChange={(e) => setNewItemQuantity(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                Annuler
-              </Button>
-              <Button onClick={addGeneralPurchase} disabled={isAddingItem}>
-                {isAddingItem ? "Ajout..." : "Ajouter"}
-              </Button>
-            </div>
+                  <div>
+                    <Label htmlFor="itemSupplier">Fournisseur</Label>
+                    <Input
+                      id="itemSupplier"
+                      value={newItemSupplier}
+                      onChange={(e) => setNewItemSupplier(e.target.value)}
+                      placeholder="ex: Amazon, Leroy Merlin..."
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                    Annuler
+                  </Button>
+                  <Button
+                    onClick={addGeneralPurchase}
+                    disabled={isAddingItem || !newItemName.trim() || !selectedProjectId}
+                  >
+                    {isAddingItem ? "Ajout..." : "Ajouter"}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
