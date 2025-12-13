@@ -138,8 +138,11 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
               continue; // Date future, pas encore à afficher
             }
 
-            // 🔥 Ajouter chaque tâche liée
+            // 🔥 Ajouter chaque tâche liée avec son statut individuel
             for (const linkedTask of blockLinkedTasks) {
+              // Utiliser le statut de la tâche individuelle, pas celui du bloc
+              const taskCompleted = linkedTask.completed === true;
+
               tasks.push({
                 blockId: block.id,
                 noteId: note.id,
@@ -147,7 +150,11 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
                 targetDate: block.targetDate,
                 effectiveDate,
                 linkedTask: linkedTask,
-                taskStatus: block.taskStatus || "pending",
+                taskStatus: taskCompleted
+                  ? "completed"
+                  : block.taskStatus === "in_progress"
+                    ? "in_progress"
+                    : "pending",
                 rescheduledTo: block.rescheduledTo,
                 isOverdue: isBefore(effectiveDateObj, today) && !isToday(effectiveDateObj),
                 isToday: isToday(effectiveDateObj),
@@ -175,8 +182,47 @@ export const PlanningTasksList = ({ projectId, onNavigateToDate }: PlanningTasks
     }
   };
 
+  // Charger au montage et quand projectId change
   useEffect(() => {
     loadPlannedTasks();
+  }, [projectId]);
+
+  // 🔥 Subscription temps réel pour rafraîchir quand daily_notes change
+  useEffect(() => {
+    if (!projectId) return;
+
+    const channel = supabase
+      .channel(`planning-tasks-${projectId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "daily_notes",
+          filter: `project_id=eq.${projectId}`,
+        },
+        () => {
+          console.log("📋 daily_notes modifié - rafraîchissement PlanningTasksList");
+          loadPlannedTasks();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "project_todos",
+        },
+        () => {
+          console.log("📋 project_todos modifié - rafraîchissement PlanningTasksList");
+          loadPlannedTasks();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [projectId]);
 
   // Mettre à jour le statut d'un bloc dans daily_notes
