@@ -2986,12 +2986,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, []);
 
-  // Charger les dates qui ont des blocs avec targetDate (roadmap) pour la semaine visible
+  // Charger les dates qui ont des blocs avec targetDate (roadmap) et les livraisons prévues
   const loadRoadmapDates = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
-    // Récupérer toutes les notes du projet pour scanner les dates avec contenu
+    const dates = new Set<string>();
+
+    // 1. Récupérer toutes les notes du projet pour scanner les dates avec contenu
     const { data, error } = await (supabase as any)
       .from("daily_notes")
       .select("note_date, blocks_data")
@@ -2999,7 +3001,6 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       .eq("user_id", userData.user.id);
 
     if (!error && data) {
-      const dates = new Set<string>();
       data.forEach((note: any) => {
         if (note.blocks_data) {
           try {
@@ -3021,8 +3022,33 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           } catch {}
         }
       });
-      setRoadmapDates(dates);
     }
+
+    // 🔥 2. Récupérer les dates de livraison prévues
+    const { data: principalScenario } = await (supabase as any)
+      .from("project_scenarios")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("est_principal", true)
+      .maybeSingle();
+
+    if (principalScenario) {
+      const { data: deliveries } = await (supabase as any)
+        .from("project_expenses")
+        .select("expected_delivery_date")
+        .eq("scenario_id", principalScenario.id)
+        .not("expected_delivery_date", "is", null);
+
+      if (deliveries) {
+        deliveries.forEach((d: any) => {
+          if (d.expected_delivery_date) {
+            dates.add(d.expected_delivery_date);
+          }
+        });
+      }
+    }
+
+    setRoadmapDates(dates);
   }, [projectId]);
 
   // Charger les projets et fournisseurs au montage
@@ -3044,6 +3070,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     const dateStr = format(selectedDate, "yyyy-MM-dd");
 
     try {
+      // 🔥 1. Charger les notes du jour
       const { data, error } = await (supabase as any)
         .from("daily_notes")
         .select("*")
@@ -3053,6 +3080,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         .maybeSingle();
 
       if (error && error.code !== "PGRST116") throw error;
+
+      let loadedBlocks: NoteBlock[] = [];
 
       if (data) {
         // Charger le canvas Paper.js
@@ -3068,17 +3097,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         // Charger les blocs
         if (data.blocks_data) {
           try {
-            const loadedBlocks = JSON.parse(data.blocks_data);
-            setBlocks(loadedBlocks);
-            // Forcer ReactFlow à recalculer les nodes
-            blocksIdsRef.current = "";
+            loadedBlocks = JSON.parse(data.blocks_data);
           } catch {
-            setBlocks([]);
-            blocksIdsRef.current = "";
+            loadedBlocks = [];
           }
-        } else {
-          setBlocks([]);
-          blocksIdsRef.current = "";
         }
 
         // Charger les connexions
@@ -3096,10 +3118,120 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         if (paperScopeRef.current) {
           paperScopeRef.current.project.clear();
         }
-        setBlocks([]);
         setEdges([]);
-        blocksIdsRef.current = "";
       }
+
+      // 🔥 2. Charger les livraisons prévues pour ce jour
+      // D'abord récupérer le scénario principal
+      const { data: principalScenario } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("est_principal", true)
+        .maybeSingle();
+
+      if (principalScenario) {
+        const { data: deliveries } = await (supabase as any)
+          .from("project_expenses")
+          .select(
+            `
+            id,
+            nom_accessoire,
+            marque,
+            prix,
+            quantite,
+            categorie,
+            fournisseur,
+            statut_livraison,
+            date_achat,
+            expected_delivery_date,
+            project_id
+          `,
+          )
+          .eq("scenario_id", principalScenario.id)
+          .eq("expected_delivery_date", dateStr);
+
+        if (deliveries && deliveries.length > 0) {
+          console.log(`📦 ${deliveries.length} livraison(s) prévue(s) pour ${dateStr}`);
+
+          // Fonction pour nettoyer les entités HTML
+          const cleanHtmlEntities = (str: string | null | undefined): string => {
+            if (!str) return "";
+            return str
+              .replace(/&nbsp;/g, " ")
+              .replace(/&amp;/g, "&")
+              .replace(/&lt;/g, "<")
+              .replace(/&gt;/g, ">")
+              .replace(/&quot;/g, '"')
+              .replace(/&#39;/g, "'")
+              .replace(/&apos;/g, "'")
+              .replace(/\s+/g, " ")
+              .trim();
+          };
+
+          // Récupérer les IDs des dépenses déjà dans les blocs existants
+          const existingExpenseIds = new Set<string>();
+          loadedBlocks.forEach((block) => {
+            if (block.linkedExpenses) {
+              block.linkedExpenses.forEach((exp) => {
+                if (exp.id) existingExpenseIds.add(exp.id);
+              });
+            }
+          });
+
+          // Filtrer les livraisons qui ne sont pas déjà dans un bloc
+          const newDeliveries: LinkedExpense[] = deliveries
+            .filter((d: any) => !existingExpenseIds.has(d.id))
+            .map((d: any) => ({
+              id: d.id,
+              nom: cleanHtmlEntities(d.nom_accessoire),
+              marque: cleanHtmlEntities(d.marque),
+              prix: d.prix || 0,
+              quantite: d.quantite || 1,
+              categorie: d.categorie,
+              fournisseur: d.fournisseur,
+              statut_livraison: d.statut_livraison || "en_livraison",
+              date_achat: d.date_achat,
+              expected_delivery_date: d.expected_delivery_date,
+              project_id: d.project_id,
+            }));
+
+          // S'il y a des nouvelles livraisons, chercher ou créer un bloc "Livraisons du jour"
+          if (newDeliveries.length > 0) {
+            // Chercher un bloc existant nommé "Livraisons du jour" ou "🚚 Livraisons"
+            let deliveryBlockIndex = loadedBlocks.findIndex(
+              (b) =>
+                b.type === "order" &&
+                (b.content?.title === "🚚 Livraisons du jour" || b.content?.title === "Livraisons du jour"),
+            );
+
+            if (deliveryBlockIndex >= 0) {
+              // Ajouter au bloc existant
+              const existingExpenses = loadedBlocks[deliveryBlockIndex].linkedExpenses || [];
+              loadedBlocks[deliveryBlockIndex].linkedExpenses = [...existingExpenses, ...newDeliveries];
+            } else {
+              // Créer un nouveau bloc pour les livraisons
+              const deliveryBlock: NoteBlock = {
+                id: `delivery-${Date.now()}`,
+                type: "order",
+                x: 50,
+                y: 50,
+                width: 350,
+                height: 200,
+                content: {
+                  title: "🚚 Livraisons du jour",
+                },
+                linkedExpenses: newDeliveries,
+                linkedProjectId: projectId,
+              };
+              loadedBlocks = [deliveryBlock, ...loadedBlocks];
+            }
+          }
+        }
+      }
+
+      setBlocks(loadedBlocks);
+      blocksIdsRef.current = "";
     } catch (error) {
       console.error("Erreur chargement:", error);
       toast.error("Erreur lors du chargement");
