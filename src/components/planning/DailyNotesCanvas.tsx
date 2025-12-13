@@ -1296,11 +1296,40 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       }
 
       // Supprimer le bloc localement
-      setBlocks((prev) => prev.filter((b) => b.id !== blockId));
+      const newBlocks = blocks.filter((b) => b.id !== blockId);
+      setBlocks(newBlocks);
       // Supprimer les edges liées
-      setEdges((prev) => prev.filter((e) => e.source_block_id !== blockId && e.target_block_id !== blockId));
+      const newEdges = edges.filter((e) => e.source_block_id !== blockId && e.target_block_id !== blockId);
+      setEdges(newEdges);
       if (selectedBlockId === blockId) setSelectedBlockId(null);
-      setHasUnsavedChanges(true);
+
+      // 🔥 SAUVEGARDER IMMÉDIATEMENT dans la base de données
+      const dateStr = format(selectedDate, "yyyy-MM-dd");
+      try {
+        const { data: currentNote } = await (supabase as any)
+          .from("daily_notes")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("user_id", userId)
+          .eq("note_date", dateStr)
+          .maybeSingle();
+
+        if (currentNote) {
+          await (supabase as any)
+            .from("daily_notes")
+            .update({
+              blocks_data: JSON.stringify(newBlocks),
+              connections_data: JSON.stringify(newEdges),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", currentNote.id);
+          console.log("💾 Bloc supprimé et sauvegardé");
+        }
+      } catch (error) {
+        console.error("Erreur sauvegarde après suppression:", error);
+      }
+
+      setHasUnsavedChanges(false); // Plus de changements non sauvegardés
 
       // Si c'était une copie, nettoyer le rescheduledTo de l'original
       if (blockToDelete?.sourceDate && blockToDelete?.sourceBlockId && userId) {
@@ -1340,7 +1369,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       // 🔥 Rafraîchir le contexte pour mettre à jour le calendrier mensuel
       refreshData();
     },
-    [blocks, selectedBlockId, userId, projectId, refreshData],
+    [blocks, edges, selectedBlockId, userId, projectId, selectedDate, refreshData],
   );
 
   const addBlock = useCallback((type: NoteBlock["type"]) => {
@@ -1471,7 +1500,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           )
           .in("project_id", projectIds)
           .not("category_id", "is", null) // Seulement les travaux (avec catégorie)
-          .eq("completed", false); // Seulement les tâches non terminées
+          .eq("completed", false) // Seulement les tâches non terminées
+          .is("scheduled_date", null); // 🔥 Seulement les tâches NON planifiées
 
         // Si recherche active, filtrer par titre
         if (minQueryLength) {
@@ -1484,12 +1514,12 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         }
 
         const { data: tasks, error } = await queryBuilder
-          .order("scheduled_date", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: false }) // 🔥 Trier par date de création
           .limit(20);
 
         if (error) throw error;
 
-        // 🔥 Filtrer les tâches déjà liées aux blocs
+        // 🔥 Filtrer aussi les tâches déjà liées aux blocs du jour actuel (double sécurité)
         const filteredTasks = (tasks || []).filter((task: any) => !linkedTaskIds.includes(task.id));
 
         return filteredTasks.map((task: any) => ({
@@ -1570,28 +1600,37 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   const updateTaskStatus = useCallback(
     async (taskId: string, status: "pending" | "in_progress" | "completed", actualHours?: number) => {
       try {
-        const updates: any = {
-          completed: status === "completed",
-          completed_at: status === "completed" ? new Date().toISOString() : null,
-        };
+        if (!userId) return;
 
-        if (status === "completed" && actualHours) {
-          updates.actual_hours = actualHours;
+        const newCompleted = status === "completed";
+
+        // 🔥 Utiliser la fonction de synchronisation globale
+        const { syncTaskCompleted } = await import("@/utils/taskSync");
+        const success = await syncTaskCompleted(taskId, newCompleted, userId);
+
+        if (!success) {
+          throw new Error("Échec de la synchronisation");
         }
 
-        const { error } = await (supabase as any).from("project_todos").update(updates).eq("id", taskId);
+        // Mettre à jour les heures réelles si fournies
+        if (status === "completed" && actualHours) {
+          await (supabase as any).from("project_todos").update({ actual_hours: actualHours }).eq("id", taskId);
+        }
 
-        if (error) throw error;
+        // Rafraîchir le calendrier
+        refreshData();
 
         if (status === "completed") {
           toast.success("Tâche marquée comme terminée !");
+        } else {
+          toast.success("Tâche réactivée");
         }
       } catch (error) {
         console.error("Erreur mise à jour tâche:", error);
         toast.error("Erreur lors de la mise à jour");
       }
     },
-    [],
+    [userId, refreshData],
   );
 
   // Envoyer un bloc task vers la sidebar Tâches (crée une tâche SANS catégorie)
