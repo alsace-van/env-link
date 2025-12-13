@@ -2191,35 +2191,50 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       });
 
       try {
-        // D'abord récupérer le scénario validé du projet
-        const { data: scenario } = await (supabase as any)
+        // 🔥 D'abord récupérer le scénario principal (est_principal) du projet
+        let scenarioId: string | null = null;
+
+        // Essayer le scénario principal
+        const { data: principalScenario } = await (supabase as any)
           .from("project_scenarios")
           .select("id")
           .eq("project_id", projectId)
-          .eq("is_selected", true)
+          .eq("est_principal", true)
           .maybeSingle();
 
-        if (!scenario) {
-          // Essayer de récupérer n'importe quel scénario du projet
+        if (principalScenario) {
+          scenarioId = principalScenario.id;
+          console.log("✅ Scénario principal trouvé:", scenarioId);
+        } else {
+          // Sinon prendre le premier scénario du projet
           const { data: anyScenario } = await (supabase as any)
             .from("project_scenarios")
             .select("id")
             .eq("project_id", projectId)
+            .order("created_at", { ascending: true })
             .limit(1)
             .maybeSingle();
 
-          if (!anyScenario) return [];
+          if (anyScenario) {
+            scenarioId = anyScenario.id;
+            console.log("⚠️ Pas de scénario principal, utilisation du premier:", scenarioId);
+          }
         }
 
-        const scenarioId = scenario?.id;
+        if (!scenarioId) {
+          console.log("❌ Aucun scénario trouvé pour le projet", projectId);
+          return [];
+        }
 
-        // Construire la requête de base
+        console.log("🔍 Recherche dépenses dans scénario:", scenarioId);
+
+        // 🔥 Construire la requête en filtrant par scenario_id
         let queryBuilder = (supabase as any)
           .from("project_expenses")
           .select(
             `
             id,
-            nom,
+            nom_accessoire,
             marque,
             prix,
             quantite,
@@ -2229,29 +2244,35 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
             date_achat,
             expected_delivery_date,
             project_id,
+            scenario_id,
             projects (
               name,
               nom
             )
           `,
           )
-          .eq("project_id", projectId);
+          .eq("scenario_id", scenarioId); // 🔥 Filtrer par scenario_id !
 
         // Si recherche active, filtrer par nom
         if (query.length >= 2) {
-          queryBuilder = queryBuilder.ilike("nom", `%${query}%`);
+          queryBuilder = queryBuilder.ilike("nom_accessoire", `%${query}%`);
         }
 
         const { data: expenses, error } = await queryBuilder.order("created_at", { ascending: false }).limit(30);
 
-        if (error) throw error;
+        if (error) {
+          console.error("Erreur requête dépenses:", error);
+          throw error;
+        }
+
+        console.log("📦 Dépenses trouvées:", expenses?.length || 0);
 
         // Filtrer les dépenses déjà liées
         const filteredExpenses = (expenses || []).filter((e: any) => !linkedExpenseIds.includes(e.id));
 
         return filteredExpenses.map((expense: any) => ({
           id: expense.id,
-          nom: cleanHtmlEntities(expense.nom),
+          nom: cleanHtmlEntities(expense.nom_accessoire),
           marque: cleanHtmlEntities(expense.marque),
           prix: expense.prix || 0,
           quantite: expense.quantite || 1,
@@ -2936,15 +2957,25 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, []);
 
-  // 🔥 Charger la liste des fournisseurs uniques
+  // 🔥 Charger la liste des fournisseurs uniques (via les projets de l'utilisateur)
   const loadSuppliers = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
+    // D'abord récupérer les projets de l'utilisateur
+    const { data: userProjects } = await (supabase as any)
+      .from("projects")
+      .select("id")
+      .eq("user_id", userData.user.id);
+
+    if (!userProjects || userProjects.length === 0) return;
+
+    const projectIds = userProjects.map((p: any) => p.id);
+
     const { data, error } = await (supabase as any)
       .from("project_expenses")
       .select("fournisseur")
-      .eq("user_id", userData.user.id)
+      .in("project_id", projectIds)
       .not("fournisseur", "is", null)
       .not("fournisseur", "eq", "");
 
