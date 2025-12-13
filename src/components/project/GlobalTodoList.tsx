@@ -69,11 +69,24 @@ export const GlobalTodoList = () => {
   };
 
   const toggleTodo = async (id: string, completed: boolean) => {
-    const { error } = await supabase.from("project_todos").update({ completed: !completed }).eq("id", id);
+    const newCompleted = !completed;
 
-    if (!error) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Importer dynamiquement pour éviter les dépendances circulaires
+    const { syncTaskCompleted } = await import("@/utils/taskSync");
+
+    const success = await syncTaskCompleted(id, newCompleted, user.id);
+
+    if (success) {
       loadTodos();
-      refreshData(); // Mettre à jour le calendrier
+      refreshData();
+      toast.success(newCompleted ? "Tâche terminée" : "Tâche réactivée");
+    } else {
+      toast.error("Erreur lors de la mise à jour");
     }
   };
 
