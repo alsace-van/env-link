@@ -112,7 +112,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }
   }, [isOpen]);
 
-  // 🔥 Charger les projets disponibles avec scénario verrouillé
+  // 🔥 Charger les projets disponibles avec scénario principal
   const loadAvailableProjects = async () => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
@@ -125,7 +125,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
 
     if (!projects) return;
 
-    // Vérifier quels projets ont un scénario principal verrouillé
+    // Vérifier quels projets ont un scénario principal
     const projectsWithScenario: { id: string; name: string }[] = [];
 
     for (const project of projects) {
@@ -134,7 +134,6 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
         .select("id")
         .eq("project_id", project.id)
         .eq("est_principal", true)
-        .eq("is_locked", true)
         .maybeSingle();
 
       if (scenario) {
@@ -182,17 +181,16 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
         return;
       }
 
-      // Récupérer le scénario principal verrouillé du projet sélectionné
+      // Récupérer le scénario principal du projet sélectionné
       const { data: scenario, error: scenarioError } = await (supabase as any)
         .from("project_scenarios")
         .select("id")
         .eq("project_id", selectedProjectId)
         .eq("est_principal", true)
-        .eq("is_locked", true)
         .maybeSingle();
 
       if (scenarioError || !scenario) {
-        toast.error("Aucun scénario verrouillé trouvé pour ce projet");
+        toast.error("Aucun scénario principal trouvé pour ce projet");
         setIsAddingItem(false);
         return;
       }
@@ -265,18 +263,17 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       return;
     }
 
-    // Charger les scénarios principaux ET verrouillés
+    // Charger les scénarios principaux
     const { data: validScenarios } = await (supabase as any)
       .from("project_scenarios")
       .select("id, project_id")
       .in("project_id", projectIds)
-      .eq("est_principal", true)
-      .eq("is_locked", true);
+      .eq("est_principal", true);
 
     const validScenarioIds = validScenarios?.map((s: any) => s.id) || [];
 
     if (validScenarioIds.length === 0) {
-      // Aucun scénario principal verrouillé
+      // Aucun scénario principal
       setHasValidScenarios(false);
       setShoppingList([]);
       setOrdersInProgress([]);
@@ -287,7 +284,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
 
     setHasValidScenarios(true);
 
-    // Charger uniquement les dépenses des scénarios principaux verrouillés
+    // Charger uniquement les dépenses des scénarios principaux
     const { data: expenses, error } = await (supabase as any)
       .from("project_expenses")
       .select("*")
@@ -848,8 +845,8 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                   ) : !hasValidScenarios ? (
                     <div className="p-8 text-center text-muted-foreground">
                       <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                      <p className="font-medium mb-2">Aucun scénario validé</p>
-                      <p className="text-sm">Verrouillez un scénario principal pour voir les articles à commander</p>
+                      <p className="font-medium mb-2">Aucun scénario principal</p>
+                      <p className="text-sm">Créez un scénario principal pour voir les articles à commander</p>
                     </div>
                   ) : shoppingList.length === 0 ? (
                     <div className="p-8 text-center text-muted-foreground">
@@ -915,8 +912,8 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                   ) : !hasValidScenarios ? (
                     <div className="p-8 text-center text-muted-foreground">
                       <Truck className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                      <p className="font-medium mb-2">Aucun scénario validé</p>
-                      <p className="text-sm">Verrouillez un scénario principal pour voir les commandes</p>
+                      <p className="font-medium mb-2">Aucun scénario principal</p>
+                      <p className="text-sm">Créez un scénario principal pour voir les commandes</p>
                     </div>
                   ) : ordersInProgress.length === 0 ? (
                     <div className="p-8 text-center text-muted-foreground">
@@ -1007,8 +1004,8 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
                   ) : !hasValidScenarios ? (
                     <div className="p-8 text-center text-muted-foreground">
                       <PackageCheck className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                      <p className="font-medium mb-2">Aucun scénario validé</p>
-                      <p className="text-sm">Verrouillez un scénario principal pour voir les réceptions</p>
+                      <p className="font-medium mb-2">Aucun scénario principal</p>
+                      <p className="text-sm">Créez un scénario principal pour voir les réceptions</p>
                     </div>
                   ) : receivedOrders.length === 0 ? (
                     <div className="p-8 text-center text-muted-foreground">
@@ -1269,9 +1266,9 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
               <div className="text-center py-4">
                 <Package className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  Aucun projet avec scénario verrouillé.
+                  Aucun projet avec scénario principal.
                   <br />
-                  Verrouillez d'abord un scénario dans un projet.
+                  Créez d'abord un scénario principal dans un projet.
                 </p>
               </div>
             ) : (
