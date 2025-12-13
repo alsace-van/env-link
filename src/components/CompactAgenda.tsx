@@ -1031,7 +1031,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                                   {projectNames.slice(0, 3).map((name, idx) => (
                                     <div
                                       key={`proj-${idx}`}
-                                      className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded"
+                                      className="flex items-center gap-1.5 text-xs bg-purple-500/20 dark:bg-purple-500/30 px-2 py-1 rounded cursor-pointer hover:bg-purple-500/40 transition-colors"
+                                      onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        if (projectId) {
+                                          setPlanningDate(day);
+                                          setIsPlanningOpen(true);
+                                          setIsMonthViewOpen(false);
+                                        } else {
+                                          toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                        }
+                                      }}
+                                      title="Double-clic pour ouvrir le planning"
                                     >
                                       <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                       <span className="truncate text-foreground dark:text-gray-100 font-medium">
@@ -1042,7 +1053,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                                   {tasksWithoutProject.slice(0, 2).map((title, idx) => (
                                     <div
                                       key={`task-${idx}`}
-                                      className="flex items-center gap-1.5 text-xs bg-purple-500/10 dark:bg-purple-500/20 px-2 py-1 rounded"
+                                      className="flex items-center gap-1.5 text-xs bg-purple-500/10 dark:bg-purple-500/20 px-2 py-1 rounded cursor-pointer hover:bg-purple-500/30 transition-colors"
+                                      onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        if (projectId) {
+                                          setPlanningDate(day);
+                                          setIsPlanningOpen(true);
+                                          setIsMonthViewOpen(false);
+                                        } else {
+                                          toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                        }
+                                      }}
+                                      title="Double-clic pour ouvrir le planning"
                                     >
                                       <CheckCircle2 className="h-3 w-3 text-gray-500 dark:text-gray-400" />
                                       <span className="truncate text-muted-foreground dark:text-gray-300">{title}</span>
@@ -1054,7 +1076,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             {dayItems.appointments.slice(0, 2).map((apt) => (
                               <div
                                 key={apt.id}
-                                className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
+                                className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded cursor-pointer hover:bg-green-500/40 transition-colors"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  if (projectId) {
+                                    setPlanningDate(day);
+                                    setIsPlanningOpen(true);
+                                    setIsMonthViewOpen(false);
+                                  } else {
+                                    toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                  }
+                                }}
+                                title="Double-clic pour ouvrir le planning"
                               >
                                 <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                 <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
@@ -1064,7 +1097,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             {dayItems.expenses.slice(0, 2).map((exp) => (
                               <div
                                 key={exp.id}
-                                className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
+                                className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded cursor-pointer hover:bg-red-500/40 transition-colors"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  if (projectId) {
+                                    setPlanningDate(day);
+                                    setIsPlanningOpen(true);
+                                    setIsMonthViewOpen(false);
+                                  } else {
+                                    toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                  }
+                                }}
+                                title="Double-clic pour ouvrir le planning"
                               >
                                 <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                 <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
@@ -1074,7 +1118,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             {dayItems.deliveries.slice(0, 2).map((delivery) => (
                               <div
                                 key={delivery.id}
-                                className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
+                                className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded cursor-pointer hover:bg-orange-500/40 transition-colors"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  if (projectId) {
+                                    setPlanningDate(day);
+                                    setIsPlanningOpen(true);
+                                    setIsMonthViewOpen(false);
+                                  } else {
+                                    toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                  }
+                                }}
+                                title="Double-clic pour ouvrir le planning"
                               >
                                 <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                 <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
@@ -1100,7 +1155,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                               const isProject = projectNames.length > 0;
                               return (
                                 <div
-                                  className={`flex items-center gap-1.5 text-xs ${isProject ? "bg-purple-500/20 dark:bg-purple-500/30" : "bg-purple-500/10 dark:bg-purple-500/20"} px-2 py-1 rounded`}
+                                  className={`flex items-center gap-1.5 text-xs ${isProject ? "bg-purple-500/20 dark:bg-purple-500/30" : "bg-purple-500/10 dark:bg-purple-500/20"} px-2 py-1 rounded cursor-pointer hover:bg-purple-500/40 transition-colors`}
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation();
+                                    if (projectId) {
+                                      setPlanningDate(day);
+                                      setIsPlanningOpen(true);
+                                      setIsMonthViewOpen(false);
+                                    } else {
+                                      toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                    }
+                                  }}
+                                  title="Double-clic pour ouvrir le planning"
                                 >
                                   <CheckCircle2 className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                   <span
@@ -1114,7 +1180,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             {dayItems.appointments.slice(0, 1).map((apt) => (
                               <div
                                 key={apt.id}
-                                className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded"
+                                className="flex items-center gap-1.5 text-xs bg-green-500/20 dark:bg-green-500/30 px-2 py-1 rounded cursor-pointer hover:bg-green-500/40 transition-colors"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  if (projectId) {
+                                    setPlanningDate(day);
+                                    setIsPlanningOpen(true);
+                                    setIsMonthViewOpen(false);
+                                  } else {
+                                    toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                  }
+                                }}
+                                title="Double-clic pour ouvrir le planning"
                               >
                                 <UserCircle className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                 <span className="font-semibold text-green-800 dark:text-green-400">RDV:</span>
@@ -1124,7 +1201,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             {dayItems.expenses.slice(0, 1).map((exp) => (
                               <div
                                 key={exp.id}
-                                className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded"
+                                className="flex items-center gap-1.5 text-xs bg-red-500/20 dark:bg-red-500/30 px-2 py-1 rounded cursor-pointer hover:bg-red-500/40 transition-colors"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  if (projectId) {
+                                    setPlanningDate(day);
+                                    setIsPlanningOpen(true);
+                                    setIsMonthViewOpen(false);
+                                  } else {
+                                    toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                  }
+                                }}
+                                title="Double-clic pour ouvrir le planning"
                               >
                                 <Package className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                 <span className="font-semibold text-red-800 dark:text-red-400">Dép:</span>
@@ -1134,7 +1222,18 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
                             {dayItems.deliveries.slice(0, 1).map((delivery) => (
                               <div
                                 key={delivery.id}
-                                className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded"
+                                className="flex items-center gap-1.5 text-xs bg-orange-500/20 dark:bg-orange-500/30 px-2 py-1 rounded cursor-pointer hover:bg-orange-500/40 transition-colors"
+                                onDoubleClick={(e) => {
+                                  e.stopPropagation();
+                                  if (projectId) {
+                                    setPlanningDate(day);
+                                    setIsPlanningOpen(true);
+                                    setIsMonthViewOpen(false);
+                                  } else {
+                                    toast.info("Sélectionnez un projet pour ouvrir le planning");
+                                  }
+                                }}
+                                title="Double-clic pour ouvrir le planning"
                               >
                                 <Truck className="h-3 w-3 text-gray-700 dark:text-gray-300" />
                                 <span className="font-semibold text-orange-800 dark:text-orange-400">Livr:</span>
