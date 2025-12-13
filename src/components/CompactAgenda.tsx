@@ -162,12 +162,19 @@ const CompactAgenda = ({ projectId }: CompactAgendaProps) => {
   }, []);
 
   const toggleTodoComplete = async (todoId: string, currentStatus: boolean) => {
-    const { error } = await supabase.from("project_todos").update({ completed: !currentStatus }).eq("id", todoId);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
 
-    if (error) {
-      toast.error("Erreur lors de la mise à jour");
-    } else {
+    const { syncTaskCompleted } = await import("@/utils/taskSync");
+    const success = await syncTaskCompleted(todoId, !currentStatus, user.id);
+
+    if (success) {
+      refreshData();
       toast.success(currentStatus ? "Tâche réactivée" : "Tâche terminée");
+    } else {
+      toast.error("Erreur lors de la mise à jour");
     }
   };
 
