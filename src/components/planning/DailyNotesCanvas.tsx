@@ -99,6 +99,7 @@ import {
   Truck,
   ShoppingCart,
   Store,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -154,9 +155,20 @@ interface LinkedExpense {
   project_name?: string;
 }
 
+// Couleurs pour les zones de travail
+const ZONE_COLORS = [
+  { name: "Gris", value: "#f3f4f6", border: "#d1d5db" },
+  { name: "Bleu", value: "#eff6ff", border: "#bfdbfe" },
+  { name: "Vert", value: "#f0fdf4", border: "#bbf7d0" },
+  { name: "Jaune", value: "#fefce8", border: "#fef08a" },
+  { name: "Rose", value: "#fdf2f8", border: "#fbcfe8" },
+  { name: "Violet", value: "#faf5ff", border: "#e9d5ff" },
+  { name: "Orange", value: "#fff7ed", border: "#fed7aa" },
+];
+
 interface NoteBlock {
   id: string;
-  type: "text" | "checklist" | "list" | "table" | "image" | "task" | "order";
+  type: "text" | "checklist" | "list" | "table" | "image" | "task" | "order" | "zone";
   x: number;
   y: number;
   width: number;
@@ -174,6 +186,9 @@ interface NoteBlock {
   taskStatus?: "pending" | "in_progress" | "completed"; // Statut local du bloc
   // 🔥 Champs spécifiques au type "order"
   linkedExpenses?: LinkedExpense[]; // Dépenses/commandes liées
+  // 🔥 Champs spécifiques au type "zone"
+  zoneColor?: string; // Couleur de fond de la zone
+  zoneBorderColor?: string; // Couleur de bordure de la zone
   style?: {
     fontSize?: number;
     fontFamily?: string;
@@ -1249,6 +1264,89 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           </div>
         );
 
+      case "zone":
+        // Zone de travail - grande zone colorée avec titre
+        return (
+          <div
+            className="w-full h-full min-h-[200px] p-0"
+            style={{
+              backgroundColor: "transparent",
+            }}
+          >
+            {/* Titre de la zone */}
+            <div
+              className="px-3 py-2 border-b flex items-center justify-between"
+              style={{
+                backgroundColor: block.zoneBorderColor || "#d1d5db",
+                borderColor: block.zoneBorderColor || "#d1d5db",
+              }}
+            >
+              {isEditing ? (
+                <Input
+                  value={block.content?.title || ""}
+                  onChange={(e) => onUpdate({ content: { ...block.content, title: e.target.value } })}
+                  onBlur={() => setIsEditing(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") setIsEditing(false);
+                  }}
+                  autoFocus
+                  className="h-6 text-sm font-semibold border-0 bg-white/50 focus-visible:ring-0"
+                  onClick={stopPropagation}
+                  onPointerDown={stopPropagation}
+                />
+              ) : (
+                <span
+                  className="text-sm font-semibold text-gray-700 cursor-text"
+                  onDoubleClick={() => setIsEditing(true)}
+                >
+                  {block.content?.title || "Zone de travail"}
+                </span>
+              )}
+
+              {/* Sélecteur de couleur */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={stopPropagation}>
+                    <Palette className="h-3 w-3" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-2" onClick={stopPropagation}>
+                  <div className="grid grid-cols-4 gap-1">
+                    {ZONE_COLORS.map((color) => (
+                      <button
+                        key={color.value}
+                        className={`w-6 h-6 rounded border-2 ${
+                          block.zoneColor === color.value ? "border-blue-500" : "border-gray-200"
+                        }`}
+                        style={{ backgroundColor: color.value }}
+                        onClick={() =>
+                          onUpdate({
+                            zoneColor: color.value,
+                            zoneBorderColor: color.border,
+                          })
+                        }
+                        title={color.name}
+                      />
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Corps de la zone - zone vide pour le contenu visuel */}
+            <div
+              className="p-2 min-h-[150px]"
+              style={{
+                backgroundColor: block.zoneColor || "#f3f4f6",
+              }}
+            >
+              <p className="text-xs text-gray-400 italic text-center">
+                {block.content?.description || "Glissez des blocs ici pour les organiser"}
+              </p>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -1270,6 +1368,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         return <Wrench className="h-3 w-3" />;
       case "order":
         return <Package className="h-3 w-3" />;
+      case "zone":
+        return <LayoutGrid className="h-3 w-3" />;
     }
   };
 
@@ -1280,6 +1380,66 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     if (block.rescheduledTo) return "border-orange-400 border-2"; // Original replanifié
     return "border-gray-200 hover:border-gray-300";
   };
+
+  // Pour les zones, style spécial
+  if (block.type === "zone") {
+    return (
+      <div
+        className={`rounded-lg group relative ${selected ? "ring-2 ring-blue-500" : ""}`}
+        style={{
+          backgroundColor: block.zoneColor || "#f3f4f6",
+          minWidth: block.width || 400,
+          minHeight: block.height || 300,
+          border: `2px dashed ${block.zoneBorderColor || "#d1d5db"}`,
+        }}
+      >
+        {/* Handles de connexion */}
+        <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+        <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
+        <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+        <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+
+        {renderContent()}
+
+        {/* Handle de redimensionnement */}
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ background: "linear-gradient(135deg, transparent 50%, #9ca3af 50%)" }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const startWidth = block.width || 400;
+            const startHeight = block.height || 300;
+
+            const onMouseMove = (moveEvent: MouseEvent) => {
+              const newWidth = Math.max(200, startWidth + (moveEvent.clientX - startX));
+              const newHeight = Math.max(150, startHeight + (moveEvent.clientY - startY));
+              onUpdate({ width: newWidth, height: newHeight });
+            };
+
+            const onMouseUp = () => {
+              document.removeEventListener("mousemove", onMouseMove);
+              document.removeEventListener("mouseup", onMouseUp);
+            };
+
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", onMouseUp);
+          }}
+        />
+
+        {/* Bouton supprimer */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 bg-white/80 hover:bg-red-100"
+          onClick={onDelete}
+        >
+          <X className="h-3 w-3 text-red-500" />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1917,8 +2077,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       type,
       x: 100 + Math.random() * 200,
       y: 100 + Math.random() * 200,
-      width: type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
-      height: type === "order" ? 150 : 100,
+      width: type === "zone" ? 400 : type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
+      height: type === "zone" ? 300 : type === "order" ? 150 : 100,
       content:
         type === "checklist"
           ? [{ id: crypto.randomUUID(), text: "", checked: false }]
@@ -1933,15 +2093,20 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
                 ? null // Le contenu sera la tâche liée
                 : type === "order"
                   ? null // Le contenu sera les dépenses liées
-                  : "",
+                  : type === "zone"
+                    ? { title: "Zone de travail", description: "" }
+                    : "",
       style: {
         fontFamily: FONTS[0].value,
         fontSize: 14,
         color: "#000000",
-        backgroundColor: "#ffffff",
+        backgroundColor: type === "zone" ? "transparent" : "#ffffff",
       },
       // Initialiser linkedExpenses pour le type order
       linkedExpenses: type === "order" ? [] : undefined,
+      // Initialiser les couleurs pour le type zone
+      zoneColor: type === "zone" ? "#f3f4f6" : undefined,
+      zoneBorderColor: type === "zone" ? "#d1d5db" : undefined,
     };
     setBlocks((prev) => [...prev, newBlock]);
     setSelectedBlockId(newBlock.id);
@@ -2992,12 +3157,44 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     if (!open || !canvasRef.current) return;
 
     const canvas = canvasRef.current;
+
+    // 🔥 Définir les dimensions du canvas HTML basées sur le conteneur
+    const resizeCanvas = () => {
+      const parent = canvas.parentElement;
+      if (parent) {
+        const rect = parent.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+
+        // Mettre à jour la vue Paper.js si elle existe
+        if (paperScopeRef.current?.view) {
+          paperScopeRef.current.view.viewSize = new paperScopeRef.current.Size(rect.width, rect.height);
+        }
+      }
+    };
+
+    // Initialiser les dimensions
+    resizeCanvas();
+
     const scope = new paper.PaperScope();
     scope.setup(canvas);
     paperScopeRef.current = scope;
 
     // Fond transparent
     scope.view.element.style.background = "transparent";
+
+    // Resynchroniser les dimensions après setup
+    resizeCanvas();
+
+    console.log("🎨 Paper.js initialisé - Canvas:", canvas.width, "x", canvas.height);
+
+    // Observer les changements de taille
+    const resizeObserver = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+    if (canvas.parentElement) {
+      resizeObserver.observe(canvas.parentElement);
+    }
 
     const tool = new scope.Tool();
     let currentPath: paper.Path | null = null;
@@ -3013,6 +3210,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
     tool.onMouseDown = (event: paper.ToolEvent) => {
       const toolType = activeToolRef.current;
+      console.log("🖱️ Mouse down - Tool:", toolType, "Point:", event.point.x, event.point.y);
       if (toolType === "select") return;
 
       startPoint = event.point;
@@ -3117,6 +3315,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     tool.activate();
 
     return () => {
+      resizeObserver.disconnect();
       if (scope.project) {
         scope.project.clear();
       }
@@ -3860,6 +4059,15 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
               >
                 <Package className="h-4 w-4" />
               </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => addBlock("zone")}
+                title="Zone de travail (pour regrouper des blocs)"
+                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
               {/* 🔥 Bouton ajout achat rapide */}
               <Button
                 variant="outline"
@@ -4013,8 +4221,36 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
                     pointerEvents: activeTool !== "select" ? "auto" : "none",
                     zIndex: activeTool !== "select" ? 20 : 0,
                     background: "transparent",
+                    cursor:
+                      activeTool === "pencil"
+                        ? "crosshair"
+                        : activeTool === "eraser"
+                          ? "not-allowed"
+                          : activeTool === "select"
+                            ? "default"
+                            : "crosshair",
                   }}
                 />
+
+                {/* Indicateur outil actif */}
+                {activeTool !== "select" && (
+                  <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs shadow z-30">
+                    🎨 Mode dessin:{" "}
+                    {activeTool === "pencil"
+                      ? "Crayon"
+                      : activeTool === "line"
+                        ? "Ligne"
+                        : activeTool === "arrow"
+                          ? "Flèche"
+                          : activeTool === "rectangle"
+                            ? "Rectangle"
+                            : activeTool === "circle"
+                              ? "Cercle"
+                              : activeTool === "eraser"
+                                ? "Gomme"
+                                : activeTool}
+                  </div>
+                )}
               </div>
             )}
           </div>
