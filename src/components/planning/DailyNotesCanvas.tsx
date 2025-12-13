@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1603,6 +1604,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   // Dates avec des blocs roadmap (pour indicateurs dans l'agenda)
   const [roadmapDates, setRoadmapDates] = useState<Set<string>>(new Set());
 
+  // 🔥 Dates avec des livraisons prévues
+  const [deliveryDates, setDeliveryDates] = useState<Set<string>>(new Set());
+
   // Ref pour détecter les changements de blocs (ReactFlow sync)
   const blocksIdsRef = useRef<string>("");
 
@@ -1616,6 +1620,16 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   const [showQuickNote, setShowQuickNote] = useState(false);
   const [quickNoteTitle, setQuickNoteTitle] = useState("");
   const [quickNoteContent, setQuickNoteContent] = useState("");
+
+  // 🔥 État pour l'achat rapide
+  const [showQuickPurchase, setShowQuickPurchase] = useState(false);
+  const [quickPurchaseName, setQuickPurchaseName] = useState("");
+  const [quickPurchaseBrand, setQuickPurchaseBrand] = useState("");
+  const [quickPurchasePrice, setQuickPurchasePrice] = useState("");
+  const [quickPurchaseQuantity, setQuickPurchaseQuantity] = useState("1");
+  const [quickPurchaseSupplier, setQuickPurchaseSupplier] = useState("");
+  const [quickPurchaseCategory, setQuickPurchaseCategory] = useState("Fournitures");
+  const [isAddingPurchase, setIsAddingPurchase] = useState(false);
 
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -2456,6 +2470,156 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, [quickNoteTitle, quickNoteContent, userId, projectId]);
 
+  // 🔥 Récupérer ou créer le projet "Achats généraux"
+  const getOrCreateGeneralPurchasesProject = useCallback(async (userIdParam: string) => {
+    // Chercher un projet existant "Achats généraux"
+    const { data: existingProject } = await (supabase as any)
+      .from("projects")
+      .select("id")
+      .eq("user_id", userIdParam)
+      .eq("nom_projet", "📦 Achats généraux")
+      .maybeSingle();
+
+    if (existingProject) {
+      // Vérifier qu'il a un scénario principal verrouillé
+      const { data: scenario } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", existingProject.id)
+        .eq("est_principal", true)
+        .eq("is_locked", true)
+        .maybeSingle();
+
+      if (scenario) {
+        return { projectId: existingProject.id, scenarioId: scenario.id };
+      }
+
+      // Créer ou mettre à jour le scénario
+      const { data: anyScenario } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", existingProject.id)
+        .maybeSingle();
+
+      if (anyScenario) {
+        await (supabase as any)
+          .from("project_scenarios")
+          .update({ est_principal: true, is_locked: true })
+          .eq("id", anyScenario.id);
+        return { projectId: existingProject.id, scenarioId: anyScenario.id };
+      }
+
+      // Créer le scénario
+      const { data: newScenario } = await (supabase as any)
+        .from("project_scenarios")
+        .insert({
+          project_id: existingProject.id,
+          nom: "Liste principale",
+          est_principal: true,
+          is_locked: true,
+        })
+        .select("id")
+        .single();
+
+      return { projectId: existingProject.id, scenarioId: newScenario.id };
+    }
+
+    // Créer le projet
+    const { data: newProject, error: projectError } = await (supabase as any)
+      .from("projects")
+      .insert({
+        user_id: userIdParam,
+        nom_projet: "📦 Achats généraux",
+        nom_proprietaire: "Achats généraux",
+        statut: "actif",
+      })
+      .select("id")
+      .single();
+
+    if (projectError) throw projectError;
+
+    // Créer le scénario principal verrouillé
+    const { data: newScenario, error: scenarioError } = await (supabase as any)
+      .from("project_scenarios")
+      .insert({
+        project_id: newProject.id,
+        nom: "Liste principale",
+        est_principal: true,
+        is_locked: true,
+      })
+      .select("id")
+      .single();
+
+    if (scenarioError) throw scenarioError;
+
+    return { projectId: newProject.id, scenarioId: newScenario.id };
+  }, []);
+
+  // 🔥 Ajouter un achat rapide
+  const addQuickPurchase = useCallback(async () => {
+    if (!quickPurchaseName.trim()) {
+      toast.error("Veuillez saisir un nom d'article");
+      return;
+    }
+
+    if (!userId) {
+      toast.error("Non connecté");
+      return;
+    }
+
+    setIsAddingPurchase(true);
+
+    try {
+      // Récupérer ou créer le projet "Achats généraux"
+      const { projectId: generalProjectId, scenarioId } = await getOrCreateGeneralPurchasesProject(userId);
+
+      // Créer la dépense
+      const { error } = await (supabase as any).from("project_expenses").insert({
+        project_id: generalProjectId,
+        scenario_id: scenarioId,
+        nom_accessoire: quickPurchaseName.trim(),
+        marque: quickPurchaseBrand.trim() || null,
+        prix: parseFloat(quickPurchasePrice) || 0,
+        quantite: parseInt(quickPurchaseQuantity) || 1,
+        fournisseur: quickPurchaseSupplier.trim() || null,
+        categorie: quickPurchaseCategory,
+        statut_livraison: "a_commander",
+        date_achat: format(new Date(), "yyyy-MM-dd"),
+      });
+
+      if (error) throw error;
+
+      toast.success("Article ajouté à la liste d'achats");
+
+      // Réinitialiser le formulaire
+      setQuickPurchaseName("");
+      setQuickPurchaseBrand("");
+      setQuickPurchasePrice("");
+      setQuickPurchaseQuantity("1");
+      setQuickPurchaseSupplier("");
+      setQuickPurchaseCategory("Fournitures");
+      setShowQuickPurchase(false);
+
+      // Rafraîchir
+      refreshData();
+    } catch (error) {
+      console.error("Erreur ajout achat:", error);
+      toast.error("Erreur lors de l'ajout");
+    } finally {
+      setIsAddingPurchase(false);
+    }
+  }, [
+    quickPurchaseName,
+    quickPurchaseBrand,
+    quickPurchasePrice,
+    quickPurchaseQuantity,
+    quickPurchaseSupplier,
+    quickPurchaseCategory,
+    userId,
+    getOrCreateGeneralPurchasesProject,
+    refreshData,
+  ]);
+
   // Copier un bloc vers une autre date (roadmap)
   const [isMovingBlock, setIsMovingBlock] = useState(false);
 
@@ -3024,7 +3188,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       });
     }
 
-    // 🔥 2. Récupérer les dates de livraison prévues
+    // 🔥 2. Récupérer les dates de livraison prévues (séparément)
+    const deliveryDatesSet = new Set<string>();
+
     const { data: principalScenario } = await (supabase as any)
       .from("project_scenarios")
       .select("id")
@@ -3042,13 +3208,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       if (deliveries) {
         deliveries.forEach((d: any) => {
           if (d.expected_delivery_date) {
-            dates.add(d.expected_delivery_date);
+            deliveryDatesSet.add(d.expected_delivery_date);
           }
         });
       }
     }
 
     setRoadmapDates(dates);
+    setDeliveryDates(deliveryDatesSet);
   }, [projectId]);
 
   // Charger les projets et fournisseurs au montage
@@ -3387,525 +3554,642 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   // ============================================
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 flex flex-col">
-        <DialogHeader className="px-4 py-2 border-b shrink-0 pr-12">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarDays className="h-5 w-5" />
-              Notes du {format(selectedDate, "EEEE d MMMM yyyy", { locale: fr })}
-              {hasUnsavedChanges && (
-                <Badge variant="outline" className="text-orange-500">
-                  Non sauvegardé
-                </Badge>
-              )}
-            </DialogTitle>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 flex flex-col">
+          <DialogHeader className="px-4 py-2 border-b shrink-0 pr-12">
+            <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                Notes du {format(selectedDate, "EEEE d MMMM yyyy", { locale: fr })}
+                {hasUnsavedChanges && (
+                  <Badge variant="outline" className="text-orange-500">
+                    Non sauvegardé
+                  </Badge>
+                )}
+              </DialogTitle>
 
-            {/* Navigation */}
-            <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToPreviousDay}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
+              {/* Navigation */}
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToPreviousDay}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
 
-              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8">
-                    {format(selectedDate, "dd/MM/yyyy")}
+                <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8">
+                      {format(selectedDate, "dd/MM/yyyy")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="center">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => {
+                        if (date) {
+                          setSelectedDate(date);
+                          setIsCalendarOpen(false);
+                        }
+                      }}
+                      locale={fr}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToNextDay}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
+                  Aujourd'hui
+                </Button>
+              </div>
+            </div>
+
+            {/* Jours - 2 semaines centrées */}
+            <div className="flex gap-0.5 mt-2 max-w-5xl mx-auto w-full">
+              {visibleDays.map((day) => {
+                const dayStr = format(day, "yyyy-MM-dd");
+                const hasRoadmap = roadmapDates.has(dayStr);
+                const hasDelivery = deliveryDates.has(dayStr);
+                const isSelected = isSameDay(day, selectedDate);
+                const isMonday = day.getDay() === 1;
+
+                return (
+                  <Button
+                    key={day.toISOString()}
+                    variant={isSelected ? "default" : "ghost"}
+                    size="sm"
+                    className={`flex-1 relative px-1 h-10 min-w-0 ${isToday(day) ? "ring-2 ring-blue-300" : ""} ${isMonday && !isSelected ? "border-l-2 border-gray-300" : ""}`}
+                    onClick={() => setSelectedDate(day)}
+                  >
+                    <span className="text-xs leading-tight">
+                      <span className={isMonday ? "font-semibold" : "text-gray-500"}>
+                        {format(day, "EEEEE", { locale: fr })}
+                      </span>
+                      <br />
+                      {format(day, "d")}
+                    </span>
+                    {/* Indicateur roadmap */}
+                    {hasRoadmap && (
+                      <div
+                        className={`absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center ${
+                          isSelected ? "bg-white" : "bg-purple-500"
+                        }`}
+                      >
+                        <MapPin className={`h-1.5 w-1.5 ${isSelected ? "text-purple-600" : "text-white"}`} />
+                      </div>
+                    )}
+                    {/* 🔥 Indicateur livraison prévue */}
+                    {hasDelivery && (
+                      <div
+                        className={`absolute -bottom-0.5 left-1/2 -translate-x-1/2 ${
+                          isSelected ? "text-white" : "text-orange-500"
+                        }`}
+                        title="Livraison prévue"
+                      >
+                        <Truck className="h-2.5 w-2.5" />
+                      </div>
+                    )}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="center">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      if (date) {
-                        setSelectedDate(date);
-                        setIsCalendarOpen(false);
-                      }
-                    }}
-                    locale={fr}
-                  />
-                </PopoverContent>
-              </Popover>
+                );
+              })}
+            </div>
+          </DialogHeader>
 
-              <Button variant="outline" size="icon" className="h-8 w-8" onClick={goToNextDay}>
-                <ChevronRight className="h-4 w-4" />
+          {/* Toolbar */}
+          <div className="px-4 py-2 border-b flex items-center gap-2 flex-wrap shrink-0 bg-gray-50">
+            {/* Outils dessin */}
+            <div className="flex items-center gap-1 border-r pr-2">
+              <Button
+                variant={activeTool === "select" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setActiveTool("select")}
+                title="Sélection"
+              >
+                <MousePointer2 className="h-4 w-4" />
               </Button>
-
-              <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
-                Aujourd'hui
+              <Button
+                variant={activeTool === "pencil" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setActiveTool("pencil")}
+                title="Crayon"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={activeTool === "line" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setActiveTool("line")}
+                title="Ligne"
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={activeTool === "arrow" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setActiveTool("arrow")}
+                title="Flèche"
+              >
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={activeTool === "rectangle" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setActiveTool("rectangle")}
+                title="Rectangle"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={activeTool === "circle" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setActiveTool("circle")}
+                title="Cercle"
+              >
+                <Circle className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={activeTool === "eraser" ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setActiveTool("eraser")}
+                title="Gomme"
+              >
+                <Eraser className="h-4 w-4" />
               </Button>
             </div>
-          </div>
 
-          {/* Jours - 2 semaines centrées */}
-          <div className="flex gap-0.5 mt-2 max-w-5xl mx-auto w-full">
-            {visibleDays.map((day) => {
-              const dayStr = format(day, "yyyy-MM-dd");
-              const hasRoadmap = roadmapDates.has(dayStr);
-              const isSelected = isSameDay(day, selectedDate);
-              const isMonday = day.getDay() === 1;
-
-              return (
-                <Button
-                  key={day.toISOString()}
-                  variant={isSelected ? "default" : "ghost"}
-                  size="sm"
-                  className={`flex-1 relative px-1 h-10 min-w-0 ${isToday(day) ? "ring-2 ring-blue-300" : ""} ${isMonday && !isSelected ? "border-l-2 border-gray-300" : ""}`}
-                  onClick={() => setSelectedDate(day)}
-                >
-                  <span className="text-xs leading-tight">
-                    <span className={isMonday ? "font-semibold" : "text-gray-500"}>
-                      {format(day, "EEEEE", { locale: fr })}
-                    </span>
-                    <br />
-                    {format(day, "d")}
-                  </span>
-                  {/* Indicateur roadmap */}
-                  {hasRoadmap && (
-                    <div
-                      className={`absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full flex items-center justify-center ${
-                        isSelected ? "bg-white" : "bg-purple-500"
-                      }`}
-                    >
-                      <MapPin className={`h-1.5 w-1.5 ${isSelected ? "text-purple-600" : "text-white"}`} />
-                    </div>
-                  )}
-                </Button>
-              );
-            })}
-          </div>
-        </DialogHeader>
-
-        {/* Toolbar */}
-        <div className="px-4 py-2 border-b flex items-center gap-2 flex-wrap shrink-0 bg-gray-50">
-          {/* Outils dessin */}
-          <div className="flex items-center gap-1 border-r pr-2">
-            <Button
-              variant={activeTool === "select" ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setActiveTool("select")}
-              title="Sélection"
-            >
-              <MousePointer2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={activeTool === "pencil" ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setActiveTool("pencil")}
-              title="Crayon"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={activeTool === "line" ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setActiveTool("line")}
-              title="Ligne"
-            >
-              <Minus className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={activeTool === "arrow" ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setActiveTool("arrow")}
-              title="Flèche"
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={activeTool === "rectangle" ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setActiveTool("rectangle")}
-              title="Rectangle"
-            >
-              <Square className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={activeTool === "circle" ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setActiveTool("circle")}
-              title="Cercle"
-            >
-              <Circle className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={activeTool === "eraser" ? "default" : "ghost"}
-              size="icon"
-              onClick={() => setActiveTool("eraser")}
-              title="Gomme"
-            >
-              <Eraser className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Couleur */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="icon" title="Couleur">
-                <div className="w-4 h-4 rounded border" style={{ backgroundColor: strokeColor }} />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto">
-              <div className="grid grid-cols-5 gap-1">
-                {COLORS.map((color) => (
-                  <button
-                    key={color}
-                    className={`w-6 h-6 rounded border-2 ${
-                      strokeColor === color ? "border-blue-500" : "border-gray-200"
-                    }`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setStrokeColor(color)}
-                  />
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Épaisseur */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm">
-                {strokeWidth}px
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-48">
-              <div className="space-y-2">
-                <span className="text-sm">Épaisseur: {strokeWidth}px</span>
-                <Slider value={[strokeWidth]} onValueChange={([v]) => setStrokeWidth(v)} min={1} max={12} step={1} />
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          <Separator orientation="vertical" className="h-6" />
-
-          {/* Ajouter blocs - Boutons individuels */}
-          <div className="flex items-center gap-1 border-r pr-2">
-            <Button variant="outline" size="icon" onClick={() => addBlock("text")} title="Bloc Texte">
-              <Type className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => addBlock("checklist")} title="Checklist">
-              <CheckSquare className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => addBlock("list")} title="Liste">
-              <List className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => addBlock("table")} title="Tableau">
-              <Table className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => addBlock("image")} title="Image">
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => addBlock("task")}
-              title="Tâche de travaux"
-              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-            >
-              <Wrench className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => addBlock("order")}
-              title="Suivi commandes"
-              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-            >
-              <Package className="h-4 w-4" />
-            </Button>
-
-            {/* Note rapide → Sidebar */}
-            <Popover open={showQuickNote} onOpenChange={setShowQuickNote}>
+            {/* Couleur */}
+            <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Note rapide (sidebar)"
-                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                >
-                  <StickyNote className="h-4 w-4" />
+                <Button variant="outline" size="icon" title="Couleur">
+                  <div className="w-4 h-4 rounded border" style={{ backgroundColor: strokeColor }} />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-80" align="start">
-                <div className="space-y-3">
-                  <div className="font-medium text-sm flex items-center gap-2">
-                    <StickyNote className="h-4 w-4 text-green-600" />
-                    Nouvelle note (sidebar)
-                  </div>
-                  <Input
-                    placeholder="Titre de la note..."
-                    value={quickNoteTitle}
-                    onChange={(e) => setQuickNoteTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey && quickNoteTitle.trim()) {
-                        createQuickNote();
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <Textarea
-                    placeholder="Contenu (optionnel)..."
-                    value={quickNoteContent}
-                    onChange={(e) => setQuickNoteContent(e.target.value)}
-                    rows={3}
-                    className="resize-none"
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={createQuickNote} disabled={!quickNoteTitle.trim()} className="flex-1">
-                      <StickyNote className="h-4 w-4 mr-1" />
-                      Créer
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setShowQuickNote(false);
-                        setQuickNoteTitle("");
-                        setQuickNoteContent("");
-                      }}
-                    >
-                      Annuler
-                    </Button>
-                  </div>
+              <PopoverContent className="w-auto">
+                <div className="grid grid-cols-5 gap-1">
+                  {COLORS.map((color) => (
+                    <button
+                      key={color}
+                      className={`w-6 h-6 rounded border-2 ${
+                        strokeColor === color ? "border-blue-500" : "border-gray-200"
+                      }`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setStrokeColor(color)}
+                    />
+                  ))}
                 </div>
               </PopoverContent>
             </Popover>
+
+            {/* Épaisseur */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm">
+                  {strokeWidth}px
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48">
+                <div className="space-y-2">
+                  <span className="text-sm">Épaisseur: {strokeWidth}px</span>
+                  <Slider value={[strokeWidth]} onValueChange={([v]) => setStrokeWidth(v)} min={1} max={12} step={1} />
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <Separator orientation="vertical" className="h-6" />
+
+            {/* Ajouter blocs - Boutons individuels */}
+            <div className="flex items-center gap-1 border-r pr-2">
+              <Button variant="outline" size="icon" onClick={() => addBlock("text")} title="Bloc Texte">
+                <Type className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => addBlock("checklist")} title="Checklist">
+                <CheckSquare className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => addBlock("list")} title="Liste">
+                <List className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => addBlock("table")} title="Tableau">
+                <Table className="h-4 w-4" />
+              </Button>
+              <Button variant="outline" size="icon" onClick={() => addBlock("image")} title="Image">
+                <ImageIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => addBlock("task")}
+                title="Tâche de travaux"
+                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+              >
+                <Wrench className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => addBlock("order")}
+                title="Suivi commandes"
+                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+              >
+                <Package className="h-4 w-4" />
+              </Button>
+              {/* 🔥 Bouton ajout achat rapide */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowQuickPurchase(true)}
+                title="Ajouter un achat (fournitures, consommables...)"
+                className="text-green-600 hover:text-green-700 hover:bg-green-50"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+
+              {/* Note rapide → Sidebar */}
+              <Popover open={showQuickNote} onOpenChange={setShowQuickNote}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Note rapide (sidebar)"
+                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                  >
+                    <StickyNote className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="start">
+                  <div className="space-y-3">
+                    <div className="font-medium text-sm flex items-center gap-2">
+                      <StickyNote className="h-4 w-4 text-green-600" />
+                      Nouvelle note (sidebar)
+                    </div>
+                    <Input
+                      placeholder="Titre de la note..."
+                      value={quickNoteTitle}
+                      onChange={(e) => setQuickNoteTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey && quickNoteTitle.trim()) {
+                          createQuickNote();
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <Textarea
+                      placeholder="Contenu (optionnel)..."
+                      value={quickNoteContent}
+                      onChange={(e) => setQuickNoteContent(e.target.value)}
+                      rows={3}
+                      className="resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={createQuickNote} disabled={!quickNoteTitle.trim()} className="flex-1">
+                        <StickyNote className="h-4 w-4 mr-1" />
+                        Créer
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowQuickNote(false);
+                          setQuickNoteTitle("");
+                          setQuickNoteContent("");
+                        }}
+                      >
+                        Annuler
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <Separator orientation="vertical" className="h-6" />
+
+            {/* Actions */}
+            <Button variant="ghost" size="icon" onClick={undo} title="Annuler">
+              <Undo className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={redo} title="Rétablir">
+              <Redo className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={clearCanvas} title="Effacer dessin">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={exportAsImage} title="Exporter">
+              <Download className="h-4 w-4" />
+            </Button>
+
+            <div className="flex-1" />
+
+            <Button onClick={saveNote} disabled={isLoading}>
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+              Sauvegarder
+            </Button>
           </div>
 
-          <Separator orientation="vertical" className="h-6" />
+          {/* Canvas + ReactFlow */}
+          <div className="flex-1 relative overflow-hidden">
+            {isLoading ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <div className="absolute inset-0 bg-white">
+                {/* ReactFlow (base - toujours visible) */}
+                <div className="absolute inset-0" style={{ zIndex: 1 }}>
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={flowEdges}
+                    onNodesChange={handleNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={handleConnect}
+                    onEdgeClick={handleEdgeClick}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    fitViewOptions={{
+                      padding: 0.2,
+                      minZoom: 0.5,
+                      maxZoom: 1.5,
+                    }}
+                    defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                    minZoom={0.2}
+                    maxZoom={2}
+                    defaultEdgeOptions={{
+                      type: "smoothstep",
+                      markerEnd: { type: MarkerType.ArrowClosed },
+                      style: { strokeWidth: 2, stroke: "#64748b" },
+                    }}
+                    proOptions={{ hideAttribution: true }}
+                    style={{
+                      pointerEvents: activeTool === "select" ? "auto" : "none",
+                    }}
+                  >
+                    <Background />
+                    <Controls style={{ zIndex: 100 }} />
+                    <MiniMap style={{ zIndex: 100 }} />
+                    <Panel position="top-right" style={{ zIndex: 100 }}>
+                      <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border">
+                        💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers
+                        les points <span className="text-blue-600 font-semibold">bleus</span>
+                      </div>
+                    </Panel>
+                  </ReactFlow>
+                </div>
 
-          {/* Actions */}
-          <Button variant="ghost" size="icon" onClick={undo} title="Annuler">
-            <Undo className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={redo} title="Rétablir">
-            <Redo className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={clearCanvas} title="Effacer dessin">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={exportAsImage} title="Exporter">
-            <Download className="h-4 w-4" />
-          </Button>
-
-          <div className="flex-1" />
-
-          <Button onClick={saveNote} disabled={isLoading}>
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Sauvegarder
-          </Button>
-        </div>
-
-        {/* Canvas + ReactFlow */}
-        <div className="flex-1 relative overflow-hidden">
-          {isLoading ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-            </div>
-          ) : (
-            <div className="absolute inset-0 bg-white">
-              {/* ReactFlow (base - toujours visible) */}
-              <div className="absolute inset-0" style={{ zIndex: 1 }}>
-                <ReactFlow
-                  nodes={nodes}
-                  edges={flowEdges}
-                  onNodesChange={handleNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={handleConnect}
-                  onEdgeClick={handleEdgeClick}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  fitViewOptions={{
-                    padding: 0.2,
-                    minZoom: 0.5,
-                    maxZoom: 1.5,
-                  }}
-                  defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-                  minZoom={0.2}
-                  maxZoom={2}
-                  defaultEdgeOptions={{
-                    type: "smoothstep",
-                    markerEnd: { type: MarkerType.ArrowClosed },
-                    style: { strokeWidth: 2, stroke: "#64748b" },
-                  }}
-                  proOptions={{ hideAttribution: true }}
+                {/* Paper.js Canvas (par-dessus quand on dessine) */}
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0"
                   style={{
-                    pointerEvents: activeTool === "select" ? "auto" : "none",
+                    width: "100%",
+                    height: "100%",
+                    touchAction: "none",
+                    pointerEvents: activeTool !== "select" ? "auto" : "none",
+                    zIndex: activeTool !== "select" ? 20 : 0,
+                    background: "transparent",
                   }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Barre de style pour bloc texte */}
+          {selectedBlockId && blocks.find((b) => b.id === selectedBlockId)?.type === "text" && (
+            <div className="px-4 py-2 border-t bg-gray-50 flex items-center gap-4 shrink-0 flex-wrap">
+              {/* Police */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Police:</span>
+                <Select
+                  value={blocks.find((b) => b.id === selectedBlockId)?.style?.fontFamily || FONTS[0].value}
+                  onValueChange={(value) =>
+                    updateBlockWithSync(selectedBlockId, {
+                      style: { ...blocks.find((b) => b.id === selectedBlockId)?.style, fontFamily: value },
+                    })
+                  }
                 >
-                  <Background />
-                  <Controls style={{ zIndex: 100 }} />
-                  <MiniMap style={{ zIndex: 100 }} />
-                  <Panel position="top-right" style={{ zIndex: 100 }}>
-                    <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border">
-                      💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les
-                      points <span className="text-blue-600 font-semibold">bleus</span>
-                    </div>
-                  </Panel>
-                </ReactFlow>
+                  <SelectTrigger className="w-40 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(
+                      FONTS.reduce(
+                        (acc, font) => {
+                          if (!acc[font.category]) acc[font.category] = [];
+                          acc[font.category].push(font);
+                          return acc;
+                        },
+                        {} as Record<string, typeof FONTS>,
+                      ),
+                    ).map(([category, fonts]) => (
+                      <div key={category}>
+                        <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-50">{category}</div>
+                        {fonts.map((font) => (
+                          <SelectItem key={font.value} value={font.value}>
+                            <span style={{ fontFamily: font.value }}>{font.name}</span>
+                          </SelectItem>
+                        ))}
+                      </div>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              {/* Paper.js Canvas (par-dessus quand on dessine) */}
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  touchAction: "none",
-                  pointerEvents: activeTool !== "select" ? "auto" : "none",
-                  zIndex: activeTool !== "select" ? 20 : 0,
-                  background: "transparent",
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Barre de style pour bloc texte */}
-        {selectedBlockId && blocks.find((b) => b.id === selectedBlockId)?.type === "text" && (
-          <div className="px-4 py-2 border-t bg-gray-50 flex items-center gap-4 shrink-0 flex-wrap">
-            {/* Police */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Police:</span>
+              {/* Taille */}
               <Select
-                value={blocks.find((b) => b.id === selectedBlockId)?.style?.fontFamily || FONTS[0].value}
+                value={String(blocks.find((b) => b.id === selectedBlockId)?.style?.fontSize || 14)}
                 onValueChange={(value) =>
                   updateBlockWithSync(selectedBlockId, {
-                    style: { ...blocks.find((b) => b.id === selectedBlockId)?.style, fontFamily: value },
+                    style: { ...blocks.find((b) => b.id === selectedBlockId)?.style, fontSize: parseInt(value) },
                   })
                 }
               >
-                <SelectTrigger className="w-40 h-8 text-xs">
+                <SelectTrigger className="w-16 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(
-                    FONTS.reduce(
-                      (acc, font) => {
-                        if (!acc[font.category]) acc[font.category] = [];
-                        acc[font.category].push(font);
-                        return acc;
-                      },
-                      {} as Record<string, typeof FONTS>,
-                    ),
-                  ).map(([category, fonts]) => (
-                    <div key={category}>
-                      <div className="px-2 py-1 text-xs font-semibold text-gray-500 bg-gray-50">{category}</div>
-                      {fonts.map((font) => (
-                        <SelectItem key={font.value} value={font.value}>
-                          <span style={{ fontFamily: font.value }}>{font.name}</span>
-                        </SelectItem>
-                      ))}
-                    </div>
+                  {FONT_SIZES.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+
+              <Separator orientation="vertical" className="h-6" />
+
+              {/* Style */}
+              <Button
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.bold ? "default" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const block = blocks.find((b) => b.id === selectedBlockId);
+                  if (block)
+                    updateBlockWithSync(selectedBlockId, { style: { ...block.style, bold: !block.style?.bold } });
+                }}
+              >
+                <Bold className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.italic ? "default" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const block = blocks.find((b) => b.id === selectedBlockId);
+                  if (block)
+                    updateBlockWithSync(selectedBlockId, { style: { ...block.style, italic: !block.style?.italic } });
+                }}
+              >
+                <Italic className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.underline ? "default" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const block = blocks.find((b) => b.id === selectedBlockId);
+                  if (block)
+                    updateBlockWithSync(selectedBlockId, {
+                      style: { ...block.style, underline: !block.style?.underline },
+                    });
+                }}
+              >
+                <Underline className="h-4 w-4" />
+              </Button>
+
+              <Separator orientation="vertical" className="h-6" />
+
+              {/* Alignement */}
+              <Button
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "left" ? "default" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const block = blocks.find((b) => b.id === selectedBlockId);
+                  if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "left" } });
+                }}
+              >
+                <AlignLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "center" ? "default" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const block = blocks.find((b) => b.id === selectedBlockId);
+                  if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "center" } });
+                }}
+              >
+                <AlignCenter className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "right" ? "default" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  const block = blocks.find((b) => b.id === selectedBlockId);
+                  if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "right" } });
+                }}
+              >
+                <AlignRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 🔥 Dialog d'ajout d'achat rapide */}
+      <Dialog open={showQuickPurchase} onOpenChange={setShowQuickPurchase}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-green-600" />
+              Ajouter un achat
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Ajoutez des fournitures, consommables ou autres achats généraux.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="purchaseName">Nom de l'article *</Label>
+                <Input
+                  id="purchaseName"
+                  value={quickPurchaseName}
+                  onChange={(e) => setQuickPurchaseName(e.target.value)}
+                  placeholder="ex: Ruban adhésif, Gants, Vis..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="purchaseBrand">Marque</Label>
+                  <Input
+                    id="purchaseBrand"
+                    value={quickPurchaseBrand}
+                    onChange={(e) => setQuickPurchaseBrand(e.target.value)}
+                    placeholder="ex: 3M, Bosch..."
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="purchaseCategory">Catégorie</Label>
+                  <Input
+                    id="purchaseCategory"
+                    value={quickPurchaseCategory}
+                    onChange={(e) => setQuickPurchaseCategory(e.target.value)}
+                    placeholder="ex: Fournitures"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="purchasePrice">Prix unitaire (€)</Label>
+                  <Input
+                    id="purchasePrice"
+                    type="number"
+                    step="0.01"
+                    value={quickPurchasePrice}
+                    onChange={(e) => setQuickPurchasePrice(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="purchaseQuantity">Quantité</Label>
+                  <Input
+                    id="purchaseQuantity"
+                    type="number"
+                    min="1"
+                    value={quickPurchaseQuantity}
+                    onChange={(e) => setQuickPurchaseQuantity(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="purchaseSupplier">Fournisseur</Label>
+                <Input
+                  id="purchaseSupplier"
+                  value={quickPurchaseSupplier}
+                  onChange={(e) => setQuickPurchaseSupplier(e.target.value)}
+                  placeholder="ex: Amazon, Leroy Merlin..."
+                />
+              </div>
             </div>
 
-            {/* Taille */}
-            <Select
-              value={String(blocks.find((b) => b.id === selectedBlockId)?.style?.fontSize || 14)}
-              onValueChange={(value) =>
-                updateBlockWithSync(selectedBlockId, {
-                  style: { ...blocks.find((b) => b.id === selectedBlockId)?.style, fontSize: parseInt(value) },
-                })
-              }
-            >
-              <SelectTrigger className="w-16 h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {FONT_SIZES.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Separator orientation="vertical" className="h-6" />
-
-            {/* Style */}
-            <Button
-              variant={blocks.find((b) => b.id === selectedBlockId)?.style?.bold ? "default" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block)
-                  updateBlockWithSync(selectedBlockId, { style: { ...block.style, bold: !block.style?.bold } });
-              }}
-            >
-              <Bold className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={blocks.find((b) => b.id === selectedBlockId)?.style?.italic ? "default" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block)
-                  updateBlockWithSync(selectedBlockId, { style: { ...block.style, italic: !block.style?.italic } });
-              }}
-            >
-              <Italic className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={blocks.find((b) => b.id === selectedBlockId)?.style?.underline ? "default" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block)
-                  updateBlockWithSync(selectedBlockId, {
-                    style: { ...block.style, underline: !block.style?.underline },
-                  });
-              }}
-            >
-              <Underline className="h-4 w-4" />
-            </Button>
-
-            <Separator orientation="vertical" className="h-6" />
-
-            {/* Alignement */}
-            <Button
-              variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "left" ? "default" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "left" } });
-              }}
-            >
-              <AlignLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "center" ? "default" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "center" } });
-              }}
-            >
-              <AlignCenter className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={blocks.find((b) => b.id === selectedBlockId)?.style?.align === "right" ? "default" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => {
-                const block = blocks.find((b) => b.id === selectedBlockId);
-                if (block) updateBlockWithSync(selectedBlockId, { style: { ...block.style, align: "right" } });
-              }}
-            >
-              <AlignRight className="h-4 w-4" />
-            </Button>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowQuickPurchase(false)}>
+                Annuler
+              </Button>
+              <Button onClick={addQuickPurchase} disabled={isAddingPurchase || !quickPurchaseName.trim()}>
+                {isAddingPurchase ? "Ajout..." : "Ajouter"}
+              </Button>
+            </div>
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
