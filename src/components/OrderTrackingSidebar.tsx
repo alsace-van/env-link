@@ -306,12 +306,16 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }));
 
     // Séparer par statut
-    setShoppingList(
+    // a_commander = pas encore commandé → À commander
+    // commande = commandé mais pas expédié → En cours
+    // en_livraison = en transit → En cours
+    // livre = reçu → Réceptionnées
+    setShoppingList(expensesWithProjectName.filter((e: OrderItem) => e.statut_livraison === "a_commander"));
+    setOrdersInProgress(
       expensesWithProjectName.filter(
-        (e: OrderItem) => e.statut_livraison === "a_commander" || e.statut_livraison === "commande",
+        (e: OrderItem) => e.statut_livraison === "commande" || e.statut_livraison === "en_livraison",
       ),
     );
-    setOrdersInProgress(expensesWithProjectName.filter((e: OrderItem) => e.statut_livraison === "en_livraison"));
     setReceivedOrders(expensesWithProjectName.filter((e: OrderItem) => e.statut_livraison === "livre"));
 
     // Stocker toutes les dépenses pour les stats
