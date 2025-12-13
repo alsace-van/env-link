@@ -43,7 +43,7 @@ interface OrderItem {
   quantite: number;
   categorie: string;
   fournisseur?: string;
-  statut_livraison: "commande" | "en_livraison" | "livre";
+  statut_livraison: "a_commander" | "commande" | "en_livraison" | "livre";
   date_achat: string;
   expected_delivery_date?: string;
   project_id: string;
@@ -170,7 +170,13 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
     }));
 
     // Séparer par statut
-    setShoppingList(expensesWithProjectName.filter((e: OrderItem) => e.statut_livraison === "commande"));
+    // Les articles "a_commander" et "commande" vont dans shoppingList
+    setShoppingList(
+      expensesWithProjectName.filter(
+        (e: OrderItem) =>
+          e.statut_livraison === "commande" || e.statut_livraison === "a_commander" || !e.statut_livraison,
+      ),
+    );
     setOrdersInProgress(expensesWithProjectName.filter((e: OrderItem) => e.statut_livraison === "en_livraison"));
     setReceivedOrders(expensesWithProjectName.filter((e: OrderItem) => e.statut_livraison === "livre"));
 
@@ -341,7 +347,10 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateOrderStatus = async (id: string, newStatus: "commande" | "en_livraison" | "livre") => {
-    const { error } = await (supabase as any).from("project_expenses").update({ statut_livraison: newStatus }).eq("id", id);
+    const { error } = await (supabase as any)
+      .from("project_expenses")
+      .update({ statut_livraison: newStatus })
+      .eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
@@ -354,7 +363,10 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
   };
 
   const updateDeliveryDate = async (id: string, date: string) => {
-    const { error } = await (supabase as any).from("project_expenses").update({ expected_delivery_date: date }).eq("id", id);
+    const { error } = await (supabase as any)
+      .from("project_expenses")
+      .update({ expected_delivery_date: date })
+      .eq("id", id);
 
     if (error) {
       toast.error("Erreur lors de la mise à jour de la date");
