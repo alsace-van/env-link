@@ -1630,6 +1630,10 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   const [quickPurchaseSupplier, setQuickPurchaseSupplier] = useState("");
   const [quickPurchaseCategory, setQuickPurchaseCategory] = useState("Fournitures");
   const [isAddingPurchase, setIsAddingPurchase] = useState(false);
+  const [availableProjectsForPurchase, setAvailableProjectsForPurchase] = useState<
+    { id: string; name: string; scenarioId: string }[]
+  >([]);
+  const [selectedProjectForPurchase, setSelectedProjectForPurchase] = useState<string>("");
 
   // Refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -2470,44 +2474,35 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, [quickNoteTitle, quickNoteContent, userId, projectId]);
 
-  // 🔥 Ajouter un achat rapide (au projet actuel) + créer un bloc
+  // 🔥 Ajouter un achat rapide au projet sélectionné + créer un bloc
   const addQuickPurchase = useCallback(async () => {
     if (!quickPurchaseName.trim()) {
       toast.error("Veuillez saisir un nom d'article");
       return;
     }
 
-    if (!userId || !projectId) {
-      toast.error("Non connecté ou projet non sélectionné");
+    if (!userId) {
+      toast.error("Non connecté");
+      return;
+    }
+
+    // Trouver le projet et scénario sélectionnés
+    const selectedProject = availableProjectsForPurchase.find((p) => p.id === selectedProjectForPurchase);
+    if (!selectedProject) {
+      toast.error("Veuillez sélectionner un projet avec scénario verrouillé");
       return;
     }
 
     setIsAddingPurchase(true);
 
     try {
-      // Récupérer le scénario principal du projet actuel
-      const { data: principalScenario, error: scenarioError } = await (supabase as any)
-        .from("project_scenarios")
-        .select("id")
-        .eq("project_id", projectId)
-        .eq("est_principal", true)
-        .maybeSingle();
-
-      if (scenarioError) throw scenarioError;
-
-      if (!principalScenario) {
-        toast.error("Aucun scénario principal trouvé. Créez d'abord un scénario.");
-        setIsAddingPurchase(false);
-        return;
-      }
-
-      // Créer la dépense dans le projet actuel et récupérer son ID
+      // Créer la dépense dans le projet sélectionné
       const { data: newExpense, error } = await (supabase as any)
         .from("project_expenses")
         .insert({
-          project_id: projectId,
-          scenario_id: principalScenario.id,
-          user_id: userId, // 🔥 Requis pour la politique RLS
+          project_id: selectedProject.id,
+          scenario_id: selectedProject.scenarioId,
+          user_id: userId,
           nom_accessoire: quickPurchaseName.trim(),
           marque: quickPurchaseBrand.trim() || null,
           prix: parseFloat(quickPurchasePrice) || 0,
@@ -2544,15 +2539,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
             fournisseur: quickPurchaseSupplier.trim() || undefined,
             statut_livraison: "a_commander",
             date_achat: format(new Date(), "yyyy-MM-dd"),
-            project_id: projectId,
+            project_id: selectedProject.id,
+            project_name: selectedProject.name,
           },
         ],
-        linkedProjectId: projectId,
+        linkedProjectId: selectedProject.id,
+        linkedProjectName: selectedProject.name,
       };
 
       setBlocks((prev) => [...prev, newBlock]);
 
-      toast.success("Article ajouté avec bloc créé");
+      toast.success(`Article ajouté au projet "${selectedProject.name}"`);
 
       // Réinitialiser le formulaire
       setQuickPurchaseName("");
@@ -2579,7 +2576,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     quickPurchaseSupplier,
     quickPurchaseCategory,
     userId,
-    projectId,
+    availableProjectsForPurchase,
+    selectedProjectForPurchase,
     refreshData,
   ]);
 
@@ -4071,85 +4069,117 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
-            <p className="text-sm text-muted-foreground">
-              Ajoutez des fournitures, consommables ou autres achats généraux.
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="purchaseName">Nom de l'article *</Label>
-                <Input
-                  id="purchaseName"
-                  value={quickPurchaseName}
-                  onChange={(e) => setQuickPurchaseName(e.target.value)}
-                  placeholder="ex: Ruban adhésif, Gants, Vis..."
-                />
+            {availableProjectsForPurchase.length === 0 ? (
+              <div className="text-center py-4">
+                <Package className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Aucun projet avec scénario verrouillé.
+                  <br />
+                  Verrouillez d'abord un scénario dans un projet.
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {/* 🔥 Sélection du projet */}
+                  <div>
+                    <Label htmlFor="projectSelect">Projet *</Label>
+                    <select
+                      id="projectSelect"
+                      value={selectedProjectForPurchase}
+                      onChange={(e) => setSelectedProjectForPurchase(e.target.value)}
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                    >
+                      {availableProjectsForPurchase.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Seuls les projets avec scénario verrouillé sont disponibles
+                    </p>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="purchaseBrand">Marque</Label>
-                  <Input
-                    id="purchaseBrand"
-                    value={quickPurchaseBrand}
-                    onChange={(e) => setQuickPurchaseBrand(e.target.value)}
-                    placeholder="ex: 3M, Bosch..."
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="purchaseCategory">Catégorie</Label>
-                  <Input
-                    id="purchaseCategory"
-                    value={quickPurchaseCategory}
-                    onChange={(e) => setQuickPurchaseCategory(e.target.value)}
-                    placeholder="ex: Fournitures"
-                  />
-                </div>
-              </div>
+                  <div>
+                    <Label htmlFor="purchaseName">Nom de l'article *</Label>
+                    <Input
+                      id="purchaseName"
+                      value={quickPurchaseName}
+                      onChange={(e) => setQuickPurchaseName(e.target.value)}
+                      placeholder="ex: Ruban adhésif, Gants, Vis..."
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="purchasePrice">Prix unitaire (€)</Label>
-                  <Input
-                    id="purchasePrice"
-                    type="number"
-                    step="0.01"
-                    value={quickPurchasePrice}
-                    onChange={(e) => setQuickPurchasePrice(e.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="purchaseQuantity">Quantité</Label>
-                  <Input
-                    id="purchaseQuantity"
-                    type="number"
-                    min="1"
-                    value={quickPurchaseQuantity}
-                    onChange={(e) => setQuickPurchaseQuantity(e.target.value)}
-                  />
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="purchaseBrand">Marque</Label>
+                      <Input
+                        id="purchaseBrand"
+                        value={quickPurchaseBrand}
+                        onChange={(e) => setQuickPurchaseBrand(e.target.value)}
+                        placeholder="ex: 3M, Bosch..."
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="purchaseCategory">Catégorie</Label>
+                      <Input
+                        id="purchaseCategory"
+                        value={quickPurchaseCategory}
+                        onChange={(e) => setQuickPurchaseCategory(e.target.value)}
+                        placeholder="ex: Fournitures"
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <Label htmlFor="purchaseSupplier">Fournisseur</Label>
-                <Input
-                  id="purchaseSupplier"
-                  value={quickPurchaseSupplier}
-                  onChange={(e) => setQuickPurchaseSupplier(e.target.value)}
-                  placeholder="ex: Amazon, Leroy Merlin..."
-                />
-              </div>
-            </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="purchasePrice">Prix unitaire (€)</Label>
+                      <Input
+                        id="purchasePrice"
+                        type="number"
+                        step="0.01"
+                        value={quickPurchasePrice}
+                        onChange={(e) => setQuickPurchasePrice(e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="purchaseQuantity">Quantité</Label>
+                      <Input
+                        id="purchaseQuantity"
+                        type="number"
+                        min="1"
+                        value={quickPurchaseQuantity}
+                        onChange={(e) => setQuickPurchaseQuantity(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowQuickPurchase(false)}>
-                Annuler
-              </Button>
-              <Button onClick={addQuickPurchase} disabled={isAddingPurchase || !quickPurchaseName.trim()}>
-                {isAddingPurchase ? "Ajout..." : "Ajouter"}
-              </Button>
-            </div>
+                  <div>
+                    <Label htmlFor="purchaseSupplier">Fournisseur</Label>
+                    <Input
+                      id="purchaseSupplier"
+                      value={quickPurchaseSupplier}
+                      onChange={(e) => setQuickPurchaseSupplier(e.target.value)}
+                      placeholder="ex: Amazon, Leroy Merlin..."
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setShowQuickPurchase(false)}>
+                    Annuler
+                  </Button>
+                  <Button
+                    onClick={addQuickPurchase}
+                    disabled={isAddingPurchase || !quickPurchaseName.trim() || !selectedProjectForPurchase}
+                  >
+                    {isAddingPurchase ? "Ajout..." : "Ajouter"}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
