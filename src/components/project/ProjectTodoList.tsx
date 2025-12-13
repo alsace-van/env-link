@@ -58,7 +58,9 @@ export const ProjectTodoList = ({ projectId }: ProjectTodoListProps) => {
   const addTodo = async () => {
     if (!newTodo.trim() || !projectId) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       toast.error("Vous devez être connecté");
       return;
@@ -81,9 +83,17 @@ export const ProjectTodoList = ({ projectId }: ProjectTodoListProps) => {
   };
 
   const toggleTodo = async (id: string, completed: boolean) => {
-    const { error } = await supabase.from("project_todos").update({ completed: !completed }).eq("id", id);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
 
-    if (!error) loadTodos();
+    const { syncTaskCompleted } = await import("@/utils/taskSync");
+    const success = await syncTaskCompleted(id, !completed, user.id);
+
+    if (success) {
+      loadTodos();
+    }
   };
 
   const deleteTodo = async (id: string) => {
