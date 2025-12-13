@@ -2507,6 +2507,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         .insert({
           project_id: projectId,
           scenario_id: principalScenario.id,
+          user_id: userId, // 🔥 Requis pour la politique RLS
           nom_accessoire: quickPurchaseName.trim(),
           marque: quickPurchaseBrand.trim() || null,
           prix: parseFloat(quickPurchasePrice) || 0,
