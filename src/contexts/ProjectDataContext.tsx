@@ -183,19 +183,19 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
 
     console.log("📋 Chargement des tâches pour user:", user.user.id);
 
-    // Toujours charger TOUTES les tâches de l'utilisateur AVEC le nom du projet
+    // 🔥 D'abord charger tous les projets pour avoir les noms
+    const { data: allProjects } = await supabase.from("projects").select("id, name, nom").eq("user_id", user.user.id);
+
+    const projectsMap = new Map<string, string>();
+    (allProjects || []).forEach((p: any) => {
+      projectsMap.set(p.id, p.name || p.nom || "Sans nom");
+    });
+    console.log("🏠 Projets chargés:", projectsMap.size);
+
+    // Charger les tâches
     const { data: allTodos, error } = await supabase
       .from("project_todos")
-      .select(
-        `
-        *,
-        projects (
-          id,
-          name,
-          nom
-        )
-      `,
-      )
+      .select("*")
       .eq("user_id", user.user.id)
       .order("due_date", { ascending: true });
 
@@ -209,13 +209,18 @@ export const ProjectDataProvider: React.FC<ProjectDataProviderProps> = ({ childr
     console.log("📅 Tâches avec scheduled_date:", allTodos?.filter((t) => t.scheduled_date)?.length || 0);
 
     // Marquer les tâches avec des flags utiles ET le nom du projet
-    const todosWithFlags = (allTodos || []).map((todo: any) => ({
-      ...todo,
-      is_global: !todo.project_id,
-      is_current_project: currentProjectId ? todo.project_id === currentProjectId : true,
-      // 🔥 Ajouter le nom du projet directement
-      project_name: todo.projects?.name || todo.projects?.nom || null,
-    }));
+    const todosWithFlags = (allTodos || []).map((todo: any) => {
+      const projectName = todo.project_id ? projectsMap.get(todo.project_id) : null;
+      return {
+        ...todo,
+        is_global: !todo.project_id,
+        is_current_project: currentProjectId ? todo.project_id === currentProjectId : true,
+        // 🔥 Utiliser le map des projets pour le nom
+        project_name: projectName,
+      };
+    });
+
+    console.log("🏷️ Todos avec project_name:", todosWithFlags.filter((t: any) => t.project_name).length);
 
     setTodos(todosWithFlags);
   };
