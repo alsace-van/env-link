@@ -49,8 +49,15 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   const [hoveredHour, setHoveredHour] = useState<number | null>(null);
 
   // Utiliser le contexte pour les données synchronisées en temps réel
-  const { todos, supplierExpenses, monthlyCharges, appointments, accessoryDeliveries, setCurrentProjectId } =
-    useProjectData();
+  const {
+    todos,
+    supplierExpenses,
+    monthlyCharges,
+    appointments,
+    accessoryDeliveries,
+    setCurrentProjectId,
+    refreshData,
+  } = useProjectData();
 
   // Mettre à jour le projectId dans le contexte quand il change
   useEffect(() => {
@@ -61,12 +68,19 @@ export const ProjectPlanning = ({ projectId }: ProjectPlanningProps) => {
   const workingHours = Array.from({ length: 13 }, (_, i) => i + 8);
 
   const toggleTodoComplete = async (todoId: string, currentStatus: boolean) => {
-    const { error } = await supabase.from("project_todos").update({ completed: !currentStatus }).eq("id", todoId);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
 
-    if (error) {
-      toast.error("Erreur lors de la mise à jour: " + getErrorMessage(error));
-    } else {
+    const { syncTaskCompleted } = await import("@/utils/taskSync");
+    const success = await syncTaskCompleted(todoId, !currentStatus, user.id);
+
+    if (success) {
+      refreshData();
       toast.success(currentStatus ? "Tâche réactivée" : "Tâche terminée");
+    } else {
+      toast.error("Erreur lors de la mise à jour");
     }
   };
 
