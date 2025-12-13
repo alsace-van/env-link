@@ -950,7 +950,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   }
                 }}
                 locale={fr}
-                disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                // 🔥 Permettre les dates passées pour documenter le travail déjà fait
               />
             </PopoverContent>
           </Popover>
@@ -1786,9 +1786,40 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         const linkedTasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
         if (linkedTasks.length > 0) {
           const taskIds = linkedTasks.map((t) => t.id);
-          // 🔥 Mettre à jour scheduled_date vers la NOUVELLE date
-          await (supabase as any).from("project_todos").update({ scheduled_date: targetDate }).in("id", taskIds);
-          console.log("📅 scheduled_date mis à jour vers", targetDate, "pour", taskIds.length, "tâches");
+
+          // 🔥 Vérifier si la date cible est dans le passé (avant aujourd'hui)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const targetDateObj = parseISO(targetDate);
+          const isPastDate = targetDateObj < today;
+
+          if (isPastDate) {
+            // 🔥 Date passée → Marquer les tâches comme complétées
+            await (supabase as any)
+              .from("project_todos")
+              .update({
+                scheduled_date: targetDate,
+                completed: true,
+                completed_at: new Date().toISOString(),
+              })
+              .in("id", taskIds);
+
+            // Mettre à jour aussi dans le bloc copié
+            blockForTarget.taskStatus = "completed";
+            if (blockForTarget.linkedTasks) {
+              blockForTarget.linkedTasks = blockForTarget.linkedTasks.map((t) => ({ ...t, completed: true }));
+            }
+            if (blockForTarget.linkedTask) {
+              blockForTarget.linkedTask = { ...blockForTarget.linkedTask, completed: true };
+            }
+
+            console.log("✅ Tâches auto-complétées (date passée:", targetDate, ") pour", taskIds.length, "tâches");
+            toast.info("Tâches marquées comme terminées (date passée)");
+          } else {
+            // Date future ou aujourd'hui → juste mettre à jour scheduled_date
+            await (supabase as any).from("project_todos").update({ scheduled_date: targetDate }).in("id", taskIds);
+            console.log("📅 scheduled_date mis à jour vers", targetDate, "pour", taskIds.length, "tâches");
+          }
         }
 
         // 3. Récupérer les blocs existants de la date cible
