@@ -2470,7 +2470,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, [quickNoteTitle, quickNoteContent, userId, projectId]);
 
-  // 🔥 Ajouter un achat rapide (au projet actuel)
+  // 🔥 Ajouter un achat rapide (au projet actuel) + créer un bloc
   const addQuickPurchase = useCallback(async () => {
     if (!quickPurchaseName.trim()) {
       toast.error("Veuillez saisir un nom d'article");
@@ -2501,23 +2501,57 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         return;
       }
 
-      // Créer la dépense dans le projet actuel
-      const { error } = await (supabase as any).from("project_expenses").insert({
-        project_id: projectId,
-        scenario_id: principalScenario.id,
-        nom_accessoire: quickPurchaseName.trim(),
-        marque: quickPurchaseBrand.trim() || null,
-        prix: parseFloat(quickPurchasePrice) || 0,
-        quantite: parseInt(quickPurchaseQuantity) || 1,
-        fournisseur: quickPurchaseSupplier.trim() || null,
-        categorie: quickPurchaseCategory || "Achats généraux",
-        statut_livraison: "a_commander",
-        date_achat: format(new Date(), "yyyy-MM-dd"),
-      });
+      // Créer la dépense dans le projet actuel et récupérer son ID
+      const { data: newExpense, error } = await (supabase as any)
+        .from("project_expenses")
+        .insert({
+          project_id: projectId,
+          scenario_id: principalScenario.id,
+          nom_accessoire: quickPurchaseName.trim(),
+          marque: quickPurchaseBrand.trim() || null,
+          prix: parseFloat(quickPurchasePrice) || 0,
+          quantite: parseInt(quickPurchaseQuantity) || 1,
+          fournisseur: quickPurchaseSupplier.trim() || null,
+          categorie: quickPurchaseCategory || "Achats généraux",
+          statut_livraison: "a_commander",
+          date_achat: format(new Date(), "yyyy-MM-dd"),
+        })
+        .select("id")
+        .single();
 
       if (error) throw error;
 
-      toast.success("Article ajouté à la liste d'achats");
+      // 🔥 Créer un bloc "order" avec cette dépense liée
+      const newBlock: NoteBlock = {
+        id: crypto.randomUUID(),
+        type: "order",
+        x: 100 + Math.random() * 200,
+        y: 100 + Math.random() * 100,
+        width: 350,
+        height: 150,
+        content: {
+          title: quickPurchaseCategory || "Nouvel achat",
+        },
+        linkedExpenses: [
+          {
+            id: newExpense.id,
+            nom: quickPurchaseName.trim(),
+            marque: quickPurchaseBrand.trim() || undefined,
+            prix: parseFloat(quickPurchasePrice) || 0,
+            quantite: parseInt(quickPurchaseQuantity) || 1,
+            categorie: quickPurchaseCategory || "Achats généraux",
+            fournisseur: quickPurchaseSupplier.trim() || undefined,
+            statut_livraison: "a_commander",
+            date_achat: format(new Date(), "yyyy-MM-dd"),
+            project_id: projectId,
+          },
+        ],
+        linkedProjectId: projectId,
+      };
+
+      setBlocks((prev) => [...prev, newBlock]);
+
+      toast.success("Article ajouté avec bloc créé");
 
       // Réinitialiser le formulaire
       setQuickPurchaseName("");
