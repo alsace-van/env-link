@@ -199,7 +199,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
       const { error } = await (supabase as any).from("project_expenses").insert({
         project_id: selectedProjectId,
         scenario_id: scenario.id,
-        user_id: userData.user.id, // 🔥 Requis pour la politique RLS
+        user_id: userData.user.id,
         nom_accessoire: newItemName.trim(),
         marque: newItemBrand.trim() || null,
         prix: parseFloat(newItemPrice) || 0,
@@ -207,6 +207,7 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
         fournisseur: newItemSupplier.trim() || null,
         categorie: newItemCategory,
         statut_livraison: "a_commander",
+        in_order_tracking: true, // 🔥 Marquer comme en suivi
         date_achat: format(new Date(), "yyyy-MM-dd"),
       });
 
@@ -284,12 +285,12 @@ const OrderTrackingSidebar = ({ isOpen, onClose, onOrderChange }: OrderTrackingS
 
     setHasValidScenarios(true);
 
-    // Charger uniquement les dépenses avec un statut de livraison défini
+    // Charger uniquement les dépenses marquées "en suivi de commande"
     const { data: expenses, error } = await (supabase as any)
       .from("project_expenses")
       .select("*")
       .in("scenario_id", validScenarioIds)
-      .not("statut_livraison", "is", null)
+      .eq("in_order_tracking", true)
       .order("date_achat", { ascending: false });
 
     if (error) {
