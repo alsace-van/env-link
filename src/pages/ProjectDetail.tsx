@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -975,61 +975,65 @@ const ProjectDetail = () => {
     fetchUser();
   }, [id]);
 
-  // 🔥 Charger les zones de travail
-  useEffect(() => {
-    const fetchWorkZones = async () => {
-      if (!user?.id) return;
+  // 🔥 Fonction pour charger les zones de travail
+  const fetchWorkZones = useCallback(async () => {
+    if (!user?.id) return;
 
-      // Récupérer les daily_notes qui contiennent des zones ET les projets
-      const [notesResult, projectsResult] = await Promise.all([
-        supabase.from("daily_notes").select("blocks_data, note_date").eq("user_id", user.id),
-        supabase.from("projects").select("id, nom_projet, nom_proprietaire"),
-      ]);
+    console.log("📂 Chargement des zones de travail...");
 
-      if (notesResult.error) {
-        console.error("Erreur chargement zones:", notesResult.error);
-        return;
-      }
+    // Récupérer les daily_notes qui contiennent des zones ET les projets
+    const [notesResult, projectsResult] = await Promise.all([
+      supabase.from("daily_notes").select("blocks_data, note_date").eq("user_id", user.id),
+      supabase.from("projects").select("id, nom_projet, nom_proprietaire"),
+    ]);
 
-      // Créer un map des projets
-      const projectsMap = new Map<string, string>();
-      projectsResult.data?.forEach((p) => {
-        projectsMap.set(p.id, p.nom_projet || p.nom_proprietaire || "Projet");
-      });
+    if (notesResult.error) {
+      console.error("Erreur chargement zones:", notesResult.error);
+      return;
+    }
 
-      // Extraire les zones de tous les blocks_data
-      const zones: Array<{ id: string; title: string; color: string; linkedProjectName?: string; noteDate?: string }> =
-        [];
+    // Créer un map des projets
+    const projectsMap = new Map<string, string>();
+    projectsResult.data?.forEach((p) => {
+      projectsMap.set(p.id, p.nom_projet || p.nom_proprietaire || "Projet");
+    });
 
-      notesResult.data?.forEach((note) => {
-        if (note.blocks_data) {
-          try {
-            const blocks = JSON.parse(note.blocks_data);
-            blocks
-              .filter((b: any) => b.type === "zone")
-              .forEach((zone: any) => {
-                // Récupérer le nom du projet lié via zoneLinkedProjectId
-                const projectName = zone.zoneLinkedProjectId ? projectsMap.get(zone.zoneLinkedProjectId) : undefined;
+    // Extraire les zones de tous les blocks_data
+    const zones: Array<{ id: string; title: string; color: string; linkedProjectName?: string; noteDate?: string }> =
+      [];
 
-                zones.push({
-                  id: zone.id,
-                  title: zone.content?.title || "Zone sans nom",
-                  color: zone.zoneColor || "#f3f4f6",
-                  linkedProjectName: projectName,
-                  noteDate: note.note_date,
-                });
+    notesResult.data?.forEach((note) => {
+      if (note.blocks_data) {
+        try {
+          const blocks = JSON.parse(note.blocks_data);
+          blocks
+            .filter((b: any) => b.type === "zone")
+            .forEach((zone: any) => {
+              // Récupérer le nom du projet lié via zoneLinkedProjectId
+              const projectName = zone.zoneLinkedProjectId ? projectsMap.get(zone.zoneLinkedProjectId) : undefined;
+
+              zones.push({
+                id: zone.id,
+                title: zone.content?.title || "Zone sans nom",
+                color: zone.zoneColor || "#f3f4f6",
+                linkedProjectName: projectName,
+                noteDate: note.note_date,
               });
-          } catch (e) {
-            // Ignorer les erreurs de parsing
-          }
+            });
+        } catch (e) {
+          // Ignorer les erreurs de parsing
         }
-      });
+      }
+    });
 
-      setWorkZones(zones);
-    };
-
-    fetchWorkZones();
+    console.log("📂 Zones trouvées:", zones.length, zones);
+    setWorkZones(zones);
   }, [user?.id]);
+
+  // Charger les zones au montage
+  useEffect(() => {
+    fetchWorkZones();
+  }, [fetchWorkZones]);
 
   // Fonction pour recharger le projet (utilisée après déverrouillage)
   const reloadProject = async () => {
@@ -1424,7 +1428,16 @@ const ProjectDetail = () => {
             </div>
 
             {/* 🔥 Bouton Zones de travail */}
-            <Popover open={isZonesPopoverOpen} onOpenChange={setIsZonesPopoverOpen}>
+            <Popover
+              open={isZonesPopoverOpen}
+              onOpenChange={(open) => {
+                setIsZonesPopoverOpen(open);
+                // Recharger les zones à chaque ouverture
+                if (open) {
+                  fetchWorkZones();
+                }
+              }}
+            >
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2" title="Zones de travail">
                   <LayoutGrid className="h-4 w-4" />
@@ -1913,7 +1926,13 @@ const ProjectDetail = () => {
       <DailyNotesCanvas
         projectId={project?.id || null}
         open={isZoneCanvasOpen}
-        onOpenChange={setIsZoneCanvasOpen}
+        onOpenChange={(open) => {
+          setIsZoneCanvasOpen(open);
+          // Recharger les zones quand le canvas se ferme (nouvelles zones ajoutées)
+          if (!open) {
+            fetchWorkZones();
+          }
+        }}
         initialDate={zoneCanvasDate}
       />
 
