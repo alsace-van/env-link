@@ -8,9 +8,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Plus, Table2, Lock, ChevronLeft, ChevronRight, Eye, 
-  Library, ClipboardList, Euro, Clock, CheckCircle2 
+import {
+  Plus,
+  Table2,
+  Lock,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Library,
+  ClipboardList,
+  Euro,
+  Clock,
+  CheckCircle2,
 } from "lucide-react";
 import { useWorkScenarios, WorkScenarioStats } from "@/hooks/useWorkScenarios";
 import { useScenarios } from "@/hooks/useScenarios";
@@ -28,19 +37,9 @@ interface WorkScenarioManagerProps {
   onProjectChange?: () => void;
 }
 
-const WorkScenarioManager = ({ 
-  projectId, 
-  project, 
-  onTaskChange,
-  onProjectChange 
-}: WorkScenarioManagerProps) => {
-  const { 
-    scenarios, 
-    principalScenario, 
-    isLoading: scenariosLoading,
-    reloadScenarios 
-  } = useScenarios(projectId);
-  
+const WorkScenarioManager = ({ projectId, project, onTaskChange, onProjectChange }: WorkScenarioManagerProps) => {
+  const { scenarios, principalScenario, isLoading: scenariosLoading, reloadScenarios } = useScenarios(projectId);
+
   const {
     tasks,
     isLoading: tasksLoading,
@@ -53,7 +52,7 @@ const WorkScenarioManager = ({
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [visibleScenarios, setVisibleScenarios] = useState<Record<string, boolean>>({});
-  
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const isLocked =
@@ -103,10 +102,10 @@ const WorkScenarioManager = ({
 
   // Formater les montants
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', { 
-      style: 'currency', 
-      currency: 'EUR',
-      minimumFractionDigits: 2 
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
     }).format(amount);
   };
 
@@ -206,11 +205,12 @@ const WorkScenarioManager = ({
               <div className="col-span-2 md:col-span-1">
                 <p className="text-xs text-muted-foreground mb-1">Progression</p>
                 <div className="space-y-1">
-                  <Progress 
-                    value={principalStats.totalTasks > 0 
-                      ? (principalStats.completedTasks / principalStats.totalTasks) * 100 
-                      : 0
-                    } 
+                  <Progress
+                    value={
+                      principalStats.totalTasks > 0
+                        ? (principalStats.completedTasks / principalStats.totalTasks) * 100
+                        : 0
+                    }
                     className="h-2"
                   />
                   <p className="text-sm font-medium">
@@ -241,9 +241,7 @@ const WorkScenarioManager = ({
                   <Clock className="h-3 w-3" />
                   Estimé
                 </p>
-                <p className="text-lg font-semibold">
-                  {principalStats.totalEstimatedHours.toFixed(1)}h
-                </p>
+                <p className="text-lg font-semibold">{principalStats.totalEstimatedHours.toFixed(1)}h</p>
               </div>
 
               {/* Heures réelles */}
@@ -252,9 +250,7 @@ const WorkScenarioManager = ({
                   <CheckCircle2 className="h-3 w-3" />
                   Réalisé
                 </p>
-                <p className="text-lg font-semibold">
-                  {principalStats.totalActualHours.toFixed(1)}h
-                </p>
+                <p className="text-lg font-semibold">{principalStats.totalActualHours.toFixed(1)}h</p>
               </div>
             </div>
           </CardContent>
@@ -284,11 +280,7 @@ const WorkScenarioManager = ({
           </>
         )}
 
-        <div 
-          ref={scrollContainerRef} 
-          className="overflow-x-auto pb-4 scroll-smooth" 
-          style={{ scrollbarWidth: "thin" }}
-        >
+        <div ref={scrollContainerRef} className="overflow-x-auto pb-4 scroll-smooth" style={{ scrollbarWidth: "thin" }}>
           <div className="flex gap-4" style={{ minWidth: "min-content" }}>
             {displayedScenarios.map((scenario) => (
               <div key={scenario.id} style={{ minWidth: "450px", maxWidth: "450px" }}>
