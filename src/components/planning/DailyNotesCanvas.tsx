@@ -2060,6 +2060,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   // Ref pour détecter les changements de blocs (ReactFlow sync)
   const blocksIdsRef = useRef<string>("");
 
+  // 🔥 Ref pour tracker les positions des zones pendant le drag (éviter le décalage)
+  const lastZonePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
   // États dessin Paper.js
   const [activeTool, setActiveTool] = useState<DrawTool>("select");
   const [strokeColor, setStrokeColor] = useState("#000000");
@@ -3493,13 +3496,26 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       const zoneMovements: { zoneId: string; deltaX: number; deltaY: number; zone: NoteBlock }[] = [];
 
       changes.forEach((change: any) => {
-        if (change.type === "position" && change.position && change.dragging) {
+        if (change.type === "position" && change.position) {
           const movingBlock = blocks.find((b) => b.id === change.id);
+
           if (movingBlock?.type === "zone" && movingBlock.isContentLocked) {
-            const deltaX = change.position.x - movingBlock.x;
-            const deltaY = change.position.y - movingBlock.y;
-            if (deltaX !== 0 || deltaY !== 0) {
-              zoneMovements.push({ zoneId: movingBlock.id, deltaX, deltaY, zone: movingBlock });
+            if (change.dragging) {
+              // 🔥 Utiliser la ref pour tracker la dernière position (évite le décalage)
+              const lastPos = lastZonePositionsRef.current.get(change.id) || { x: movingBlock.x, y: movingBlock.y };
+
+              const deltaX = change.position.x - lastPos.x;
+              const deltaY = change.position.y - lastPos.y;
+
+              // Mettre à jour la ref avec la nouvelle position
+              lastZonePositionsRef.current.set(change.id, { x: change.position.x, y: change.position.y });
+
+              if (deltaX !== 0 || deltaY !== 0) {
+                zoneMovements.push({ zoneId: movingBlock.id, deltaX, deltaY, zone: movingBlock });
+              }
+            } else {
+              // Drag terminé - nettoyer la ref
+              lastZonePositionsRef.current.delete(change.id);
             }
           }
         }
@@ -3599,11 +3615,15 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
             });
 
             // 🔥 Si une zone avec contenu figé a bougé, déplacer les blocs internes
-            zoneMovements.forEach(({ zoneId, deltaX, deltaY, zone }) => {
-              const zoneX = zone.x;
-              const zoneY = zone.y;
-              const zoneWidth = zone.width || 400;
-              const zoneHeight = zone.height || 300;
+            zoneMovements.forEach(({ zoneId, deltaX, deltaY }) => {
+              // Trouver la zone dans l'état actuel pour avoir ses dimensions
+              const currentZone = updatedBlocks.find((b) => b.id === zoneId);
+              if (!currentZone) return;
+
+              const zoneX = currentZone.x - deltaX; // Position AVANT le déplacement
+              const zoneY = currentZone.y - deltaY;
+              const zoneWidth = currentZone.width || 400;
+              const zoneHeight = currentZone.height || 300;
 
               updatedBlocks = updatedBlocks.map((block) => {
                 // Ne pas déplacer la zone elle-même ni les autres zones
