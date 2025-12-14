@@ -909,7 +909,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         };
 
         return (
-          <div className="p-3 space-y-2">
+          <div className="p-3 space-y-2" style={{ maxWidth: block.width || 320 }}>
             {/* Liste des dépenses liées */}
             {hasExpenses && (
               <div
@@ -967,7 +967,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
                       {/* Contenu */}
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{expense.nom}</div>
+                        <div className="font-medium text-sm leading-tight break-words">{expense.nom}</div>
                         <div className="text-xs space-y-1 mt-1">
                           {expense.marque && <span className="text-gray-600">{expense.marque}</span>}
                           <div className="flex flex-wrap gap-x-2 gap-y-0.5">
@@ -3568,8 +3568,12 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       } as CustomBlockData,
       // 🔥 Zone de travail TOUJOURS en arrière-plan (zIndex: -1), autres blocs au-dessus (zIndex: 10)
       style: {
-        // Pour les zones: width fixe. Pour les autres blocs: minWidth pour permettre l'expansion
-        ...(block.type === "zone" ? { width: block.width, height: block.height } : { minWidth: block.width || 200 }),
+        // Pour les zones: width fixe. Pour order: width fixe pour wrap le texte. Pour les autres: minWidth
+        ...(block.type === "zone"
+          ? { width: block.width, height: block.height }
+          : block.type === "order"
+            ? { width: block.width || 320 } // Largeur fixe pour order
+            : { minWidth: block.width || 200 }),
         // Forcer la zone à rester derrière même quand sélectionnée
         zIndex: block.type === "zone" ? -1 : undefined,
       },
