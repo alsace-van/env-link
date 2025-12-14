@@ -1402,54 +1402,46 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                       <Maximize2 className="h-3 w-3" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-48 p-3" onClick={stopPropagation}>
+                  <PopoverContent className="w-56 p-3" onClick={stopPropagation}>
                     <div className="space-y-3">
                       <p className="text-xs font-medium text-gray-600">Dimensions</p>
 
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 w-12">Largeur</span>
+                          <span className="text-xs text-gray-500 w-14">Largeur</span>
                           <div className="flex items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => onUpdate({ width: Math.max(200, (block.width || 400) - 50) })}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="text-xs w-12 text-center">{block.width || 400}px</span>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => onUpdate({ width: (block.width || 400) + 50 })}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
+                            <input
+                              type="number"
+                              min="200"
+                              step="50"
+                              value={block.width || 400}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 200;
+                                onUpdate({ width: Math.max(200, val) });
+                              }}
+                              className="w-20 h-7 text-xs text-center border rounded px-1 nodrag"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-xs text-gray-400">px</span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 w-12">Hauteur</span>
+                          <span className="text-xs text-gray-500 w-14">Hauteur</span>
                           <div className="flex items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => onUpdate({ height: Math.max(150, (block.height || 300) - 50) })}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="text-xs w-12 text-center">{block.height || 300}px</span>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => onUpdate({ height: (block.height || 300) + 50 })}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
+                            <input
+                              type="number"
+                              min="150"
+                              step="50"
+                              value={block.height || 300}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 150;
+                                onUpdate({ height: Math.max(150, val) });
+                              }}
+                              className="w-20 h-7 text-xs text-center border rounded px-1 nodrag"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-xs text-gray-400">px</span>
                           </div>
                         </div>
                       </div>
@@ -1467,7 +1459,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                           variant="outline"
                           size="sm"
                           className="flex-1 text-xs h-7"
-                          onClick={() => onUpdate({ width: 800, height: 500 })}
+                          onClick={() => onUpdate({ width: 1200, height: 800 })}
                         >
                           Très grand
                         </Button>
