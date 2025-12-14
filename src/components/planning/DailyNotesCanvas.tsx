@@ -2580,6 +2580,7 @@ export default function DailyNotesCanvas({
   const paperScopeRef = useRef<paper.PaperScope | null>(null);
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
+  const reactFlowContainerRef = useRef<HTMLDivElement>(null); // 🔥 Ref pour le conteneur ReactFlow
 
   // Refs pour les valeurs dans les handlers
   const strokeColorRef = useRef(strokeColor);
@@ -2947,13 +2948,15 @@ export default function DailyNotesCanvas({
           ? blocks.find((b) => b.type === "zone" && b.zoneLinkedProjectId === projectId)
           : null;
 
-      // 🔥 Calculer le centre de la vue visible
+      // 🔥 Calculer le centre de la vue visible avec les vraies dimensions
       const viewport = viewportRef.current;
-      // Le conteneur fait environ 800x600 (estimation)
-      const containerWidth = 800;
-      const containerHeight = 600;
-      const centerX = (-viewport.x + containerWidth / 2) / viewport.zoom;
-      const centerY = (-viewport.y + containerHeight / 2) / viewport.zoom;
+      const container = reactFlowContainerRef.current;
+      const containerWidth = container?.clientWidth || 800;
+      const containerHeight = container?.clientHeight || 600;
+
+      // Convertir le centre de l'écran en coordonnées du flow
+      const centerX = (containerWidth / 2 - viewport.x) / viewport.zoom;
+      const centerY = (containerHeight / 2 - viewport.y) / viewport.zoom;
 
       // Position par défaut: au centre de la vue avec un petit offset aléatoire
       let posX = centerX - 100 + Math.random() * 50;
@@ -5394,7 +5397,7 @@ export default function DailyNotesCanvas({
             ) : (
               <div className="absolute inset-0 bg-white">
                 {/* ReactFlow (base - toujours visible) */}
-                <div className="absolute inset-0" style={{ zIndex: 1 }}>
+                <div className="absolute inset-0" style={{ zIndex: 1 }} ref={reactFlowContainerRef}>
                   <ReactFlow
                     nodes={nodes}
                     edges={flowEdges}
