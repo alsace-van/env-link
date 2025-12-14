@@ -3532,8 +3532,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       } as CustomBlockData,
       // 🔥 Zone de travail TOUJOURS en arrière-plan (zIndex: -1), autres blocs au-dessus (zIndex: 10)
       style: {
-        width: block.width,
-        height: block.type === "zone" ? block.height : "auto",
+        // Pour les zones: width fixe. Pour les autres blocs: minWidth pour permettre l'expansion
+        ...(block.type === "zone" ? { width: block.width, height: block.height } : { minWidth: block.width || 200 }),
         // Forcer la zone à rester derrière même quand sélectionnée
         zIndex: block.type === "zone" ? -1 : undefined,
       },
