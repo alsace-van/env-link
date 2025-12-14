@@ -100,6 +100,8 @@ import {
   ShoppingCart,
   Store,
   LayoutGrid,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -189,6 +191,9 @@ interface NoteBlock {
   // 🔥 Champs spécifiques au type "zone"
   zoneColor?: string; // Couleur de fond de la zone
   zoneBorderColor?: string; // Couleur de bordure de la zone
+  zoneLinkedProjectId?: string; // ID du projet lié à cette zone
+  zoneLinkedProjectName?: string; // Nom du projet lié à cette zone
+  isLocked?: boolean; // Zone verrouillée (ne peut pas être déplacée)
   style?: {
     fontSize?: number;
     fontFamily?: string;
@@ -1276,62 +1281,150 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           >
             {/* Titre de la zone - interactif pour édition */}
             <div
-              className="px-3 py-2 border-b flex items-center justify-between cursor-move"
+              className={`px-3 py-2 border-b flex items-center justify-between ${block.isLocked ? "cursor-default" : "cursor-move"}`}
               style={{
                 backgroundColor: block.zoneBorderColor || "#d1d5db",
                 borderColor: block.zoneBorderColor || "#d1d5db",
               }}
             >
-              {isEditing ? (
-                <Input
-                  value={block.content?.title || ""}
-                  onChange={(e) => onUpdate({ content: { ...block.content, title: e.target.value } })}
-                  onBlur={() => setIsEditing(false)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") setIsEditing(false);
-                  }}
-                  autoFocus
-                  className="h-6 text-sm font-semibold border-0 bg-white/50 focus-visible:ring-0 nodrag"
-                  onClick={stopPropagation}
-                  onPointerDown={stopPropagation}
-                />
-              ) : (
-                <span
-                  className="text-sm font-semibold text-gray-700 cursor-text nodrag"
-                  onDoubleClick={() => setIsEditing(true)}
-                >
-                  {block.content?.title || "Zone de travail"}
-                </span>
-              )}
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {/* Indicateur verrouillé */}
+                {block.isLocked && <Lock className="h-3 w-3 text-gray-600 flex-shrink-0" />}
 
-              {/* Sélecteur de couleur */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 nodrag" onClick={stopPropagation}>
-                    <Palette className="h-3 w-3" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-2" onClick={stopPropagation}>
-                  <div className="grid grid-cols-4 gap-1">
-                    {ZONE_COLORS.map((color) => (
+                {isEditing ? (
+                  <Input
+                    value={block.content?.title || ""}
+                    onChange={(e) => onUpdate({ content: { ...block.content, title: e.target.value } })}
+                    onBlur={() => setIsEditing(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") setIsEditing(false);
+                    }}
+                    autoFocus
+                    className="h-6 text-sm font-semibold border-0 bg-white/50 focus-visible:ring-0 nodrag"
+                    onClick={stopPropagation}
+                    onPointerDown={stopPropagation}
+                  />
+                ) : (
+                  <span
+                    className="text-sm font-semibold text-gray-700 cursor-text nodrag truncate"
+                    onDoubleClick={() => setIsEditing(true)}
+                  >
+                    {block.content?.title || "Zone de travail"}
+                  </span>
+                )}
+
+                {/* Badge projet lié */}
+                {block.zoneLinkedProjectName && (
+                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex-shrink-0">
+                    {block.zoneLinkedProjectName}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Bouton verrouiller/déverrouiller */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 nodrag"
+                  onClick={(e) => {
+                    stopPropagation(e);
+                    onUpdate({ isLocked: !block.isLocked });
+                  }}
+                  title={block.isLocked ? "Déverrouiller la zone" : "Verrouiller la zone"}
+                >
+                  {block.isLocked ? (
+                    <Lock className="h-3 w-3 text-amber-600" />
+                  ) : (
+                    <Unlock className="h-3 w-3 text-gray-500" />
+                  )}
+                </Button>
+
+                {/* Sélecteur de projet */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`h-6 w-6 p-0 nodrag ${block.zoneLinkedProjectId ? "text-blue-600" : ""}`}
+                      onClick={stopPropagation}
+                      title="Lier à un projet"
+                    >
+                      <FolderOpen className="h-3 w-3" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" onClick={stopPropagation}>
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-600">Lier à un projet</p>
+                      <p className="text-xs text-gray-400">Les blocs de ce projet seront contenus dans cette zone</p>
+
+                      {/* Option aucun projet */}
                       <button
-                        key={color.value}
-                        className={`w-6 h-6 rounded border-2 ${
-                          block.zoneColor === color.value ? "border-blue-500" : "border-gray-200"
+                        className={`w-full text-left px-2 py-1.5 rounded text-sm hover:bg-gray-100 ${
+                          !block.zoneLinkedProjectId ? "bg-gray-100 font-medium" : ""
                         }`}
-                        style={{ backgroundColor: color.value }}
                         onClick={() =>
                           onUpdate({
-                            zoneColor: color.value,
-                            zoneBorderColor: color.border,
+                            zoneLinkedProjectId: undefined,
+                            zoneLinkedProjectName: undefined,
                           })
                         }
-                        title={color.name}
-                      />
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
+                      >
+                        <span className="text-gray-500">Aucun projet</span>
+                      </button>
+
+                      {/* Liste des projets */}
+                      <div className="max-h-40 overflow-y-auto space-y-1">
+                        {projects.map((project) => (
+                          <button
+                            key={project.id}
+                            className={`w-full text-left px-2 py-1.5 rounded text-sm hover:bg-blue-50 ${
+                              block.zoneLinkedProjectId === project.id ? "bg-blue-100 text-blue-700 font-medium" : ""
+                            }`}
+                            onClick={() =>
+                              onUpdate({
+                                zoneLinkedProjectId: project.id,
+                                zoneLinkedProjectName: project.name,
+                              })
+                            }
+                          >
+                            {project.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                {/* Sélecteur de couleur */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0 nodrag" onClick={stopPropagation}>
+                      <Palette className="h-3 w-3" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-2" onClick={stopPropagation}>
+                    <div className="grid grid-cols-4 gap-1">
+                      {ZONE_COLORS.map((color) => (
+                        <button
+                          key={color.value}
+                          className={`w-6 h-6 rounded border-2 ${
+                            block.zoneColor === color.value ? "border-blue-500" : "border-gray-200"
+                          }`}
+                          style={{ backgroundColor: color.value }}
+                          onClick={() =>
+                            onUpdate({
+                              zoneColor: color.value,
+                              zoneBorderColor: color.border,
+                            })
+                          }
+                          title={color.name}
+                        />
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
 
             {/* Corps de la zone - pointer-events-none pour laisser passer les clics */}
@@ -1342,7 +1435,9 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               }}
             >
               <p className="text-xs text-gray-400 italic text-center select-none">
-                {block.content?.description || "Glissez des blocs ici pour les organiser"}
+                {block.zoneLinkedProjectId
+                  ? `Zone réservée pour ${block.zoneLinkedProjectName}`
+                  : block.content?.description || "Glissez des blocs ici pour les organiser"}
               </p>
             </div>
           </div>
@@ -1386,14 +1481,16 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   if (block.type === "zone") {
     return (
       <div
-        className={`rounded-lg group relative overflow-hidden ${selected ? "ring-2 ring-blue-500" : ""}`}
+        className={`rounded-lg group relative overflow-hidden ${selected ? "ring-2 ring-blue-500" : ""} ${block.isLocked ? "ring-1 ring-amber-400" : ""}`}
         style={{
           backgroundColor: block.zoneColor || "#f3f4f6",
           width: block.width || 400,
           height: block.height || 300,
           minWidth: 200,
           minHeight: 150,
-          border: `2px dashed ${block.zoneBorderColor || "#d1d5db"}`,
+          border: block.isLocked
+            ? `3px solid ${block.zoneBorderColor || "#d1d5db"}`
+            : `2px dashed ${block.zoneBorderColor || "#d1d5db"}`,
         }}
       >
         {/* Handles de connexion */}
@@ -1404,40 +1501,42 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
         {renderContent()}
 
-        {/* Handle de redimensionnement */}
-        <div
-          className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize opacity-30 group-hover:opacity-100 transition-opacity nodrag nopan"
-          style={{
-            background: "linear-gradient(135deg, transparent 40%, #6b7280 40%, #6b7280 60%, #4b5563 60%)",
-            borderTopLeftRadius: "4px",
-          }}
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const startWidth = block.width || 400;
-            const startHeight = block.height || 300;
+        {/* Handle de redimensionnement - caché si verrouillé */}
+        {!block.isLocked && (
+          <div
+            className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize opacity-30 group-hover:opacity-100 transition-opacity nodrag nopan"
+            style={{
+              background: "linear-gradient(135deg, transparent 40%, #6b7280 40%, #6b7280 60%, #4b5563 60%)",
+              borderTopLeftRadius: "4px",
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const startWidth = block.width || 400;
+              const startHeight = block.height || 300;
 
-            const onMouseMove = (moveEvent: MouseEvent) => {
-              moveEvent.preventDefault();
-              const newWidth = Math.max(200, startWidth + (moveEvent.clientX - startX));
-              const newHeight = Math.max(150, startHeight + (moveEvent.clientY - startY));
-              onUpdate({ width: newWidth, height: newHeight });
-            };
+              const onMouseMove = (moveEvent: MouseEvent) => {
+                moveEvent.preventDefault();
+                const newWidth = Math.max(200, startWidth + (moveEvent.clientX - startX));
+                const newHeight = Math.max(150, startHeight + (moveEvent.clientY - startY));
+                onUpdate({ width: newWidth, height: newHeight });
+              };
 
-            const onMouseUp = () => {
-              document.removeEventListener("mousemove", onMouseMove);
-              document.removeEventListener("mouseup", onMouseUp);
-            };
+              const onMouseUp = () => {
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+              };
 
-            document.addEventListener("mousemove", onMouseMove);
-            document.addEventListener("mouseup", onMouseUp);
-          }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-          }}
-        />
+              document.addEventListener("mousemove", onMouseMove);
+              document.addEventListener("mouseup", onMouseUp);
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+            }}
+          />
+        )}
 
         {/* Bouton supprimer */}
         <Button
@@ -2082,47 +2181,77 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     [blocks, edges, selectedBlockId, userId, projectId, selectedDate, refreshData],
   );
 
-  const addBlock = useCallback((type: NoteBlock["type"]) => {
-    const newBlock: NoteBlock = {
-      id: crypto.randomUUID(),
-      type,
-      x: 100 + Math.random() * 200,
-      y: 100 + Math.random() * 200,
-      width: type === "zone" ? 400 : type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
-      height: type === "zone" ? 300 : type === "order" ? 150 : 100,
-      content:
-        type === "checklist"
-          ? [{ id: crypto.randomUUID(), text: "", checked: false }]
-          : type === "list"
-            ? [""]
-            : type === "table"
-              ? [
-                  ["", ""],
-                  ["", ""],
-                ]
-              : type === "task"
-                ? null // Le contenu sera la tâche liée
-                : type === "order"
-                  ? null // Le contenu sera les dépenses liées
-                  : type === "zone"
-                    ? { title: "Zone de travail", description: "" }
-                    : "",
-      style: {
-        fontFamily: FONTS[0].value,
-        fontSize: 14,
-        color: "#000000",
-        backgroundColor: type === "zone" ? "transparent" : "#ffffff",
-      },
-      // Initialiser linkedExpenses pour le type order
-      linkedExpenses: type === "order" ? [] : undefined,
-      // Initialiser les couleurs pour le type zone
-      zoneColor: type === "zone" ? "#f3f4f6" : undefined,
-      zoneBorderColor: type === "zone" ? "#d1d5db" : undefined,
-    };
-    setBlocks((prev) => [...prev, newBlock]);
-    setSelectedBlockId(newBlock.id);
-    setHasUnsavedChanges(true);
-  }, []);
+  const addBlock = useCallback(
+    (type: NoteBlock["type"]) => {
+      // 🔥 Trouver la zone liée au projet courant (si existante)
+      const currentProjectZone =
+        type !== "zone" && projectId
+          ? blocks.find((b) => b.type === "zone" && b.zoneLinkedProjectId === projectId)
+          : null;
+
+      // Calculer la position par défaut ou dans la zone
+      let posX = 100 + Math.random() * 200;
+      let posY = 100 + Math.random() * 200;
+
+      if (currentProjectZone) {
+        // Placer le bloc dans la zone avec un offset aléatoire
+        const zoneX = currentProjectZone.x;
+        const zoneY = currentProjectZone.y + 50; // +50 pour le header
+        const zoneWidth = currentProjectZone.width || 400;
+        const zoneHeight = (currentProjectZone.height || 300) - 60;
+
+        posX = zoneX + 20 + Math.random() * Math.max(50, zoneWidth - 250);
+        posY = zoneY + 20 + Math.random() * Math.max(50, zoneHeight - 150);
+      }
+
+      // Trouver le nom du projet courant
+      const currentProject = projects.find((p) => p.id === projectId);
+
+      const newBlock: NoteBlock = {
+        id: crypto.randomUUID(),
+        type,
+        x: posX,
+        y: posY,
+        width: type === "zone" ? 400 : type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
+        height: type === "zone" ? 300 : type === "order" ? 150 : 100,
+        content:
+          type === "checklist"
+            ? [{ id: crypto.randomUUID(), text: "", checked: false }]
+            : type === "list"
+              ? [""]
+              : type === "table"
+                ? [
+                    ["", ""],
+                    ["", ""],
+                  ]
+                : type === "task"
+                  ? null // Le contenu sera la tâche liée
+                  : type === "order"
+                    ? null // Le contenu sera les dépenses liées
+                    : type === "zone"
+                      ? { title: "Zone de travail", description: "" }
+                      : "",
+        style: {
+          fontFamily: FONTS[0].value,
+          fontSize: 14,
+          color: "#000000",
+          backgroundColor: type === "zone" ? "transparent" : "#ffffff",
+        },
+        // 🔥 Si on est sur un projet et qu'il y a une zone, lier le bloc au projet
+        linkedProjectId: type !== "zone" && currentProjectZone ? projectId : undefined,
+        linkedProjectName: type !== "zone" && currentProjectZone ? currentProject?.name : undefined,
+        // Initialiser linkedExpenses pour le type order
+        linkedExpenses: type === "order" ? [] : undefined,
+        // Initialiser les couleurs pour le type zone
+        zoneColor: type === "zone" ? "#f3f4f6" : undefined,
+        zoneBorderColor: type === "zone" ? "#d1d5db" : undefined,
+      };
+      setBlocks((prev) => [...prev, newBlock]);
+      setSelectedBlockId(newBlock.id);
+      setHasUnsavedChanges(true);
+    },
+    [blocks, projectId, projects],
+  );
 
   const handleImageUpload = useCallback(
     async (blockId: string, file: File) => {
@@ -3082,6 +3211,8 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         height: block.type === "zone" ? block.height : "auto",
       },
       zIndex: block.type === "zone" ? 0 : 10,
+      // 🔥 Zones verrouillées ne peuvent pas être déplacées
+      draggable: block.type === "zone" && block.isLocked ? false : true,
     })) as any;
 
     setNodes(newNodes);
@@ -3126,19 +3257,104 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   // Handle node position changes
   const handleNodesChange = useCallback(
     (changes: any) => {
-      onNodesChange(changes);
-
-      // Mettre à jour les positions des blocs
-      changes.forEach((change: any) => {
+      // 🔥 Filtrer les changements de position pour contraindre les blocs aux zones
+      const constrainedChanges = changes.map((change: any) => {
         if (change.type === "position" && change.position) {
-          setBlocks((prev) =>
-            prev.map((b) => (b.id === change.id ? { ...b, x: change.position.x, y: change.position.y } : b)),
-          );
+          // Trouver le bloc qui est déplacé
+          const movingBlock = blocks.find((b) => b.id === change.id);
+          if (!movingBlock) return change;
+
+          // Si c'est une zone, on ne contraint pas
+          if (movingBlock.type === "zone") return change;
+
+          // Si le bloc est lié à un projet, vérifier s'il y a une zone pour ce projet
+          if (movingBlock.linkedProjectId) {
+            const targetZone = blocks.find(
+              (b) => b.type === "zone" && b.zoneLinkedProjectId === movingBlock.linkedProjectId,
+            );
+
+            if (targetZone) {
+              // Contraindre le bloc à rester dans la zone
+              const zoneX = targetZone.x;
+              const zoneY = targetZone.y + 40; // +40 pour le header
+              const zoneWidth = targetZone.width || 400;
+              const zoneHeight = (targetZone.height || 300) - 40;
+              const blockWidth = movingBlock.width || 200;
+              const blockHeight = movingBlock.height || 100;
+
+              // Marges intérieures
+              const margin = 10;
+
+              // Contraindre la position
+              const constrainedX = Math.max(
+                zoneX + margin,
+                Math.min(change.position.x, zoneX + zoneWidth - blockWidth - margin),
+              );
+              const constrainedY = Math.max(
+                zoneY + margin,
+                Math.min(change.position.y, zoneY + zoneHeight - blockHeight - margin),
+              );
+
+              return {
+                ...change,
+                position: { x: constrainedX, y: constrainedY },
+              };
+            }
+          }
+        }
+        return change;
+      });
+
+      onNodesChange(constrainedChanges);
+
+      // Mettre à jour les positions des blocs ET gérer la liaison aux zones
+      constrainedChanges.forEach((change: any) => {
+        if (change.type === "position" && change.position) {
+          setBlocks((prev) => {
+            return prev.map((b) => {
+              if (b.id !== change.id) return b;
+
+              const updatedBlock = { ...b, x: change.position.x, y: change.position.y };
+
+              // 🔥 Si le bloc n'est pas déjà lié à un projet, vérifier s'il est dans une zone
+              if (!b.linkedProjectId && b.type !== "zone") {
+                // Trouver si le bloc est maintenant dans une zone liée à un projet
+                const targetZone = prev.find((zone) => {
+                  if (zone.type !== "zone" || !zone.zoneLinkedProjectId) return false;
+
+                  const zoneX = zone.x;
+                  const zoneY = zone.y;
+                  const zoneWidth = zone.width || 400;
+                  const zoneHeight = zone.height || 300;
+
+                  // Vérifier si le centre du bloc est dans la zone
+                  const blockCenterX = change.position.x + (b.width || 200) / 2;
+                  const blockCenterY = change.position.y + (b.height || 100) / 2;
+
+                  return (
+                    blockCenterX >= zoneX &&
+                    blockCenterX <= zoneX + zoneWidth &&
+                    blockCenterY >= zoneY &&
+                    blockCenterY <= zoneY + zoneHeight
+                  );
+                });
+
+                if (targetZone && targetZone.zoneLinkedProjectId) {
+                  // Lier le bloc au projet de la zone
+                  updatedBlock.linkedProjectId = targetZone.zoneLinkedProjectId;
+                  updatedBlock.linkedProjectName = targetZone.zoneLinkedProjectName;
+                  toast.success(`Bloc lié au projet ${targetZone.zoneLinkedProjectName}`);
+                }
+              }
+
+              return updatedBlock;
+            });
+          });
           setHasUnsavedChanges(true);
         }
       });
     },
-    [onNodesChange],
+    [onNodesChange, blocks],
   );
 
   // Handle new connection
