@@ -909,8 +909,20 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
             {/* Liste des dépenses liées */}
             {hasExpenses && (
               <div className="space-y-2" onClick={stopPropagation} onPointerDown={stopPropagation}>
-                {expenses.map((expense) => (
-                  <div key={expense.id} className={`p-2 rounded-lg border ${getStatusColor(expense.statut_livraison)}`}>
+                {expenses.map((expense, index) => (
+                  <div
+                    key={expense.id}
+                    className={`p-2 rounded-lg border relative ${getStatusColor(expense.statut_livraison)}`}
+                  >
+                    {/* 🔥 Handle pour cet article - positionné à droite au centre */}
+                    <Handle
+                      type="source"
+                      position={Position.Right}
+                      id={`order-item-${index}`}
+                      className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white !right-[-8px]"
+                      style={{ top: "50%", transform: "translateY(-50%)" }}
+                    />
+
                     <div className="flex items-start gap-2">
                       {/* Icône statut cliquable */}
                       <Select
@@ -1743,23 +1755,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         </>
       ) : block.type === "order" ? (
         <>
-          {/* Handle cible en haut */}
+          {/* Handle cible en haut et gauche */}
           <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
           <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
 
-          {/* 🔥 Handles dynamiques pour chaque dépense/article */}
-          {(block.linkedExpenses || []).map((_, index) => (
-            <Handle
-              key={`order-item-${index}`}
-              type="source"
-              position={Position.Right}
-              id={`order-item-${index}`}
-              className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
-              style={{
-                top: `${56 + index * 130 + 65}px`, // 56px header+padding + ~130px par article + centrage
-              }}
-            />
-          ))}
+          {/* Les handles pour chaque article sont rendus DANS le contenu, pas ici */}
 
           {/* Handle source en bas */}
           <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
