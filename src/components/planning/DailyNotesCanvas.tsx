@@ -170,6 +170,26 @@ const ZONE_COLORS = [
   { name: "Orange", value: "#fff7ed", border: "#fed7aa" },
 ];
 
+// 🔥 Couleurs pour les blocs (plus saturées)
+const BLOCK_COLORS = [
+  { name: "Blanc", value: "#ffffff" },
+  { name: "Gris", value: "#f3f4f6" },
+  { name: "Bleu clair", value: "#dbeafe" },
+  { name: "Bleu", value: "#bfdbfe" },
+  { name: "Vert clair", value: "#dcfce7" },
+  { name: "Vert", value: "#bbf7d0" },
+  { name: "Jaune clair", value: "#fef9c3" },
+  { name: "Jaune", value: "#fef08a" },
+  { name: "Orange clair", value: "#fed7aa" },
+  { name: "Orange", value: "#fdba74" },
+  { name: "Rose clair", value: "#fce7f3" },
+  { name: "Rose", value: "#fbcfe8" },
+  { name: "Violet clair", value: "#f3e8ff" },
+  { name: "Violet", value: "#e9d5ff" },
+  { name: "Rouge clair", value: "#fecaca" },
+  { name: "Cyan", value: "#a5f3fc" },
+];
+
 interface NoteBlock {
   id: string;
   type: "text" | "checklist" | "list" | "table" | "image" | "task" | "order" | "zone";
@@ -1827,6 +1847,47 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 locale={fr}
                 // 🔥 Permettre les dates passées pour documenter le travail déjà fait
               />
+            </PopoverContent>
+          </Popover>
+
+          {/* 🔥 Sélecteur de couleur du bloc */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={stopPropagation} title="Couleur du bloc">
+                <Palette
+                  className="h-3 w-3"
+                  style={{
+                    color:
+                      block.style?.backgroundColor !== "#ffffff" && block.style?.backgroundColor !== "#fff"
+                        ? block.style?.backgroundColor
+                        : "#9ca3af",
+                  }}
+                />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-2" align="end" onClick={stopPropagation}>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-500">Couleur du bloc</p>
+                <div className="grid grid-cols-4 gap-1">
+                  {BLOCK_COLORS.map((color) => (
+                    <button
+                      key={color.value}
+                      className={`w-6 h-6 rounded border-2 transition-transform hover:scale-110 ${
+                        block.style?.backgroundColor === color.value
+                          ? "border-blue-500 ring-1 ring-blue-300"
+                          : "border-gray-300"
+                      }`}
+                      style={{ backgroundColor: color.value }}
+                      onClick={() =>
+                        onUpdate({
+                          style: { ...block.style, backgroundColor: color.value },
+                        })
+                      }
+                      title={color.name}
+                    />
+                  ))}
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
 
