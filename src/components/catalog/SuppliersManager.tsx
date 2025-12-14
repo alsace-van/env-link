@@ -9,21 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -126,14 +113,14 @@ export default function SuppliersManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  
+
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Partial<Supplier> | null>(null);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Evoliz sync states
   const [isSyncing, setIsSyncing] = useState(false);
   const [evolizConnected, setEvolizConnected] = useState(false);
@@ -142,17 +129,24 @@ export default function SuppliersManager() {
   const loadSuppliers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("suppliers")
         .select("*")
         .eq("user_id", user.id)
         .order("name");
 
       if (error) throw error;
-      setSuppliers(data || []);
+      // Mapper les données avec enabled par défaut à true si non défini
+      const mappedData = (data || []).map((s: any) => ({
+        ...s,
+        enabled: s.enabled ?? true,
+      }));
+      setSuppliers(mappedData);
     } catch (error) {
       console.error("Erreur chargement fournisseurs:", error);
       toast.error("Erreur lors du chargement des fournisseurs");
@@ -164,10 +158,12 @@ export default function SuppliersManager() {
   // Vérifier la connexion Evoliz
   const checkEvolizConnection = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("user_integrations")
         .select("evoliz_company_id, evoliz_token_expires_at")
         .eq("user_id", user.id)
@@ -190,23 +186,24 @@ export default function SuppliersManager() {
   // Filtrer les fournisseurs
   useEffect(() => {
     let filtered = suppliers;
-    
+
     // Filtre actif/inactif
     if (!showInactive) {
-      filtered = filtered.filter(s => s.enabled);
+      filtered = filtered.filter((s) => s.enabled);
     }
-    
+
     // Filtre recherche
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(s =>
-        s.name.toLowerCase().includes(query) ||
-        s.code?.toLowerCase().includes(query) ||
-        s.city?.toLowerCase().includes(query) ||
-        s.email?.toLowerCase().includes(query)
+      filtered = filtered.filter(
+        (s) =>
+          s.name.toLowerCase().includes(query) ||
+          s.code?.toLowerCase().includes(query) ||
+          s.city?.toLowerCase().includes(query) ||
+          s.email?.toLowerCase().includes(query),
       );
     }
-    
+
     setFilteredSuppliers(filtered);
   }, [suppliers, searchQuery, showInactive]);
 
@@ -225,7 +222,9 @@ export default function SuppliersManager() {
 
     setIsSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
       const supplierData = {
@@ -236,18 +235,13 @@ export default function SuppliersManager() {
 
       if (editingSupplier.id) {
         // Mise à jour
-        const { error } = await supabase
-          .from("suppliers")
-          .update(supplierData)
-          .eq("id", editingSupplier.id);
+        const { error } = await (supabase as any).from("suppliers").update(supplierData).eq("id", editingSupplier.id);
 
         if (error) throw error;
         toast.success("Fournisseur mis à jour");
       } else {
         // Création
-        const { error } = await supabase
-          .from("suppliers")
-          .insert(supplierData);
+        const { error } = await (supabase as any).from("suppliers").insert(supplierData);
 
         if (error) throw error;
         toast.success("Fournisseur créé");
@@ -268,10 +262,7 @@ export default function SuppliersManager() {
     if (!supplierToDelete) return;
 
     try {
-      const { error } = await supabase
-        .from("suppliers")
-        .delete()
-        .eq("id", supplierToDelete.id);
+      const { error } = await (supabase as any).from("suppliers").delete().eq("id", supplierToDelete.id);
 
       if (error) throw error;
       toast.success("Fournisseur supprimé");
@@ -286,7 +277,7 @@ export default function SuppliersManager() {
   // Toggle actif/inactif
   const toggleEnabled = async (supplier: Supplier) => {
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("suppliers")
         .update({ enabled: !supplier.enabled })
         .eq("id", supplier.id);
@@ -308,7 +299,9 @@ export default function SuppliersManager() {
 
     setIsSyncing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
       // Appeler la fonction edge pour importer les fournisseurs
@@ -337,7 +330,9 @@ export default function SuppliersManager() {
 
     setIsSyncing(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
       // Appeler la fonction edge pour exporter les fournisseurs
@@ -372,11 +367,7 @@ export default function SuppliersManager() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Switch
-              id="show-inactive"
-              checked={showInactive}
-              onCheckedChange={setShowInactive}
-            />
+            <Switch id="show-inactive" checked={showInactive} onCheckedChange={setShowInactive} />
             <Label htmlFor="show-inactive" className="text-sm text-muted-foreground">
               Afficher inactifs
             </Label>
@@ -398,32 +389,14 @@ export default function SuppliersManager() {
               </Badge>
             )}
           </div>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={importFromEvoliz}
-            disabled={isSyncing || !evolizConnected}
-          >
-            {isSyncing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
+
+          <Button variant="outline" size="sm" onClick={importFromEvoliz} disabled={isSyncing || !evolizConnected}>
+            {isSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
             Importer Evoliz
           </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportToEvoliz}
-            disabled={isSyncing || !evolizConnected}
-          >
-            {isSyncing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4 mr-2" />
-            )}
+
+          <Button variant="outline" size="sm" onClick={exportToEvoliz} disabled={isSyncing || !evolizConnected}>
+            {isSyncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
             Exporter Evoliz
           </Button>
 
@@ -438,9 +411,7 @@ export default function SuppliersManager() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total fournisseurs
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total fournisseurs</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{suppliers.length}</div>
@@ -448,25 +419,19 @@ export default function SuppliersManager() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Actifs
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Actifs</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {suppliers.filter(s => s.enabled).length}
-            </div>
+            <div className="text-2xl font-bold text-green-600">{suppliers.filter((s) => s.enabled).length}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Synchronisés Evoliz
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Synchronisés Evoliz</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {suppliers.filter(s => s.evoliz_supplier_id).length}
+              {suppliers.filter((s) => s.evoliz_supplier_id).length}
             </div>
           </CardContent>
         </Card>
@@ -510,11 +475,7 @@ export default function SuppliersManager() {
                         <div className="text-xs text-muted-foreground">{supplier.legal_form}</div>
                       )}
                     </TableCell>
-                    <TableCell>
-                      {supplier.code && (
-                        <Badge variant="outline">{supplier.code}</Badge>
-                      )}
-                    </TableCell>
+                    <TableCell>{supplier.code && <Badge variant="outline">{supplier.code}</Badge>}</TableCell>
                     <TableCell>
                       {supplier.city && (
                         <div className="flex items-center gap-1 text-sm">
@@ -542,18 +503,13 @@ export default function SuppliersManager() {
                     </TableCell>
                     <TableCell>
                       {supplier.evoliz_supplier_id ? (
-                        <Badge className="bg-blue-100 text-blue-700">
-                          #{supplier.evoliz_supplier_id}
-                        </Badge>
+                        <Badge className="bg-blue-100 text-blue-700">#{supplier.evoliz_supplier_id}</Badge>
                       ) : (
                         <span className="text-muted-foreground text-xs">Non lié</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <Switch
-                        checked={supplier.enabled}
-                        onCheckedChange={() => toggleEnabled(supplier)}
-                      />
+                      <Switch checked={supplier.enabled} onCheckedChange={() => toggleEnabled(supplier)} />
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -567,12 +523,7 @@ export default function SuppliersManager() {
                             <ExternalLink className="h-4 w-4" />
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => openDialog(supplier)}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openDialog(supplier)}>
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button
@@ -600,9 +551,7 @@ export default function SuppliersManager() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingSupplier?.id ? "Modifier le fournisseur" : "Nouveau fournisseur"}
-            </DialogTitle>
+            <DialogTitle>{editingSupplier?.id ? "Modifier le fournisseur" : "Nouveau fournisseur"}</DialogTitle>
           </DialogHeader>
 
           <Tabs defaultValue="general" className="w-full">
@@ -737,7 +686,9 @@ export default function SuppliersManager() {
                   <Input
                     id="country_iso2"
                     value={editingSupplier?.country_iso2 || "FR"}
-                    onChange={(e) => setEditingSupplier({ ...editingSupplier, country_iso2: e.target.value.toUpperCase() })}
+                    onChange={(e) =>
+                      setEditingSupplier({ ...editingSupplier, country_iso2: e.target.value.toUpperCase() })
+                    }
                     placeholder="FR"
                     maxLength={2}
                   />
@@ -849,8 +800,7 @@ export default function SuppliersManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer le fournisseur ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer "{supplierToDelete?.name}" ?
-              Cette action est irréversible.
+              Êtes-vous sûr de vouloir supprimer "{supplierToDelete?.name}" ? Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
