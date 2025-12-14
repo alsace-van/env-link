@@ -365,8 +365,10 @@ const ProjectsList = ({ refresh, onProjectSelect }: ProjectsListProps) => {
                     </div>
                   )}
                   {project.numero_chassis && (
-                    <div className="text-xs">
-                      <span className="font-medium">Châssis:</span> {project.numero_chassis}
+                    <div className="text-xs break-all">
+                      <span className="font-medium">Châssis:</span>
+                      <br />
+                      <span className="font-mono text-[10px]">{project.numero_chassis}</span>
                     </div>
                   )}
                 </div>
