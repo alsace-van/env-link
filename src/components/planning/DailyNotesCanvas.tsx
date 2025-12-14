@@ -104,6 +104,8 @@ import {
   Lock,
   Unlock,
   Maximize2,
+  Layers,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -2142,7 +2144,7 @@ function ZoneDimensionsPopover({ currentWidth, currentHeight, onApply }: ZoneDim
 }
 
 // ============================================
-// COMPOSANT DE NAVIGATION DES ZONES
+// COMPOSANT DE NAVIGATION DES ZONES - SIDEBAR OVERLAY
 // ============================================
 
 interface ZonesNavigationBarProps {
@@ -2154,6 +2156,7 @@ interface ZonesNavigationBarProps {
 function ZonesNavigationBar({ zones, focusZoneId, onFocusComplete }: ZonesNavigationBarProps) {
   const { setCenter, getZoom } = useReactFlow();
   const hasFocusedRef = useRef(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   const navigateToZone = useCallback(
     (zone: NoteBlock) => {
@@ -2202,29 +2205,85 @@ function ZonesNavigationBar({ zones, focusZoneId, onFocusComplete }: ZonesNaviga
   if (zones.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      <span className="text-xs text-gray-500 mr-1">Zones:</span>
-      {zones.map((zone) => (
-        <button
-          key={zone.id}
-          onClick={() => navigateToZone(zone)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all hover:scale-105 hover:shadow-md border"
-          style={{
-            backgroundColor: zone.zoneColor || "#f3f4f6",
-            borderColor: zone.zoneBorderColor || "#d1d5db",
-          }}
-          title={`Aller à: ${zone.zoneLinkedProjectName || zone.content?.title || "Zone de travail"}`}
-        >
-          <span
-            className="w-2.5 h-2.5 rounded-full border border-white shadow-sm"
-            style={{ backgroundColor: zone.zoneBorderColor || "#9ca3af" }}
-          />
-          <span className="truncate max-w-[100px]">{getZoneDisplayName(zone)}</span>
-          {zone.isLocked && <Lock className="h-2.5 w-2.5 text-amber-600" />}
-          {zone.isContentLocked && <Move className="h-2.5 w-2.5 text-purple-600" />}
-        </button>
-      ))}
-    </div>
+    <>
+      {/* Bouton toggle pour ouvrir la sidebar */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800 transition-all shadow-sm"
+        title="Afficher les zones"
+      >
+        <Layers className="h-3.5 w-3.5" />
+        <span>Zones</span>
+        <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+          {zones.length}
+        </Badge>
+        <ChevronRight className={`h-3 w-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {/* Sidebar overlay */}
+      {isOpen && (
+        <>
+          {/* Backdrop transparent - ferme la sidebar au clic */}
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+
+          {/* Sidebar */}
+          <div className="absolute left-0 top-12 z-50 w-64 max-h-[60vh] overflow-hidden rounded-r-xl shadow-xl animate-in slide-in-from-left-2 duration-200">
+            {/* Header */}
+            <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-700/50 px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Layers className="h-4 w-4 text-blue-500" />
+                <span className="font-semibold text-sm">Zones de travail</span>
+              </div>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Liste des zones */}
+            <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur-md overflow-y-auto max-h-[calc(60vh-50px)]">
+              {zones.map((zone) => (
+                <button
+                  key={zone.id}
+                  onClick={() => {
+                    navigateToZone(zone);
+                    setIsOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-100/80 dark:hover:bg-gray-800/80 transition-all border-b border-gray-100 dark:border-gray-800 last:border-0 group"
+                >
+                  {/* Indicateur couleur */}
+                  <div
+                    className="w-3 h-3 rounded-full ring-2 ring-white shadow-sm flex-shrink-0"
+                    style={{ backgroundColor: zone.zoneBorderColor || "#9ca3af" }}
+                  />
+
+                  {/* Nom de la zone */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      {getZoneDisplayName(zone)}
+                    </p>
+                    {zone.zoneLinkedProjectName && zone.content?.title && zone.content.title !== "Zone de travail" && (
+                      <p className="text-xs text-gray-500 truncate">{zone.content.title}</p>
+                    )}
+                  </div>
+
+                  {/* Icônes de statut */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {zone.isLocked && <Lock className="h-3.5 w-3.5 text-amber-500" title="Zone verrouillée" />}
+                    {zone.isContentLocked && (
+                      <Move className="h-3.5 w-3.5 text-purple-500" title="Contenu verrouillé" />
+                    )}
+                    <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
