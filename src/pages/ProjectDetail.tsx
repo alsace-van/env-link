@@ -868,6 +868,7 @@ const ProjectDetail = () => {
   const [isZonesPopoverOpen, setIsZonesPopoverOpen] = useState(false);
   const [isZoneCanvasOpen, setIsZoneCanvasOpen] = useState(false);
   const [zoneCanvasDate, setZoneCanvasDate] = useState<Date>(new Date());
+  const [focusZoneId, setFocusZoneId] = useState<string | null>(null);
 
   // Position draggable du bouton sidebar Notes
   const [sidebarBtnPosition, setSidebarBtnPosition] = useState(() => {
@@ -1473,6 +1474,8 @@ const ProjectDetail = () => {
                             } else {
                               setZoneCanvasDate(new Date());
                             }
+                            // 🔥 Centrer sur cette zone
+                            setFocusZoneId(zone.id);
                             setIsZoneCanvasOpen(true);
                           }}
                         >
@@ -1496,6 +1499,7 @@ const ProjectDetail = () => {
                     onClick={() => {
                       setIsZonesPopoverOpen(false);
                       setZoneCanvasDate(new Date());
+                      setFocusZoneId(null); // Pas de zone à focaliser
                       setIsZoneCanvasOpen(true);
                     }}
                   >
@@ -1931,9 +1935,11 @@ const ProjectDetail = () => {
           // Recharger les zones quand le canvas se ferme (nouvelles zones ajoutées)
           if (!open) {
             fetchWorkZones();
+            setFocusZoneId(null); // Reset le focus
           }
         }}
         initialDate={zoneCanvasDate}
+        focusZoneId={focusZoneId}
       />
 
       {/* Chatbot IA flottant */}
