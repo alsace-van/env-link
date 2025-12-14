@@ -643,8 +643,25 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   return (
                     <div
                       key={task.id}
-                      className={`p-2 rounded-lg border ${task.completed ? "bg-green-50 border-green-200" : "bg-white border-gray-200"}`}
+                      className={`p-2 rounded-lg border relative ${task.completed ? "bg-green-50 border-green-200" : "bg-white border-gray-200"}`}
                     >
+                      {/* 🔥 Handle source pour cette tâche - positionné à droite au centre */}
+                      <Handle
+                        type="source"
+                        position={Position.Right}
+                        id={`task-item-${index}`}
+                        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white !right-[-8px]"
+                        style={{ top: "50%", transform: "translateY(-50%)" }}
+                      />
+                      {/* 🔥 Handle cible pour cette tâche - positionné à gauche au centre */}
+                      <Handle
+                        type="target"
+                        position={Position.Left}
+                        id={`task-target-${index}`}
+                        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white !left-[-8px]"
+                        style={{ top: "50%", transform: "translateY(-50%)" }}
+                      />
+
                       <div className="flex items-start gap-2">
                         {/* Checkbox */}
                         <Checkbox
@@ -1684,21 +1701,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         <>
           {/* Handle cible en haut */}
           <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
-          <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
 
-          {/* 🔥 Handles dynamiques pour chaque tâche */}
-          {(block.linkedTasks || (block.linkedTask ? [block.linkedTask] : [])).map((_, index) => (
-            <Handle
-              key={`task-item-${index}`}
-              type="source"
-              position={Position.Right}
-              id={`task-item-${index}`}
-              className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
-              style={{
-                top: `${56 + index * 76 + 38}px`, // 56px header+padding + 76px par tâche + centrage
-              }}
-            />
-          ))}
+          {/* Les handles pour chaque tâche sont rendus DANS le contenu, pas ici */}
 
           {/* Handle source en bas */}
           <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
@@ -2270,9 +2274,15 @@ function ZonesNavigationBar({ zones, focusZoneId, onFocusComplete }: ZonesNaviga
 
                   {/* Icônes de statut */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {zone.isLocked && <span title="Zone verrouillée"><Lock className="h-3.5 w-3.5 text-amber-500" /></span>}
+                    {zone.isLocked && (
+                      <span title="Zone verrouillée">
+                        <Lock className="h-3.5 w-3.5 text-amber-500" />
+                      </span>
+                    )}
                     {zone.isContentLocked && (
-                      <span title="Contenu verrouillé"><Move className="h-3.5 w-3.5 text-purple-500" /></span>
+                      <span title="Contenu verrouillé">
+                        <Move className="h-3.5 w-3.5 text-purple-500" />
+                      </span>
                     )}
                     <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
                   </div>
