@@ -1481,7 +1481,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   if (block.type === "zone") {
     return (
       <div
-        className={`rounded-lg group relative overflow-hidden ${selected ? "ring-2 ring-blue-500" : ""} ${block.isLocked ? "ring-1 ring-amber-400" : ""}`}
+        className={`rounded-lg group relative ${selected ? "ring-2 ring-blue-500" : ""} ${block.isLocked ? "ring-1 ring-amber-400" : ""}`}
         style={{
           backgroundColor: block.zoneColor || "#f3f4f6",
           width: block.width || 400,
@@ -1538,11 +1538,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           />
         )}
 
-        {/* Bouton supprimer */}
+        {/* Bouton supprimer - positionné à l'extérieur en haut à droite */}
         <Button
           variant="ghost"
           size="icon"
-          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 bg-white/80 hover:bg-red-100"
+          className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 bg-white hover:bg-red-100 rounded-full shadow-md border border-gray-200"
           onClick={onDelete}
         >
           <X className="h-3 w-3 text-red-500" />
