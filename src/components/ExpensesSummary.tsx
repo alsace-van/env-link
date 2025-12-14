@@ -65,7 +65,11 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
       .single();
 
     // Charger les tâches (avec ou sans scénario)
-    let query = supabase.from("project_todos").select("*").eq("project_id", projectId).not("category_id", "is", null) as any; // Seulement les tâches de la fiche de travaux
+    let query = (supabase as any)
+      .from("project_todos")
+      .select("*")
+      .eq("project_id", projectId)
+      .not("category_id", "is", null); // Seulement les tâches de la fiche de travaux
 
     if (scenario?.id) {
       query = query.eq("work_scenario_id", scenario.id);
