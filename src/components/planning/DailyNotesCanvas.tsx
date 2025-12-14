@@ -1403,68 +1403,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-56 p-3" onClick={stopPropagation}>
-                    <div className="space-y-3">
-                      <p className="text-xs font-medium text-gray-600">Dimensions</p>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 w-14">Largeur</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="200"
-                              step="50"
-                              value={block.width || 400}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value) || 200;
-                                onUpdate({ width: Math.max(200, val) });
-                              }}
-                              className="w-20 h-7 text-xs text-center border rounded px-1 nodrag"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-xs text-gray-400">px</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 w-14">Hauteur</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="150"
-                              step="50"
-                              value={block.height || 300}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value) || 150;
-                                onUpdate({ height: Math.max(150, val) });
-                              }}
-                              className="w-20 h-7 text-xs text-center border rounded px-1 nodrag"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-xs text-gray-400">px</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-1 pt-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-xs h-7"
-                          onClick={() => onUpdate({ width: 600, height: 400 })}
-                        >
-                          Grand
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-xs h-7"
-                          onClick={() => onUpdate({ width: 1200, height: 800 })}
-                        >
-                          Très grand
-                        </Button>
-                      </div>
-                    </div>
+                    <ZoneDimensionsPopover
+                      currentWidth={block.width || 400}
+                      currentHeight={block.height || 300}
+                      onApply={(width, height) => onUpdate({ width, height })}
+                    />
                   </PopoverContent>
                 </Popover>
 
@@ -2081,6 +2024,108 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     </div>
   );
 };
+
+// ============================================
+// COMPOSANT POUR LES DIMENSIONS DE ZONE
+// ============================================
+
+interface ZoneDimensionsPopoverProps {
+  currentWidth: number;
+  currentHeight: number;
+  onApply: (width: number, height: number) => void;
+}
+
+function ZoneDimensionsPopover({ currentWidth, currentHeight, onApply }: ZoneDimensionsPopoverProps) {
+  const [tempWidth, setTempWidth] = useState(currentWidth);
+  const [tempHeight, setTempHeight] = useState(currentHeight);
+
+  // Sync quand les props changent
+  useEffect(() => {
+    setTempWidth(currentWidth);
+    setTempHeight(currentHeight);
+  }, [currentWidth, currentHeight]);
+
+  const hasChanges = tempWidth !== currentWidth || tempHeight !== currentHeight;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-gray-600">Dimensions</p>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 w-14">Largeur</span>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min="200"
+              step="50"
+              value={tempWidth}
+              onChange={(e) => setTempWidth(Math.max(200, parseInt(e.target.value) || 200))}
+              className="w-20 h-7 text-xs text-center border rounded px-1 nodrag"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <span className="text-xs text-gray-400">px</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 w-14">Hauteur</span>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min="150"
+              step="50"
+              value={tempHeight}
+              onChange={(e) => setTempHeight(Math.max(150, parseInt(e.target.value) || 150))}
+              className="w-20 h-7 text-xs text-center border rounded px-1 nodrag"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <span className="text-xs text-gray-400">px</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Bouton Appliquer - visible seulement si changements */}
+      {hasChanges && (
+        <Button
+          variant="default"
+          size="sm"
+          className="w-full text-xs h-7"
+          onClick={() => onApply(tempWidth, tempHeight)}
+        >
+          ✓ Appliquer
+        </Button>
+      )}
+
+      <div className="flex gap-1 pt-1">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 text-xs h-7"
+          onClick={() => {
+            setTempWidth(600);
+            setTempHeight(400);
+            onApply(600, 400);
+          }}
+        >
+          Grand
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 text-xs h-7"
+          onClick={() => {
+            setTempWidth(1200);
+            setTempHeight(800);
+            onApply(1200, 800);
+          }}
+        >
+          Très grand
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // ============================================
 // COMPOSANT DE NAVIGATION DES ZONES
@@ -4959,7 +5004,7 @@ export default function DailyNotesCanvas({
                   >
                     <Background />
                     <Controls style={{ zIndex: 100 }} />
-                    <MiniMap style={{ zIndex: 100 }} />
+                    <MiniMap style={{ zIndex: 100 }} pannable zoomable nodeStrokeWidth={3} />
 
                     {/* Barre de navigation des zones */}
                     {zones.length > 0 && (
