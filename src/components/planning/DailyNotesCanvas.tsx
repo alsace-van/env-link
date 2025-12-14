@@ -105,7 +105,6 @@ import {
   Unlock,
   Maximize2,
   Layers,
-  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
