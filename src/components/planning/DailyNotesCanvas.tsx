@@ -21,6 +21,7 @@ import {
   Position,
   MarkerType,
   Panel,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -102,6 +103,7 @@ import {
   LayoutGrid,
   Lock,
   Unlock,
+  Maximize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -194,6 +196,7 @@ interface NoteBlock {
   zoneLinkedProjectId?: string; // ID du projet lié à cette zone
   zoneLinkedProjectName?: string; // Nom du projet lié à cette zone
   isLocked?: boolean; // Zone verrouillée (ne peut pas être déplacée)
+  isContentLocked?: boolean; // Contenu figé (blocs internes bougent avec la zone)
   style?: {
     fontSize?: number;
     fontFamily?: string;
@@ -1288,8 +1291,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               }}
             >
               <div className="flex items-center gap-2 flex-1 min-w-0">
-                {/* Indicateur verrouillé */}
-                {block.isLocked && <Lock className="h-3 w-3 text-gray-600 flex-shrink-0" />}
+                {/* Indicateurs d'état */}
+                {block.isLocked && <Lock className="h-3 w-3 text-amber-600 flex-shrink-0" title="Zone verrouillée" />}
+                {block.isContentLocked && (
+                  <Move className="h-3 w-3 text-purple-600 flex-shrink-0" title="Contenu figé" />
+                )}
 
                 {isEditing ? (
                   <Input
@@ -1322,7 +1328,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0">
-                {/* Bouton verrouiller/déverrouiller */}
+                {/* Bouton verrouiller zone (position) */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1331,7 +1337,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     stopPropagation(e);
                     onUpdate({ isLocked: !block.isLocked });
                   }}
-                  title={block.isLocked ? "Déverrouiller la zone" : "Verrouiller la zone"}
+                  title={block.isLocked ? "Déverrouiller la zone" : "Verrouiller la zone en place"}
                 >
                   {block.isLocked ? (
                     <Lock className="h-3 w-3 text-amber-600" />
@@ -1339,6 +1345,110 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     <Unlock className="h-3 w-3 text-gray-500" />
                   )}
                 </Button>
+
+                {/* Bouton figer contenu (déplacer zone + blocs ensemble) */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-6 w-6 p-0 nodrag ${block.isContentLocked ? "text-purple-600" : "text-gray-500"}`}
+                  onClick={(e) => {
+                    stopPropagation(e);
+                    onUpdate({ isContentLocked: !block.isContentLocked });
+                    if (!block.isContentLocked) {
+                      toast.success("Contenu figé - la zone et ses blocs bougent ensemble");
+                    }
+                  }}
+                  title={block.isContentLocked ? "Libérer le contenu" : "Figer le contenu (déplacer tout ensemble)"}
+                >
+                  <Move className="h-3 w-3" />
+                </Button>
+
+                {/* Popover redimensionnement manuel */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 nodrag"
+                      onClick={stopPropagation}
+                      title="Redimensionner"
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-3" onClick={stopPropagation}>
+                    <div className="space-y-3">
+                      <p className="text-xs font-medium text-gray-600">Dimensions</p>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-12">Largeur</span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => onUpdate({ width: Math.max(200, (block.width || 400) - 50) })}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="text-xs w-12 text-center">{block.width || 400}px</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => onUpdate({ width: (block.width || 400) + 50 })}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-12">Hauteur</span>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => onUpdate({ height: Math.max(150, (block.height || 300) - 50) })}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="text-xs w-12 text-center">{block.height || 300}px</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => onUpdate({ height: (block.height || 300) + 50 })}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-1 pt-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-xs h-7"
+                          onClick={() => onUpdate({ width: 600, height: 400 })}
+                        >
+                          Grand
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-xs h-7"
+                          onClick={() => onUpdate({ width: 800, height: 500 })}
+                        >
+                          Très grand
+                        </Button>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
                 {/* Sélecteur de projet */}
                 <Popover>
@@ -1479,9 +1589,15 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
   // Pour les zones, style spécial
   if (block.type === "zone") {
+    // Déterminer les classes de ring
+    let ringClass = "";
+    if (selected) ringClass = "ring-2 ring-blue-500";
+    else if (block.isContentLocked) ringClass = "ring-2 ring-purple-400";
+    else if (block.isLocked) ringClass = "ring-1 ring-amber-400";
+
     return (
       <div
-        className={`rounded-lg group relative ${selected ? "ring-2 ring-blue-500" : ""} ${block.isLocked ? "ring-1 ring-amber-400" : ""}`}
+        className={`rounded-lg group relative ${ringClass}`}
         style={{
           backgroundColor: block.zoneColor || "#f3f4f6",
           width: block.width || 400,
@@ -1490,7 +1606,9 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           minHeight: 150,
           border: block.isLocked
             ? `3px solid ${block.zoneBorderColor || "#d1d5db"}`
-            : `2px dashed ${block.zoneBorderColor || "#d1d5db"}`,
+            : block.isContentLocked
+              ? `3px solid ${block.zoneBorderColor || "#d1d5db"}`
+              : `2px dashed ${block.zoneBorderColor || "#d1d5db"}`,
         }}
       >
         {/* Handles de connexion */}
@@ -1840,6 +1958,56 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   );
 };
 
+// ============================================
+// COMPOSANT DE NAVIGATION DES ZONES
+// ============================================
+
+interface ZonesNavigationBarProps {
+  zones: NoteBlock[];
+}
+
+function ZonesNavigationBar({ zones }: ZonesNavigationBarProps) {
+  const { setCenter, getZoom } = useReactFlow();
+
+  const navigateToZone = (zone: NoteBlock) => {
+    const zoneWidth = zone.width || 400;
+    const zoneHeight = zone.height || 300;
+    const centerX = zone.x + zoneWidth / 2;
+    const centerY = zone.y + zoneHeight / 2;
+
+    // Centrer la vue sur la zone avec une animation
+    setCenter(centerX, centerY, { zoom: getZoom(), duration: 500 });
+  };
+
+  if (zones.length === 0) return null;
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <span className="text-xs text-gray-500 mr-1">Zones:</span>
+      {zones.map((zone) => (
+        <button
+          key={zone.id}
+          onClick={() => navigateToZone(zone)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-all hover:scale-105 hover:shadow-md border"
+          style={{
+            backgroundColor: zone.zoneColor || "#f3f4f6",
+            borderColor: zone.zoneBorderColor || "#d1d5db",
+          }}
+          title={`Aller à: ${zone.content?.title || "Zone de travail"}`}
+        >
+          <span
+            className="w-2.5 h-2.5 rounded-full border border-white shadow-sm"
+            style={{ backgroundColor: zone.zoneBorderColor || "#9ca3af" }}
+          />
+          <span className="truncate max-w-[100px]">{zone.content?.title || "Zone"}</span>
+          {zone.isLocked && <Lock className="h-2.5 w-2.5 text-amber-600" />}
+          {zone.isContentLocked && <Move className="h-2.5 w-2.5 text-purple-600" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Node types pour ReactFlow
 const nodeTypes = {
   customBlock: CustomBlockNode,
@@ -1889,6 +2057,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   const [strokeColor, setStrokeColor] = useState("#000000");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+  // 🔥 Calculer les zones pour la barre de navigation
+  const zones = useMemo(() => {
+    return blocks.filter((b) => b.type === "zone");
+  }, [blocks]);
 
   // État pour la note rapide (sidebar)
   const [showQuickNote, setShowQuickNote] = useState(false);
@@ -2023,10 +2196,59 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     (blockId: string, updates: Partial<NoteBlock>) => {
       // Mise à jour locale immédiate avec callback pour avoir la valeur actuelle
       setBlocks((prev) => {
-        const updatedBlocks = prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b));
+        const block = prev.find((b) => b.id === blockId);
+        if (!block) return prev;
+
+        const updatedBlock = { ...block, ...updates };
+        let updatedBlocks = prev.map((b) => (b.id === blockId ? updatedBlock : b));
+
+        // 🔥 Si c'est une zone qui change de taille, écarter les autres zones
+        if (block.type === "zone" && (updates.width || updates.height)) {
+          const newWidth = updates.width || block.width || 400;
+          const newHeight = updates.height || block.height || 300;
+          const zoneX = block.x;
+          const zoneY = block.y;
+          const margin = 20; // Marge entre les zones
+
+          updatedBlocks = updatedBlocks.map((otherBlock) => {
+            // Ne pas déplacer la zone elle-même ni les non-zones
+            if (otherBlock.id === blockId || otherBlock.type !== "zone") return otherBlock;
+
+            const otherX = otherBlock.x;
+            const otherY = otherBlock.y;
+            const otherWidth = otherBlock.width || 400;
+            const otherHeight = otherBlock.height || 300;
+
+            // Vérifier le chevauchement
+            const overlapX = zoneX < otherX + otherWidth && zoneX + newWidth > otherX;
+            const overlapY = zoneY < otherY + otherHeight && zoneY + newHeight > otherY;
+
+            if (overlapX && overlapY) {
+              // Calculer dans quelle direction pousser
+              const pushRight = zoneX + newWidth + margin - otherX;
+              const pushLeft = otherX + otherWidth - (zoneX - margin);
+              const pushDown = zoneY + newHeight + margin - otherY;
+              const pushUp = otherY + otherHeight - (zoneY - margin);
+
+              // Choisir la direction avec le plus petit déplacement
+              const minPush = Math.min(pushRight, pushLeft, pushDown, pushUp);
+
+              if (minPush === pushRight && pushRight > 0) {
+                return { ...otherBlock, x: zoneX + newWidth + margin };
+              } else if (minPush === pushLeft && pushLeft > 0) {
+                return { ...otherBlock, x: zoneX - otherWidth - margin };
+              } else if (minPush === pushDown && pushDown > 0) {
+                return { ...otherBlock, y: zoneY + newHeight + margin };
+              } else if (minPush === pushUp && pushUp > 0) {
+                return { ...otherBlock, y: zoneY - otherHeight - margin };
+              }
+            }
+
+            return otherBlock;
+          });
+        }
 
         // Sync vers le bloc source si c'est une copie
-        const block = prev.find((b) => b.id === blockId);
         if (block?.sourceBlockId && block?.sourceDate) {
           const { x, y, ...contentUpdates } = updates;
           if (Object.keys(contentUpdates).length > 0) {
@@ -3205,12 +3427,14 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
         projects,
         currentProjectId: projectId,
       } as CustomBlockData,
-      // 🔥 Zone de travail en arrière-plan (zIndex: 0), autres blocs au-dessus (zIndex: 10)
+      // 🔥 Zone de travail TOUJOURS en arrière-plan (zIndex: -1), autres blocs au-dessus (zIndex: 10)
       style: {
         width: block.width,
         height: block.type === "zone" ? block.height : "auto",
+        // Forcer la zone à rester derrière même quand sélectionnée
+        zIndex: block.type === "zone" ? -1 : undefined,
       },
-      zIndex: block.type === "zone" ? 0 : 10,
+      zIndex: block.type === "zone" ? -1 : 10,
       // 🔥 Zones verrouillées ne peuvent pas être déplacées
       draggable: block.type === "zone" && block.isLocked ? false : true,
     })) as any;
@@ -3257,6 +3481,22 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   // Handle node position changes
   const handleNodesChange = useCallback(
     (changes: any) => {
+      // 🔥 Détecter si une zone avec contenu figé est déplacée
+      const zoneMovements: { zoneId: string; deltaX: number; deltaY: number; zone: NoteBlock }[] = [];
+
+      changes.forEach((change: any) => {
+        if (change.type === "position" && change.position && change.dragging) {
+          const movingBlock = blocks.find((b) => b.id === change.id);
+          if (movingBlock?.type === "zone" && movingBlock.isContentLocked) {
+            const deltaX = change.position.x - movingBlock.x;
+            const deltaY = change.position.y - movingBlock.y;
+            if (deltaX !== 0 || deltaY !== 0) {
+              zoneMovements.push({ zoneId: movingBlock.id, deltaX, deltaY, zone: movingBlock });
+            }
+          }
+        }
+      });
+
       // 🔥 Filtrer les changements de position pour contraindre les blocs aux zones
       const constrainedChanges = changes.map((change: any) => {
         if (change.type === "position" && change.position) {
@@ -3311,7 +3551,7 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       constrainedChanges.forEach((change: any) => {
         if (change.type === "position" && change.position) {
           setBlocks((prev) => {
-            return prev.map((b) => {
+            let updatedBlocks = prev.map((b) => {
               if (b.id !== change.id) return b;
 
               const updatedBlock = { ...b, x: change.position.x, y: change.position.y };
@@ -3349,6 +3589,42 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
 
               return updatedBlock;
             });
+
+            // 🔥 Si une zone avec contenu figé a bougé, déplacer les blocs internes
+            zoneMovements.forEach(({ zoneId, deltaX, deltaY, zone }) => {
+              const zoneX = zone.x;
+              const zoneY = zone.y;
+              const zoneWidth = zone.width || 400;
+              const zoneHeight = zone.height || 300;
+
+              updatedBlocks = updatedBlocks.map((block) => {
+                // Ne pas déplacer la zone elle-même ni les autres zones
+                if (block.id === zoneId || block.type === "zone") return block;
+
+                // Vérifier si le bloc est à l'intérieur de la zone (avant le déplacement)
+                const blockCenterX = block.x + (block.width || 200) / 2;
+                const blockCenterY = block.y + (block.height || 100) / 2;
+
+                const isInside =
+                  blockCenterX >= zoneX &&
+                  blockCenterX <= zoneX + zoneWidth &&
+                  blockCenterY >= zoneY &&
+                  blockCenterY <= zoneY + zoneHeight;
+
+                if (isInside) {
+                  // Déplacer le bloc avec la zone
+                  return {
+                    ...block,
+                    x: block.x + deltaX,
+                    y: block.y + deltaY,
+                  };
+                }
+
+                return block;
+              });
+            });
+
+            return updatedBlocks;
           });
           setHasUnsavedChanges(true);
         }
@@ -4433,6 +4709,16 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
                     <Background />
                     <Controls style={{ zIndex: 100 }} />
                     <MiniMap style={{ zIndex: 100 }} />
+
+                    {/* Barre de navigation des zones */}
+                    {zones.length > 0 && (
+                      <Panel position="top-left" style={{ zIndex: 100 }}>
+                        <div className="bg-white/95 rounded-lg shadow-md p-2 border max-w-md">
+                          <ZonesNavigationBar zones={zones} />
+                        </div>
+                      </Panel>
+                    )}
+
                     <Panel position="top-right" style={{ zIndex: 100 }}>
                       <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border">
                         💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers
