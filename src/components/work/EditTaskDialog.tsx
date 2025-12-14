@@ -16,10 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Clock, FolderOpen, Euro, Calculator } from "lucide-react";
+import { CalendarIcon, Clock, FolderOpen, Euro, Calculator, Layers } from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,14 @@ interface Category {
   icon: string;
 }
 
+interface Scenario {
+  id: string;
+  nom: string;
+  icone: string;
+  couleur: string;
+  est_principal: boolean;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -40,6 +49,7 @@ interface Task {
   scheduled_date?: string | null;
   category_id?: string | null;
   forfait_ttc?: number | null;
+  work_scenario_id?: string | null;
 }
 
 interface EditTaskDialogProps {
@@ -47,6 +57,7 @@ interface EditTaskDialogProps {
   onOpenChange: (open: boolean) => void;
   task: Task | null;
   categories: Category[];
+  scenarios?: Scenario[];
   onSave: (
     taskId: string,
     data: {
@@ -56,17 +67,19 @@ interface EditTaskDialogProps {
       scheduled_date?: string | null;
       category_id?: string | null;
       forfait_ttc?: number | null;
+      work_scenario_id?: string | null;
     },
   ) => void;
 }
 
-export const EditTaskDialog = ({ open, onOpenChange, task, categories, onSave }: EditTaskDialogProps) => {
+export const EditTaskDialog = ({ open, onOpenChange, task, categories, scenarios, onSave }: EditTaskDialogProps) => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [estimatedHours, setEstimatedHours] = useState("");
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>();
   const [categoryId, setCategoryId] = useState("");
   const [forfaitTtc, setForfaitTtc] = useState("");
+  const [scenarioId, setScenarioId] = useState("");
 
   const { hourlyRateTTC, calculateForfait } = useHourlyRate();
 
@@ -79,6 +92,7 @@ export const EditTaskDialog = ({ open, onOpenChange, task, categories, onSave }:
       setScheduledDate(task.scheduled_date ? new Date(task.scheduled_date) : undefined);
       setCategoryId(task.category_id || "");
       setForfaitTtc(task.forfait_ttc?.toString() || "");
+      setScenarioId(task.work_scenario_id || "");
     }
   }, [task]);
 
@@ -92,6 +106,7 @@ export const EditTaskDialog = ({ open, onOpenChange, task, categories, onSave }:
       scheduled_date: scheduledDate ? format(scheduledDate, "yyyy-MM-dd") : null,
       category_id: categoryId || null,
       forfait_ttc: forfaitTtc ? parseFloat(forfaitTtc) : null,
+      work_scenario_id: scenarioId || null,
     });
 
     onOpenChange(false);
@@ -107,6 +122,7 @@ export const EditTaskDialog = ({ open, onOpenChange, task, categories, onSave }:
   };
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
+  const selectedScenario = scenarios?.find((s) => s.id === scenarioId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,6 +185,44 @@ export const EditTaskDialog = ({ open, onOpenChange, task, categories, onSave }:
               </SelectContent>
             </Select>
           </div>
+
+          {/* Scénario */}
+          {scenarios && scenarios.length > 0 && (
+            <div className="space-y-2">
+              <Label>
+                <Layers className="h-4 w-4 inline mr-1" />
+                Scénario
+              </Label>
+              <Select value={scenarioId} onValueChange={setScenarioId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner un scénario">
+                    {selectedScenario && (
+                      <span className="flex items-center gap-2">
+                        {selectedScenario.icone} {selectedScenario.nom}
+                      </span>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">
+                    <span className="text-muted-foreground">Aucun scénario</span>
+                  </SelectItem>
+                  {scenarios.map((scenario) => (
+                    <SelectItem key={scenario.id} value={scenario.id}>
+                      <span className="flex items-center gap-2">
+                        {scenario.icone} {scenario.nom}
+                        {scenario.est_principal && (
+                          <Badge variant="outline" className="text-xs ml-1">
+                            Principal
+                          </Badge>
+                        )}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Temps estimé + Forfait */}
           <div className="grid grid-cols-2 gap-4">
