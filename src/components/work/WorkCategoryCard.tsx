@@ -5,6 +5,14 @@ import { Progress } from "@/components/ui/progress";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { WorkTaskItem } from "./WorkTaskItem";
 
+interface Scenario {
+  id: string;
+  nom: string;
+  icone: string;
+  couleur: string;
+  est_principal: boolean;
+}
+
 interface WorkCategoryCardProps {
   category: {
     id: string;
@@ -13,6 +21,7 @@ interface WorkCategoryCardProps {
     color: string;
   };
   tasks: Array<any>;
+  scenarios?: Scenario[];
   showCompleted: boolean;
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
   onEditTask: (taskId: string) => void;
@@ -24,6 +33,7 @@ interface WorkCategoryCardProps {
 export const WorkCategoryCard = ({
   category,
   tasks,
+  scenarios,
   showCompleted,
   onToggleComplete,
   onEditTask,
@@ -100,15 +110,19 @@ export const WorkCategoryCard = ({
               {showCompleted ? "Aucune tâche dans cette catégorie" : "Aucune tâche en cours dans cette catégorie"}
             </p>
           ) : (
-            visibleTasks.map((task) => (
-              <WorkTaskItem
-                key={task.id}
-                task={task}
-                onToggleComplete={onToggleComplete}
-                onEditTask={onEditTask}
-                onDelete={onDelete}
-              />
-            ))
+            visibleTasks.map((task) => {
+              const taskScenario = scenarios?.find((s) => s.id === task.work_scenario_id);
+              return (
+                <WorkTaskItem
+                  key={task.id}
+                  task={task}
+                  scenario={taskScenario}
+                  onToggleComplete={onToggleComplete}
+                  onEditTask={onEditTask}
+                  onDelete={onDelete}
+                />
+              );
+            })
           )}
         </CardContent>
       )}
