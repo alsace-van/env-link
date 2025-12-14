@@ -2581,6 +2581,7 @@ export default function DailyNotesCanvas({
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const reactFlowContainerRef = useRef<HTMLDivElement>(null); // 🔥 Ref pour le conteneur ReactFlow
+  const reactFlowInstanceRef = useRef<any>(null); // 🔥 Instance ReactFlow pour screenToFlowPosition
 
   // Refs pour les valeurs dans les handlers
   const strokeColorRef = useRef(strokeColor);
@@ -2948,19 +2949,23 @@ export default function DailyNotesCanvas({
           ? blocks.find((b) => b.type === "zone" && b.zoneLinkedProjectId === projectId)
           : null;
 
-      // 🔥 Calculer le centre de la vue visible avec les vraies dimensions
-      const viewport = viewportRef.current;
+      // 🔥 Calculer la position au centre de la vue visible
+      let posX = 100;
+      let posY = 100;
+
       const container = reactFlowContainerRef.current;
-      const containerWidth = container?.clientWidth || 800;
-      const containerHeight = container?.clientHeight || 600;
+      const rfInstance = reactFlowInstanceRef.current;
 
-      // Convertir le centre de l'écran en coordonnées du flow
-      const centerX = (containerWidth / 2 - viewport.x) / viewport.zoom;
-      const centerY = (containerHeight / 2 - viewport.y) / viewport.zoom;
-
-      // Position par défaut: au centre de la vue avec un petit offset aléatoire
-      let posX = centerX - 100 + Math.random() * 50;
-      let posY = centerY - 50 + Math.random() * 50;
+      if (rfInstance && container) {
+        // Utiliser screenToFlowPosition pour convertir le centre de l'écran
+        const centerScreen = {
+          x: container.clientWidth / 2,
+          y: container.clientHeight / 2,
+        };
+        const flowPosition = rfInstance.screenToFlowPosition(centerScreen);
+        posX = flowPosition.x - 100 + Math.random() * 50;
+        posY = flowPosition.y - 50 + Math.random() * 50;
+      }
 
       if (currentProjectZone) {
         // Placer le bloc dans la zone avec un offset aléatoire
@@ -5427,6 +5432,9 @@ export default function DailyNotesCanvas({
                     maxZoom={2}
                     onMove={(_, viewport) => {
                       viewportRef.current = viewport;
+                    }}
+                    onInit={(instance) => {
+                      reactFlowInstanceRef.current = instance;
                     }}
                     defaultEdgeOptions={{
                       type: "smoothstep",
