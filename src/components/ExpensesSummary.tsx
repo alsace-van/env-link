@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { ClipboardList, Clock, CheckCircle2, Wrench } from "lucide-react";
 import PaymentTransactions from "./PaymentTransactions";
 
 interface ExpensesSummaryProps {
@@ -18,6 +21,15 @@ interface CategoryTotal {
   marge: number;
 }
 
+interface WorkStats {
+  totalTasks: number;
+  completedTasks: number;
+  totalHT: number;
+  totalTTC: number;
+  totalEstimatedHours: number;
+  totalActualHours: number;
+}
+
 const COLORS = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#6366f1"];
 
 const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) => {
@@ -27,9 +39,57 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
   const [totalMargin, setTotalMargin] = useState(0);
   const [paymentRefresh, setPaymentRefresh] = useState(0);
 
+  // 🔥 Statistiques des travaux
+  const [workStats, setWorkStats] = useState<WorkStats>({
+    totalTasks: 0,
+    completedTasks: 0,
+    totalHT: 0,
+    totalTTC: 0,
+    totalEstimatedHours: 0,
+    totalActualHours: 0,
+  });
+
   useEffect(() => {
     loadExpensesData();
+    loadWorkStats();
   }, [projectId, refreshTrigger, paymentRefresh]);
+
+  // 🔥 Charger les statistiques des travaux
+  const loadWorkStats = async () => {
+    // Trouver le scénario principal
+    const { data: scenario } = await (supabase as any)
+      .from("project_scenarios")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("est_principal", true)
+      .single();
+
+    // Charger les tâches (avec ou sans scénario)
+    let query = supabase.from("project_todos").select("*").eq("project_id", projectId).not("category_id", "is", null); // Seulement les tâches de la fiche de travaux
+
+    if (scenario?.id) {
+      query = query.eq("work_scenario_id" as any, scenario.id);
+    }
+
+    const { data: tasks, error } = await query;
+
+    if (error) {
+      console.error("Erreur chargement tâches:", error);
+      return;
+    }
+
+    const stats: WorkStats = {
+      totalTasks: tasks?.length || 0,
+      completedTasks: tasks?.filter((t: any) => t.completed).length || 0,
+      totalHT: tasks?.reduce((sum: number, t: any) => sum + (t.forfait_ht || 0), 0) || 0,
+      totalTTC: tasks?.reduce((sum: number, t: any) => sum + (t.forfait_ttc || 0), 0) || 0,
+      totalEstimatedHours: tasks?.reduce((sum: number, t: any) => sum + (t.estimated_hours || 0), 0) || 0,
+      totalActualHours:
+        tasks?.filter((t: any) => t.completed).reduce((sum: number, t: any) => sum + (t.actual_hours || 0), 0) || 0,
+    };
+
+    setWorkStats(stats);
+  };
 
   const loadExpensesData = async () => {
     // D'abord, trouver le scénario principal du projet
@@ -56,7 +116,10 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
     // Charger uniquement les dépenses du scénario principal
     console.log("✅ Chargement dépenses du scénario:", scenarios.id);
-    const { data, error } = await (supabase as any).from("project_expenses").select("*").eq("scenario_id", scenarios.id);
+    const { data, error } = await (supabase as any)
+      .from("project_expenses")
+      .select("*")
+      .eq("scenario_id", scenarios.id);
 
     if (error) {
       console.error(error);
@@ -161,6 +224,72 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
   return (
     <div className="space-y-6">
+      {/* 🔥 Section Travaux */}
+      {workStats.totalTasks > 0 && (
+        <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 border-indigo-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Wrench className="h-4 w-4 text-indigo-600" />
+              Travaux (Main d'œuvre)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Progression */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Progression</span>
+                <span className="font-medium">
+                  {workStats.completedTasks}/{workStats.totalTasks} tâches
+                </span>
+              </div>
+              <Progress
+                value={workStats.totalTasks > 0 ? (workStats.completedTasks / workStats.totalTasks) * 100 : 0}
+                className="h-2"
+              />
+            </div>
+
+            {/* Totaux financiers */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-white/60 dark:bg-black/20 rounded-lg">
+                <p className="text-xs text-muted-foreground">Total HT</p>
+                <p className="text-lg font-bold text-indigo-700 dark:text-indigo-400">
+                  {workStats.totalHT.toFixed(2)} €
+                </p>
+              </div>
+              <div className="p-3 bg-white/60 dark:bg-black/20 rounded-lg">
+                <p className="text-xs text-muted-foreground">Total TTC</p>
+                <p className="text-lg font-bold text-green-700 dark:text-green-400">
+                  {workStats.totalTTC.toFixed(2)} €
+                </p>
+              </div>
+            </div>
+
+            {/* Heures */}
+            <div className="flex justify-between text-sm">
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                Estimé: {workStats.totalEstimatedHours.toFixed(1)}h
+              </span>
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <CheckCircle2 className="h-3 w-3" />
+                Réel: {workStats.totalActualHours.toFixed(1)}h
+              </span>
+            </div>
+
+            {/* Taux horaire moyen */}
+            {workStats.totalActualHours > 0 && workStats.totalTTC > 0 && (
+              <div className="text-center pt-2 border-t">
+                <p className="text-xs text-muted-foreground">Taux horaire moyen</p>
+                <p className="text-xl font-bold text-purple-600">
+                  {(workStats.totalTTC / workStats.totalActualHours).toFixed(2)} €/h TTC
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Section Dépenses matériel */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
           <CardHeader className="pb-2">
@@ -207,6 +336,44 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
         totalSales={totalSales}
         onPaymentChange={() => setPaymentRefresh((prev) => prev + 1)}
       />
+
+      {/* 🔥 Total général du devis (Matériel + Travaux) */}
+      {(totalSales > 0 || workStats.totalTTC > 0) && (
+        <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-300">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg text-emerald-800 dark:text-emerald-300">📋 Total Devis Client</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {/* Détail */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Matériel (TTC)</span>
+                  <span className="font-medium">{totalSales.toFixed(2)} €</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Travaux (TTC)</span>
+                  <span className="font-medium">{workStats.totalTTC.toFixed(2)} €</span>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="pt-3 border-t border-emerald-200 dark:border-emerald-800">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-semibold text-emerald-800 dark:text-emerald-300">TOTAL TTC</span>
+                  <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                    {(totalSales + workStats.totalTTC).toFixed(2)} €
+                  </span>
+                </div>
+                <div className="flex justify-between items-center mt-1 text-sm text-muted-foreground">
+                  <span>dont TVA 20%</span>
+                  <span>{(totalSales + workStats.totalTTC - (totalSales / 1.2 + workStats.totalHT)).toFixed(2)} €</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
