@@ -1628,7 +1628,15 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           variant="ghost"
           size="icon"
           className="absolute -top-2 -right-2 h-6 w-6 opacity-0 group-hover:opacity-100 bg-white hover:bg-red-100 rounded-full shadow-md border border-gray-200"
-          onClick={onDelete}
+          onClick={(e) => {
+            e.stopPropagation();
+            console.log("🔴 Clic sur bouton supprimer zone, onDelete:", typeof onDelete);
+            if (onDelete) {
+              onDelete();
+            } else {
+              console.error("❌ onDelete n'est pas défini!");
+            }
+          }}
         >
           <X className="h-3 w-3 text-red-500" />
         </Button>
@@ -5032,6 +5040,16 @@ export default function DailyNotesCanvas({
                     onConnect={handleConnect}
                     onEdgeClick={handleEdgeClick}
                     nodeTypes={nodeTypes}
+                    deleteKeyCode={["Backspace", "Delete"]}
+                    onNodesDelete={(deletedNodes) => {
+                      console.log(
+                        "🗑️ Nodes supprimés via clavier:",
+                        deletedNodes.map((n) => n.id),
+                      );
+                      deletedNodes.forEach((node) => {
+                        deleteBlock(node.id);
+                      });
+                    }}
                     fitView
                     fitViewOptions={{
                       padding: 0.2,
