@@ -2249,10 +2249,25 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     activeToolRef.current = activeTool;
   }, [activeTool]);
 
+  // 🔥 Ref pour forcer le rechargement quand initialDate change
+  const lastInitialDateRef = useRef<string | null>(null);
+
   // Mettre à jour selectedDate quand initialDate change et le dialog s'ouvre
+  // ET déclencher le rechargement
   useEffect(() => {
-    if (open && initialDate) {
-      setSelectedDate(initialDate);
+    if (!open) {
+      lastInitialDateRef.current = null;
+      return;
+    }
+
+    if (initialDate) {
+      const newDateStr = format(initialDate, "yyyy-MM-dd");
+      // Si la date initiale a changé ou si c'est la première ouverture
+      if (lastInitialDateRef.current !== newDateStr) {
+        console.log("📅 initialDate changée:", lastInitialDateRef.current, "->", newDateStr);
+        lastInitialDateRef.current = newDateStr;
+        setSelectedDate(initialDate);
+      }
     }
   }, [open, initialDate]);
 
@@ -4144,91 +4159,95 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
     }
   }, [open, loadProjects, loadSuppliers, loadRoadmapDates]);
 
-  const loadDayData = useCallback(async () => {
-    setIsLoading(true);
+  const loadDayData = useCallback(
+    async (dateToLoad?: Date) => {
+      setIsLoading(true);
 
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    setUserId(userData.user.id);
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+      setUserId(userData.user.id);
 
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
+      // 🔥 Utiliser la date passée en paramètre ou selectedDate
+      const targetDate = dateToLoad || selectedDate;
+      const dateStr = format(targetDate, "yyyy-MM-dd");
+      console.log("📅 loadDayData pour:", dateStr);
 
-    try {
-      // 🔥 1. Charger les notes du jour (GLOBAL à l'utilisateur, pas par projet)
-      const { data, error } = await (supabase as any)
-        .from("daily_notes")
-        .select("*")
-        .eq("user_id", userData.user.id)
-        .eq("note_date", dateStr)
-        .maybeSingle();
+      try {
+        // 🔥 1. Charger les notes du jour (GLOBAL à l'utilisateur, pas par projet)
+        const { data, error } = await (supabase as any)
+          .from("daily_notes")
+          .select("*")
+          .eq("user_id", userData.user.id)
+          .eq("note_date", dateStr)
+          .maybeSingle();
 
-      if (error && error.code !== "PGRST116") throw error;
+        if (error && error.code !== "PGRST116") throw error;
 
-      let loadedBlocks: NoteBlock[] = [];
+        let loadedBlocks: NoteBlock[] = [];
 
-      if (data) {
-        // Charger le canvas Paper.js
-        if (data.canvas_data && paperScopeRef.current) {
-          try {
-            paperScopeRef.current.project.clear();
-            paperScopeRef.current.project.importJSON(data.canvas_data);
-          } catch (e) {
-            console.error("Erreur chargement canvas:", e);
+        if (data) {
+          // Charger le canvas Paper.js
+          if (data.canvas_data && paperScopeRef.current) {
+            try {
+              paperScopeRef.current.project.clear();
+              paperScopeRef.current.project.importJSON(data.canvas_data);
+            } catch (e) {
+              console.error("Erreur chargement canvas:", e);
+            }
           }
-        }
 
-        // Charger les blocs
-        if (data.blocks_data) {
-          try {
-            loadedBlocks = JSON.parse(data.blocks_data);
-          } catch {
-            loadedBlocks = [];
+          // Charger les blocs
+          if (data.blocks_data) {
+            try {
+              loadedBlocks = JSON.parse(data.blocks_data);
+            } catch {
+              loadedBlocks = [];
+            }
           }
-        }
 
-        // Charger les connexions
-        if (data.connections_data) {
-          try {
-            setEdges(JSON.parse(data.connections_data));
-          } catch {
+          // Charger les connexions
+          if (data.connections_data) {
+            try {
+              setEdges(JSON.parse(data.connections_data));
+            } catch {
+              setEdges([]);
+            }
+          } else {
             setEdges([]);
           }
         } else {
+          // Nouveau jour
+          if (paperScopeRef.current) {
+            paperScopeRef.current.project.clear();
+          }
           setEdges([]);
         }
-      } else {
-        // Nouveau jour
-        if (paperScopeRef.current) {
-          paperScopeRef.current.project.clear();
-        }
-        setEdges([]);
-      }
 
-      // 🔥 2. Charger les livraisons prévues pour ce jour (de TOUS les projets)
-      // Récupérer tous les scénarios principaux de l'utilisateur
-      const { data: userProjects } = await (supabase as any)
-        .from("projects")
-        .select("id")
-        .eq("user_id", userData.user.id);
-
-      const projectIds = userProjects?.map((p: any) => p.id) || [];
-
-      let principalScenarioIds: string[] = [];
-      if (projectIds.length > 0) {
-        const { data: scenarios } = await (supabase as any)
-          .from("project_scenarios")
+        // 🔥 2. Charger les livraisons prévues pour ce jour (de TOUS les projets)
+        // Récupérer tous les scénarios principaux de l'utilisateur
+        const { data: userProjects } = await (supabase as any)
+          .from("projects")
           .select("id")
-          .in("project_id", projectIds)
-          .eq("est_principal", true);
+          .eq("user_id", userData.user.id);
 
-        principalScenarioIds = scenarios?.map((s: any) => s.id) || [];
-      }
+        const projectIds = userProjects?.map((p: any) => p.id) || [];
 
-      if (principalScenarioIds.length > 0) {
-        const { data: deliveries } = await (supabase as any)
-          .from("project_expenses")
-          .select(
-            `
+        let principalScenarioIds: string[] = [];
+        if (projectIds.length > 0) {
+          const { data: scenarios } = await (supabase as any)
+            .from("project_scenarios")
+            .select("id")
+            .in("project_id", projectIds)
+            .eq("est_principal", true);
+
+          principalScenarioIds = scenarios?.map((s: any) => s.id) || [];
+        }
+
+        if (principalScenarioIds.length > 0) {
+          const { data: deliveries } = await (supabase as any)
+            .from("project_expenses")
+            .select(
+              `
             id,
             nom_accessoire,
             marque,
@@ -4241,117 +4260,129 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
             expected_delivery_date,
             project_id
           `,
-          )
-          .in("scenario_id", principalScenarioIds)
-          .eq("expected_delivery_date", dateStr);
+            )
+            .in("scenario_id", principalScenarioIds)
+            .eq("expected_delivery_date", dateStr);
 
-        if (deliveries && deliveries.length > 0) {
-          console.log(`📦 ${deliveries.length} livraison(s) prévue(s) pour ${dateStr}`);
+          if (deliveries && deliveries.length > 0) {
+            console.log(`📦 ${deliveries.length} livraison(s) prévue(s) pour ${dateStr}`);
 
-          // Fonction pour nettoyer les entités HTML
-          const cleanHtmlEntities = (str: string | null | undefined): string => {
-            if (!str) return "";
-            return str
-              .replace(/&nbsp;/g, " ")
-              .replace(/&amp;/g, "&")
-              .replace(/&lt;/g, "<")
-              .replace(/&gt;/g, ">")
-              .replace(/&quot;/g, '"')
-              .replace(/&#39;/g, "'")
-              .replace(/&apos;/g, "'")
-              .replace(/\s+/g, " ")
-              .trim();
-          };
+            // Fonction pour nettoyer les entités HTML
+            const cleanHtmlEntities = (str: string | null | undefined): string => {
+              if (!str) return "";
+              return str
+                .replace(/&nbsp;/g, " ")
+                .replace(/&amp;/g, "&")
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&apos;/g, "'")
+                .replace(/\s+/g, " ")
+                .trim();
+            };
 
-          // Récupérer les IDs des dépenses déjà dans les blocs existants
-          const existingExpenseIds = new Set<string>();
-          loadedBlocks.forEach((block) => {
-            if (block.linkedExpenses) {
-              block.linkedExpenses.forEach((exp) => {
-                if (exp.id) existingExpenseIds.add(exp.id);
-              });
-            }
-          });
+            // Récupérer les IDs des dépenses déjà dans les blocs existants
+            const existingExpenseIds = new Set<string>();
+            loadedBlocks.forEach((block) => {
+              if (block.linkedExpenses) {
+                block.linkedExpenses.forEach((exp) => {
+                  if (exp.id) existingExpenseIds.add(exp.id);
+                });
+              }
+            });
 
-          // Filtrer les livraisons qui ne sont pas déjà dans un bloc
-          const newDeliveries: LinkedExpense[] = deliveries
-            .filter((d: any) => !existingExpenseIds.has(d.id))
-            .map((d: any) => ({
-              id: d.id,
-              nom: cleanHtmlEntities(d.nom_accessoire),
-              marque: cleanHtmlEntities(d.marque),
-              prix: d.prix || 0,
-              quantite: d.quantite || 1,
-              categorie: d.categorie,
-              fournisseur: d.fournisseur,
-              statut_livraison: d.statut_livraison || "en_livraison",
-              date_achat: d.date_achat,
-              expected_delivery_date: d.expected_delivery_date,
-              project_id: d.project_id,
-            }));
+            // Filtrer les livraisons qui ne sont pas déjà dans un bloc
+            const newDeliveries: LinkedExpense[] = deliveries
+              .filter((d: any) => !existingExpenseIds.has(d.id))
+              .map((d: any) => ({
+                id: d.id,
+                nom: cleanHtmlEntities(d.nom_accessoire),
+                marque: cleanHtmlEntities(d.marque),
+                prix: d.prix || 0,
+                quantite: d.quantite || 1,
+                categorie: d.categorie,
+                fournisseur: d.fournisseur,
+                statut_livraison: d.statut_livraison || "en_livraison",
+                date_achat: d.date_achat,
+                expected_delivery_date: d.expected_delivery_date,
+                project_id: d.project_id,
+              }));
 
-          // S'il y a des nouvelles livraisons, chercher ou créer un bloc "Livraisons du jour"
-          if (newDeliveries.length > 0) {
-            // Chercher un bloc existant nommé "Livraisons du jour" ou "🚚 Livraisons"
-            let deliveryBlockIndex = loadedBlocks.findIndex(
-              (b) =>
-                b.type === "order" &&
-                (b.content?.title === "🚚 Livraisons du jour" || b.content?.title === "Livraisons du jour"),
-            );
+            // S'il y a des nouvelles livraisons, chercher ou créer un bloc "Livraisons du jour"
+            if (newDeliveries.length > 0) {
+              // Chercher un bloc existant nommé "Livraisons du jour" ou "🚚 Livraisons"
+              let deliveryBlockIndex = loadedBlocks.findIndex(
+                (b) =>
+                  b.type === "order" &&
+                  (b.content?.title === "🚚 Livraisons du jour" || b.content?.title === "Livraisons du jour"),
+              );
 
-            if (deliveryBlockIndex >= 0) {
-              // Ajouter au bloc existant
-              const existingExpenses = loadedBlocks[deliveryBlockIndex].linkedExpenses || [];
-              loadedBlocks[deliveryBlockIndex].linkedExpenses = [...existingExpenses, ...newDeliveries];
-            } else {
-              // Créer un nouveau bloc pour les livraisons
-              const deliveryBlock: NoteBlock = {
-                id: `delivery-${Date.now()}`,
-                type: "order",
-                x: 50,
-                y: 50,
-                width: 350,
-                height: 200,
-                content: {
-                  title: "🚚 Livraisons du jour",
-                },
-                linkedExpenses: newDeliveries,
-                linkedProjectId: projectId,
-              };
-              loadedBlocks = [deliveryBlock, ...loadedBlocks];
+              if (deliveryBlockIndex >= 0) {
+                // Ajouter au bloc existant
+                const existingExpenses = loadedBlocks[deliveryBlockIndex].linkedExpenses || [];
+                loadedBlocks[deliveryBlockIndex].linkedExpenses = [...existingExpenses, ...newDeliveries];
+              } else {
+                // Créer un nouveau bloc pour les livraisons
+                const deliveryBlock: NoteBlock = {
+                  id: `delivery-${Date.now()}`,
+                  type: "order",
+                  x: 50,
+                  y: 50,
+                  width: 350,
+                  height: 200,
+                  content: {
+                    title: "🚚 Livraisons du jour",
+                  },
+                  linkedExpenses: newDeliveries,
+                  linkedProjectId: projectId,
+                };
+                loadedBlocks = [deliveryBlock, ...loadedBlocks];
+              }
             }
           }
         }
-      }
 
-      setBlocks(loadedBlocks);
-      blocksIdsRef.current = "";
-    } catch (error) {
-      console.error("Erreur chargement:", error);
-      toast.error("Erreur lors du chargement");
-    } finally {
-      setIsLoading(false);
-      setHasUnsavedChanges(false);
-    }
-  }, [selectedDate, projectId]);
+        setBlocks(loadedBlocks);
+        blocksIdsRef.current = "";
+      } catch (error) {
+        console.error("Erreur chargement:", error);
+        toast.error("Erreur lors du chargement");
+      } finally {
+        setIsLoading(false);
+        setHasUnsavedChanges(false);
+      }
+    },
+    [selectedDate, projectId],
+  );
 
   // Charger les données quand la date ou le dialog change
   const previousDateRef = useRef<string | null>(null);
 
+  // 🔥 Ref pour détecter la première ouverture du chargement
+  const hasLoadedRef = useRef(false);
+
   useEffect(() => {
     if (!open) {
       previousDateRef.current = null;
+      hasLoadedRef.current = false;
       return;
     }
 
-    const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+    // 🔥 Utiliser initialDate lors de l'ouverture, sinon selectedDate
+    const dateToUse = !hasLoadedRef.current && initialDate ? initialDate : selectedDate;
+    const currentDateStr = format(dateToUse, "yyyy-MM-dd");
 
-    // Charger si c'est la première ouverture ou si la date a changé
-    if (!previousDateRef.current || previousDateRef.current !== currentDateStr) {
-      loadDayData();
+    // 🔥 Charger si:
+    // 1. C'est la première ouverture (hasLoadedRef.current était false)
+    // 2. Ou si la date a changé
+    if (!hasLoadedRef.current || !previousDateRef.current || previousDateRef.current !== currentDateStr) {
+      console.log("📅 Chargement des données pour:", currentDateStr, "hasLoaded:", hasLoadedRef.current);
+      loadDayData(dateToUse);
       previousDateRef.current = currentDateStr;
+      hasLoadedRef.current = true;
     }
-  }, [selectedDate, open, loadDayData]);
+  }, [selectedDate, open, initialDate, loadDayData]);
 
   const saveNote = useCallback(async () => {
     if (!userId) return;
