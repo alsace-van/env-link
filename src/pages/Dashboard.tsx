@@ -146,7 +146,7 @@ const Dashboard = () => {
 
       {/* Sidebar gauche - Projets (Overlay transparent) */}
       <aside
-        className={`fixed top-0 left-0 h-full w-80 z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 h-full w-96 z-50 transform transition-transform duration-300 ease-in-out ${
           leftSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
