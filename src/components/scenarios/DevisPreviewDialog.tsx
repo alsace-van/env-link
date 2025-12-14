@@ -138,7 +138,7 @@ const DevisPreviewDialog = ({
           icon
         )
       `)
-      .eq("work_scenario_id" as any, scenarioId)
+      .eq("work_scenario_id", scenarioId)
       .not("category_id", "is", null)
       .order("display_order");
     
@@ -148,13 +148,13 @@ const DevisPreviewDialog = ({
   const loadCompanyInfo = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data } = await supabase
-        .from("user_settings")
+      const { data } = await (supabase
+        .from("profiles" as any)
         .select("*")
-        .eq("user_id", user.id)
-        .single();
+        .eq("id", user.id)
+        .single());
       
-      if (data) setCompanyInfo(data);
+      if (data) setCompanyInfo(data as any);
     }
   };
 
