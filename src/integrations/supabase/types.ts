@@ -766,6 +766,13 @@ export type Database = {
             referencedRelation: "project_scenarios"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "devis_snapshots_scenario_id_fkey"
+            columns: ["scenario_id"]
+            isOneToOne: false
+            referencedRelation: "view_work_scenario_stats"
+            referencedColumns: ["scenario_id"]
+          },
         ]
       }
       document_chunks: {
@@ -2271,12 +2278,14 @@ export type Database = {
           description: string | null
           est_archive: boolean | null
           evoliz_item_id: string | null
+          expected_delivery_date: string | null
           expense_date: string | null
           facture_url: string | null
           fournisseur: string | null
           hauteur_mm: number | null
           id: string
           imported_from_evoliz: boolean | null
+          in_order_tracking: boolean | null
           incoming_invoice_id: string | null
           intensite_amperes: number | null
           invoice_number: string | null
@@ -2325,12 +2334,14 @@ export type Database = {
           description?: string | null
           est_archive?: boolean | null
           evoliz_item_id?: string | null
+          expected_delivery_date?: string | null
           expense_date?: string | null
           facture_url?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
           imported_from_evoliz?: boolean | null
+          in_order_tracking?: boolean | null
           incoming_invoice_id?: string | null
           intensite_amperes?: number | null
           invoice_number?: string | null
@@ -2379,12 +2390,14 @@ export type Database = {
           description?: string | null
           est_archive?: boolean | null
           evoliz_item_id?: string | null
+          expected_delivery_date?: string | null
           expense_date?: string | null
           facture_url?: string | null
           fournisseur?: string | null
           hauteur_mm?: number | null
           id?: string
           imported_from_evoliz?: boolean | null
+          in_order_tracking?: boolean | null
           incoming_invoice_id?: string | null
           intensite_amperes?: number | null
           invoice_number?: string | null
@@ -2462,6 +2475,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "project_scenarios"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_expenses_scenario_id_fkey"
+            columns: ["scenario_id"]
+            isOneToOne: false
+            referencedRelation: "view_work_scenario_stats"
+            referencedColumns: ["scenario_id"]
           },
           {
             foreignKeyName: "project_expenses_supplier_id_fkey"
@@ -2544,6 +2564,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "project_scenarios"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_expenses_history_scenario_id_fkey"
+            columns: ["scenario_id"]
+            isOneToOne: false
+            referencedRelation: "view_work_scenario_stats"
+            referencedColumns: ["scenario_id"]
           },
         ]
       }
@@ -2867,6 +2894,7 @@ export type Database = {
           due_date: string | null
           estimated_hours: number | null
           evoliz_item_id: string | null
+          forfait_ht: number | null
           forfait_ttc: number | null
           id: string
           imported_from_evoliz: boolean | null
@@ -2878,8 +2906,10 @@ export type Database = {
           task_type: string | null
           template_id: string | null
           title: string
+          tva_rate: number | null
           updated_at: string | null
           user_id: string
+          work_scenario_id: string | null
         }
         Insert: {
           accessory_id?: string | null
@@ -2895,6 +2925,7 @@ export type Database = {
           due_date?: string | null
           estimated_hours?: number | null
           evoliz_item_id?: string | null
+          forfait_ht?: number | null
           forfait_ttc?: number | null
           id?: string
           imported_from_evoliz?: boolean | null
@@ -2906,8 +2937,10 @@ export type Database = {
           task_type?: string | null
           template_id?: string | null
           title: string
+          tva_rate?: number | null
           updated_at?: string | null
           user_id: string
+          work_scenario_id?: string | null
         }
         Update: {
           accessory_id?: string | null
@@ -2923,6 +2956,7 @@ export type Database = {
           due_date?: string | null
           estimated_hours?: number | null
           evoliz_item_id?: string | null
+          forfait_ht?: number | null
           forfait_ttc?: number | null
           id?: string
           imported_from_evoliz?: boolean | null
@@ -2934,8 +2968,10 @@ export type Database = {
           task_type?: string | null
           template_id?: string | null
           title?: string
+          tva_rate?: number | null
           updated_at?: string | null
           user_id?: string
+          work_scenario_id?: string | null
         }
         Relationships: [
           {
@@ -2972,6 +3008,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "task_templates"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_todos_work_scenario_id_fkey"
+            columns: ["work_scenario_id"]
+            isOneToOne: false
+            referencedRelation: "project_scenarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_todos_work_scenario_id_fkey"
+            columns: ["work_scenario_id"]
+            isOneToOne: false
+            referencedRelation: "view_work_scenario_stats"
+            referencedColumns: ["scenario_id"]
           },
         ]
       }
@@ -5023,6 +5073,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "project_expenses_scenario_id_fkey"
+            columns: ["scenario_id"]
+            isOneToOne: false
+            referencedRelation: "view_work_scenario_stats"
+            referencedColumns: ["scenario_id"]
+          },
+          {
             foreignKeyName: "project_expenses_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
@@ -5084,6 +5141,30 @@ export type Database = {
           },
         ]
       }
+      view_work_scenario_stats: {
+        Row: {
+          completed_tasks: number | null
+          est_principal: boolean | null
+          is_locked: boolean | null
+          project_id: string | null
+          scenario_id: string | null
+          scenario_nom: string | null
+          total_actual_hours: number | null
+          total_estimated_hours: number | null
+          total_ht: number | null
+          total_tasks: number | null
+          total_ttc: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_scenarios_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       count_rti_by_status: {
@@ -5121,6 +5202,21 @@ export type Database = {
           form_data: Json
           id: string
           status: string
+        }[]
+      }
+      get_project_work_stats: {
+        Args: { p_project_id: string }
+        Returns: {
+          completed_tasks: number
+          est_principal: boolean
+          is_locked: boolean
+          scenario_id: string
+          scenario_nom: string
+          total_actual_hours: number
+          total_estimated_hours: number
+          total_ht: number
+          total_tasks: number
+          total_ttc: number
         }[]
       }
       has_role: { Args: { _role: string; _user_id: string }; Returns: boolean }

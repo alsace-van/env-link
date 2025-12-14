@@ -328,8 +328,8 @@ const WorkScenarioManager = ({
         scenarios={scenarios}
         isOpen={isCreateDialogOpen}
         onClose={() => setIsCreateDialogOpen(false)}
-        onCreated={() => {
-          reloadScenarios();
+        onCreated={async () => {
+          await reloadScenarios();
           reloadAll();
         }}
       />
