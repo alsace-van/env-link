@@ -2096,20 +2096,49 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
 interface ZonesNavigationBarProps {
   zones: NoteBlock[];
+  focusZoneId?: string | null; // Zone sur laquelle centrer automatiquement
+  onFocusComplete?: () => void; // Callback quand le focus est terminé
 }
 
-function ZonesNavigationBar({ zones }: ZonesNavigationBarProps) {
+function ZonesNavigationBar({ zones, focusZoneId, onFocusComplete }: ZonesNavigationBarProps) {
   const { setCenter, getZoom } = useReactFlow();
+  const hasFocusedRef = useRef(false);
 
-  const navigateToZone = (zone: NoteBlock) => {
-    const zoneWidth = zone.width || 400;
-    const zoneHeight = zone.height || 300;
-    const centerX = zone.x + zoneWidth / 2;
-    const centerY = zone.y + zoneHeight / 2;
+  const navigateToZone = useCallback(
+    (zone: NoteBlock) => {
+      const zoneWidth = zone.width || 400;
+      const zoneHeight = zone.height || 300;
+      const centerX = zone.x + zoneWidth / 2;
+      const centerY = zone.y + zoneHeight / 2;
 
-    // Centrer la vue sur la zone avec une animation
-    setCenter(centerX, centerY, { zoom: getZoom(), duration: 500 });
-  };
+      // Centrer la vue sur la zone avec une animation
+      setCenter(centerX, centerY, { zoom: getZoom(), duration: 500 });
+    },
+    [setCenter, getZoom],
+  );
+
+  // 🔥 Centrer automatiquement sur la zone focusée
+  useEffect(() => {
+    if (focusZoneId && !hasFocusedRef.current) {
+      const zoneToFocus = zones.find((z) => z.id === focusZoneId);
+      if (zoneToFocus) {
+        console.log("🎯 Centrage sur la zone:", zoneToFocus.content?.title || zoneToFocus.id);
+        // Petit délai pour laisser le temps au canvas de se charger
+        setTimeout(() => {
+          navigateToZone(zoneToFocus);
+          hasFocusedRef.current = true;
+          onFocusComplete?.();
+        }, 300);
+      }
+    }
+  }, [focusZoneId, zones, navigateToZone, onFocusComplete]);
+
+  // Reset le flag quand focusZoneId change
+  useEffect(() => {
+    if (!focusZoneId) {
+      hasFocusedRef.current = false;
+    }
+  }, [focusZoneId]);
 
   // Fonction pour obtenir le nom d'affichage de la zone
   const getZoneDisplayName = (zone: NoteBlock) => {
@@ -2162,9 +2191,16 @@ interface DailyNotesCanvasProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialDate?: Date; // Date initiale pour ouvrir le planning
+  focusZoneId?: string; // ID de la zone sur laquelle centrer la vue
 }
 
-export default function DailyNotesCanvas({ projectId, open, onOpenChange, initialDate }: DailyNotesCanvasProps) {
+export default function DailyNotesCanvas({
+  projectId,
+  open,
+  onOpenChange,
+  initialDate,
+  focusZoneId,
+}: DailyNotesCanvasProps) {
   // États principaux
   const [selectedDate, setSelectedDate] = useState(initialDate || new Date());
   const [userId, setUserId] = useState<string | null>(null);
@@ -2173,6 +2209,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // 🔥 Zone à focaliser après chargement
+  const [pendingFocusZoneId, setPendingFocusZoneId] = useState<string | null>(null);
 
   // Hook pour rafraîchir les données du contexte (calendrier mensuel)
   const { refreshData } = useProjectData();
@@ -2270,6 +2309,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
       }
     }
   }, [open, initialDate]);
+
+  // 🔥 Mettre à jour pendingFocusZoneId quand focusZoneId change
+  useEffect(() => {
+    if (open && focusZoneId) {
+      console.log("🎯 Zone à focaliser:", focusZoneId);
+      setPendingFocusZoneId(focusZoneId);
+    }
+    if (!open) {
+      setPendingFocusZoneId(null);
+    }
+  }, [open, focusZoneId]);
 
   // 🔥 Rafraîchir le calendrier mensuel quand on ferme le planning
   const wasOpenRef = useRef(open);
@@ -4923,7 +4973,11 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
                     {zones.length > 0 && (
                       <Panel position="top-left" style={{ zIndex: 100 }}>
                         <div className="bg-white/95 rounded-lg shadow-md p-2 border max-w-md">
-                          <ZonesNavigationBar zones={zones} />
+                          <ZonesNavigationBar
+                            zones={zones}
+                            focusZoneId={pendingFocusZoneId}
+                            onFocusComplete={() => setPendingFocusZoneId(null)}
+                          />
                         </div>
                       </Panel>
                     )}
