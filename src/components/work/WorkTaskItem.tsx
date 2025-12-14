@@ -10,7 +10,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Clock, Calendar, BookOpen, AlertCircle, Trash2, Plus, X, Euro, Calculator, Pencil } from "lucide-react";
+import {
+  Clock,
+  Calendar,
+  BookOpen,
+  AlertCircle,
+  Trash2,
+  Plus,
+  X,
+  Euro,
+  Calculator,
+  Pencil,
+  Layers,
+} from "lucide-react";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { CompleteTaskDialog } from "./CompleteTaskDialog";
@@ -18,6 +30,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useHourlyRate } from "@/hooks/useHourlyRate";
 import type { ProjectTodoSubtask } from "@/types/subtasks";
+
+interface Scenario {
+  id: string;
+  nom: string;
+  icone: string;
+  couleur: string;
+  est_principal: boolean;
+}
 
 interface WorkTaskItemProps {
   task: {
@@ -33,14 +53,23 @@ interface WorkTaskItemProps {
     template_id?: string;
     blocked_reason?: string;
     forfait_ttc?: number;
+    work_scenario_id?: string;
   };
+  scenario?: Scenario;
   onToggleComplete: (taskId: string, actualHours: number | null) => void;
   onEditTask: (taskId: string) => void;
   onDelete: (taskId: string) => void;
   onForfaitChange?: (taskId: string, forfait: number | null) => void;
 }
 
-export const WorkTaskItem = ({ task, onToggleComplete, onEditTask, onDelete, onForfaitChange }: WorkTaskItemProps) => {
+export const WorkTaskItem = ({
+  task,
+  scenario,
+  onToggleComplete,
+  onEditTask,
+  onDelete,
+  onForfaitChange,
+}: WorkTaskItemProps) => {
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [subtasks, setSubtasks] = useState<ProjectTodoSubtask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -191,6 +220,21 @@ export const WorkTaskItem = ({ task, onToggleComplete, onEditTask, onDelete, onF
               <Badge variant="outline" className="gap-1">
                 <BookOpen className="h-3 w-3" />
                 Template
+              </Badge>
+            )}
+
+            {/* Badge scénario */}
+            {scenario && (
+              <Badge
+                variant="outline"
+                className="gap-1"
+                style={{
+                  borderColor: scenario.couleur,
+                  backgroundColor: `${scenario.couleur}15`,
+                }}
+              >
+                <Layers className="h-3 w-3" />
+                {scenario.icone} {scenario.nom}
               </Badge>
             )}
 
