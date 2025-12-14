@@ -193,7 +193,7 @@ const BLOCK_COLORS = [
 
 interface NoteBlock {
   id: string;
-  type: "text" | "checklist" | "list" | "table" | "image" | "task" | "order" | "zone";
+  type: "text" | "checklist" | "list" | "table" | "image" | "task" | "order" | "zone" | "supplier";
   x: number;
   y: number;
   width: number;
@@ -211,6 +211,8 @@ interface NoteBlock {
   taskStatus?: "pending" | "in_progress" | "completed"; // Statut local du bloc
   // 🔥 Champs spécifiques au type "order"
   linkedExpenses?: LinkedExpense[]; // Dépenses/commandes liées
+  // 🔥 Champs spécifiques au type "supplier"
+  linkedSuppliers?: string[]; // Liste des fournisseurs sélectionnés
   // 🔥 Champs spécifiques au type "zone"
   zoneColor?: string; // Couleur de fond de la zone
   zoneBorderColor?: string; // Couleur de bordure de la zone
@@ -331,6 +333,7 @@ interface CustomBlockData {
   onDelete: () => void;
   onImageUpload: (file: File) => void;
   onMoveToDate: (targetDate: string) => void;
+  onMoveTaskToDate: (task: LinkedTask, targetDate: string) => void; // 🔥 Planifier une tâche individuelle
   onNavigateToDate: (date: string) => void;
   onSearchTasks: (query: string, linkedProjectId?: string) => Promise<AvailableTask[]>;
   onLinkTask: (task: AvailableTask) => void;
@@ -354,6 +357,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     onDelete,
     onImageUpload,
     onMoveToDate,
+    onMoveTaskToDate,
     onNavigateToDate,
     onSearchTasks,
     onLinkTask,
@@ -375,6 +379,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   const [taskSearchQuery, setTaskSearchQuery] = useState("");
   const [taskSearchResults, setTaskSearchResults] = useState<AvailableTask[]>([]);
   const [isSearchingTasks, setIsSearchingTasks] = useState(false);
+  const [taskDatePickerIndex, setTaskDatePickerIndex] = useState<number | null>(null); // 🔥 Index de la tâche avec date picker ouvert
   // 🔥 États pour la recherche de dépenses
   const [showExpenseSearch, setShowExpenseSearch] = useState(false);
   const [expenseSearchQuery, setExpenseSearchQuery] = useState("");
@@ -706,6 +711,49 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                             )}
                           </div>
                         </div>
+
+                        {/* Bouton planifier pour une autre date */}
+                        <Popover
+                          open={taskDatePickerIndex === index}
+                          onOpenChange={(open) => setTaskDatePickerIndex(open ? index : null)}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={`h-6 w-6 p-0 ${task.scheduled_date ? "text-blue-600" : "text-gray-400"} hover:text-blue-600 cursor-pointer`}
+                              onClick={stopPropagation}
+                              onPointerDown={stopPropagation}
+                              title="Planifier pour une autre date"
+                            >
+                              <CalendarIcon className="h-3 w-3" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-auto p-0"
+                            align="end"
+                            onClick={stopPropagation}
+                            onPointerDown={stopPropagation}
+                          >
+                            <div className="p-2 border-b bg-gray-50">
+                              <p className="text-xs text-gray-600 font-medium">📅 Planifier cette tâche pour :</p>
+                            </div>
+                            <Calendar
+                              mode="single"
+                              selected={task.scheduled_date ? parseISO(task.scheduled_date) : undefined}
+                              onSelect={(date) => {
+                                if (date && onMoveTaskToDate) {
+                                  setTaskDatePickerIndex(null);
+                                  setTimeout(() => {
+                                    const targetDate = format(date, "yyyy-MM-dd");
+                                    onMoveTaskToDate(task, targetDate);
+                                  }, 100);
+                                }
+                              }}
+                              locale={fr}
+                            />
+                          </PopoverContent>
+                        </Popover>
 
                         {/* Bouton supprimer */}
                         <Button
@@ -1316,6 +1364,116 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           </div>
         );
 
+      case "supplier":
+        // Bloc fournisseur - affiche la liste des fournisseurs
+        const selectedSuppliers = block.linkedSuppliers || [];
+        const hasSuppliers = selectedSuppliers.length > 0;
+        const availableSuppliers = suppliers.filter((s) => !selectedSuppliers.includes(s));
+
+        return (
+          <div className="p-3 space-y-2">
+            {/* Liste des fournisseurs sélectionnés */}
+            {hasSuppliers && (
+              <div className="space-y-1" onClick={stopPropagation} onPointerDown={stopPropagation}>
+                {selectedSuppliers.map((supplier, index) => (
+                  <div
+                    key={`${supplier}-${index}`}
+                    className="p-2 rounded-lg border bg-white border-gray-200 relative flex items-center justify-between"
+                  >
+                    {/* 🔥 Handle source pour ce fournisseur */}
+                    <Handle
+                      type="source"
+                      position={Position.Right}
+                      id={`supplier-item-${index}`}
+                      className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white !right-[-8px]"
+                      style={{ top: "50%", transform: "translateY(-50%)" }}
+                    />
+                    {/* 🔥 Handle cible pour ce fournisseur */}
+                    <Handle
+                      type="target"
+                      position={Position.Left}
+                      id={`supplier-target-${index}`}
+                      className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white !left-[-8px]"
+                      style={{ top: "50%", transform: "translateY(-50%)" }}
+                    />
+
+                    <div className="flex items-center gap-2">
+                      <Store className="h-4 w-4 text-purple-500" />
+                      <span className="text-sm font-medium">{supplier}</span>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const newSuppliers = selectedSuppliers.filter((_, i) => i !== index);
+                        onUpdate({ linkedSuppliers: newSuppliers });
+                      }}
+                      onPointerDown={stopPropagation}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Sélecteur pour ajouter des fournisseurs */}
+            {availableSuppliers.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={hasSuppliers ? "ghost" : "outline"}
+                    size={hasSuppliers ? "sm" : "default"}
+                    className={hasSuppliers ? "w-full h-7 text-xs text-gray-500" : "w-full justify-start text-gray-500"}
+                    onClick={stopPropagation}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {hasSuppliers ? "Ajouter un fournisseur" : "Sélectionner des fournisseurs..."}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-64 p-2"
+                  align="start"
+                  onClick={stopPropagation}
+                  onPointerDown={stopPropagation}
+                >
+                  <div className="space-y-1 max-h-[200px] overflow-auto">
+                    <p className="text-xs font-medium text-gray-500 px-2 py-1">Fournisseurs disponibles</p>
+                    {availableSuppliers.map((supplier) => (
+                      <button
+                        key={supplier}
+                        className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          const newSuppliers = [...selectedSuppliers, supplier];
+                          onUpdate({ linkedSuppliers: newSuppliers });
+                        }}
+                      >
+                        <Store className="h-4 w-4 text-purple-500" />
+                        {supplier}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+
+            {/* Message si aucun fournisseur disponible */}
+            {!hasSuppliers && availableSuppliers.length === 0 && (
+              <p className="text-xs text-gray-400 text-center">Aucun fournisseur enregistré</p>
+            )}
+
+            {/* Résumé */}
+            {hasSuppliers && (
+              <div className="text-xs text-gray-500 pt-1 border-t text-center">
+                {selectedSuppliers.length} fournisseur{selectedSuppliers.length > 1 ? "s" : ""}
+              </div>
+            )}
+          </div>
+        );
+
       case "zone":
         // Zone de travail - grande zone colorée avec titre
         // Le corps est pointer-events-none pour laisser passer les clics aux blocs au-dessus
@@ -1561,6 +1719,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         return <Package className="h-3 w-3" />;
       case "zone":
         return <LayoutGrid className="h-3 w-3" />;
+      case "supplier":
+        return <Store className="h-3 w-3" />;
     }
   };
 
@@ -1714,6 +1874,16 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
 
           {/* Les handles pour chaque article sont rendus DANS le contenu, pas ici */}
+
+          {/* Handle source en bas */}
+          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+        </>
+      ) : block.type === "supplier" ? (
+        <>
+          {/* Handle cible en haut */}
+          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+
+          {/* Les handles pour chaque fournisseur sont rendus DANS le contenu, pas ici */}
 
           {/* Handle source en bas */}
           <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
@@ -2808,8 +2978,19 @@ export default function DailyNotesCanvas({
         type,
         x: posX,
         y: posY,
-        width: type === "zone" ? 2500 : type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
-        height: type === "zone" ? 2500 : type === "order" ? 150 : 100,
+        width:
+          type === "zone"
+            ? 2500
+            : type === "table"
+              ? 300
+              : type === "task"
+                ? 280
+                : type === "order"
+                  ? 320
+                  : type === "supplier"
+                    ? 250
+                    : 200,
+        height: type === "zone" ? 2500 : type === "order" ? 150 : type === "supplier" ? 120 : 100,
         content:
           type === "checklist"
             ? [{ id: crypto.randomUUID(), text: "", checked: false }]
@@ -2824,9 +3005,11 @@ export default function DailyNotesCanvas({
                   ? null // Le contenu sera la tâche liée
                   : type === "order"
                     ? null // Le contenu sera les dépenses liées
-                    : type === "zone"
-                      ? { title: "Zone de travail", description: "" }
-                      : "",
+                    : type === "supplier"
+                      ? null // Le contenu sera les fournisseurs liés
+                      : type === "zone"
+                        ? { title: "Zone de travail", description: "" }
+                        : "",
         style: {
           fontFamily: FONTS[0].value,
           fontSize: 14,
@@ -2838,6 +3021,8 @@ export default function DailyNotesCanvas({
         linkedProjectName: type !== "zone" && currentProjectZone ? currentProject?.name : undefined,
         // Initialiser linkedExpenses pour le type order
         linkedExpenses: type === "order" ? [] : undefined,
+        // Initialiser linkedSuppliers pour le type supplier
+        linkedSuppliers: type === "supplier" ? [] : undefined,
         // Initialiser les couleurs pour le type zone
         zoneColor: type === "zone" ? "#f3f4f6" : undefined,
         zoneBorderColor: type === "zone" ? "#d1d5db" : undefined,
@@ -3755,6 +3940,105 @@ export default function DailyNotesCanvas({
     [blocks, userId, projectId, selectedDate, updateBlockWithSync, isMovingBlock, refreshData],
   );
 
+  // 🔥 Planifier une tâche individuelle pour une autre date
+  const moveTaskToDate = useCallback(
+    async (task: LinkedTask, targetDate: string) => {
+      if (!userId) return;
+
+      try {
+        // 1. Charger ou créer la note de la date cible
+        const { data: targetNote, error: fetchError } = await (supabase as any)
+          .from("daily_notes")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("note_date", targetDate)
+          .maybeSingle();
+
+        if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
+
+        // 2. Créer un nouveau bloc task avec juste cette tâche
+        const newBlock: NoteBlock = {
+          id: crypto.randomUUID(),
+          type: "task",
+          x: 100 + Math.random() * 100,
+          y: 100 + Math.random() * 100,
+          width: 280,
+          height: 100,
+          content: "",
+          style: { backgroundColor: "#ffffff" },
+          linkedTasks: [{ ...task, scheduled_date: targetDate }],
+          linkedProjectId: task.project_id,
+          linkedProjectName: task.project_name,
+        };
+
+        // 3. Vérifier si c'est une date passée
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const targetDateObj = parseISO(targetDate);
+        const isPastDate = targetDateObj < today;
+
+        // 4. Mettre à jour scheduled_date de la tâche dans Supabase
+        if (isPastDate) {
+          await (supabase as any)
+            .from("project_todos")
+            .update({
+              scheduled_date: targetDate,
+              completed: true,
+              completed_at: new Date().toISOString(),
+            })
+            .eq("id", task.id);
+
+          newBlock.linkedTasks = [{ ...task, scheduled_date: targetDate, completed: true }];
+          toast.info("Tâche marquée comme terminée (date passée)");
+        } else {
+          await (supabase as any).from("project_todos").update({ scheduled_date: targetDate }).eq("id", task.id);
+        }
+
+        // 5. Récupérer les blocs existants de la date cible
+        let targetBlocks: NoteBlock[] = [];
+        if (targetNote?.blocks_data) {
+          try {
+            targetBlocks = JSON.parse(targetNote.blocks_data);
+          } catch {}
+        }
+
+        targetBlocks.push(newBlock);
+
+        // 6. Sauvegarder dans la date cible
+        if (targetNote) {
+          await (supabase as any)
+            .from("daily_notes")
+            .update({
+              blocks_data: JSON.stringify(targetBlocks),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", targetNote.id);
+        } else {
+          await (supabase as any).from("daily_notes").insert({
+            project_id: projectId,
+            user_id: userId,
+            note_date: targetDate,
+            blocks_data: JSON.stringify(targetBlocks),
+          });
+        }
+
+        // 7. Mettre à jour roadmapDates
+        setRoadmapDates((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(targetDate);
+          return newSet;
+        });
+
+        toast.success(`Tâche planifiée pour le ${format(parseISO(targetDate), "d MMMM", { locale: fr })}`);
+        refreshData();
+      } catch (error) {
+        console.error("Erreur planification tâche:", error);
+        toast.error("Erreur lors de la planification");
+      }
+    },
+    [userId, projectId, refreshData],
+  );
+
   // ============================================
   // SYNC REACTFLOW NODES
   // ============================================
@@ -3787,6 +4071,7 @@ export default function DailyNotesCanvas({
         onDelete: () => deleteBlock(block.id),
         onImageUpload: (file: File) => handleImageUpload(block.id, file),
         onMoveToDate: (targetDate: string) => moveBlockToDate(block.id, targetDate),
+        onMoveTaskToDate: (task: LinkedTask, targetDate: string) => moveTaskToDate(task, targetDate),
         onNavigateToDate: (date: string) => setSelectedDate(parseISO(date)),
         onSearchTasks: searchTasks,
         onLinkTask: (task: AvailableTask) => linkTask(block.id, task),
@@ -3825,6 +4110,7 @@ export default function DailyNotesCanvas({
     deleteBlock,
     handleImageUpload,
     moveBlockToDate,
+    moveTaskToDate,
     setSelectedDate,
     searchTasks,
     linkTask,
@@ -4991,9 +5277,18 @@ export default function DailyNotesCanvas({
               <Button
                 variant="outline"
                 size="icon"
+                onClick={() => addBlock("supplier")}
+                title="Fournisseurs"
+                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+              >
+                <Store className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
                 onClick={() => addBlock("zone")}
                 title="Zone de travail (pour regrouper des blocs)"
-                className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
               >
                 <LayoutGrid className="h-4 w-4" />
               </Button>
