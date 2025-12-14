@@ -316,7 +316,14 @@ export default function SuppliersManager() {
 
       if (error) throw error;
 
-      toast.success(`${data.imported || 0} fournisseurs importés depuis Evoliz`);
+      // Afficher un message détaillé
+      const imported = data?.imported || 0;
+      const updated = data?.updated || 0;
+      if (imported > 0 || updated > 0) {
+        toast.success(`${imported} importés, ${updated} mis à jour depuis Evoliz`);
+      } else {
+        toast.info("Aucun nouveau fournisseur à importer");
+      }
       loadSuppliers();
     } catch (error: any) {
       console.error("Erreur import Evoliz:", error);
@@ -347,7 +354,12 @@ export default function SuppliersManager() {
 
       if (error) throw error;
 
-      toast.success(`${data.exported || 0} fournisseurs exportés vers Evoliz`);
+      const exported = data?.exported || 0;
+      if (exported > 0) {
+        toast.success(`${exported} fournisseurs exportés vers Evoliz`);
+      } else {
+        toast.info("Aucun fournisseur à exporter (tous déjà synchronisés)");
+      }
       loadSuppliers();
     } catch (error: any) {
       console.error("Erreur export Evoliz:", error);
