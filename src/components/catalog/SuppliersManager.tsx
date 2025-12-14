@@ -163,18 +163,23 @@ export default function SuppliersManager() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await (supabase as any)
-        .from("user_integrations")
-        .select("evoliz_company_id, evoliz_token_expires_at")
+      // Vérifier dans la table evoliz_credentials (la vraie table)
+      const { data, error } = await (supabase as any)
+        .from("evoliz_credentials")
+        .select("id, is_active, last_test_success")
         .eq("user_id", user.id)
+        .eq("is_active", true)
         .maybeSingle();
 
-      if (data?.evoliz_company_id) {
-        const expiresAt = data.evoliz_token_expires_at ? new Date(data.evoliz_token_expires_at) : null;
-        setEvolizConnected(expiresAt ? expiresAt > new Date() : false);
+      if (!error && data) {
+        // Connecté si credentials actifs existent
+        setEvolizConnected(true);
+      } else {
+        setEvolizConnected(false);
       }
     } catch (error) {
       console.error("Erreur vérification Evoliz:", error);
+      setEvolizConnected(false);
     }
   }, []);
 
