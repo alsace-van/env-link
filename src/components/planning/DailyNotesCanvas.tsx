@@ -634,13 +634,9 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
         return (
           <div className="p-3 space-y-2">
-            {/* Liste des tâches liées - avec scroll si beaucoup */}
+            {/* Liste des tâches liées */}
             {hasTasks && (
-              <div
-                className="space-y-2 max-h-[300px] overflow-y-auto"
-                onClick={stopPropagation}
-                onPointerDown={stopPropagation}
-              >
+              <div className="space-y-2" onClick={stopPropagation} onPointerDown={stopPropagation}>
                 {tasks.map((task, index) => {
                   const status = task.completed ? "completed" : "pending";
                   return (
@@ -912,11 +908,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           <div className="p-3 space-y-2" style={{ maxWidth: block.width || 320 }}>
             {/* Liste des dépenses liées */}
             {hasExpenses && (
-              <div
-                className="space-y-2 max-h-[350px] overflow-y-auto"
-                onClick={stopPropagation}
-                onPointerDown={stopPropagation}
-              >
+              <div className="space-y-2" onClick={stopPropagation} onPointerDown={stopPropagation}>
                 {expenses.map((expense) => (
                   <div key={expense.id} className={`p-2 rounded-lg border ${getStatusColor(expense.statut_livraison)}`}>
                     <div className="flex items-start gap-2">
@@ -1742,6 +1734,29 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
               style={{
                 top: `${56 + index * 76 + 38}px`, // 56px header+padding + 76px par tâche + centrage
+              }}
+            />
+          ))}
+
+          {/* Handle source en bas */}
+          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+        </>
+      ) : block.type === "order" ? (
+        <>
+          {/* Handle cible en haut */}
+          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
+
+          {/* 🔥 Handles dynamiques pour chaque dépense/article */}
+          {(block.linkedExpenses || []).map((_, index) => (
+            <Handle
+              key={`order-item-${index}`}
+              type="source"
+              position={Position.Right}
+              id={`order-item-${index}`}
+              className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
+              style={{
+                top: `${56 + index * 130 + 65}px`, // 56px header+padding + ~130px par article + centrage
               }}
             />
           ))}
