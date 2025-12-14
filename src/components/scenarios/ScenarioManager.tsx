@@ -1,19 +1,21 @@
 // components/scenarios/ScenarioManager.tsx
 // Gestionnaire principal de la vue en colonnes avec scénarios
 // ✅ AJOUT: Bouton Import devis Evoliz
+// ✅ AJOUT: Bouton Aperçu devis complet
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Plus, Table2, History, Lock, ChevronLeft, ChevronRight, Eye, Download } from "lucide-react";
+import { Plus, Table2, History, Lock, ChevronLeft, ChevronRight, Eye, Download, FileText } from "lucide-react";
 import { useScenarios } from "@/hooks/useScenarios";
 import ScenarioColumn from "./ScenarioColumn";
 import CreateScenarioDialog from "./CreateScenarioDialog";
 import ComparisonTable from "./ComparisonTable";
 import ExpensesHistory from "./ExpensesHistory";
 import LockProjectDialog from "./LockProjectDialog";
+import DevisPreviewDialog from "./DevisPreviewDialog";
 import { ImportEvolizButton } from "@/components/evoliz/ImportEvolizButton";
 import type { ProjectWithStatus } from "@/types/scenarios";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,6 +33,7 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isLockDialogOpen, setIsLockDialogOpen] = useState(false);
+  const [isDevisPreviewOpen, setIsDevisPreviewOpen] = useState(false);
   const [modificationsCount, setModificationsCount] = useState(0);
 
   // Gestion de la visibilité des scénarios
@@ -204,6 +207,14 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
             onImportComplete={handleImportComplete}
           />
 
+          {/* ✅ NOUVEAU: Bouton Aperçu Devis */}
+          {principalScenario && (
+            <Button variant="outline" size="sm" onClick={() => setIsDevisPreviewOpen(true)} className="gap-2">
+              <FileText className="h-4 w-4" />
+              Aperçu devis
+            </Button>
+          )}
+
           <Button size="sm" onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
             <Plus className="h-4 w-4" />
             Nouveau scénario
@@ -302,6 +313,16 @@ const ScenarioManager = ({ projectId, project, onExpenseChange, onProjectChange 
             onExpenseChange?.();
             onProjectChange?.();
           }}
+        />
+      )}
+
+      {/* ✅ NOUVEAU: Dialog Aperçu Devis */}
+      {principalScenario && (
+        <DevisPreviewDialog
+          open={isDevisPreviewOpen}
+          onOpenChange={setIsDevisPreviewOpen}
+          projectId={projectId}
+          scenarioId={principalScenario.id}
         />
       )}
     </div>
