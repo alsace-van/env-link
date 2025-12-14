@@ -433,8 +433,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         const checklistItems: Array<{ id: string; text: string; checked: boolean }> = block.content || [];
         return (
           <div className="p-2 space-y-1">
-            {checklistItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-2">
+            {checklistItems.map((item, index) => (
+              <div key={item.id} className="flex items-center gap-2 relative">
                 <Checkbox
                   checked={item.checked}
                   onCheckedChange={(checked) => {
@@ -449,7 +449,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     const newItems = checklistItems.map((i) => (i.id === item.id ? { ...i, text: e.target.value } : i));
                     onUpdate({ content: newItems });
                   }}
-                  className="h-7 text-sm border-0 shadow-none focus-visible:ring-0 p-0"
+                  className="h-7 text-sm border-0 shadow-none focus-visible:ring-0 p-0 flex-1"
                   style={{
                     fontFamily: block.style?.fontFamily,
                     textDecoration: item.checked ? "line-through" : "none",
@@ -470,6 +470,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 >
                   <X className="h-3 w-3" />
                 </Button>
+                {/* 🔥 Indicateur du point de connexion */}
+                <div
+                  className="absolute -right-1 w-2 h-2 rounded-full bg-green-400 opacity-50 group-hover:opacity-100"
+                  title={`Connecteur ligne ${index + 1}`}
+                />
               </div>
             ))}
             <Button
@@ -492,7 +497,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         return (
           <div className="p-2 space-y-1">
             {listItems.map((item, index) => (
-              <div key={index} className="flex items-center gap-2">
+              <div key={index} className="flex items-center gap-2 relative">
                 <span className="text-gray-400">•</span>
                 <Input
                   value={item}
@@ -501,7 +506,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     newItems[index] = e.target.value;
                     onUpdate({ content: newItems });
                   }}
-                  className="h-7 text-sm border-0 shadow-none focus-visible:ring-0 p-0"
+                  className="h-7 text-sm border-0 shadow-none focus-visible:ring-0 p-0 flex-1"
                   style={{ fontFamily: block.style?.fontFamily }}
                   onClick={stopPropagation}
                   onPointerDown={stopPropagation}
@@ -518,6 +523,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 >
                   <X className="h-3 w-3" />
                 </Button>
+                {/* 🔥 Indicateur du point de connexion */}
+                <div
+                  className="absolute -right-1 w-2 h-2 rounded-full bg-green-400 opacity-50 group-hover:opacity-100"
+                  title={`Connecteur ligne ${index + 1}`}
+                />
               </div>
             ))}
             <Button
@@ -1700,11 +1710,39 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         borderWidth: block.sourceDate || block.rescheduledTo ? 3 : 2,
       }}
     >
-      {/* Handles de connexion - comme MechanicalProcedures */}
-      <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
-      <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
-      <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
-      <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+      {/* Handles de connexion */}
+      {block.type === "list" || block.type === "checklist" ? (
+        <>
+          {/* Handle cible en haut */}
+          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
+
+          {/* 🔥 Handles dynamiques pour chaque ligne */}
+          {(Array.isArray(block.content) ? block.content : []).map((_, index) => (
+            <Handle
+              key={`list-item-${index}`}
+              type="source"
+              position={Position.Right}
+              id={`list-item-${index}`}
+              className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
+              style={{
+                top: `${44 + index * 32 + 16}px`, // 44px header + 32px par ligne + centrage
+              }}
+            />
+          ))}
+
+          {/* Handle source en bas */}
+          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+        </>
+      ) : (
+        <>
+          {/* Handles standard pour les autres types */}
+          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+        </>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded-t-md border-b cursor-move">
