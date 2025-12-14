@@ -2270,9 +2270,9 @@ function ZonesNavigationBar({ zones, focusZoneId, onFocusComplete }: ZonesNaviga
 
                   {/* Icônes de statut */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    {zone.isLocked && <Lock className="h-3.5 w-3.5 text-amber-500" title="Zone verrouillée" />}
+                    {zone.isLocked && <span title="Zone verrouillée"><Lock className="h-3.5 w-3.5 text-amber-500" /></span>}
                     {zone.isContentLocked && (
-                      <Move className="h-3.5 w-3.5 text-purple-500" title="Contenu verrouillé" />
+                      <span title="Contenu verrouillé"><Move className="h-3.5 w-3.5 text-purple-500" /></span>
                     )}
                     <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
                   </div>
