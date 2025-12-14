@@ -69,6 +69,7 @@ import ProjectForm from "@/components/ProjectForm";
 import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleInspectionTab";
 import { WorkTabMain } from "@/components/work/WorkTabMain";
 import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
+import WorkScenarioManager from "@/components/workScenarios/WorkScenarioManager";
 import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
 import DailyNotesCanvas from "@/components/planning/DailyNotesCanvas";
 import ScenarioManager from "@/components/scenarios/ScenarioManager";
@@ -1667,7 +1668,26 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="work" className="mt-6">
-                <WorkTabMain projectId={project.id} />
+                <div className="space-y-4">
+                  {/* Sous-onglets : Scénarios Travaux et Vue classique */}
+                  <Tabs defaultValue="work-scenarios" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="work-scenarios">Scénarios & Devis</TabsTrigger>
+                      <TabsTrigger value="work-classic">Vue classique</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="work-scenarios" className="mt-4">
+                      <WorkScenarioManager
+                        projectId={project.id}
+                        project={project as any}
+                        onTaskChange={() => setExpenseRefresh((prev) => prev + 1)}
+                        onProjectChange={reloadProject}
+                      />
+                    </TabsContent>
+                    <TabsContent value="work-classic" className="mt-4">
+                      <WorkTabMain projectId={project.id} />
+                    </TabsContent>
+                  </Tabs>
+                </div>
               </TabsContent>
 
               <TabsContent value="expenses" className="mt-6">
