@@ -2740,8 +2740,8 @@ export default function DailyNotesCanvas({
         type,
         x: posX,
         y: posY,
-        width: type === "zone" ? 400 : type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
-        height: type === "zone" ? 300 : type === "order" ? 150 : 100,
+        width: type === "zone" ? 2500 : type === "table" ? 300 : type === "task" ? 280 : type === "order" ? 320 : 200,
+        height: type === "zone" ? 2500 : type === "order" ? 150 : 100,
         content:
           type === "checklist"
             ? [{ id: crypto.randomUUID(), text: "", checked: false }]
