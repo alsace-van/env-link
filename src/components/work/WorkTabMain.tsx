@@ -4,7 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Library, BarChart3, Eye, EyeOff } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Library, BarChart3, Eye, EyeOff, Layers } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { WorkCategoryCard } from "./WorkCategoryCard";
 import { AddCategoryDialog } from "./AddCategoryDialog";
 import { AddTaskDialog } from "./AddTaskDialog";
@@ -26,6 +28,21 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   const [showCompletedTasks, setShowCompletedTasks] = useState(true);
   const [selectedCategoryForTask, setSelectedCategoryForTask] = useState<string>("");
   const [editingTask, setEditingTask] = useState<any | null>(null);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>("all");
+
+  // Fetch scenarios for this project
+  const { data: scenarios } = useQuery({
+    queryKey: ["project-scenarios", projectId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("project_scenarios")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("ordre");
+      if (error) throw error;
+      return data as Array<{ id: string; nom: string; icone: string; couleur: string; est_principal: boolean }>;
+    },
+  });
 
   // Fetch categories for this project
   const { data: categories, isLoading: loadingCategories } = useQuery({
@@ -53,9 +70,17 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
         .order("display_order");
 
       if (error) throw error;
-      return data;
+      return data as Array<any & { work_scenario_id?: string }>;
     },
   });
+
+  // Filtre les tâches par scénario sélectionné
+  const filteredTasks =
+    tasks?.filter((t) => {
+      if (selectedScenarioId === "all") return true;
+      if (selectedScenarioId === "none") return !t.work_scenario_id;
+      return t.work_scenario_id === selectedScenarioId;
+    }) || [];
 
   // Create category mutation
   const createCategoryMutation = useMutation({
@@ -92,6 +117,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       estimatedHours?: number;
       saveAsTemplate: boolean;
       templateId?: string;
+      scenarioId?: string;
     }) => {
       const {
         data: { user },
@@ -125,8 +151,9 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
         scheduled_date: data.scheduledDate,
         estimated_hours: data.estimatedHours,
         template_id: data.templateId,
+        work_scenario_id: data.scenarioId || null,
         display_order: (tasks?.length || 0) + 1,
-      });
+      } as any);
 
       if (error) throw error;
     },
@@ -315,6 +342,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
         scheduled_date?: string | null;
         category_id?: string | null;
         forfait_ttc?: number | null;
+        work_scenario_id?: string | null;
       };
     }) => {
       const { error } = await supabase
@@ -326,7 +354,8 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
           scheduled_date: data.scheduled_date,
           category_id: data.category_id,
           forfait_ttc: data.forfait_ttc,
-        })
+          work_scenario_id: data.work_scenario_id,
+        } as any)
         .eq("id", taskId);
 
       if (error) throw error;
@@ -352,7 +381,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   };
 
   // Calculate global progress (only for work tasks with categories)
-  const workTasks = tasks?.filter((t) => t.category_id !== null) || [];
+  const workTasks = filteredTasks?.filter((t) => t.category_id !== null) || [];
   const completedTasks = workTasks.filter((t) => t.completed).length || 0;
   const totalTasks = workTasks.length || 0;
   const globalProgress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
@@ -360,6 +389,9 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
   const totalEstimatedHours = workTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0) || 0;
   const totalActualHours =
     workTasks.filter((t) => t.completed && t.actual_hours).reduce((sum, t) => sum + (t.actual_hours || 0), 0) || 0;
+
+  // Trouver le scénario par défaut (principal)
+  const defaultScenarioId = scenarios?.find((s) => s.est_principal)?.id;
 
   if (loadingCategories || loadingTasks) {
     return (
@@ -377,6 +409,35 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">📋 Fiche de travaux</h2>
         <div className="flex gap-2">
+          {/* Filtre par scénario */}
+          {scenarios && scenarios.length > 0 && (
+            <Select value={selectedScenarioId} onValueChange={setSelectedScenarioId}>
+              <SelectTrigger className="w-[200px]">
+                <Layers className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Tous les scénarios" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  <span className="flex items-center gap-2">📋 Tous les scénarios</span>
+                </SelectItem>
+                <SelectItem value="none">
+                  <span className="flex items-center gap-2">❓ Sans scénario</span>
+                </SelectItem>
+                {scenarios.map((scenario) => (
+                  <SelectItem key={scenario.id} value={scenario.id}>
+                    <span className="flex items-center gap-2">
+                      {scenario.icone} {scenario.nom}
+                      {scenario.est_principal && (
+                        <Badge variant="outline" className="text-xs ml-1">
+                          Principal
+                        </Badge>
+                      )}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button onClick={() => setShowCompletedTasks(!showCompletedTasks)} variant="outline" size="sm">
             {showCompletedTasks ? (
               <>
@@ -435,12 +496,13 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
       <div className="space-y-4">
         {categories && categories.length > 0 ? (
           categories.map((category) => {
-            const categoryTasks = tasks?.filter((t) => t.category_id === category.id) || [];
+            const categoryTasks = filteredTasks?.filter((t) => t.category_id === category.id) || [];
             return (
               <WorkCategoryCard
                 key={category.id}
                 category={category}
                 tasks={categoryTasks}
+                scenarios={scenarios}
                 showCompleted={showCompletedTasks}
                 onToggleComplete={(taskId, actualHours) => toggleCompleteMutation.mutate({ taskId, actualHours })}
                 onEditTask={(taskId) => {
@@ -482,6 +544,10 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
         open={showAddTask}
         onOpenChange={setShowAddTask}
         categories={categories || []}
+        scenarios={scenarios || []}
+        defaultScenarioId={
+          selectedScenarioId !== "all" && selectedScenarioId !== "none" ? selectedScenarioId : defaultScenarioId
+        }
         onSubmit={(data) => {
           createTaskMutation.mutate({
             ...data,
@@ -502,6 +568,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
         onOpenChange={(open) => !open && setEditingTask(null)}
         task={editingTask}
         categories={categories || []}
+        scenarios={scenarios || []}
         onSave={(taskId, data) => updateTaskMutation.mutate({ taskId, data })}
       />
     </div>
