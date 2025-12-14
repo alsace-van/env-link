@@ -1724,6 +1724,29 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           {/* Handle source en bas */}
           <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
         </>
+      ) : block.type === "task" ? (
+        <>
+          {/* Handle cible en haut */}
+          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
+
+          {/* 🔥 Handles dynamiques pour chaque tâche */}
+          {(block.linkedTasks || (block.linkedTask ? [block.linkedTask] : [])).map((_, index) => (
+            <Handle
+              key={`task-item-${index}`}
+              type="source"
+              position={Position.Right}
+              id={`task-item-${index}`}
+              className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
+              style={{
+                top: `${56 + index * 76 + 38}px`, // 56px header+padding + 76px par tâche + centrage
+              }}
+            />
+          ))}
+
+          {/* Handle source en bas */}
+          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+        </>
       ) : (
         <>
           {/* Handles standard pour les autres types */}
