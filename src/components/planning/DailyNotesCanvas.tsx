@@ -2268,6 +2268,19 @@ export default function DailyNotesCanvas({
   // Ref pour détecter les changements de blocs (ReactFlow sync)
   const blocksIdsRef = useRef<string>("");
 
+  // 🔥 Refs pour toujours avoir la dernière valeur (éviter closures obsolètes)
+  const blocksRef = useRef<NoteBlock[]>([]);
+  const edgesRef = useRef<BlockEdge[]>([]);
+
+  // Sync les refs avec les états
+  useEffect(() => {
+    blocksRef.current = blocks;
+  }, [blocks]);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
   // 🔥 Ref pour tracker les positions des zones pendant le drag (éviter le décalage)
   const lastZonePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
@@ -2282,7 +2295,13 @@ export default function DailyNotesCanvas({
 
   // 🔥 Calculer les zones pour la barre de navigation
   const zones = useMemo(() => {
-    return blocks.filter((b) => b.type === "zone");
+    const zoneBlocks = blocks.filter((b) => b.type === "zone");
+    console.log(
+      "📂 Zones recalculées:",
+      zoneBlocks.length,
+      zoneBlocks.map((z) => z.id),
+    );
+    return zoneBlocks;
   }, [blocks]);
 
   // État pour la note rapide (sidebar)
@@ -2542,9 +2561,13 @@ export default function DailyNotesCanvas({
       // Supprimer le bloc localement
       const newBlocks = blocks.filter((b) => b.id !== blockId);
       setBlocks(newBlocks);
+      blocksRef.current = newBlocks; // 🔥 Mettre à jour la ref immédiatement
+
       // Supprimer les edges liées
       const newEdges = edges.filter((e) => e.source_block_id !== blockId && e.target_block_id !== blockId);
       setEdges(newEdges);
+      edgesRef.current = newEdges; // 🔥 Mettre à jour la ref immédiatement
+
       if (selectedBlockId === blockId) setSelectedBlockId(null);
 
       // 🔥 SAUVEGARDER IMMÉDIATEMENT dans la base de données
@@ -4474,15 +4497,21 @@ export default function DailyNotesCanvas({
   const saveNote = useCallback(async () => {
     if (!userId) return;
 
+    // 🔥 Utiliser les refs pour avoir la valeur la plus récente
+    const currentBlocks = blocksRef.current;
+    const currentEdges = edgesRef.current;
+
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const canvasData = paperScopeRef.current?.project.exportJSON() || null;
-    const blocksData = JSON.stringify(blocks);
-    const connectionsData = JSON.stringify(edges);
+    const blocksData = JSON.stringify(currentBlocks);
+    const connectionsData = JSON.stringify(currentEdges);
+
+    console.log("💾 Sauvegarde avec", currentBlocks.length, "blocs");
 
     try {
       // 🔥 NOUVEAU: Mettre à jour scheduled_date des tâches liées aux blocs
       const allLinkedTaskIds: string[] = [];
-      blocks.forEach((block) => {
+      currentBlocks.forEach((block) => {
         const tasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
         tasks.forEach((task) => {
           if (task.id && !allLinkedTaskIds.includes(task.id)) {
@@ -4498,7 +4527,7 @@ export default function DailyNotesCanvas({
 
       // 🔥 Mettre à jour in_order_tracking pour tous les articles des blocs order
       const allLinkedExpenseIds: string[] = [];
-      blocks.forEach((block) => {
+      currentBlocks.forEach((block) => {
         if (block.type === "order" && block.linkedExpenses) {
           block.linkedExpenses.forEach((expense) => {
             if (expense.id && !allLinkedExpenseIds.includes(expense.id)) {
@@ -4555,7 +4584,7 @@ export default function DailyNotesCanvas({
       console.error("Erreur sauvegarde:", error);
       toast.error("Erreur lors de la sauvegarde");
     }
-  }, [userId, selectedDate, projectId, blocks, edges, refreshData]);
+  }, [userId, selectedDate, projectId, refreshData]); // 🔥 Pas de blocks/edges car on utilise les refs
 
   // Auto-save
   useEffect(() => {
@@ -5008,7 +5037,11 @@ export default function DailyNotesCanvas({
 
                     {/* Barre de navigation des zones */}
                     {zones.length > 0 && (
-                      <Panel position="top-left" style={{ zIndex: 100 }}>
+                      <Panel
+                        position="top-left"
+                        style={{ zIndex: 100 }}
+                        key={`zones-panel-${zones.map((z) => z.id).join("-")}`}
+                      >
                         <div className="bg-white/95 rounded-lg shadow-md p-2 border max-w-md">
                           <ZonesNavigationBar
                             zones={zones}
