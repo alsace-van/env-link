@@ -434,7 +434,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         return (
           <div className="p-2 space-y-1">
             {checklistItems.map((item, index) => (
-              <div key={item.id} className="flex items-center gap-2 relative">
+              <div key={item.id} className="flex items-center gap-2">
                 <Checkbox
                   checked={item.checked}
                   onCheckedChange={(checked) => {
@@ -470,11 +470,6 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 >
                   <X className="h-3 w-3" />
                 </Button>
-                {/* 🔥 Indicateur du point de connexion */}
-                <div
-                  className="absolute -right-1 w-2 h-2 rounded-full bg-green-400 opacity-50 group-hover:opacity-100"
-                  title={`Connecteur ligne ${index + 1}`}
-                />
               </div>
             ))}
             <Button
@@ -497,7 +492,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         return (
           <div className="p-2 space-y-1">
             {listItems.map((item, index) => (
-              <div key={index} className="flex items-center gap-2 relative">
+              <div key={index} className="flex items-center gap-2">
                 <span className="text-gray-400">•</span>
                 <Input
                   value={item}
@@ -523,11 +518,6 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 >
                   <X className="h-3 w-3" />
                 </Button>
-                {/* 🔥 Indicateur du point de connexion */}
-                <div
-                  className="absolute -right-1 w-2 h-2 rounded-full bg-green-400 opacity-50 group-hover:opacity-100"
-                  title={`Connecteur ligne ${index + 1}`}
-                />
               </div>
             ))}
             <Button
@@ -1746,15 +1736,15 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded-t-md border-b cursor-move">
-        <div className="flex items-center gap-1">
-          <GripVertical className="h-4 w-4 text-gray-400" />
+        <div className="flex items-center gap-1 flex-1">
+          <GripVertical className="h-4 w-4 text-gray-400 flex-shrink-0" />
           {getBlockIcon()}
-          <span className="text-xs text-gray-500 capitalize">{block.type}</span>
+          <span className="text-xs text-gray-500 capitalize flex-shrink-0">{block.type}</span>
 
           {/* Indicateur simple : copie ou replanifié */}
           {block.sourceDate && (
             <button
-              className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-1 hover:bg-purple-200 flex items-center gap-0.5"
+              className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded ml-1 hover:bg-purple-200 flex items-center gap-0.5 whitespace-nowrap"
               onClick={(e) => {
                 e.stopPropagation();
                 onNavigateToDate(block.sourceDate!);
@@ -1766,7 +1756,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           )}
           {block.rescheduledTo && !block.sourceDate && (
             <button
-              className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded ml-1 hover:bg-orange-200 flex items-center gap-0.5"
+              className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded ml-1 hover:bg-orange-200 flex items-center gap-0.5 whitespace-nowrap"
               onClick={(e) => {
                 e.stopPropagation();
                 onNavigateToDate(block.rescheduledTo!);
@@ -1779,12 +1769,15 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
           {/* Badge projet lié */}
           {block.linkedProjectName && (
-            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-1">
+            <span
+              className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded ml-1 whitespace-nowrap"
+              title={block.linkedProjectName}
+            >
               {block.linkedProjectName}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           {/* Project picker */}
           <Popover open={showProjectPicker} onOpenChange={setShowProjectPicker}>
             <PopoverTrigger asChild>
