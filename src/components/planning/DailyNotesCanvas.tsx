@@ -766,6 +766,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 align="start"
                 onPointerDown={stopPropagation}
                 onClick={stopPropagation}
+                onWheelCapture={(e) => e.stopPropagation()}
               >
                 <Command shouldFilter={false}>
                   <CommandInput
@@ -788,7 +789,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                       }
                     }}
                   />
-                  <CommandList className="max-h-[300px] overflow-y-auto">
+                  <CommandList className="max-h-[300px] overflow-y-auto" onWheelCapture={(e) => e.stopPropagation()}>
                     {isSearchingTasks && (
                       <div className="p-4 text-center text-sm text-gray-500">
                         <Loader2 className="h-4 w-4 animate-spin mx-auto" />
@@ -1217,6 +1218,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 align="start"
                 onPointerDown={stopPropagation}
                 onClick={stopPropagation}
+                onWheelCapture={(e) => e.stopPropagation()}
               >
                 <Command shouldFilter={false}>
                   <CommandInput
@@ -1238,7 +1240,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                       }
                     }}
                   />
-                  <CommandList className="max-h-[300px] overflow-y-auto">
+                  <CommandList className="max-h-[300px] overflow-y-auto" onWheelCapture={(e) => e.stopPropagation()}>
                     {isSearchingExpenses && (
                       <div className="p-4 text-center text-sm text-gray-500">
                         <Loader2 className="h-4 w-4 animate-spin mx-auto" />
@@ -2178,6 +2180,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
   // 🔥 Ref pour tracker les positions des zones pendant le drag (éviter le décalage)
   const lastZonePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
+  // 🔥 Ref pour stocker le viewport actuel (pour centrer les nouveaux blocs)
+  const viewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
+
   // États dessin Paper.js
   const [activeTool, setActiveTool] = useState<DrawTool>("select");
   const [strokeColor, setStrokeColor] = useState("#000000");
@@ -2537,9 +2542,17 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
           ? blocks.find((b) => b.type === "zone" && b.zoneLinkedProjectId === projectId)
           : null;
 
-      // Calculer la position par défaut ou dans la zone
-      let posX = 100 + Math.random() * 200;
-      let posY = 100 + Math.random() * 200;
+      // 🔥 Calculer le centre de la vue visible
+      const viewport = viewportRef.current;
+      // Le conteneur fait environ 800x600 (estimation)
+      const containerWidth = 800;
+      const containerHeight = 600;
+      const centerX = (-viewport.x + containerWidth / 2) / viewport.zoom;
+      const centerY = (-viewport.y + containerHeight / 2) / viewport.zoom;
+
+      // Position par défaut: au centre de la vue avec un petit offset aléatoire
+      let posX = centerX - 100 + Math.random() * 50;
+      let posY = centerY - 50 + Math.random() * 50;
 
       if (currentProjectZone) {
         // Placer le bloc dans la zone avec un offset aléatoire
@@ -4839,6 +4852,9 @@ export default function DailyNotesCanvas({ projectId, open, onOpenChange, initia
                     defaultViewport={{ x: 0, y: 0, zoom: 1 }}
                     minZoom={0.2}
                     maxZoom={2}
+                    onMove={(_, viewport) => {
+                      viewportRef.current = viewport;
+                    }}
                     defaultEdgeOptions={{
                       type: "smoothstep",
                       markerEnd: { type: MarkerType.ArrowClosed },
