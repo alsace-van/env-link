@@ -2941,106 +2941,84 @@ export default function DailyNotesCanvas({
     [selectedBlockId, userId, projectId, selectedDate, refreshData], // 🔥 Plus de blocks/edges car on utilise les refs
   );
 
-  const addBlock = useCallback(
-    (type: NoteBlock["type"]) => {
-      // 🔥 Trouver la zone liée au projet courant (si existante)
-      const currentProjectZone =
-        type !== "zone" && projectId
-          ? blocks.find((b) => b.type === "zone" && b.zoneLinkedProjectId === projectId)
-          : null;
+  const addBlock = useCallback((type: NoteBlock["type"]) => {
+    // 🔥 Toujours calculer la position au centre de la vue visible
+    let posX = 100;
+    let posY = 100;
 
-      // 🔥 Calculer la position au centre de la vue visible
-      let posX = 100;
-      let posY = 100;
+    const container = reactFlowContainerRef.current;
+    const rfInstance = reactFlowInstanceRef.current;
 
-      const container = reactFlowContainerRef.current;
-      const rfInstance = reactFlowInstanceRef.current;
-
-      if (rfInstance && container) {
-        // Utiliser screenToFlowPosition pour convertir le centre de l'écran
-        const centerScreen = {
-          x: container.clientWidth / 2,
-          y: container.clientHeight / 2,
-        };
-        const flowPosition = rfInstance.screenToFlowPosition(centerScreen);
-        posX = flowPosition.x - 100 + Math.random() * 50;
-        posY = flowPosition.y - 50 + Math.random() * 50;
-      }
-
-      if (currentProjectZone) {
-        // Placer le bloc dans la zone avec un offset aléatoire
-        const zoneX = currentProjectZone.x;
-        const zoneY = currentProjectZone.y + 50; // +50 pour le header
-        const zoneWidth = currentProjectZone.width || 400;
-        const zoneHeight = (currentProjectZone.height || 300) - 60;
-
-        posX = zoneX + 20 + Math.random() * Math.max(50, zoneWidth - 250);
-        posY = zoneY + 20 + Math.random() * Math.max(50, zoneHeight - 150);
-      }
-
-      // Trouver le nom du projet courant
-      const currentProject = projects.find((p) => p.id === projectId);
-
-      const newBlock: NoteBlock = {
-        id: crypto.randomUUID(),
-        type,
-        x: posX,
-        y: posY,
-        width:
-          type === "zone"
-            ? 2500
-            : type === "table"
-              ? 300
-              : type === "task"
-                ? 280
-                : type === "order"
-                  ? 320
-                  : type === "supplier"
-                    ? 250
-                    : 200,
-        height: type === "zone" ? 2500 : type === "order" ? 150 : type === "supplier" ? 120 : 100,
-        content:
-          type === "checklist"
-            ? [{ id: crypto.randomUUID(), text: "", checked: false }]
-            : type === "list"
-              ? [""]
-              : type === "table"
-                ? [
-                    ["", ""],
-                    ["", ""],
-                  ]
-                : type === "task"
-                  ? null // Le contenu sera la tâche liée
-                  : type === "order"
-                    ? null // Le contenu sera les dépenses liées
-                    : type === "supplier"
-                      ? null // Le contenu sera les fournisseurs liés
-                      : type === "zone"
-                        ? { title: "Zone de travail", description: "" }
-                        : "",
-        style: {
-          fontFamily: FONTS[0].value,
-          fontSize: 14,
-          color: "#000000",
-          backgroundColor: type === "zone" ? "transparent" : "#ffffff",
-        },
-        // 🔥 Si on est sur un projet et qu'il y a une zone, lier le bloc au projet
-        linkedProjectId: type !== "zone" && currentProjectZone ? projectId : undefined,
-        linkedProjectName: type !== "zone" && currentProjectZone ? currentProject?.name : undefined,
-        // Initialiser linkedExpenses pour le type order
-        linkedExpenses: type === "order" ? [] : undefined,
-        // Initialiser linkedSuppliers pour le type supplier
-        linkedSuppliers: type === "supplier" ? [] : undefined,
-        // Initialiser les couleurs pour le type zone
-        zoneColor: type === "zone" ? "#f3f4f6" : undefined,
-        zoneBorderColor: type === "zone" ? "#d1d5db" : undefined,
+    if (rfInstance && container) {
+      // Utiliser screenToFlowPosition pour convertir le centre de l'écran
+      const centerScreen = {
+        x: container.clientWidth / 2,
+        y: container.clientHeight / 2,
       };
-      setBlocks((prev) => [...prev, newBlock]);
-      setSelectedBlockId(newBlock.id);
-      setHasUnsavedChanges(true);
-    },
-    [blocks, projectId, projects],
-  );
+      const flowPosition = rfInstance.screenToFlowPosition(centerScreen);
+      // Petit offset aléatoire pour éviter l'empilement exact
+      posX = flowPosition.x - 100 + Math.random() * 50;
+      posY = flowPosition.y - 50 + Math.random() * 50;
+    }
+
+    const newBlock: NoteBlock = {
+      id: crypto.randomUUID(),
+      type,
+      x: posX,
+      y: posY,
+      width:
+        type === "zone"
+          ? 2500
+          : type === "table"
+            ? 300
+            : type === "task"
+              ? 280
+              : type === "order"
+                ? 320
+                : type === "supplier"
+                  ? 250
+                  : 200,
+      height: type === "zone" ? 2500 : type === "order" ? 150 : type === "supplier" ? 120 : 100,
+      content:
+        type === "checklist"
+          ? [{ id: crypto.randomUUID(), text: "", checked: false }]
+          : type === "list"
+            ? [""]
+            : type === "table"
+              ? [
+                  ["", ""],
+                  ["", ""],
+                ]
+              : type === "task"
+                ? null // Le contenu sera la tâche liée
+                : type === "order"
+                  ? null // Le contenu sera les dépenses liées
+                  : type === "supplier"
+                    ? null // Le contenu sera les fournisseurs liés
+                    : type === "zone"
+                      ? { title: "Zone de travail", description: "" }
+                      : "",
+      style: {
+        fontFamily: FONTS[0].value,
+        fontSize: 14,
+        color: "#000000",
+        backgroundColor: type === "zone" ? "transparent" : "#ffffff",
+      },
+      // 🔥 Blocs créés sans lien projet - l'utilisateur lie manuellement
+      linkedProjectId: undefined,
+      linkedProjectName: undefined,
+      // Initialiser linkedExpenses pour le type order
+      linkedExpenses: type === "order" ? [] : undefined,
+      // Initialiser linkedSuppliers pour le type supplier
+      linkedSuppliers: type === "supplier" ? [] : undefined,
+      // Initialiser les couleurs pour le type zone
+      zoneColor: type === "zone" ? "#f3f4f6" : undefined,
+      zoneBorderColor: type === "zone" ? "#d1d5db" : undefined,
+    };
+    setBlocks((prev) => [...prev, newBlock]);
+    setSelectedBlockId(newBlock.id);
+    setHasUnsavedChanges(true);
+  }, []);
 
   const handleImageUpload = useCallback(
     async (blockId: string, file: File) => {
