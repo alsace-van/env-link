@@ -1,5 +1,6 @@
 // components/scenarios/DevisPreviewDialog.tsx
 // Aperçu complet du devis (matériel + travaux)
+// ✅ Drag & Drop pour réorganiser les articles
 
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -7,28 +8,29 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableFooter,
-} from "@/components/ui/table";
-import { 
-  FileText, Download, Printer, Package, Wrench, 
-  Euro, Calendar, User, Car, Building2 
-} from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FileText, Printer, Package, Wrench, Euro, User, Car, Building2, GripVertical } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface DevisPreviewDialogProps {
   open: boolean;
@@ -76,18 +78,93 @@ interface WorkTask {
   };
 }
 
-const DevisPreviewDialog = ({ 
-  open, 
-  onOpenChange, 
-  projectId, 
-  scenarioId 
-}: DevisPreviewDialogProps) => {
+// Composant pour une ligne draggable de matériel
+const SortableExpenseRow = ({ item, formatCurrency }: { item: Expense; formatCurrency: (n: number) => string }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? "var(--accent)" : undefined,
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style}>
+      <TableCell className="w-8">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </TableCell>
+      <TableCell>
+        <div>
+          <p className="font-medium">{item.nom_accessoire}</p>
+          {item.reference && <p className="text-xs text-muted-foreground">Réf: {item.reference}</p>}
+        </div>
+      </TableCell>
+      <TableCell className="text-center">{item.quantite || 1}</TableCell>
+      <TableCell className="text-right">{formatCurrency(item.prix_vente_ttc || 0)}</TableCell>
+      <TableCell className="text-right font-medium">
+        {formatCurrency((item.prix_vente_ttc || 0) * (item.quantite || 1))}
+      </TableCell>
+    </TableRow>
+  );
+};
+
+// Composant pour une ligne draggable de travaux
+const SortableTaskRow = ({ task, formatCurrency }: { task: WorkTask; formatCurrency: (n: number) => string }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: isDragging ? "var(--accent)" : undefined,
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style}>
+      <TableCell className="w-8">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </TableCell>
+      <TableCell>
+        <div>
+          <p className="font-medium">{task.title}</p>
+          {task.description && <p className="text-xs text-muted-foreground">{task.description}</p>}
+        </div>
+      </TableCell>
+      <TableCell className="text-right">{task.estimated_hours ? `${task.estimated_hours}h` : "-"}</TableCell>
+      <TableCell className="text-right">{formatCurrency(task.forfait_ht || 0)}</TableCell>
+      <TableCell className="text-right font-medium">{formatCurrency(task.forfait_ttc || 0)}</TableCell>
+    </TableRow>
+  );
+};
+
+const DevisPreviewDialog = ({ open, onOpenChange, projectId, scenarioId }: DevisPreviewDialogProps) => {
   const [projectInfo, setProjectInfo] = useState<ProjectInfo | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [workTasks, setWorkTasks] = useState<WorkTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [companyInfo, setCompanyInfo] = useState<any>(null);
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Sensors pour le drag & drop
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   // Charger les données
   useEffect(() => {
@@ -98,22 +175,13 @@ const DevisPreviewDialog = ({
 
   const loadAllData = async () => {
     setIsLoading(true);
-    await Promise.all([
-      loadProjectInfo(),
-      loadExpenses(),
-      loadWorkTasks(),
-      loadCompanyInfo(),
-    ]);
+    await Promise.all([loadProjectInfo(), loadExpenses(), loadWorkTasks(), loadCompanyInfo()]);
     setIsLoading(false);
   };
 
   const loadProjectInfo = async () => {
-    const { data } = await supabase
-      .from("projects")
-      .select("*")
-      .eq("id", projectId)
-      .single();
-    
+    const { data } = await (supabase as any).from("projects").select("*").eq("id", projectId).single();
+
     if (data) setProjectInfo(data as ProjectInfo);
   };
 
@@ -124,59 +192,67 @@ const DevisPreviewDialog = ({
       .eq("scenario_id", scenarioId)
       .neq("est_archive", true)
       .order("categorie");
-    
+
     if (data) setExpenses(data);
   };
 
   const loadWorkTasks = async () => {
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("project_todos")
-      .select(`
+      .select(
+        `
         *,
         work_categories (
           name,
           icon
         )
-      `)
+      `,
+      )
       .eq("work_scenario_id", scenarioId)
       .not("category_id", "is", null)
       .order("display_order");
-    
+
     if (data) setWorkTasks(data as any);
   };
 
   const loadCompanyInfo = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (user) {
-      const { data } = await (supabase
-        .from("profiles" as any)
-        .select("*")
-        .eq("id", user.id)
-        .single());
-      
-      if (data) setCompanyInfo(data as any);
+      const { data } = await (supabase as any).from("user_settings").select("*").eq("user_id", user.id).single();
+
+      if (data) setCompanyInfo(data);
     }
   };
 
-  // Grouper les dépenses par catégorie
-  const expensesByCategory = expenses.reduce((acc, exp) => {
-    const cat = exp.categorie || "Autre";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(exp);
-    return acc;
-  }, {} as Record<string, Expense[]>);
+  // Gestion du drag & drop pour les dépenses
+  const handleExpenseDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setExpenses((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
-  // Grouper les travaux par catégorie
-  const tasksByCategory = workTasks.reduce((acc, task) => {
-    const cat = task.work_categories?.name || "Autre";
-    if (!acc[cat]) acc[cat] = { icon: task.work_categories?.icon || "🔧", tasks: [] };
-    acc[cat].tasks.push(task);
-    return acc;
-  }, {} as Record<string, { icon: string; tasks: WorkTask[] }>);
+  // Gestion du drag & drop pour les travaux
+  const handleTaskDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setWorkTasks((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
   // Calculs des totaux
   const materialsTotal = {
-    ht: expenses.reduce((sum, e) => sum + (e.prix_vente_ttc || 0) / 1.2 * (e.quantite || 1), 0),
+    ht: expenses.reduce((sum, e) => sum + ((e.prix_vente_ttc || 0) / 1.2) * (e.quantite || 1), 0),
     ttc: expenses.reduce((sum, e) => sum + (e.prix_vente_ttc || 0) * (e.quantite || 1), 0),
   };
 
@@ -188,15 +264,15 @@ const DevisPreviewDialog = ({
   const grandTotal = {
     ht: materialsTotal.ht + workTotal.ht,
     ttc: materialsTotal.ttc + workTotal.ttc,
-    tva: (materialsTotal.ttc + workTotal.ttc) - (materialsTotal.ht + workTotal.ht),
+    tva: materialsTotal.ttc + workTotal.ttc - (materialsTotal.ht + workTotal.ht),
   };
 
   // Format monétaire
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', { 
-      style: 'currency', 
-      currency: 'EUR',
-      minimumFractionDigits: 2 
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
     }).format(amount);
   };
 
@@ -205,7 +281,7 @@ const DevisPreviewDialog = ({
     const printContent = printRef.current;
     if (!printContent) return;
 
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
     printWindow.document.write(`
@@ -228,9 +304,11 @@ const DevisPreviewDialog = ({
             .header-info { display: flex; justify-content: space-between; margin-bottom: 30px; }
             .client-info, .company-info { width: 45%; }
             .vehicle-info { background: #f5f5f5; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+            .grip-cell { display: none; }
             @media print {
               body { padding: 0; }
               button { display: none; }
+              .grip-cell { display: none; }
             }
           </style>
         </head>
@@ -247,9 +325,7 @@ const DevisPreviewDialog = ({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh]">
-          <div className="flex items-center justify-center py-12">
-            Chargement du devis...
-          </div>
+          <div className="flex items-center justify-center py-12">Chargement du devis...</div>
         </DialogContent>
       </Dialog>
     );
@@ -265,6 +341,10 @@ const DevisPreviewDialog = ({
               Aperçu du Devis
             </DialogTitle>
             <div className="flex gap-2">
+              <Badge variant="outline" className="text-xs">
+                <GripVertical className="h-3 w-3 mr-1" />
+                Glisser pour réorganiser
+              </Badge>
               <Button variant="outline" size="sm" onClick={handlePrint}>
                 <Printer className="h-4 w-4 mr-2" />
                 Imprimer
@@ -306,18 +386,14 @@ const DevisPreviewDialog = ({
                   <p className="font-bold">
                     {projectInfo?.prenom_proprietaire} {projectInfo?.nom_proprietaire}
                   </p>
-                  {projectInfo?.adresse_proprietaire && (
-                    <p>{projectInfo.adresse_proprietaire}</p>
-                  )}
+                  {projectInfo?.adresse_proprietaire && <p>{projectInfo.adresse_proprietaire}</p>}
                   {(projectInfo?.code_postal_proprietaire || projectInfo?.ville_proprietaire) && (
-                    <p>{projectInfo.code_postal_proprietaire} {projectInfo.ville_proprietaire}</p>
+                    <p>
+                      {projectInfo.code_postal_proprietaire} {projectInfo.ville_proprietaire}
+                    </p>
                   )}
-                  {projectInfo?.telephone_proprietaire && (
-                    <p>Tél: {projectInfo.telephone_proprietaire}</p>
-                  )}
-                  {projectInfo?.email_proprietaire && (
-                    <p>Email: {projectInfo.email_proprietaire}</p>
-                  )}
+                  {projectInfo?.telephone_proprietaire && <p>Tél: {projectInfo.telephone_proprietaire}</p>}
+                  {projectInfo?.email_proprietaire && <p>Email: {projectInfo.email_proprietaire}</p>}
                 </CardContent>
               </Card>
             </div>
@@ -333,9 +409,7 @@ const DevisPreviewDialog = ({
                         {projectInfo.marque_vehicule} {projectInfo.modele_vehicule}
                       </p>
                       {projectInfo.immatriculation && (
-                        <p className="text-muted-foreground">
-                          Immatriculation: {projectInfo.immatriculation}
-                        </p>
+                        <p className="text-muted-foreground">Immatriculation: {projectInfo.immatriculation}</p>
                       )}
                     </div>
                   </div>
@@ -357,7 +431,7 @@ const DevisPreviewDialog = ({
 
             <Separator />
 
-            {/* Section Matériel */}
+            {/* Section Matériel avec Drag & Drop */}
             {expenses.length > 0 && (
               <div>
                 <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
@@ -365,48 +439,28 @@ const DevisPreviewDialog = ({
                   Matériel & Fournitures
                 </h2>
 
-                {Object.entries(expensesByCategory).map(([category, items]) => (
-                  <div key={category} className="mb-4">
-                    <h3 className="font-semibold text-sm text-muted-foreground mb-2 uppercase">
-                      {category}
-                    </h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[50%]">Désignation</TableHead>
-                          <TableHead className="text-center">Qté</TableHead>
-                          <TableHead className="text-right">P.U. TTC</TableHead>
-                          <TableHead className="text-right">Total TTC</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {items.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{item.nom_accessoire}</p>
-                                {item.reference && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Réf: {item.reference}
-                                  </p>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">{item.quantite || 1}</TableCell>
-                            <TableCell className="text-right">
-                              {formatCurrency(item.prix_vente_ttc || 0)}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency((item.prix_vente_ttc || 0) * (item.quantite || 1))}
-                            </TableCell>
-                          </TableRow>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleExpenseDragEnd}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8 grip-cell"></TableHead>
+                        <TableHead className="w-[50%]">Désignation</TableHead>
+                        <TableHead className="text-center">Qté</TableHead>
+                        <TableHead className="text-right">P.U. TTC</TableHead>
+                        <TableHead className="text-right">Total TTC</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <SortableContext items={expenses.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+                        {expenses.map((item) => (
+                          <SortableExpenseRow key={item.id} item={item} formatCurrency={formatCurrency} />
                         ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ))}
+                      </SortableContext>
+                    </TableBody>
+                  </Table>
+                </DndContext>
 
-                <div className="flex justify-end">
+                <div className="flex justify-end mt-4">
                   <Card className="w-64 bg-blue-50 dark:bg-blue-950/30">
                     <CardContent className="py-3 space-y-1">
                       <div className="flex justify-between text-sm">
@@ -423,7 +477,7 @@ const DevisPreviewDialog = ({
               </div>
             )}
 
-            {/* Section Travaux */}
+            {/* Section Travaux avec Drag & Drop */}
             {workTasks.length > 0 && (
               <div>
                 <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
@@ -431,50 +485,28 @@ const DevisPreviewDialog = ({
                   Main d'œuvre & Prestations
                 </h2>
 
-                {Object.entries(tasksByCategory).map(([category, { icon, tasks }]) => (
-                  <div key={category} className="mb-4">
-                    <h3 className="font-semibold text-sm text-muted-foreground mb-2 uppercase">
-                      {icon} {category}
-                    </h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[60%]">Prestation</TableHead>
-                          <TableHead className="text-right">Durée est.</TableHead>
-                          <TableHead className="text-right">Montant HT</TableHead>
-                          <TableHead className="text-right">Montant TTC</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {tasks.map((task) => (
-                          <TableRow key={task.id}>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{task.title}</p>
-                                {task.description && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {task.description}
-                                  </p>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {task.estimated_hours ? `${task.estimated_hours}h` : "-"}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {formatCurrency(task.forfait_ht || 0)}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(task.forfait_ttc || 0)}
-                            </TableCell>
-                          </TableRow>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8 grip-cell"></TableHead>
+                        <TableHead className="w-[50%]">Prestation</TableHead>
+                        <TableHead className="text-right">Durée est.</TableHead>
+                        <TableHead className="text-right">Montant HT</TableHead>
+                        <TableHead className="text-right">Montant TTC</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <SortableContext items={workTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                        {workTasks.map((task) => (
+                          <SortableTaskRow key={task.id} task={task} formatCurrency={formatCurrency} />
                         ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ))}
+                      </SortableContext>
+                    </TableBody>
+                  </Table>
+                </DndContext>
 
-                <div className="flex justify-end">
+                <div className="flex justify-end mt-4">
                   <Card className="w-64 bg-indigo-50 dark:bg-indigo-950/30">
                     <CardContent className="py-3 space-y-1">
                       <div className="flex justify-between text-sm">
@@ -508,9 +540,7 @@ const DevisPreviewDialog = ({
                   <Separator />
                   <div className="flex justify-between text-lg font-bold">
                     <span>TOTAL TTC:</span>
-                    <span className="text-emerald-700 dark:text-emerald-400">
-                      {formatCurrency(grandTotal.ttc)}
-                    </span>
+                    <span className="text-emerald-700 dark:text-emerald-400">{formatCurrency(grandTotal.ttc)}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -519,12 +549,16 @@ const DevisPreviewDialog = ({
             {/* Conditions */}
             <Card className="bg-muted/30">
               <CardContent className="py-4 text-xs text-muted-foreground space-y-2">
-                <p><strong>Conditions de règlement:</strong> 30% à la commande, solde à la livraison.</p>
-                <p><strong>Délai de réalisation:</strong> À définir selon planning.</p>
-                <p><strong>Validité du devis:</strong> 30 jours à compter de la date d'émission.</p>
-                <p className="pt-2">
-                  Bon pour accord, date et signature du client:
+                <p>
+                  <strong>Conditions de règlement:</strong> 30% à la commande, solde à la livraison.
                 </p>
+                <p>
+                  <strong>Délai de réalisation:</strong> À définir selon planning.
+                </p>
+                <p>
+                  <strong>Validité du devis:</strong> 30 jours à compter de la date d'émission.
+                </p>
+                <p className="pt-2">Bon pour accord, date et signature du client:</p>
                 <div className="h-16 border border-dashed border-muted-foreground/30 rounded mt-2"></div>
               </CardContent>
             </Card>
