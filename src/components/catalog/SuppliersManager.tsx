@@ -24,6 +24,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   Plus,
@@ -113,6 +114,11 @@ export default function SuppliersManager() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
+
+  // Sélection multiple
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Dialog states
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -295,6 +301,56 @@ export default function SuppliersManager() {
     }
   };
 
+  // ========== Sélection multiple ==========
+
+  // Toggle sélection d'un fournisseur
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Sélectionner/désélectionner tous les fournisseurs filtrés
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredSuppliers.length) {
+      // Tout désélectionner
+      setSelectedIds(new Set());
+    } else {
+      // Tout sélectionner
+      setSelectedIds(new Set(filteredSuppliers.map((s) => s.id)));
+    }
+  };
+
+  // Suppression en masse
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+
+    setIsDeleting(true);
+    try {
+      const idsToDelete = Array.from(selectedIds);
+
+      const { error } = await (supabase as any).from("suppliers").delete().in("id", idsToDelete);
+
+      if (error) throw error;
+
+      toast.success(`${idsToDelete.length} fournisseur(s) supprimé(s)`);
+      setSelectedIds(new Set());
+      setIsBulkDeleteDialogOpen(false);
+      loadSuppliers();
+    } catch (error: any) {
+      console.error("Erreur suppression en masse:", error);
+      toast.error(error.message || "Erreur lors de la suppression");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Import depuis Evoliz
   const importFromEvoliz = async () => {
     if (!evolizConnected) {
@@ -389,6 +445,14 @@ export default function SuppliersManager() {
               Afficher inactifs
             </Label>
           </div>
+
+          {/* Bouton suppression en masse */}
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" size="sm" onClick={() => setIsBulkDeleteDialogOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Supprimer ({selectedIds.size})
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -474,6 +538,13 @@ export default function SuppliersManager() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={filteredSuppliers.length > 0 && selectedIds.size === filteredSuppliers.length}
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Tout sélectionner"
+                    />
+                  </TableHead>
                   <TableHead>Nom</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Ville</TableHead>
@@ -485,7 +556,17 @@ export default function SuppliersManager() {
               </TableHeader>
               <TableBody>
                 {filteredSuppliers.map((supplier) => (
-                  <TableRow key={supplier.id} className={!supplier.enabled ? "opacity-50" : ""}>
+                  <TableRow
+                    key={supplier.id}
+                    className={`${!supplier.enabled ? "opacity-50" : ""} ${selectedIds.has(supplier.id) ? "bg-blue-50" : ""}`}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(supplier.id)}
+                        onCheckedChange={() => toggleSelection(supplier.id)}
+                        aria-label={`Sélectionner ${supplier.name}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium">{supplier.name}</div>
                       {supplier.legal_form && (
@@ -824,6 +905,32 @@ export default function SuppliersManager() {
             <AlertDialogCancel>Annuler</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
               Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmation suppression en masse */}
+      <AlertDialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer {selectedIds.size} fournisseur(s) ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer les {selectedIds.size} fournisseurs sélectionnés ? Cette action est
+              irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-red-600 hover:bg-red-700" disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                <>Supprimer {selectedIds.size} fournisseur(s)</>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
