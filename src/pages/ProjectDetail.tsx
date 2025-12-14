@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -41,6 +42,7 @@ import {
   Camera,
   Ruler,
   ShoppingCart,
+  LayoutGrid,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -859,6 +861,12 @@ const ProjectDetail = () => {
   const [layout3DKey, setLayout3DKey] = useState(0);
   const [layoutCanvasKey, setLayoutCanvasKey] = useState(0);
 
+  // 🔥 États pour les zones de travail
+  const [workZones, setWorkZones] = useState<
+    Array<{ id: string; title: string; color: string; linkedProjectName?: string }>
+  >([]);
+  const [isZonesPopoverOpen, setIsZonesPopoverOpen] = useState(false);
+
   // Position draggable du bouton sidebar Notes
   const [sidebarBtnPosition, setSidebarBtnPosition] = useState(() => {
     const saved = localStorage.getItem("projectSidebarBtnPosition");
@@ -964,6 +972,48 @@ const ProjectDetail = () => {
     fetchProject();
     fetchUser();
   }, [id]);
+
+  // 🔥 Charger les zones de travail
+  useEffect(() => {
+    const fetchWorkZones = async () => {
+      if (!user?.id) return;
+
+      // Récupérer les daily_notes qui contiennent des zones
+      const { data, error } = await supabase.from("daily_notes").select("blocks_data").eq("user_id", user.id);
+
+      if (error) {
+        console.error("Erreur chargement zones:", error);
+        return;
+      }
+
+      // Extraire les zones de tous les blocks_data
+      const zones: Array<{ id: string; title: string; color: string; linkedProjectName?: string }> = [];
+
+      data?.forEach((note) => {
+        if (note.blocks_data) {
+          try {
+            const blocks = JSON.parse(note.blocks_data);
+            blocks
+              .filter((b: any) => b.type === "zone")
+              .forEach((zone: any) => {
+                zones.push({
+                  id: zone.id,
+                  title: zone.content?.title || "Zone sans nom",
+                  color: zone.zoneColor || "#f3f4f6",
+                  linkedProjectName: zone.linkedProjectName,
+                });
+              });
+          } catch (e) {
+            // Ignorer les erreurs de parsing
+          }
+        }
+      });
+
+      setWorkZones(zones);
+    };
+
+    fetchWorkZones();
+  }, [user?.id]);
 
   // Fonction pour recharger le projet (utilisée après déverrouillage)
   const reloadProject = async () => {
@@ -1356,6 +1406,69 @@ const ProjectDetail = () => {
                 </>
               )}
             </div>
+
+            {/* 🔥 Bouton Zones de travail */}
+            <Popover open={isZonesPopoverOpen} onOpenChange={setIsZonesPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2" title="Zones de travail">
+                  <LayoutGrid className="h-4 w-4" />
+                  <span className="hidden sm:inline">Zones</span>
+                  {workZones.length > 0 && (
+                    <span className="bg-blue-100 text-blue-700 text-xs px-1.5 rounded-full">{workZones.length}</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-0" align="end">
+                <div className="p-3 border-b bg-gray-50">
+                  <h4 className="font-medium text-sm">Zones de travail</h4>
+                  <p className="text-xs text-muted-foreground">Cliquez pour ouvrir le canvas</p>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto">
+                  {workZones.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      <LayoutGrid className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p>Aucune zone de travail</p>
+                      <p className="text-xs mt-1">Créez des zones dans le canvas quotidien</p>
+                    </div>
+                  ) : (
+                    <div className="p-2 space-y-1">
+                      {workZones.map((zone) => (
+                        <button
+                          key={zone.id}
+                          className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                          onClick={() => {
+                            setIsZonesPopoverOpen(false);
+                            setIsMonthViewOpen(true);
+                          }}
+                        >
+                          <div className="w-4 h-4 rounded border" style={{ backgroundColor: zone.color }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{zone.title}</div>
+                            {zone.linkedProjectName && (
+                              <div className="text-xs text-green-600 truncate">{zone.linkedProjectName}</div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="p-2 border-t bg-gray-50">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      setIsZonesPopoverOpen(false);
+                      setIsMonthViewOpen(true);
+                    }}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Ouvrir le canvas
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
 
             <div className="flex items-center gap-2">
               <AIUsageWidget />
