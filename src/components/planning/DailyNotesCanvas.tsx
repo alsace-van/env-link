@@ -1318,9 +1318,15 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
             >
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 {/* Indicateurs d'état */}
-                {block.isLocked && <Lock className="h-3 w-3 text-amber-600 flex-shrink-0" title="Zone verrouillée" />}
+                {block.isLocked && (
+                  <span title="Zone verrouillée">
+                    <Lock className="h-3 w-3 text-amber-600 flex-shrink-0" />
+                  </span>
+                )}
                 {block.isContentLocked && (
-                  <Move className="h-3 w-3 text-purple-600 flex-shrink-0" title="Contenu figé" />
+                  <span title="Contenu figé">
+                    <Move className="h-3 w-3 text-purple-600 flex-shrink-0" />
+                  </span>
                 )}
 
                 {isEditing ? (
@@ -2533,8 +2539,31 @@ export default function DailyNotesCanvas({
 
   const deleteBlock = useCallback(
     async (blockId: string) => {
-      // Trouver le bloc avant de le supprimer pour vérifier si c'est une copie
-      const blockToDelete = blocks.find((b) => b.id === blockId);
+      // 🔥 Variables pour stocker les valeurs après le setState
+      let blockToDelete: NoteBlock | undefined;
+      let newBlocks: NoteBlock[] = [];
+      let newEdges: BlockEdge[] = [];
+
+      // 🔥 Utiliser le setter fonctionnel pour avoir la valeur la plus récente
+      setBlocks((prevBlocks) => {
+        blockToDelete = prevBlocks.find((b) => b.id === blockId);
+        if (!blockToDelete) {
+          return prevBlocks; // Pas de changement
+        }
+        newBlocks = prevBlocks.filter((b) => b.id !== blockId);
+        console.log("🗑️ Suppression du bloc:", blockId, "Type:", blockToDelete.type);
+        console.log("📦 Blocs après suppression:", newBlocks.length);
+        return newBlocks;
+      });
+
+      setEdges((prevEdges) => {
+        newEdges = prevEdges.filter((e) => e.source_block_id !== blockId && e.target_block_id !== blockId);
+        return newEdges;
+      });
+
+      // Attendre un tick pour que les states soient mis à jour
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       if (!blockToDelete) return;
 
       // 🔥 Récupérer toutes les tâches liées
@@ -2558,16 +2587,6 @@ export default function DailyNotesCanvas({
         }
       }
 
-      // Supprimer le bloc localement
-      const newBlocks = blocks.filter((b) => b.id !== blockId);
-      setBlocks(newBlocks);
-      blocksRef.current = newBlocks; // 🔥 Mettre à jour la ref immédiatement
-
-      // Supprimer les edges liées
-      const newEdges = edges.filter((e) => e.source_block_id !== blockId && e.target_block_id !== blockId);
-      setEdges(newEdges);
-      edgesRef.current = newEdges; // 🔥 Mettre à jour la ref immédiatement
-
       if (selectedBlockId === blockId) setSelectedBlockId(null);
 
       // 🔥 SAUVEGARDER IMMÉDIATEMENT dans la base de données
@@ -2581,7 +2600,7 @@ export default function DailyNotesCanvas({
           .maybeSingle();
 
         if (currentNote) {
-          await (supabase as any)
+          const result = await (supabase as any)
             .from("daily_notes")
             .update({
               blocks_data: JSON.stringify(newBlocks),
@@ -2589,7 +2608,7 @@ export default function DailyNotesCanvas({
               updated_at: new Date().toISOString(),
             })
             .eq("id", currentNote.id);
-          console.log("💾 Bloc supprimé et sauvegardé");
+          console.log("💾 Bloc supprimé et sauvegardé, résultat:", result);
         }
       } catch (error) {
         console.error("Erreur sauvegarde après suppression:", error);
@@ -2671,7 +2690,7 @@ export default function DailyNotesCanvas({
       // 🔥 Rafraîchir le contexte pour mettre à jour le calendrier et la fiche travaux
       refreshData();
     },
-    [blocks, edges, selectedBlockId, userId, projectId, selectedDate, refreshData],
+    [selectedBlockId, userId, projectId, selectedDate, refreshData], // 🔥 Plus de blocks/edges car on utilise les refs
   );
 
   const addBlock = useCallback(
@@ -4454,6 +4473,7 @@ export default function DailyNotesCanvas({
         }
 
         setBlocks(loadedBlocks);
+        blocksRef.current = loadedBlocks; // 🔥 Sync immédiat de la ref
         blocksIdsRef.current = "";
       } catch (error) {
         console.error("Erreur chargement:", error);
@@ -4497,21 +4517,24 @@ export default function DailyNotesCanvas({
   const saveNote = useCallback(async () => {
     if (!userId) return;
 
-    // 🔥 Utiliser les refs pour avoir la valeur la plus récente
-    const currentBlocks = blocksRef.current;
-    const currentEdges = edgesRef.current;
-
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const canvasData = paperScopeRef.current?.project.exportJSON() || null;
-    const blocksData = JSON.stringify(currentBlocks);
-    const connectionsData = JSON.stringify(currentEdges);
 
-    console.log("💾 Sauvegarde avec", currentBlocks.length, "blocs");
+    // 🔥 Utiliser directement blocks et edges (pas les refs)
+    const blocksData = JSON.stringify(blocks);
+    const connectionsData = JSON.stringify(edges);
+
+    const zoneCount = blocks.filter((b) => b.type === "zone").length;
+    console.log("💾 Sauvegarde avec", blocks.length, "blocs dont", zoneCount, "zones");
+    console.log(
+      "💾 IDs des blocs:",
+      blocks.map((b) => `${b.type}:${b.id.slice(0, 8)}`),
+    );
 
     try {
       // 🔥 NOUVEAU: Mettre à jour scheduled_date des tâches liées aux blocs
       const allLinkedTaskIds: string[] = [];
-      currentBlocks.forEach((block) => {
+      blocks.forEach((block) => {
         const tasks = block.linkedTasks || (block.linkedTask ? [block.linkedTask] : []);
         tasks.forEach((task) => {
           if (task.id && !allLinkedTaskIds.includes(task.id)) {
@@ -4527,7 +4550,7 @@ export default function DailyNotesCanvas({
 
       // 🔥 Mettre à jour in_order_tracking pour tous les articles des blocs order
       const allLinkedExpenseIds: string[] = [];
-      currentBlocks.forEach((block) => {
+      blocks.forEach((block) => {
         if (block.type === "order" && block.linkedExpenses) {
           block.linkedExpenses.forEach((expense) => {
             if (expense.id && !allLinkedExpenseIds.includes(expense.id)) {
@@ -4584,7 +4607,7 @@ export default function DailyNotesCanvas({
       console.error("Erreur sauvegarde:", error);
       toast.error("Erreur lors de la sauvegarde");
     }
-  }, [userId, selectedDate, projectId, refreshData]); // 🔥 Pas de blocks/edges car on utilise les refs
+  }, [userId, selectedDate, projectId, blocks, edges, refreshData]); // 🔥 blocks et edges dans les dépendances
 
   // Auto-save
   useEffect(() => {
