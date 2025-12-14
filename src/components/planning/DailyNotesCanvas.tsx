@@ -4442,32 +4442,22 @@ export default function DailyNotesCanvas({
     }
   }, []);
 
-  // 🔥 Charger la liste des fournisseurs uniques (via les projets de l'utilisateur)
+  // 🔥 Charger la liste des fournisseurs depuis la table suppliers
   const loadSuppliers = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
 
-    // D'abord récupérer les projets de l'utilisateur
-    const { data: userProjects } = await (supabase as any)
-      .from("projects")
-      .select("id")
-      .eq("user_id", userData.user.id);
-
-    if (!userProjects || userProjects.length === 0) return;
-
-    const projectIds = userProjects.map((p: any) => p.id);
-
+    // Charger les fournisseurs actifs de l'utilisateur
     const { data, error } = await (supabase as any)
-      .from("project_expenses")
-      .select("fournisseur")
-      .in("project_id", projectIds)
-      .not("fournisseur", "is", null)
-      .not("fournisseur", "eq", "");
+      .from("suppliers")
+      .select("name")
+      .eq("user_id", userData.user.id)
+      .eq("enabled", true)
+      .order("name");
 
     if (!error && data) {
-      // Extraire les fournisseurs uniques
-      const uniqueSuppliers = [...new Set(data.map((d: any) => d.fournisseur).filter(Boolean))];
-      setSuppliers(uniqueSuppliers as string[]);
+      const supplierNames = data.map((s: any) => s.name).filter(Boolean);
+      setSuppliers(supplierNames as string[]);
     }
   }, []);
 
