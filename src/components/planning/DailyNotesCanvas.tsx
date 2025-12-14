@@ -1979,6 +1979,14 @@ function ZonesNavigationBar({ zones }: ZonesNavigationBarProps) {
     setCenter(centerX, centerY, { zoom: getZoom(), duration: 500 });
   };
 
+  // Fonction pour obtenir le nom d'affichage de la zone
+  const getZoneDisplayName = (zone: NoteBlock) => {
+    // Priorité : nom du projet lié > titre de la zone > "Zone"
+    if (zone.zoneLinkedProjectName) return zone.zoneLinkedProjectName;
+    if (zone.content?.title && zone.content.title !== "Zone de travail") return zone.content.title;
+    return "Zone";
+  };
+
   if (zones.length === 0) return null;
 
   return (
@@ -1993,13 +2001,13 @@ function ZonesNavigationBar({ zones }: ZonesNavigationBarProps) {
             backgroundColor: zone.zoneColor || "#f3f4f6",
             borderColor: zone.zoneBorderColor || "#d1d5db",
           }}
-          title={`Aller à: ${zone.content?.title || "Zone de travail"}`}
+          title={`Aller à: ${zone.zoneLinkedProjectName || zone.content?.title || "Zone de travail"}`}
         >
           <span
             className="w-2.5 h-2.5 rounded-full border border-white shadow-sm"
             style={{ backgroundColor: zone.zoneBorderColor || "#9ca3af" }}
           />
-          <span className="truncate max-w-[100px]">{zone.content?.title || "Zone"}</span>
+          <span className="truncate max-w-[100px]">{getZoneDisplayName(zone)}</span>
           {zone.isLocked && <Lock className="h-2.5 w-2.5 text-amber-600" />}
           {zone.isContentLocked && <Move className="h-2.5 w-2.5 text-purple-600" />}
         </button>
