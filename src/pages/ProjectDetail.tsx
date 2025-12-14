@@ -43,6 +43,7 @@ import {
   Ruler,
   ShoppingCart,
   LayoutGrid,
+  Store,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -50,6 +51,7 @@ import UserMenu from "@/components/UserMenu";
 import ExpensesList from "@/components/ExpensesList";
 import ExpensesSummary from "@/components/ExpensesSummary";
 import AccessoriesCatalogView from "@/components/AccessoriesCatalogView";
+import SuppliersManager from "@/components/catalog/SuppliersManager";
 import { BilanComptable } from "@/components/BilanComptable";
 import { NoticeUploadDialog } from "@/components/NoticeUploadDialog";
 import { NoticesList } from "@/components/NoticesList";
@@ -1746,7 +1748,26 @@ const ProjectDetail = () => {
               </TabsContent>
 
               <TabsContent value="catalog" className="mt-6">
-                <AccessoriesCatalogView />
+                <Tabs defaultValue="accessories" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="accessories" className="gap-2">
+                      <Package className="h-4 w-4" />
+                      Accessoires
+                    </TabsTrigger>
+                    <TabsTrigger value="suppliers" className="gap-2">
+                      <Store className="h-4 w-4" />
+                      Fournisseurs
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="accessories" className="mt-4">
+                    <AccessoriesCatalogView />
+                  </TabsContent>
+
+                  <TabsContent value="suppliers" className="mt-4">
+                    <SuppliersManager />
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
 
               <TabsContent value="notices" className="mt-6">
