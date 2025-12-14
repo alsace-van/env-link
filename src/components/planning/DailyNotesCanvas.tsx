@@ -36,13 +36,6 @@ import { Label } from "@/components/ui/label";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -77,7 +70,6 @@ import {
   Loader2,
   GripVertical,
   X,
-  MoreHorizontal,
   Move,
   Link2,
   Send,
@@ -93,8 +85,6 @@ import {
   Check,
   CircleDot,
   ExternalLink,
-  FileText,
-  ListTodo,
   StickyNote,
   Package,
   Truck,
@@ -1986,7 +1976,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                 </div>
                 {block.linkedProjectId && (
                   <>
-                    <DropdownMenuSeparator />
+                    <hr className="my-1 border-gray-200" />
                     <button
                       className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-red-50 text-red-600 flex items-center gap-2"
                       onClick={() => {
@@ -2086,86 +2076,19 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
             </PopoverContent>
           </Popover>
 
-          {/* Menu options */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={stopPropagation}>
-                <MoreHorizontal className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {/* Envoi vers sidebar - Tâche */}
-              {block.type === "task" && (block.linkedTasks?.length || block.linkedTask) && (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSendToSidebarTask();
-                  }}
-                  className="text-blue-600"
-                >
-                  <ListTodo className="h-4 w-4 mr-2" />
-                  Envoyer vers Tâches (sidebar)
-                </DropdownMenuItem>
-              )}
-              {/* Envoi vers sidebar - Note */}
-              {block.type === "text" && block.content && (
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSendToSidebarNote();
-                  }}
-                  className="text-green-600"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Envoyer vers Notes (sidebar)
-                </DropdownMenuItem>
-              )}
-              {(block.type === "task" || block.type === "text") && <DropdownMenuSeparator />}
-              <DropdownMenuItem
-                onClick={() => {
-                  const dateStr = prompt(
-                    "Planifier pour quelle date ? (JJ/MM/AAAA):",
-                    format(addDays(new Date(), 1), "dd/MM/yyyy"),
-                  );
-                  if (dateStr) {
-                    const [day, month, year] = dateStr.split("/");
-                    if (day && month && year) {
-                      const targetDate = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-                      onMoveToDate(targetDate);
-                    }
-                  }
-                }}
-              >
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                Planifier pour une date
-              </DropdownMenuItem>
-              {block.targetDate && (
-                <DropdownMenuItem onClick={() => onUpdate({ targetDate: undefined })}>
-                  <X className="h-4 w-4 mr-2" />
-                  Retirer la date cible
-                </DropdownMenuItem>
-              )}
-              {block.rescheduledTo && (
-                <DropdownMenuItem onClick={() => onUpdate({ rescheduledTo: undefined })}>
-                  <X className="h-4 w-4 mr-2" />
-                  Annuler le report ({format(parseISO(block.rescheduledTo), "d MMM", { locale: fr })})
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              {block.linkedProjectId && (
-                <DropdownMenuItem
-                  onClick={() => onUpdate({ linkedProjectId: undefined, linkedProjectName: undefined })}
-                >
-                  <Unlink className="h-4 w-4 mr-2" />
-                  Délier du projet
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={onDelete} className="text-red-600">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Supprimer
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* 🔥 Bouton supprimer (croix) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 text-gray-400 hover:text-red-500 hover:bg-red-50"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            title="Supprimer"
+          >
+            <X className="h-3 w-3" />
+          </Button>
         </div>
       </div>
 
