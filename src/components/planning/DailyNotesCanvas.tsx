@@ -96,6 +96,7 @@ import {
   Unlock,
   Maximize2,
   Layers,
+  Scissors,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -141,7 +142,8 @@ interface LinkedExpense {
   nom: string;
   marque?: string;
   prix: number;
-  quantite: number;
+  quantite: number; // Quantité totale disponible
+  quantiteBloc?: number; // Quantité utilisée dans ce bloc (par défaut = quantite)
   categorie?: string;
   fournisseur?: string;
   statut_livraison: "commande" | "en_livraison" | "livre" | "a_commander";
@@ -913,7 +915,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         const hasExpenses = expenses.length > 0;
 
         // Calculs totaux
-        const totalAmount = expenses.reduce((sum, e) => sum + e.prix * e.quantite, 0);
+        const totalAmount = expenses.reduce((sum, e) => sum + e.prix * (e.quantiteBloc ?? e.quantite), 0);
         const deliveredCount = expenses.filter((e) => e.statut_livraison === "livre").length;
         const orderedCount = expenses.filter(
           (e) => e.statut_livraison === "commande" || e.statut_livraison === "en_livraison",
@@ -1041,10 +1043,32 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                         <div className="font-medium text-sm leading-tight break-words">{expense.nom}</div>
                         <div className="text-xs space-y-1 mt-1">
                           {expense.marque && <span className="text-gray-600">{expense.marque}</span>}
-                          <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-                            <span className="font-medium">
-                              {expense.prix.toFixed(2)}€ x{expense.quantite}
-                            </span>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span className="font-medium">{expense.prix.toFixed(2)}€</span>
+                            {/* Sélecteur de quantité éditable */}
+                            <div className="flex items-center gap-0.5 bg-gray-100 rounded px-1">
+                              <span className="text-gray-500">×</span>
+                              <input
+                                type="number"
+                                min="1"
+                                max={expense.quantite}
+                                value={expense.quantiteBloc ?? expense.quantite}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  const newQty = Math.max(1, Math.min(expense.quantite, parseInt(e.target.value) || 1));
+                                  const newExpenses = expenses.map((exp) =>
+                                    exp.id === expense.id ? { ...exp, quantiteBloc: newQty } : exp,
+                                  );
+                                  onUpdate({ linkedExpenses: newExpenses });
+                                }}
+                                onClick={stopPropagation}
+                                onPointerDown={stopPropagation}
+                                className="w-8 h-5 text-center text-sm font-medium bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-blue-400 rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                              {expense.quantite > 1 && (
+                                <span className="text-gray-400 text-[10px]">/{expense.quantite}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -1229,7 +1253,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-5 w-5 text-gray-400 hover:text-red-500"
+                        className="h-5 w-5 text-gray-400 hover:text-red-500 flex-shrink-0"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeExpenseFromBlock(expense.id);
@@ -1264,8 +1288,17 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   try {
                     // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
                     const results = await onSearchExpenses("", block.linkedProjectId);
-                    const existingIds = expenses.map((e) => e.id);
-                    setExpenseSearchResults(results.filter((r) => !existingIds.includes(r.id)));
+                    // 🔥 Calculer la quantité restante pour chaque article
+                    const usedQuantities = new Map(expenses.map((e) => [e.id, e.quantiteBloc ?? e.quantite]));
+                    // Filtrer les articles complètement utilisés, garder ceux avec quantité restante
+                    const availableResults = results
+                      .map((r) => {
+                        const used = usedQuantities.get(r.id) || 0;
+                        const remaining = r.quantite - used;
+                        return { ...r, quantiteRestante: remaining };
+                      })
+                      .filter((r) => r.quantiteRestante > 0);
+                    setExpenseSearchResults(availableResults);
                   } catch (error) {
                     console.error("Erreur chargement dépenses:", error);
                   }
@@ -1302,8 +1335,17 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                         try {
                           // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
                           const results = await onSearchExpenses(value, block.linkedProjectId);
-                          const existingIds = expenses.map((e) => e.id);
-                          setExpenseSearchResults(results.filter((r) => !existingIds.includes(r.id)));
+                          // 🔥 Calculer la quantité restante pour chaque article
+                          const usedQuantities = new Map(expenses.map((e) => [e.id, e.quantiteBloc ?? e.quantite]));
+                          // Filtrer les articles complètement utilisés, garder ceux avec quantité restante
+                          const availableResults = results
+                            .map((r) => {
+                              const used = usedQuantities.get(r.id) || 0;
+                              const remaining = r.quantite - used;
+                              return { ...r, quantiteRestante: remaining };
+                            })
+                            .filter((r) => r.quantiteRestante > 0);
+                          setExpenseSearchResults(availableResults);
                         } catch (error) {
                           console.error("Erreur recherche:", error);
                         }
@@ -1325,15 +1367,40 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     )}
                     {expenseSearchResults.length > 0 && (
                       <CommandGroup heading={`Articles disponibles (${expenseSearchResults.length})`}>
-                        {expenseSearchResults.map((expense) => (
+                        {expenseSearchResults.map((expense: any) => (
                           <CommandItem
                             key={expense.id}
                             value={expense.nom}
                             onSelect={() => {
-                              if (onLinkExpense) {
-                                onLinkExpense(expense);
-                                setExpenseSearchQuery("");
+                              // 🔥 Vérifier si l'article est déjà dans le bloc
+                              const existingExpense = expenses.find((e) => e.id === expense.id);
+
+                              if (existingExpense) {
+                                // L'article existe déjà → augmenter quantiteBloc de 1
+                                const currentQty = existingExpense.quantiteBloc ?? existingExpense.quantite;
+                                const newExpenses = expenses.map((exp) =>
+                                  exp.id === expense.id ? { ...exp, quantiteBloc: currentQty + 1 } : exp,
+                                );
+                                onUpdate({ linkedExpenses: newExpenses });
+                              } else {
+                                // Nouvel article → l'ajouter avec quantiteBloc = 1
+                                if (onLinkExpense) {
+                                  // 🔥 Ajouter avec quantiteBloc = 1 (on ne prend qu'un seul)
+                                  onLinkExpense({ ...expense, quantiteBloc: 1 });
+                                }
+                              }
+
+                              setExpenseSearchQuery("");
+                              // 🔥 Recalculer la quantité restante
+                              const newUsed = (expenses.find((e) => e.id === expense.id)?.quantiteBloc ?? 0) + 1;
+                              if (newUsed >= expense.quantite) {
                                 setExpenseSearchResults((prev) => prev.filter((e) => e.id !== expense.id));
+                              } else {
+                                setExpenseSearchResults((prev) =>
+                                  prev.map((e) =>
+                                    e.id === expense.id ? { ...e, quantiteRestante: expense.quantite - newUsed } : e,
+                                  ),
+                                );
                               }
                             }}
                             className="cursor-pointer"
@@ -1345,7 +1412,17 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                                 <div className="text-xs text-gray-500 flex flex-wrap gap-x-2">
                                   {expense.marque && <span>{expense.marque}</span>}
                                   <span className="text-emerald-600">{expense.prix.toFixed(2)}€</span>
-                                  <span>x{expense.quantite}</span>
+                                  {/* 🔥 Afficher quantité restante / totale */}
+                                  <span
+                                    className={
+                                      expense.quantiteRestante < expense.quantite ? "text-orange-500 font-medium" : ""
+                                    }
+                                  >
+                                    {expense.quantiteRestante !== undefined &&
+                                    expense.quantiteRestante < expense.quantite
+                                      ? `${expense.quantiteRestante}/${expense.quantite} dispo`
+                                      : `x${expense.quantite}`}
+                                  </span>
                                 </div>
                               </div>
                               <Plus className="h-4 w-4 text-gray-400" />
