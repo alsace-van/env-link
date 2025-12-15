@@ -642,6 +642,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Ajouter un article du scénario au schéma (1 à la fois)
   const addFromScenario = (expense: any, quantity: number = 1) => {
+    console.log("[Schema] addFromScenario called:", { expense: expense.nom_accessoire, quantity });
     const decodedName = decodeHtmlEntities(expense.nom_accessoire);
     const usedQty = getUsedQuantity(expense.id);
     const availableQty = (expense.quantite || 1) - usedQty;
@@ -1028,7 +1029,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               {usedQty}/{totalQty}
                             </span>
                             <button
-                              onClick={() => addFromScenario(item, 1)}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                addFromScenario(item, 1);
+                              }}
                               className="w-6 h-6 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium"
                               title="Ajouter 1"
                             >
@@ -1036,7 +1042,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             </button>
                             {availableQty > 1 && (
                               <button
-                                onClick={() => addFromScenario(item, availableQty)}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  addFromScenario(item, availableQty);
+                                }}
                                 className="px-1.5 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs"
                                 title={`Ajouter tout (${availableQty})`}
                               >
