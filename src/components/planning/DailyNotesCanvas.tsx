@@ -385,6 +385,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     expenseId: string;
     type: "orderDate" | "deliveryDate" | "supplier";
   } | null>(null);
+  // 🔥 État pour le filtre de fournisseurs
+  const [supplierFilter, setSupplierFilter] = useState("");
 
   const stopPropagation = (e: React.MouseEvent | React.PointerEvent) => {
     e.stopPropagation();
@@ -1515,9 +1517,13 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               </div>
             )}
 
-            {/* Sélecteur pour ajouter des fournisseurs */}
+            {/* Sélecteur pour ajouter des fournisseurs avec recherche */}
             {availableSuppliers.length > 0 && (
-              <Popover>
+              <Popover
+                onOpenChange={(open) => {
+                  if (!open) setSupplierFilter("");
+                }}
+              >
                 <PopoverTrigger asChild>
                   <Button
                     variant={hasSuppliers ? "ghost" : "outline"}
@@ -1530,26 +1536,46 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-64 p-2"
+                  className="w-72 p-0"
                   align="start"
                   onClick={stopPropagation}
                   onPointerDown={stopPropagation}
                 >
-                  <div className="space-y-1 max-h-[200px] overflow-auto">
-                    <p className="text-xs font-medium text-gray-500 px-2 py-1">Fournisseurs disponibles</p>
-                    {availableSuppliers.map((supplier) => (
-                      <button
-                        key={supplier}
-                        className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          const newSuppliers = [...selectedSuppliers, supplier];
-                          onUpdate({ linkedSuppliers: newSuppliers });
-                        }}
-                      >
-                        <Store className="h-4 w-4 text-purple-500" />
-                        {supplier}
-                      </button>
-                    ))}
+                  <div className="p-2 border-b">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                      <Input
+                        placeholder="Rechercher un fournisseur..."
+                        value={supplierFilter}
+                        onChange={(e) => setSupplierFilter(e.target.value)}
+                        className="h-8 pl-8 text-sm"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-[250px] overflow-auto p-1">
+                    {availableSuppliers
+                      .filter((s) => s.toLowerCase().includes(supplierFilter.toLowerCase()))
+                      .map((supplier) => (
+                        <button
+                          key={supplier}
+                          className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2"
+                          onClick={() => {
+                            const newSuppliers = [...selectedSuppliers, supplier];
+                            onUpdate({ linkedSuppliers: newSuppliers });
+                            setSupplierFilter("");
+                          }}
+                        >
+                          <Store className="h-4 w-4 text-purple-500" />
+                          {supplier}
+                        </button>
+                      ))}
+                    {availableSuppliers.filter((s) => s.toLowerCase().includes(supplierFilter.toLowerCase())).length ===
+                      0 && <p className="text-xs text-gray-400 text-center py-2">Aucun fournisseur trouvé</p>}
+                  </div>
+                  <div className="p-2 border-t text-xs text-gray-400 text-center">
+                    {availableSuppliers.length} fournisseur{availableSuppliers.length > 1 ? "s" : ""} disponible
+                    {availableSuppliers.length > 1 ? "s" : ""}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -3319,17 +3345,8 @@ export default function DailyNotesCanvas({
           .trim();
       };
 
-      // Récupérer les IDs des dépenses déjà liées aux blocs
-      const linkedExpenseIds: string[] = [];
-      blocks.forEach((block) => {
-        if (block.linkedExpenses) {
-          block.linkedExpenses.forEach((expense) => {
-            if (expense.id && !linkedExpenseIds.includes(expense.id)) {
-              linkedExpenseIds.push(expense.id);
-            }
-          });
-        }
-      });
+      // 🔥 NE PLUS FILTRER ICI - le filtrage par quantité se fait dans le composant
+      // Les articles peuvent être réutilisés dans plusieurs blocs tant qu'il reste de la quantité
 
       try {
         // 🔥 D'abord récupérer le scénario principal (est_principal) du projet ciblé
@@ -3399,7 +3416,7 @@ export default function DailyNotesCanvas({
           queryBuilder = queryBuilder.ilike("nom_accessoire", `%${query}%`);
         }
 
-        const { data: expenses, error } = await queryBuilder.order("created_at", { ascending: false }).limit(30);
+        const { data: expenses, error } = await queryBuilder.order("created_at", { ascending: false }).limit(50);
 
         if (error) {
           console.error("Erreur requête dépenses:", error);
@@ -3408,10 +3425,8 @@ export default function DailyNotesCanvas({
 
         console.log("📦 Dépenses trouvées:", expenses?.length || 0);
 
-        // Filtrer les dépenses déjà liées
-        const filteredExpenses = (expenses || []).filter((e: any) => !linkedExpenseIds.includes(e.id));
-
-        return filteredExpenses.map((expense: any) => ({
+        // 🔥 Retourner TOUS les articles - le filtrage par quantité restante se fait dans le composant
+        return (expenses || []).map((expense: any) => ({
           id: expense.id,
           nom: cleanHtmlEntities(expense.nom_accessoire),
           marque: cleanHtmlEntities(expense.marque),
