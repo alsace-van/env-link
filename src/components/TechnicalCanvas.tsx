@@ -401,6 +401,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogLoading, setCatalogLoading] = useState(false);
 
+  // États pour le sélecteur scénario
+  const [scenarioOpen, setScenarioOpen] = useState(false);
+  const [scenarioItems, setScenarioItems] = useState<any[]>([]);
+  const [scenarioSearch, setScenarioSearch] = useState("");
+  const [scenarioLoading, setScenarioLoading] = useState(false);
+
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
 
@@ -501,6 +507,56 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       item.nom?.toLowerCase().includes(catalogSearch.toLowerCase()) ||
       item.marque?.toLowerCase().includes(catalogSearch.toLowerCase()) ||
       item.type_electrique?.toLowerCase().includes(catalogSearch.toLowerCase()),
+  );
+
+  // Charger les articles du scénario principal
+  const loadScenarioItems = async () => {
+    if (!principalScenarioId) return;
+    setScenarioLoading(true);
+    const { data } = await (supabase as any)
+      .from("project_expenses")
+      .select(
+        "id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, tension_volts, intensite_amperes, type_electrique, quantite",
+      )
+      .eq("scenario_id", principalScenarioId)
+      .order("nom_accessoire");
+    if (data) {
+      // Filtrer les items déjà présents dans le schéma
+      const existingIds = items.map((i) => i.id);
+      const availableItems = data.filter((d: any) => !existingIds.includes(d.id));
+      setScenarioItems(availableItems);
+    }
+    setScenarioLoading(false);
+  };
+
+  // Ajouter un article du scénario au schéma
+  const addFromScenario = (expense: any) => {
+    const decodedName = decodeHtmlEntities(expense.nom_accessoire);
+    // Si pas de type_electrique, on met "consommateur" par défaut
+    const newItem: ElectricalItem = {
+      id: expense.id,
+      nom_accessoire: decodedName,
+      type_electrique: expense.type_electrique || "consommateur",
+      quantite: expense.quantite || 1,
+      puissance_watts: expense.puissance_watts,
+      capacite_ah: expense.capacite_ah,
+      tension_volts: expense.tension_volts,
+      intensite_amperes: expense.intensite_amperes,
+      marque: expense.marque,
+      prix_unitaire: expense.prix_unitaire,
+    };
+    setItems((prev) => [...prev, newItem]);
+    // Retirer l'item de la liste du scénario
+    setScenarioItems((prev) => prev.filter((i) => i.id !== expense.id));
+    toast.success(`${decodedName} ajouté au schéma`);
+  };
+
+  // Filtrer le scénario
+  const filteredScenario = scenarioItems.filter(
+    (item) =>
+      item.nom_accessoire?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
+      item.marque?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
+      item.type_electrique?.toLowerCase().includes(scenarioSearch.toLowerCase()),
   );
 
   // Synchroniser les nodes avec les items
@@ -668,6 +724,76 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* 🔥 Bouton ajouter depuis le scénario */}
+          <Popover
+            open={scenarioOpen}
+            onOpenChange={(open) => {
+              setScenarioOpen(open);
+              if (open) loadScenarioItems();
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1">
+                <Plus className="h-4 w-4" />
+                Scénario
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0" align="end">
+              <div className="p-3 border-b bg-blue-50">
+                <div className="text-xs text-blue-600 font-medium mb-2">Articles du scénario principal</div>
+                <Input
+                  placeholder="Rechercher..."
+                  value={scenarioSearch}
+                  onChange={(e) => setScenarioSearch(e.target.value)}
+                  className="h-8"
+                />
+              </div>
+              <ScrollArea className="h-64">
+                {scenarioLoading ? (
+                  <div className="flex items-center justify-center h-32">
+                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                  </div>
+                ) : !principalScenarioId ? (
+                  <div className="text-center text-sm text-gray-500 py-8">Aucun scénario principal défini</div>
+                ) : filteredScenario.length === 0 ? (
+                  <div className="text-center text-sm text-gray-500 py-8">
+                    {scenarioItems.length === 0 ? "Tous les articles sont déjà dans le schéma" : "Aucun article trouvé"}
+                  </div>
+                ) : (
+                  <div className="p-2 space-y-1">
+                    {filteredScenario.map((item) => {
+                      const typeConfig = item.type_electrique
+                        ? ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur
+                        : { icon: Lightbulb, color: "text-gray-400" };
+                      const IconComponent = typeConfig.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => addFromScenario(item)}
+                          className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
+                        >
+                          <IconComponent className={`h-4 w-4 shrink-0 ${typeConfig.color}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">
+                              {decodeHtmlEntities(item.nom_accessoire)}
+                            </div>
+                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                              {item.marque && <span>{item.marque}</span>}
+                              {item.puissance_watts && <span>{item.puissance_watts}W</span>}
+                              {item.capacite_ah && <span>{item.capacite_ah}Ah</span>}
+                              {!item.type_electrique && <span className="text-orange-500">(sans type)</span>}
+                            </div>
+                          </div>
+                          <Plus className="h-4 w-4 text-gray-400" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
           {/* 🔥 Bouton ajouter depuis le catalogue */}
           <Popover
             open={catalogOpen}
@@ -752,18 +878,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <Cable className="h-16 w-16 mb-4 text-gray-300" />
             <p className="text-lg font-medium">Aucun équipement électrique</p>
-            <p className="text-sm mt-1 mb-4">Ajoutez des articles depuis le catalogue</p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCatalogOpen(true);
-                loadCatalogItems();
-              }}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Ajouter depuis le catalogue
-            </Button>
+            <p className="text-sm mt-1 mb-4">Ajoutez des articles depuis le scénario ou le catalogue</p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="default"
+                onClick={() => {
+                  setScenarioOpen(true);
+                  loadScenarioItems();
+                }}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Depuis le scénario
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCatalogOpen(true);
+                  loadCatalogItems();
+                }}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Depuis le catalogue
+              </Button>
+            </div>
           </div>
         ) : (
           <ReactFlow
