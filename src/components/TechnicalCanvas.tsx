@@ -579,41 +579,58 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setNodes(newNodes as any);
   }, [items]);
 
+  // Fonction pour extraire le côté du handle (right, left, top, bottom)
+  const getSideFromHandle = (handle: string | null | undefined): string => {
+    if (!handle) return "default";
+    if (handle.startsWith("right")) return "right";
+    if (handle.startsWith("left")) return "left";
+    if (handle.startsWith("top")) return "top";
+    if (handle.startsWith("bottom")) return "bottom";
+    return handle;
+  };
+
   // Synchroniser les edges avec offset pour éviter la superposition
   useEffect(() => {
-    // Grouper les edges par source pour calculer les offsets
-    const edgesBySource: Record<string, SchemaEdge[]> = {};
+    // Grouper les edges par CÔTÉ source (pas par handle exact)
+    const edgesBySourceSide: Record<string, SchemaEdge[]> = {};
     edges.forEach((edge) => {
-      const key = `${edge.source_node_id}-${edge.source_handle || "default"}`;
-      if (!edgesBySource[key]) edgesBySource[key] = [];
-      edgesBySource[key].push(edge);
+      const side = getSideFromHandle(edge.source_handle);
+      const key = `${edge.source_node_id}-${side}`;
+      if (!edgesBySourceSide[key]) edgesBySourceSide[key] = [];
+      edgesBySourceSide[key].push(edge);
     });
 
-    // Grouper aussi par target
-    const edgesByTarget: Record<string, SchemaEdge[]> = {};
+    // Grouper aussi par CÔTÉ target
+    const edgesByTargetSide: Record<string, SchemaEdge[]> = {};
     edges.forEach((edge) => {
-      const key = `${edge.target_node_id}-${edge.target_handle || "default"}`;
-      if (!edgesByTarget[key]) edgesByTarget[key] = [];
-      edgesByTarget[key].push(edge);
+      const side = getSideFromHandle(edge.target_handle);
+      const key = `${edge.target_node_id}-${side}`;
+      if (!edgesByTargetSide[key]) edgesByTargetSide[key] = [];
+      edgesByTargetSide[key].push(edge);
     });
 
     setFlowEdges(
-      edges.map((edge) => {
+      edges.map((edge, index) => {
         const isSelected = edge.id === selectedEdgeId;
         const edgeColor = edge.color || "#64748b";
         const edgeWidth = edge.strokeWidth || 2;
 
-        // Calculer l'offset basé sur la position dans le groupe
-        const sourceKey = `${edge.source_node_id}-${edge.source_handle || "default"}`;
-        const targetKey = `${edge.target_node_id}-${edge.target_handle || "default"}`;
-        const sourceGroup = edgesBySource[sourceKey] || [];
-        const targetGroup = edgesByTarget[targetKey] || [];
+        // Calculer l'offset basé sur la position dans le groupe du côté
+        const sourceSide = getSideFromHandle(edge.source_handle);
+        const targetSide = getSideFromHandle(edge.target_handle);
+        const sourceKey = `${edge.source_node_id}-${sourceSide}`;
+        const targetKey = `${edge.target_node_id}-${targetSide}`;
+
+        const sourceGroup = edgesBySourceSide[sourceKey] || [];
+        const targetGroup = edgesByTargetSide[targetKey] || [];
 
         const sourceIndex = sourceGroup.findIndex((e) => e.id === edge.id);
         const targetIndex = targetGroup.findIndex((e) => e.id === edge.id);
 
-        // Offset de 15px par edge supplémentaire
-        const offset = Math.max(sourceIndex, targetIndex) * 15;
+        // Offset de 20px par edge supplémentaire, centré autour de 0
+        const groupSize = Math.max(sourceGroup.length, targetGroup.length);
+        const edgeIndex = Math.max(sourceIndex, targetIndex);
+        const offset = (edgeIndex - (groupSize - 1) / 2) * 25;
 
         return {
           id: edge.id,
@@ -622,7 +639,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           sourceHandle: edge.source_handle || undefined,
           targetHandle: edge.target_handle || undefined,
           type: "smoothstep",
-          pathOptions: { offset: offset, borderRadius: 8 },
+          pathOptions: { offset: offset, borderRadius: 10 },
           label: edge.section || undefined,
           labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: "white", fillOpacity: 0.9 },
