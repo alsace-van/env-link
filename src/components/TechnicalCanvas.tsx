@@ -97,6 +97,16 @@ interface ElectricalItem {
   prix_unitaire?: number | null;
 }
 
+// Configuration des handles par bloc
+interface BlockHandles {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+const DEFAULT_HANDLES: BlockHandles = { top: 2, bottom: 2, left: 2, right: 2 };
+
 interface SchemaEdge {
   id: string;
   source_node_id: string;
@@ -252,45 +262,108 @@ const CABLE_COLORS = [
 
 const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
   const item = data.item as ElectricalItem;
+  const handles = (data.handles as BlockHandles) || DEFAULT_HANDLES;
+  const onUpdateHandles = data.onUpdateHandles as ((nodeId: string, handles: BlockHandles) => void) | undefined;
+
   if (!item) return null;
 
   const typeConfig = ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur;
   const IconComponent = typeConfig.icon;
 
+  // Générer les handles pour un côté
+  const generateHandles = (
+    side: "top" | "bottom" | "left" | "right",
+    count: number,
+    type: "source" | "target",
+    position: Position,
+  ) => {
+    const isHorizontal = side === "top" || side === "bottom";
+    const color = type === "source" ? "!bg-green-500" : "!bg-blue-500";
+
+    return Array.from({ length: count }, (_, i) => {
+      // Répartir les handles uniformément (éviter les bords)
+      const percent = count === 1 ? 50 : 15 + i * (70 / Math.max(count - 1, 1));
+      const style = isHorizontal ? { left: `${percent}%` } : { top: `${percent}%` };
+
+      return (
+        <Handle
+          key={`${side}-${i + 1}`}
+          type={type}
+          position={position}
+          id={`${side}-${i + 1}`}
+          className={`${color} !w-2 !h-2 !border-2 !border-white`}
+          style={style}
+        />
+      );
+    });
+  };
+
+  // Bouton pour ajouter/supprimer des handles
+  const HandleControl = ({ side, position }: { side: "top" | "bottom" | "left" | "right"; position: string }) => {
+    if (!selected || !onUpdateHandles) return null;
+
+    const isHorizontal = side === "top" || side === "bottom";
+    const currentCount = handles[side];
+
+    const positionClasses: Record<string, string> = {
+      top: "top-0 left-1/2 -translate-x-1/2 -translate-y-full",
+      bottom: "bottom-0 left-1/2 -translate-x-1/2 translate-y-full",
+      left: "left-0 top-1/2 -translate-y-1/2 -translate-x-full",
+      right: "right-0 top-1/2 -translate-y-1/2 translate-x-full",
+    };
+
+    return (
+      <div
+        className={`absolute ${positionClasses[side]} flex ${isHorizontal ? "flex-row" : "flex-col"} gap-0.5 bg-white rounded shadow-md border p-0.5 z-10`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          className="w-5 h-5 flex items-center justify-center text-xs font-bold text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (currentCount > 1) {
+              onUpdateHandles(item.id, { ...handles, [side]: currentCount - 1 });
+            }
+          }}
+          disabled={currentCount <= 1}
+          title="Retirer un connecteur"
+        >
+          −
+        </button>
+        <span className="w-5 h-5 flex items-center justify-center text-xs font-medium text-gray-500">
+          {currentCount}
+        </span>
+        <button
+          className="w-5 h-5 flex items-center justify-center text-xs font-bold text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (currentCount < 8) {
+              onUpdateHandles(item.id, { ...handles, [side]: currentCount + 1 });
+            }
+          }}
+          disabled={currentCount >= 8}
+          title="Ajouter un connecteur"
+        >
+          +
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div
-      className={`rounded-lg border-2 shadow-lg group ${selected ? "ring-2 ring-blue-500 shadow-xl" : ""} ${typeConfig.bgColor} ${typeConfig.borderColor}`}
+      className={`rounded-lg border-2 shadow-lg group relative ${selected ? "ring-2 ring-blue-500 shadow-xl" : ""} ${typeConfig.bgColor} ${typeConfig.borderColor}`}
       style={{ minWidth: 200, maxWidth: 280 }}
     >
-      {/* Handles d'entrée (bleus) - 2 par côté */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top-1"
-        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ left: "30%" }}
-      />
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="top-2"
-        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ left: "70%" }}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="left-1"
-        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ top: "30%" }}
-      />
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="left-2"
-        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ top: "70%" }}
-      />
+      {/* Handles d'entrée (bleus) - top et left */}
+      {generateHandles("top", handles.top, "target", Position.Top)}
+      {generateHandles("left", handles.left, "target", Position.Left)}
+
+      {/* Contrôles pour ajuster les handles (visibles quand sélectionné) */}
+      <HandleControl side="top" position="top" />
+      <HandleControl side="bottom" position="bottom" />
+      <HandleControl side="left" position="left" />
+      <HandleControl side="right" position="right" />
 
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${typeConfig.borderColor} bg-white/60 rounded-t-lg`}>
         <IconComponent className={`h-5 w-5 ${typeConfig.color}`} />
@@ -342,35 +415,9 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
         </Badge>
       </div>
 
-      {/* Handles de sortie (verts) - 2 par côté */}
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom-1"
-        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ left: "30%" }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom-2"
-        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ left: "70%" }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="right-1"
-        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ top: "30%" }}
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        id="right-2"
-        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
-        style={{ top: "70%" }}
-      />
+      {/* Handles de sortie (verts) - bottom et right */}
+      {generateHandles("bottom", handles.bottom, "source", Position.Bottom)}
+      {generateHandles("right", handles.right, "source", Position.Right)}
     </div>
   );
 };
@@ -395,6 +442,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [edges, setEdges] = useState<SchemaEdge[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
+  // État pour les handles personnalisés par bloc
+  const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
+
   // États pour le sélecteur catalogue
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogItems, setCatalogItems] = useState<any[]>([]);
@@ -409,6 +459,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
+
+  // Fonction pour mettre à jour les handles d'un bloc
+  const updateNodeHandles = useCallback((nodeId: string, handles: BlockHandles) => {
+    setNodeHandles((prev) => ({ ...prev, [nodeId]: handles }));
+  }, []);
 
   // Charger le scénario principal
   useEffect(() => {
@@ -465,6 +520,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (stored) {
       const parsed = JSON.parse(stored);
       setEdges(parsed.edges || []);
+      setNodeHandles(parsed.nodeHandles || {});
     }
   };
 
@@ -566,6 +622,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     const newNodes = items.map((item, index) => {
       const savedNode = savedNodes.find((n: any) => n.expense_id === item.id);
+      const handles = nodeHandles[item.id] || DEFAULT_HANDLES;
       return {
         id: item.id,
         type: "electricalBlock",
@@ -573,11 +630,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           x: savedNode?.position_x ?? 100 + (index % 4) * 300,
           y: savedNode?.position_y ?? 100 + Math.floor(index / 4) * 250,
         },
-        data: { item },
+        data: {
+          item,
+          handles,
+          onUpdateHandles: updateNodeHandles,
+        },
       };
     });
     setNodes(newNodes as any);
-  }, [items]);
+  }, [items, nodeHandles, updateNodeHandles]);
 
   // Fonction pour extraire le côté du handle (right, left, top, bottom)
   const getSideFromHandle = (handle: string | null | undefined): string => {
@@ -722,6 +783,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           position_y: node.position.y,
         })),
         edges,
+        nodeHandles,
       };
       localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
       toast.success("Schéma sauvegardé");
@@ -735,6 +797,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (!confirm("Réinitialiser le schéma ?")) return;
     localStorage.removeItem(`electrical_schema_${projectId}`);
     setEdges([]);
+    setNodeHandles({});
     loadItems();
     toast.success("Schéma réinitialisé");
   };
