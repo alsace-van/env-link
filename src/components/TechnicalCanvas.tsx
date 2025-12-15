@@ -2024,7 +2024,10 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
   };
 
   const handleSelectAccessory = (accessory: any, source: "expense" | "catalog") => {
-    if (!paperScopeRef.current) return;
+    if (!paperScopeRef.current) {
+      toast.error("Le canvas n'est pas prêt. Veuillez patienter ou actualiser la page.");
+      return;
+    }
 
     const scope = paperScopeRef.current;
 

@@ -53,17 +53,44 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
   const loadData = async () => {
     setLoading(true);
 
-    const { data: expensesData, error: expensesError } = await supabase
-      .from("project_expenses")
-      .select("*")
+    // D'abord trouver le scénario principal du projet
+    const { data: scenarioData } = await supabase
+      .from("project_scenarios")
+      .select("id")
       .eq("project_id", projectId)
-      .order("nom_accessoire");
+      .eq("est_principal", true)
+      .single();
 
-    if (expensesError) {
-      console.error("Erreur lors du chargement des dépenses:", expensesError);
+    let expensesData: any[] = [];
+    if (scenarioData) {
+      // Charger via le scénario principal
+      const { data, error } = await supabase
+        .from("project_expenses")
+        .select("*")
+        .eq("scenario_id", scenarioData.id)
+        .order("nom_accessoire");
+      
+      if (error) {
+        console.error("Erreur lors du chargement des dépenses:", error);
+      } else {
+        expensesData = data || [];
+      }
     } else {
-      setExpenses(expensesData || []);
+      // Fallback: charger directement par project_id
+      const { data, error } = await supabase
+        .from("project_expenses")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("nom_accessoire");
+      
+      if (error) {
+        console.error("Erreur lors du chargement des dépenses:", error);
+      } else {
+        expensesData = data || [];
+      }
     }
+    
+    setExpenses(expensesData);
 
     const { data: catalogData, error: catalogError } = await supabase
       .from("accessories_catalog")
@@ -80,6 +107,14 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
   };
 
   const handleAddToExpenses = async (accessory: Accessory) => {
+    // Trouver le scénario principal
+    const { data: scenarioData } = await supabase
+      .from("project_scenarios")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("est_principal", true)
+      .single();
+
     const { data: fullAccessory } = await supabase
       .from("accessories_catalog")
       .select("*")
@@ -88,23 +123,30 @@ export const AccessorySelector = ({ projectId, onSelectAccessory, onAddToCatalog
 
     const accessoryToAdd = fullAccessory || accessory;
 
+    const insertData: any = {
+      project_id: projectId,
+      nom_accessoire: accessoryToAdd.nom || "Accessoire",
+      marque: accessoryToAdd.marque,
+      prix: accessoryToAdd.prix_reference || 0,
+      quantite: 1,
+      fournisseur: accessoryToAdd.fournisseur,
+      categorie: accessory.categories?.nom || accessory.category_id || "",
+      type_electrique: accessoryToAdd.type_electrique,
+      accessory_id: accessoryToAdd.id,
+      prix_vente_ttc: accessoryToAdd.prix_vente_ttc,
+      poids_kg: accessoryToAdd.poids_kg,
+      puissance_watts: accessoryToAdd.puissance_watts,
+      intensite_amperes: accessoryToAdd.intensite_amperes,
+    };
+
+    // Ajouter le scenario_id si trouvé
+    if (scenarioData?.id) {
+      insertData.scenario_id = scenarioData.id;
+    }
+
     const { error } = await supabase
       .from("project_expenses")
-      .insert({
-        project_id: projectId,
-        nom_accessoire: accessoryToAdd.nom || "Accessoire",
-        marque: accessoryToAdd.marque,
-        prix: accessoryToAdd.prix_reference || 0,
-        quantite: 1,
-        fournisseur: accessoryToAdd.fournisseur,
-        categorie: accessory.categories?.nom || accessory.category_id || "",
-        type_electrique: accessoryToAdd.type_electrique,
-        accessory_id: accessoryToAdd.id,
-        prix_vente_ttc: accessoryToAdd.prix_vente_ttc,
-        poids_kg: accessoryToAdd.poids_kg,
-        puissance_watts: accessoryToAdd.puissance_watts,
-        intensite_amperes: accessoryToAdd.intensite_amperes,
-      });
+      .insert(insertData);
 
     if (error) {
       toast.error("Erreur lors de l'ajout aux dépenses");
