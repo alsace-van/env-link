@@ -11,9 +11,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { Search, Plus, Clock, TrendingUp, Settings, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateTemplateDialog } from "./CreateTemplateDialog";
-import { CategoryManagementDialog } from "./CategoryManagementDialog";
+import CategoryManagementDialog from "../CategoryManagementDialog";
 import { useToast } from "@/hooks/use-toast";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface TaskTemplatesLibraryProps {
   open: boolean;
@@ -22,12 +31,7 @@ interface TaskTemplatesLibraryProps {
   onUseTemplate: (templateId: string) => void;
 }
 
-export const TaskTemplatesLibrary = ({
-  open,
-  onOpenChange,
-  projectId,
-  onUseTemplate,
-}: TaskTemplatesLibraryProps) => {
+export const TaskTemplatesLibrary = ({ open, onOpenChange, projectId, onUseTemplate }: TaskTemplatesLibraryProps) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -42,8 +46,10 @@ export const TaskTemplatesLibrary = ({
   const { data: categories, isLoading: loadingCategories } = useQuery({
     queryKey: ["work-categories", "templates"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from("work_categories")
         .select("*")
@@ -59,14 +65,18 @@ export const TaskTemplatesLibrary = ({
   const { data: templates, isLoading: loadingTemplates } = useQuery({
     queryKey: ["task-templates"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from("task_templates")
-        .select(`
+        .select(
+          `
           *,
           work_categories!inner(name, icon, color)
-        `)
+        `,
+        )
         .or(`is_global.eq.true,user_id.eq.${user?.id}`)
         .order("title");
 
@@ -87,10 +97,10 @@ export const TaskTemplatesLibrary = ({
   // Fonction pour détecter les doublons
   const findDuplicates = () => {
     if (!templates) return [];
-    
+
     const duplicateGroups: any[] = [];
     const seen = new Map();
-    
+
     templates.forEach((template: any) => {
       const key = `${template.title.toLowerCase().trim()}-${template.category_id}`;
       if (seen.has(key)) {
@@ -99,13 +109,13 @@ export const TaskTemplatesLibrary = ({
         seen.set(key, [template]);
       }
     });
-    
+
     seen.forEach((group) => {
       if (group.length > 1) {
         duplicateGroups.push(group);
       }
     });
-    
+
     return duplicateGroups;
   };
 
@@ -120,8 +130,10 @@ export const TaskTemplatesLibrary = ({
       estimatedHours?: number;
       isGlobal: boolean;
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       const { error } = await supabase.from("task_templates").insert({
         title: data.title,
         description: data.description,
@@ -138,10 +150,10 @@ export const TaskTemplatesLibrary = ({
       toast({ title: "✓ Template créé avec succès" });
     },
     onError: () => {
-      toast({ 
-        title: "Erreur", 
+      toast({
+        title: "Erreur",
         description: "Impossible de créer le template",
-        variant: "destructive" 
+        variant: "destructive",
       });
     },
   });
@@ -149,11 +161,8 @@ export const TaskTemplatesLibrary = ({
   // Mutation pour supprimer les doublons
   const deleteDuplicatesMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await supabase
-        .from("task_templates")
-        .delete()
-        .in("id", ids);
-      
+      const { error } = await supabase.from("task_templates").delete().in("id", ids);
+
       if (error) throw error;
     },
     onSuccess: () => {
@@ -209,10 +218,7 @@ export const TaskTemplatesLibrary = ({
   // Mutation pour supprimer un template
   const deleteTemplateMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("task_templates")
-        .delete()
-        .eq("id", id);
+      const { error } = await supabase.from("task_templates").delete().eq("id", id);
 
       if (error) throw error;
     },
@@ -241,11 +247,7 @@ export const TaskTemplatesLibrary = ({
               <CardTitle className="text-base">
                 {template.work_categories?.icon} {template.title}
               </CardTitle>
-              {template.description && (
-                <CardDescription className="text-xs">
-                  {template.description}
-                </CardDescription>
-              )}
+              {template.description && <CardDescription className="text-xs">{template.description}</CardDescription>}
             </div>
             <div className="flex items-center gap-1">
               {canEdit && (
@@ -305,9 +307,7 @@ export const TaskTemplatesLibrary = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[80vh]">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            📚 Bibliothèque de tâches
-          </DialogTitle>
+          <DialogTitle className="flex items-center gap-2">📚 Bibliothèque de tâches</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -328,13 +328,10 @@ export const TaskTemplatesLibrary = ({
                 className="border-orange-500 text-orange-500 hover:bg-orange-50"
               >
                 <AlertTriangle className="h-4 w-4 mr-2" />
-                {duplicates.length} doublon{duplicates.length > 1 ? 's' : ''}
+                {duplicates.length} doublon{duplicates.length > 1 ? "s" : ""}
               </Button>
             )}
-            <Button
-              variant="outline"
-              onClick={() => setShowManageCategories(true)}
-            >
+            <Button variant="outline" onClick={() => setShowManageCategories(true)}>
               <Settings className="h-4 w-4 mr-2" />
               Gérer les catégories
             </Button>
@@ -373,23 +370,17 @@ export const TaskTemplatesLibrary = ({
             <ScrollArea className="h-[400px] mt-4 pr-4">
               <TabsContent value="global" className="mt-0 space-y-3">
                 {loadingTemplates ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <Skeleton key={i} className="h-32" />
-                  ))
+                  Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-32" />)
                 ) : globalTemplates && globalTemplates.length > 0 ? (
                   globalTemplates.map(renderTemplateCard)
                 ) : (
-                  <p className="text-center text-muted-foreground py-8">
-                    Aucune tâche commune trouvée
-                  </p>
+                  <p className="text-center text-muted-foreground py-8">Aucune tâche commune trouvée</p>
                 )}
               </TabsContent>
 
               <TabsContent value="user" className="mt-0 space-y-3">
                 {loadingTemplates ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <Skeleton key={i} className="h-32" />
-                  ))
+                  Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32" />)
                 ) : userTemplates && userTemplates.length > 0 ? (
                   <>
                     <div className="flex justify-end mb-4">
@@ -402,9 +393,7 @@ export const TaskTemplatesLibrary = ({
                   </>
                 ) : (
                   <div className="text-center py-8 space-y-3">
-                    <p className="text-muted-foreground">
-                      Vous n'avez pas encore créé de templates
-                    </p>
+                    <p className="text-muted-foreground">Vous n'avez pas encore créé de templates</p>
                     <Button onClick={() => setShowCreateTemplate(true)} size="sm">
                       <Plus className="h-4 w-4 mr-2" />
                       Créer mon premier template
@@ -433,19 +422,20 @@ export const TaskTemplatesLibrary = ({
             createTemplateMutation.mutate(data);
           }
         }}
-        initialData={editingTemplate ? {
-          title: editingTemplate.title,
-          description: editingTemplate.description,
-          categoryId: editingTemplate.category_id,
-          estimatedHours: editingTemplate.estimated_hours,
-          isGlobal: editingTemplate.is_global,
-        } : undefined}
+        initialData={
+          editingTemplate
+            ? {
+                title: editingTemplate.title,
+                description: editingTemplate.description,
+                categoryId: editingTemplate.category_id,
+                estimatedHours: editingTemplate.estimated_hours,
+                isGlobal: editingTemplate.is_global,
+              }
+            : undefined
+        }
       />
 
-      <CategoryManagementDialog
-        open={showManageCategories}
-        onOpenChange={setShowManageCategories}
-      />
+      <CategoryManagementDialog open={showManageCategories} onOpenChange={setShowManageCategories} />
 
       {/* Confirmation de suppression */}
       <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
@@ -477,10 +467,11 @@ export const TaskTemplatesLibrary = ({
               Doublons détectés
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Les tâches suivantes ont le même nom et la même catégorie. Sélectionnez celles que vous souhaitez supprimer.
+              Les tâches suivantes ont le même nom et la même catégorie. Sélectionnez celles que vous souhaitez
+              supprimer.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          
+
           <ScrollArea className="max-h-[400px] pr-4">
             <div className="space-y-4">
               {duplicates.map((group, groupIndex) => (
@@ -490,10 +481,7 @@ export const TaskTemplatesLibrary = ({
                   </div>
                   <div className="space-y-2">
                     {group.map((template: any) => (
-                      <div
-                        key={template.id}
-                        className="flex items-center justify-between p-2 bg-muted/50 rounded"
-                      >
+                      <div key={template.id} className="flex items-center justify-between p-2 bg-muted/50 rounded">
                         <div className="flex items-center gap-2 text-sm">
                           <input
                             type="checkbox"
@@ -502,9 +490,7 @@ export const TaskTemplatesLibrary = ({
                               if (e.target.checked) {
                                 setDuplicatesToDelete([...duplicatesToDelete, template.id]);
                               } else {
-                                setDuplicatesToDelete(
-                                  duplicatesToDelete.filter((id) => id !== template.id)
-                                );
+                                setDuplicatesToDelete(duplicatesToDelete.filter((id) => id !== template.id));
                               }
                             }}
                             className="h-4 w-4"
@@ -513,9 +499,7 @@ export const TaskTemplatesLibrary = ({
                             {template.is_global ? "Globale" : "Utilisateur"}
                           </span>
                           {template.description && (
-                            <span className="text-xs text-muted-foreground">
-                              - {template.description}
-                            </span>
+                            <span className="text-xs text-muted-foreground">- {template.description}</span>
                           )}
                           {template.usage_count > 0 && (
                             <Badge variant="outline" className="text-xs">
@@ -532,9 +516,7 @@ export const TaskTemplatesLibrary = ({
           </ScrollArea>
 
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDuplicatesToDelete([])}>
-              Annuler
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDuplicatesToDelete([])}>Annuler</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteDuplicatesMutation.mutate(duplicatesToDelete)}
               disabled={duplicatesToDelete.length === 0}
