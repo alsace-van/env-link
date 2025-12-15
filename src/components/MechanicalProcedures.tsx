@@ -540,8 +540,12 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
           type="text"
           value={block.title !== undefined && block.title !== null ? block.title : blockType.label}
           onChange={(e) => onUpdateBlock(block.id, { title: e.target.value })}
-          onPointerDown={stopDrag}
-          className="text-xs font-medium flex-1 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-300 rounded px-1 min-w-0 nodrag"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="text-xs font-medium flex-1 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-300 rounded px-1 min-w-0 nodrag nopan"
           placeholder={blockType.label}
         />
         <button
@@ -606,7 +610,11 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
             <textarea
               value={block.content}
               onChange={(e) => onUpdateBlock(block.id, { content: e.target.value })}
-              className="w-full min-h-[80px] bg-white dark:bg-gray-900 border border-purple-200 dark:border-purple-800 rounded p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-purple-500"
+              onKeyDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full min-h-[80px] bg-white dark:bg-gray-900 border border-purple-200 dark:border-purple-800 rounded p-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-purple-500 nodrag nopan"
               placeholder="Transcription ou notes..."
             />
           </div>
@@ -645,6 +653,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                       onUpdateBlock(block.id, { content: lines.join("\n") });
                     }}
                     onKeyDown={(e) => {
+                      e.stopPropagation(); // 🔥 Arrêter la propagation pour TOUTES les touches
                       if (e.key === "Enter") {
                         e.preventDefault();
                         onAddChecklistItem(block.id, index);
@@ -657,8 +666,10 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         }
                       }
                     }}
-                    onPointerDown={stopDrag}
-                    className={`flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm nodrag ${
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm nodrag nopan ${
                       isChecked ? "line-through text-muted-foreground" : ""
                     }`}
                     placeholder="Étape..."
@@ -721,6 +732,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                       onUpdateBlock(block.id, { content: lines.join("\n") });
                     }}
                     onKeyDown={(e) => {
+                      e.stopPropagation(); // 🔥 Arrêter la propagation pour TOUTES les touches
                       if (e.key === "Enter") {
                         e.preventDefault();
                         onAddListItem(block.id, index);
@@ -733,8 +745,10 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         }
                       }
                     }}
-                    onPointerDown={stopDrag}
-                    className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm nodrag"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm nodrag nopan"
                     placeholder="Élément..."
                   />
                   <button
@@ -774,7 +788,11 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
           <textarea
             value={block.content}
             onChange={(e) => onUpdateBlock(block.id, { content: e.target.value })}
-            className="w-full min-h-[60px] bg-transparent border-none resize-none focus:outline-none focus:ring-0 p-0 text-sm"
+            onKeyDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full min-h-[60px] bg-transparent border-none resize-none focus:outline-none focus:ring-0 p-0 text-sm nodrag nopan"
             placeholder={
               block.type === "warning"
                 ? "⚠️ Point d'attention important..."
@@ -3743,6 +3761,9 @@ ${block.content}`,
                   snapToGrid
                   snapGrid={[20, 20]}
                   connectionMode={"loose" as any}
+                  deleteKeyCode={null}
+                  selectionKeyCode={null}
+                  multiSelectionKeyCode={null}
                   defaultEdgeOptions={{
                     type: "smoothstep",
                     markerEnd: { type: MarkerType.ArrowClosed },
