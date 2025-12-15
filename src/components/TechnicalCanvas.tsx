@@ -105,7 +105,34 @@ interface SchemaEdge {
   target_handle?: string | null;
   color?: string;
   label?: string;
+  strokeWidth?: number;
+  section?: string; // Section de câble ex: "2.5mm²", "6mm²"
 }
+
+// Sections de câble courantes
+const CABLE_SECTIONS = [
+  "0.5mm²",
+  "0.75mm²",
+  "1mm²",
+  "1.5mm²",
+  "2.5mm²",
+  "4mm²",
+  "6mm²",
+  "10mm²",
+  "16mm²",
+  "25mm²",
+  "35mm²",
+  "50mm²",
+];
+
+// Épaisseurs de trait
+const STROKE_WIDTHS = [
+  { value: 1, label: "Fin" },
+  { value: 2, label: "Normal" },
+  { value: 3, label: "Moyen" },
+  { value: 4, label: "Épais" },
+  { value: 6, label: "Très épais" },
+];
 
 // Configuration des types électriques
 const ELECTRICAL_TYPES: Record<
@@ -235,17 +262,34 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       className={`rounded-lg border-2 shadow-lg group ${selected ? "ring-2 ring-blue-500 shadow-xl" : ""} ${typeConfig.bgColor} ${typeConfig.borderColor}`}
       style={{ minWidth: 200, maxWidth: 280 }}
     >
+      {/* Handles d'entrée (bleus) - 2 par côté */}
       <Handle
         type="target"
         position={Position.Top}
-        id="top"
-        className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
+        id="top-1"
+        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ left: "30%" }}
+      />
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top-2"
+        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ left: "70%" }}
       />
       <Handle
         type="target"
         position={Position.Left}
-        id="left"
-        className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
+        id="left-1"
+        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ top: "30%" }}
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left-2"
+        className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ top: "70%" }}
       />
 
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${typeConfig.borderColor} bg-white/60 rounded-t-lg`}>
@@ -298,17 +342,34 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
         </Badge>
       </div>
 
+      {/* Handles de sortie (verts) - 2 par côté */}
       <Handle
         type="source"
         position={Position.Bottom}
-        id="bottom"
-        className="!bg-green-500 !w-3 !h-3 !border-2 !border-white"
+        id="bottom-1"
+        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ left: "30%" }}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom-2"
+        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ left: "70%" }}
       />
       <Handle
         type="source"
         position={Position.Right}
-        id="right"
-        className="!bg-green-500 !w-3 !h-3 !border-2 !border-white"
+        id="right-1"
+        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ top: "30%" }}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right-2"
+        className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white"
+        style={{ top: "70%" }}
       />
     </div>
   );
@@ -468,6 +529,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       edges.map((edge) => {
         const isSelected = edge.id === selectedEdgeId;
         const edgeColor = edge.color || "#64748b";
+        const edgeWidth = edge.strokeWidth || 2;
         return {
           id: edge.id,
           source: edge.source_node_id,
@@ -475,9 +537,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           sourceHandle: edge.source_handle || undefined,
           targetHandle: edge.target_handle || undefined,
           type: "smoothstep",
-          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor },
+          label: edge.section || undefined,
+          labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
+          labelBgStyle: { fill: "white", fillOpacity: 0.9 },
+          labelBgPadding: [4, 2] as [number, number],
+          labelBgBorderRadius: 4,
+          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 15, height: 15 },
           style: {
-            strokeWidth: isSelected ? 4 : 2,
+            strokeWidth: isSelected ? edgeWidth + 2 : edgeWidth,
             stroke: edgeColor,
             filter: isSelected ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))" : undefined,
           },
@@ -495,6 +562,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       source_handle: connection.sourceHandle || null,
       target_handle: connection.targetHandle || null,
       color: "#ef4444",
+      strokeWidth: 2,
     };
     setEdges((prev) => [...prev, newEdge]);
   }, []);
@@ -506,6 +574,24 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     },
     [selectedEdgeId],
   );
+
+  const updateEdgeStrokeWidth = useCallback(
+    (strokeWidth: number) => {
+      if (!selectedEdgeId) return;
+      setEdges((prev) => prev.map((e) => (e.id === selectedEdgeId ? { ...e, strokeWidth } : e)));
+    },
+    [selectedEdgeId],
+  );
+
+  const updateEdgeSection = useCallback(
+    (section: string) => {
+      if (!selectedEdgeId) return;
+      setEdges((prev) => prev.map((e) => (e.id === selectedEdgeId ? { ...e, section: section || undefined } : e)));
+    },
+    [selectedEdgeId],
+  );
+
+  const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
 
   const deleteSelectedEdge = useCallback(() => {
     if (!selectedEdgeId) return;
@@ -738,22 +824,72 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 <span className="text-blue-600 font-semibold">bleus</span>
               </div>
             </Panel>
-            {selectedEdgeId && (
+            {selectedEdgeId && selectedEdge && (
               <Panel position="bottom-center">
-                <div className="bg-white rounded-lg shadow-lg p-3 border flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-700">Câble:</span>
-                  <div className="flex gap-1">
-                    {CABLE_COLORS.map((cable) => (
-                      <button
-                        key={cable.value}
-                        className={`w-6 h-6 rounded-full border-2 transition-all ${edges.find((e) => e.id === selectedEdgeId)?.color === cable.value ? "border-blue-500 scale-110" : "border-gray-300"}`}
-                        style={{ backgroundColor: cable.value }}
-                        onClick={() => updateEdgeColor(cable.value)}
-                        title={cable.label}
-                      />
-                    ))}
+                <div className="bg-white rounded-lg shadow-lg p-3 border flex flex-wrap items-center gap-3">
+                  {/* Couleur */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-600">Couleur:</span>
+                    <div className="flex gap-1">
+                      {CABLE_COLORS.map((cable) => (
+                        <button
+                          key={cable.value}
+                          className={`w-5 h-5 rounded-full border-2 transition-all ${selectedEdge.color === cable.value ? "border-blue-500 scale-110" : "border-gray-300"}`}
+                          style={{ backgroundColor: cable.value }}
+                          onClick={() => updateEdgeColor(cable.value)}
+                          title={cable.label}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <Button variant="ghost" size="sm" className="h-7 text-red-500" onClick={deleteSelectedEdge}>
+
+                  <div className="w-px h-6 bg-gray-200" />
+
+                  {/* Épaisseur */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-600">Épaisseur:</span>
+                    <div className="flex gap-1">
+                      {STROKE_WIDTHS.map((sw) => (
+                        <button
+                          key={sw.value}
+                          className={`px-2 py-1 text-xs rounded border transition-all ${(selectedEdge.strokeWidth || 2) === sw.value ? "bg-blue-500 text-white border-blue-500" : "bg-white border-gray-300 hover:border-gray-400"}`}
+                          onClick={() => updateEdgeStrokeWidth(sw.value)}
+                          title={sw.label}
+                        >
+                          {sw.value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="w-px h-6 bg-gray-200" />
+
+                  {/* Section de câble */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-gray-600">Section:</span>
+                    <select
+                      value={selectedEdge.section || ""}
+                      onChange={(e) => updateEdgeSection(e.target.value)}
+                      className="h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="">Aucune</option>
+                      {CABLE_SECTIONS.map((section) => (
+                        <option key={section} value={section}>
+                          {section}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="w-px h-6 bg-gray-200" />
+
+                  {/* Supprimer */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={deleteSelectedEdge}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
