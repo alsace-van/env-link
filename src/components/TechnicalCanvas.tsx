@@ -972,7 +972,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 Scénario
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-0" align="end">
+            <PopoverContent className="w-80 p-0 z-[9999]" align="end">
               <div className="p-3 border-b bg-blue-50">
                 <div className="text-xs text-blue-600 font-medium mb-2">Articles du scénario principal</div>
                 <Input
@@ -1028,31 +1028,37 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             <span className="text-xs text-gray-400">
                               {usedQty}/{totalQty}
                             </span>
-                            <button
+                            <Button
                               type="button"
+                              size="sm"
+                              variant="default"
+                              className="w-6 h-6 p-0 text-xs pointer-events-auto"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
+                                console.log("[Schema] Button +1 clicked for:", item.nom_accessoire);
                                 addFromScenario(item, 1);
                               }}
-                              className="w-6 h-6 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium"
                               title="Ajouter 1"
                             >
                               +1
-                            </button>
+                            </Button>
                             {availableQty > 1 && (
-                              <button
+                              <Button
                                 type="button"
+                                size="sm"
+                                variant="secondary"
+                                className="h-6 px-1.5 text-xs pointer-events-auto"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   e.preventDefault();
+                                  console.log("[Schema] Button +all clicked for:", item.nom_accessoire);
                                   addFromScenario(item, availableQty);
                                 }}
-                                className="px-1.5 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs"
                                 title={`Ajouter tout (${availableQty})`}
                               >
                                 +{availableQty}
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </div>
