@@ -1,402 +1,418 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, GripVertical } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+import { Trash2, Plus, Edit } from "lucide-react";
 
 interface Category {
   id: string;
-  name: string;
-  color: string;
-  icon: string;
-  display_order: number;
+  nom: string;
+  parent_id: string | null;
+  user_id: string;
+  icon?: string;
 }
 
 interface CategoryManagementDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCategoryUpdated: () => void;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  categories: Category[];
 }
 
-const colorOptions = [
-  { value: 'blue', label: 'Bleu', class: 'bg-blue-100 text-blue-800 border-blue-200' },
-  { value: 'green', label: 'Vert', class: 'bg-green-100 text-green-800 border-green-200' },
-  { value: 'purple', label: 'Violet', class: 'bg-purple-100 text-purple-800 border-purple-200' },
-  { value: 'orange', label: 'Orange', class: 'bg-orange-100 text-orange-800 border-orange-200' },
-  { value: 'red', label: 'Rouge', class: 'bg-red-100 text-red-800 border-red-200' },
-  { value: 'yellow', label: 'Jaune', class: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-  { value: 'pink', label: 'Rose', class: 'bg-pink-100 text-pink-800 border-pink-200' },
-  { value: 'gray', label: 'Gris', class: 'bg-gray-100 text-gray-800 border-gray-200' },
+const emojiOptions = [
+  // Électricité
+  "⚡",
+  "🔌",
+  "🔋",
+  "☀️",
+  "💡",
+  // Eau / Plomberie
+  "💧",
+  "🚿",
+  "🚰",
+  // Chauffage / Température
+  "🔥",
+  "🌡️",
+  "❄️",
+  // Couchage / Confort
+  "🛏️",
+  "🛋️",
+  "🧸",
+  // Cuisine
+  "🍳",
+  "🥘",
+  "🧊",
+  // Structure / Aménagement
+  "🏗️",
+  "🪟",
+  "🚪",
+  "🪵",
+  // Outillage
+  "🔧",
+  "🔩",
+  "🛠️",
+  "⚙️",
+  "🪜",
+  // Rangement
+  "📦",
+  "🗄️",
+  "🎨",
+  // Véhicule
+  "🚐",
+  "🚗",
+  "🪞",
+  // Sécurité
+  "🔒",
+  "🚨",
+  // Divers
+  "📁",
+  "🏷️",
+  "✨",
 ];
 
-const emojiOptions = ['📄', '🚐', '📋', '🔧', '✅', '📝', '🔐', '⚙️', '📊', '🏢', '💼', '📌'];
-
-export function CategoryManagementDialog({
-  open,
-  onOpenChange,
-  onCategoryUpdated,
-}: CategoryManagementDialogProps) {
-  const [categories, setCategories] = useState<Category[]>([]);
+const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: CategoryManagementDialogProps) => {
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState("📦");
+  const [parentCategoryId, setParentCategoryId] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [deleteCategoryId, setDeleteCategoryId] = useState<string | null>(null);
-  const [newCategory, setNewCategory] = useState({
-    name: '',
-    color: 'gray',
-    icon: '📄',
-  });
-
-  useEffect(() => {
-    if (open) {
-      loadCategories();
-    }
-  }, [open]);
-
-  const loadCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('official_document_categories')
-        .select('*')
-        .order('display_order', { ascending: true });
-
-      if (error) throw error;
-      setCategories(data || []);
-    } catch (error: any) {
-      console.error('Erreur lors du chargement des catégories:', error);
-      toast.error('Impossible de charger les catégories');
-    }
-  };
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategoryIcon, setEditCategoryIcon] = useState("📦");
+  const [editParentCategoryId, setEditParentCategoryId] = useState<string | null>(null);
 
   const handleAddCategory = async () => {
-    if (!newCategory.name.trim()) {
-      toast.error('Le nom de la catégorie est requis');
+    const trimmedName = newCategoryName.trim();
+    if (!trimmedName) {
+      toast.error("Veuillez entrer un nom de catégorie");
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from('official_document_categories')
-        .insert({
-          name: newCategory.name.trim(),
-          color: newCategory.color,
-          icon: newCategory.icon,
-          display_order: categories.length,
-        });
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      toast.error("Vous devez être connecté");
+      return;
+    }
 
-      if (error) throw error;
+    const { error } = await supabase.from("categories").insert({
+      nom: trimmedName,
+      parent_id: parentCategoryId,
+      user_id: userData.user.id,
+      icon: newCategoryIcon,
+    });
 
-      toast.success('Catégorie ajoutée avec succès');
-      setNewCategory({ name: '', color: 'gray', icon: '📄' });
-      loadCategories();
-      onCategoryUpdated();
-    } catch (error: any) {
-      console.error('Erreur lors de l\'ajout:', error);
-      toast.error(`Erreur: ${error.message}`);
+    if (error) {
+      toast.error("Erreur lors de la création de la catégorie");
+      console.error(error);
+    } else {
+      toast.success("Catégorie créée");
+      setNewCategoryName("");
+      setNewCategoryIcon("📦");
+      setParentCategoryId(null);
+      onSuccess();
     }
   };
 
-  const handleUpdateCategory = async () => {
-    if (!editingCategory) return;
+  const handleDeleteCategory = async (categoryId: string) => {
+    const { error } = await supabase.from("categories").delete().eq("id", categoryId);
 
-    try {
-      const { error } = await supabase
-        .from('official_document_categories')
-        .update({
-          name: editingCategory.name,
-          color: editingCategory.color,
-          icon: editingCategory.icon,
-        })
-        .eq('id', editingCategory.id);
+    if (error) {
+      toast.error("Erreur lors de la suppression");
+      console.error(error);
+    } else {
+      toast.success("Catégorie supprimée");
+      onSuccess();
+    }
+  };
 
-      if (error) throw error;
+  const handleEditCategory = async () => {
+    if (!editingCategory || !editCategoryName.trim()) {
+      toast.error("Veuillez entrer un nom de catégorie");
+      return;
+    }
 
-      toast.success('Catégorie modifiée avec succès');
+    // Vérifier qu'on ne crée pas une boucle (catégorie parente = elle-même ou descendante)
+    if (editParentCategoryId === editingCategory.id) {
+      toast.error("Une catégorie ne peut pas être sa propre parente");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("categories")
+      .update({
+        nom: editCategoryName.trim(),
+        parent_id: editParentCategoryId,
+        icon: editCategoryIcon,
+      })
+      .eq("id", editingCategory.id);
+
+    if (error) {
+      toast.error("Erreur lors de la modification");
+      console.error(error);
+    } else {
+      toast.success("Catégorie modifiée");
       setEditingCategory(null);
-      loadCategories();
-      onCategoryUpdated();
-    } catch (error: any) {
-      console.error('Erreur lors de la modification:', error);
-      toast.error(`Erreur: ${error.message}`);
+      setEditCategoryName("");
+      setEditCategoryIcon("📦");
+      setEditParentCategoryId(null);
+      onSuccess();
     }
   };
 
-  const handleDeleteCategory = async () => {
-    if (!deleteCategoryId) return;
-
-    try {
-      // Vérifier si des documents utilisent cette catégorie
-      const { data: documents, error: checkError } = await supabase
-        .from('official_documents')
-        .select('id')
-        .eq('category', categories.find(c => c.id === deleteCategoryId)?.name)
-        .limit(1);
-
-      if (checkError) throw checkError;
-
-      if (documents && documents.length > 0) {
-        toast.error('Impossible de supprimer une catégorie utilisée par des documents');
-        setDeleteCategoryId(null);
-        return;
-      }
-
-      const { error } = await supabase
-        .from('official_document_categories')
-        .delete()
-        .eq('id', deleteCategoryId);
-
-      if (error) throw error;
-
-      toast.success('Catégorie supprimée avec succès');
-      loadCategories();
-      onCategoryUpdated();
-    } catch (error: any) {
-      console.error('Erreur lors de la suppression:', error);
-      toast.error(`Erreur: ${error.message}`);
-    } finally {
-      setDeleteCategoryId(null);
-    }
+  const getSubcategories = (parentId: string | null) => {
+    return categories.filter((cat) => cat.parent_id === parentId);
   };
 
-  const getCategoryColorClass = (color: string) => {
-    const colorOption = colorOptions.find(c => c.value === color);
-    return colorOption?.class || 'bg-gray-100 text-gray-800 border-gray-200';
+  const renderCategoryTree = (category: Category, level: number = 0) => {
+    const subcategories = getSubcategories(category.id);
+
+    return (
+      <div key={category.id}>
+        <div
+          className="flex items-center justify-between py-2 px-2 hover:bg-accent rounded"
+          style={{ marginLeft: `${level * 16}px` }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{category.icon || "📦"}</span>
+            <span className="text-sm">{category.nom}</span>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setEditingCategory(category);
+                setEditCategoryName(category.nom);
+                setEditCategoryIcon(category.icon || "📦");
+                setEditParentCategoryId(category.parent_id);
+              }}
+              className="h-8 w-8"
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleDeleteCategory(category.id)}
+              className="h-8 w-8 text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+        {subcategories.map((sub) => renderCategoryTree(sub, level + 1))}
+      </div>
+    );
   };
+
+  const rootCategories = getSubcategories(null);
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Gérer les catégories</DialogTitle>
-            <DialogDescription>
-              Créez, modifiez ou supprimez les catégories de documents officiels
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Gérer les catégories</DialogTitle>
+          <DialogDescription>Créez et organisez vos catégories et sous-catégories</DialogDescription>
+        </DialogHeader>
 
-          <div className="space-y-6">
-            {/* Formulaire d'ajout */}
-            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-              <h3 className="font-semibold text-sm">Nouvelle catégorie</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="category-name">Nom</Label>
+        <div className="space-y-6">
+          {editingCategory ? (
+            <div className="space-y-4 p-4 border rounded-lg bg-accent/50">
+              <h4 className="font-semibold">Modifier la catégorie</h4>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="edit-category-name">Nom de la catégorie</Label>
                   <Input
-                    id="category-name"
-                    value={newCategory.name}
-                    onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
-                    placeholder="Ex: Sécurité"
+                    id="edit-category-name"
+                    type="text"
+                    value={editCategoryName}
+                    onChange={(e) => {
+                      // Force la mise à jour du state
+                      setEditCategoryName(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      // Uniquement intercepter Enter et Escape, laisser tout le reste passer
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleEditCategory();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setEditingCategory(null);
+                        setEditCategoryName("");
+                        setEditCategoryIcon("📦");
+                        setEditParentCategoryId(null);
+                      }
+                      // Backspace, Delete, et toutes les autres touches fonctionnent normalement
+                    }}
+                    placeholder="Ex: Électronique"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck="false"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category-color">Couleur</Label>
+
+                <div>
+                  <Label>Icône</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {emojiOptions.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setEditCategoryIcon(emoji)}
+                        className={`text-2xl p-2 rounded border-2 transition-all ${
+                          editCategoryIcon === emoji
+                            ? "border-primary bg-primary/10 scale-110"
+                            : "border-border hover:border-primary/50"
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-parent-category">Catégorie parente</Label>
                   <Select
-                    value={newCategory.color}
-                    onValueChange={(value) => setNewCategory({ ...newCategory, color: value })}
+                    value={editParentCategoryId || "none"}
+                    onValueChange={(value) => setEditParentCategoryId(value === "none" ? null : value)}
                   >
-                    <SelectTrigger id="category-color">
-                      <SelectValue />
+                    <SelectTrigger id="edit-parent-category">
+                      <SelectValue placeholder="Aucune" />
                     </SelectTrigger>
                     <SelectContent>
-                      {colorOptions.map((color) => (
-                        <SelectItem key={color.value} value={color.value}>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-4 h-4 rounded ${color.class}`} />
-                            {color.label}
-                          </div>
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
+                      {categories
+                        .filter((cat) => cat.parent_id === null && cat.id !== editingCategory.id)
+                        .map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.nom}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Icône</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {emojiOptions.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => setNewCategory({ ...newCategory, icon: emoji })}
-                      className={`text-2xl p-2 rounded border-2 transition-all ${
-                        newCategory.icon === emoji
-                          ? 'border-primary bg-primary/10 scale-110'
-                          : 'border-border hover:border-primary/50'
-                      }`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+
+                <div className="flex gap-2">
+                  <Button type="button" onClick={handleEditCategory} className="flex-1">
+                    Enregistrer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingCategory(null);
+                      setEditCategoryName("");
+                      setEditCategoryIcon("📦");
+                      setEditParentCategoryId(null);
+                    }}
+                  >
+                    Annuler
+                  </Button>
                 </div>
               </div>
-              <Button onClick={handleAddCategory} className="w-full">
-                <Plus className="w-4 h-4 mr-2" />
-                Ajouter la catégorie
-              </Button>
             </div>
+          ) : (
+            <div className="space-y-4 p-4 border rounded-lg">
+              <h4 className="font-semibold">Nouvelle catégorie</h4>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="category-name">Nom de la catégorie</Label>
+                  <Input
+                    id="category-name"
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => {
+                      // Force la mise à jour du state
+                      setNewCategoryName(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      // Uniquement intercepter Enter et Escape, laisser tout le reste passer
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleAddCategory();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setNewCategoryName("");
+                        setNewCategoryIcon("📦");
+                        setParentCategoryId(null);
+                      }
+                      // Backspace, Delete, et toutes les autres touches fonctionnent normalement
+                    }}
+                    placeholder="Ex: Électronique, Plomberie..."
+                    autoComplete="off"
+                    spellCheck="false"
+                  />
+                </div>
 
-            {/* Liste des catégories */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-sm">Catégories existantes</h3>
-              {categories.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Aucune catégorie disponible
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {categories.map((category) => (
-                    <div
-                      key={category.id}
-                      className="flex items-center gap-3 p-3 bg-card border rounded-lg hover:border-primary/50 transition-all"
-                    >
-                      <GripVertical className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-2xl">{category.icon}</span>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getCategoryColorClass(
-                          category.color
-                        )}`}
+                <div>
+                  <Label>Icône</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {emojiOptions.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setNewCategoryIcon(emoji)}
+                        className={`text-2xl p-2 rounded border-2 transition-all ${
+                          newCategoryIcon === emoji
+                            ? "border-primary bg-primary/10 scale-110"
+                            : "border-border hover:border-primary/50"
+                        }`}
                       >
-                        {category.name}
-                      </span>
-                      <div className="ml-auto flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingCategory(category)}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteCategoryId(category.id)}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog d'édition */}
-      {editingCategory && (
-        <Dialog open={!!editingCategory} onOpenChange={() => setEditingCategory(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Modifier la catégorie</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Nom</Label>
-                <Input
-                  id="edit-name"
-                  value={editingCategory.name}
-                  onChange={(e) =>
-                    setEditingCategory({ ...editingCategory, name: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-color">Couleur</Label>
-                <Select
-                  value={editingCategory.color}
-                  onValueChange={(value) =>
-                    setEditingCategory({ ...editingCategory, color: value })
-                  }
-                >
-                  <SelectTrigger id="edit-color">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {colorOptions.map((color) => (
-                      <SelectItem key={color.value} value={color.value}>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded ${color.class}`} />
-                          {color.label}
-                        </div>
-                      </SelectItem>
+                        {emoji}
+                      </button>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Icône</Label>
-                <div className="flex gap-2 flex-wrap">
-                  {emojiOptions.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => setEditingCategory({ ...editingCategory, icon: emoji })}
-                      className={`text-2xl p-2 rounded border-2 transition-all ${
-                        editingCategory.icon === emoji
-                          ? 'border-primary bg-primary/10 scale-110'
-                          : 'border-border hover:border-primary/50'
-                      }`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setEditingCategory(null)}>
-                  Annuler
+
+                <div>
+                  <Label htmlFor="parent-category">Catégorie parente (optionnel)</Label>
+                  <Select
+                    value={parentCategoryId || "none"}
+                    onValueChange={(value) => setParentCategoryId(value === "none" ? null : value)}
+                  >
+                    <SelectTrigger id="parent-category">
+                      <SelectValue placeholder="Aucune (catégorie principale)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
+                      {categories
+                        .filter((cat) => cat.parent_id === null)
+                        .map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.nom}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button onClick={handleAddCategory} className="w-full">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Ajouter la catégorie
                 </Button>
-                <Button onClick={handleUpdateCategory}>Enregistrer</Button>
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
-      )}
+          )}
 
-      {/* Dialog de confirmation de suppression */}
-      <AlertDialog open={!!deleteCategoryId} onOpenChange={() => setDeleteCategoryId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer cette catégorie ? Cette action est irréversible.
-              Les documents utilisant cette catégorie devront être réassignés.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteCategory}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Supprimer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+          <div className="space-y-3">
+            <h4 className="font-semibold">Catégories existantes</h4>
+            {rootCategories.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Aucune catégorie pour le moment</p>
+            ) : (
+              <div className="border rounded-lg p-2">{rootCategories.map((cat) => renderCategoryTree(cat))}</div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
-}
+};
+
+export default CategoryManagementDialog;
