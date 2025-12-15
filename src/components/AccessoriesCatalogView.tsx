@@ -48,6 +48,13 @@ import WishlistDialog from "@/components/WishlistDialog";
 import { CatalogBulkManager } from "@/components/catalog/CatalogBulkManager";
 import { CatalogSyncManager } from "@/components/catalog/CatalogSyncManager";
 
+// 🔥 Fonction pour décoder les entités HTML
+const decodeHtmlEntities = (text: string | null | undefined): string => {
+  if (!text) return "";
+  const doc = new DOMParser().parseFromString(text, "text/html");
+  return doc.documentElement.textContent || text;
+};
+
 interface Category {
   id: string;
   nom: string;
@@ -373,7 +380,7 @@ const AccessoriesCatalogView = () => {
             <div className="flex items-start gap-4">
               <div className="grid grid-cols-1 md:grid-cols-6 gap-4 flex-1">
                 <div className="md:col-span-2">
-                  <div className="font-medium">{accessory.nom}</div>
+                  <div className="font-medium">{decodeHtmlEntities(accessory.nom)}</div>
                   {accessory.marque && <div className="text-sm text-muted-foreground">{accessory.marque}</div>}
                 </div>
                 <div className="md:col-span-1">
@@ -458,7 +465,7 @@ const AccessoriesCatalogView = () => {
             <div className="mt-3 pt-3 border-t">
               <StockStatusManager
                 accessoryId={accessory.id}
-                accessoryName={accessory.nom}
+                accessoryName={decodeHtmlEntities(accessory.nom)}
                 currentStatus={accessory.stock_status || "in_stock"}
                 currentQuantity={accessory.stock_quantity || 0}
                 deliveryDate={accessory.delivery_date}
@@ -541,7 +548,7 @@ const AccessoriesCatalogView = () => {
             <CardHeader className="p-0 mb-3">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <CardTitle className="text-base mb-1">{accessory.nom}</CardTitle>
+                  <CardTitle className="text-base mb-1">{decodeHtmlEntities(accessory.nom)}</CardTitle>
                   {accessory.marque && <div className="text-sm text-muted-foreground">{accessory.marque}</div>}
                 </div>
                 <div className="flex gap-1">
@@ -591,7 +598,7 @@ const AccessoriesCatalogView = () => {
             <div className="pt-3 border-t mt-3">
               <StockStatusManager
                 accessoryId={accessory.id}
-                accessoryName={accessory.nom}
+                accessoryName={decodeHtmlEntities(accessory.nom)}
                 currentStatus={accessory.stock_status || "in_stock"}
                 currentQuantity={accessory.stock_quantity || 0}
                 deliveryDate={accessory.delivery_date}
