@@ -234,6 +234,7 @@ interface BlockEdge {
   edge_type?: string;
   animated?: boolean;
   label?: string;
+  color?: string; // 🔥 Couleur du trait
 }
 
 type DrawTool = "select" | "pencil" | "line" | "arrow" | "rectangle" | "circle" | "eraser" | "text";
@@ -1548,9 +1549,46 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     </div>
                   </div>
                   <div className="max-h-[250px] overflow-auto p-1">
-                    {availableSuppliers
-                      .filter((s) => s.toLowerCase().includes(supplierFilter.toLowerCase()))
-                      .map((supplier) => (
+                    {(() => {
+                      const filter = supplierFilter.toLowerCase().trim();
+                      if (!filter) {
+                        // Pas de filtre → afficher tous triés alphabétiquement
+                        return availableSuppliers.map((supplier) => (
+                          <button
+                            key={supplier}
+                            className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2"
+                            onClick={() => {
+                              const newSuppliers = [...selectedSuppliers, supplier];
+                              onUpdate({ linkedSuppliers: newSuppliers });
+                              setSupplierFilter("");
+                            }}
+                          >
+                            <Store className="h-4 w-4 text-purple-500" />
+                            {supplier}
+                          </button>
+                        ));
+                      }
+
+                      // 🔥 Filtrer et trier par pertinence
+                      const startsWithFilter: string[] = [];
+                      const containsFilter: string[] = [];
+
+                      availableSuppliers.forEach((s) => {
+                        const lower = s.toLowerCase();
+                        if (lower.startsWith(filter)) {
+                          startsWithFilter.push(s);
+                        } else if (lower.includes(filter)) {
+                          containsFilter.push(s);
+                        }
+                      });
+
+                      const sortedResults = [...startsWithFilter, ...containsFilter];
+
+                      if (sortedResults.length === 0) {
+                        return <p className="text-xs text-gray-400 text-center py-2">Aucun fournisseur trouvé</p>;
+                      }
+
+                      return sortedResults.map((supplier) => (
                         <button
                           key={supplier}
                           className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-gray-100 flex items-center gap-2"
@@ -1563,9 +1601,8 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                           <Store className="h-4 w-4 text-purple-500" />
                           {supplier}
                         </button>
-                      ))}
-                    {availableSuppliers.filter((s) => s.toLowerCase().includes(supplierFilter.toLowerCase())).length ===
-                      0 && <p className="text-xs text-gray-400 text-center py-2">Aucun fournisseur trouvé</p>}
+                      ));
+                    })()}
                   </div>
                   <div className="p-2 border-t text-xs text-gray-400 text-center">
                     {availableSuppliers.length} fournisseur{availableSuppliers.length > 1 ? "s" : ""} disponible
@@ -2562,6 +2599,7 @@ export default function DailyNotesCanvas({
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [edges, setEdges] = useState<BlockEdge[]>([]);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null); // 🔥 Edge sélectionné
   const [isLoading, setIsLoading] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -4187,20 +4225,29 @@ export default function DailyNotesCanvas({
   // Sync edges
   useEffect(() => {
     setFlowEdges(
-      edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source_block_id,
-        target: edge.target_block_id,
-        sourceHandle: edge.source_handle || undefined,
-        targetHandle: edge.target_handle || undefined,
-        type: "smoothstep",
-        animated: edge.animated || false,
-        label: edge.label,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        style: { strokeWidth: 2, stroke: "#64748b" },
-      })) as any,
+      edges.map((edge) => {
+        const isSelected = edge.id === selectedEdgeId;
+        const edgeColor = edge.color || "#64748b";
+        return {
+          id: edge.id,
+          source: edge.source_block_id,
+          target: edge.target_block_id,
+          sourceHandle: edge.source_handle || undefined,
+          targetHandle: edge.target_handle || undefined,
+          type: "smoothstep",
+          animated: edge.animated || false,
+          label: edge.label,
+          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor },
+          style: {
+            strokeWidth: isSelected ? 4 : 2,
+            stroke: edgeColor,
+            filter: isSelected ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))" : undefined,
+          },
+          selected: isSelected,
+        };
+      }) as any,
     );
-  }, [edges, setFlowEdges]);
+  }, [edges, setFlowEdges, selectedEdgeId]);
 
   // Handle node position changes
   const handleNodesChange = useCallback(
@@ -4395,10 +4442,54 @@ export default function DailyNotesCanvas({
 
   // Delete edge on click
   const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    // 🔥 Sélectionner l'edge (double-clic pour supprimer)
+    setSelectedEdgeId(edge.id);
+    setSelectedBlockId(null); // Désélectionner le bloc
+  }, []);
+
+  // 🔥 Double-clic sur un edge pour le supprimer
+  const handleEdgeDoubleClick = useCallback((event: React.MouseEvent, edge: Edge) => {
     setEdges((prev) => prev.filter((e) => e.id !== edge.id));
+    setSelectedEdgeId(null);
     setHasUnsavedChanges(true);
     toast.success("Connexion supprimée");
   }, []);
+
+  // 🔥 Changer la couleur de l'edge sélectionné
+  const updateEdgeColor = useCallback(
+    (color: string) => {
+      if (!selectedEdgeId) return;
+      setEdges((prev) => prev.map((e) => (e.id === selectedEdgeId ? { ...e, color } : e)));
+      setHasUnsavedChanges(true);
+    },
+    [selectedEdgeId],
+  );
+
+  // 🔥 Supprimer l'edge sélectionné
+  const deleteSelectedEdge = useCallback(() => {
+    if (!selectedEdgeId) return;
+    setEdges((prev) => prev.filter((e) => e.id !== selectedEdgeId));
+    setSelectedEdgeId(null);
+    setHasUnsavedChanges(true);
+    toast.success("Connexion supprimée");
+  }, [selectedEdgeId]);
+
+  // 🔥 Supprimer l'edge sélectionné avec Delete/Backspace
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedEdgeId) {
+        // Ne pas déclencher si on est dans un input
+        if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+          return;
+        }
+        e.preventDefault();
+        deleteSelectedEdge();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedEdgeId, deleteSelectedEdge]);
 
   // ============================================
   // PAPER.JS DRAWING
@@ -5454,6 +5545,8 @@ export default function DailyNotesCanvas({
                     onEdgesChange={onEdgesChange}
                     onConnect={handleConnect}
                     onEdgeClick={handleEdgeClick}
+                    onEdgeDoubleClick={handleEdgeDoubleClick}
+                    onPaneClick={() => setSelectedEdgeId(null)} // 🔥 Clic sur le fond désélectionne
                     nodeTypes={nodeTypes}
                     connectionMode={ConnectionMode.Loose}
                     deleteKeyCode={["Backspace", "Delete"]}
@@ -5518,6 +5611,50 @@ export default function DailyNotesCanvas({
                         les points <span className="text-blue-600 font-semibold">bleus</span>
                       </div>
                     </Panel>
+
+                    {/* 🔥 Panel couleur pour edge sélectionné */}
+                    {selectedEdgeId && (
+                      <Panel position="bottom-center" style={{ zIndex: 100 }}>
+                        <div className="bg-white rounded-lg shadow-lg p-3 border flex items-center gap-3">
+                          <span className="text-sm font-medium text-gray-700">Couleur du trait:</span>
+                          <div className="flex gap-1">
+                            {[
+                              "#64748b",
+                              "#EF4444",
+                              "#F97316",
+                              "#EAB308",
+                              "#22C55E",
+                              "#3B82F6",
+                              "#A855F7",
+                              "#EC4899",
+                              "#000000",
+                            ].map((color) => (
+                              <button
+                                key={color}
+                                className={`w-6 h-6 rounded-full border-2 transition-all ${
+                                  edges.find((e) => e.id === selectedEdgeId)?.color === color ||
+                                  (!edges.find((e) => e.id === selectedEdgeId)?.color && color === "#64748b")
+                                    ? "border-blue-500 scale-110"
+                                    : "border-gray-300 hover:scale-105"
+                                }`}
+                                style={{ backgroundColor: color }}
+                                onClick={() => updateEdgeColor(color)}
+                                title={color}
+                              />
+                            ))}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={deleteSelectedEdge}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Supprimer
+                          </Button>
+                        </div>
+                      </Panel>
+                    )}
                   </ReactFlow>
                 </div>
 
