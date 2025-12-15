@@ -624,6 +624,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       .from("project_expenses")
       .select("id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, type_electrique, quantite")
       .eq("scenario_id", principalScenarioId)
+      .not("type_electrique", "is", null)
       .order("nom_accessoire");
     console.log("[Schema] loadScenarioItems result:", { count: data?.length, error, items_in_schema: items.length });
     if (data) {
@@ -989,7 +990,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   <div className="text-center text-sm text-gray-500 py-8">Aucun scénario principal défini</div>
                 ) : filteredScenario.length === 0 ? (
                   <div className="text-center text-sm text-gray-500 py-8">
-                    {scenarioSearch ? "Aucun article trouvé" : "Tous les articles sont déjà dans le schéma"}
+                    {scenarioSearch
+                      ? "Aucun article trouvé"
+                      : scenarioItems.length === 0
+                        ? "Aucun article avec type électrique dans le scénario"
+                        : "Tous les articles sont déjà dans le schéma"}
                   </div>
                 ) : (
                   <div className="p-2 space-y-1">
