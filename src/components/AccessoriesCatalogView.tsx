@@ -24,6 +24,30 @@ import {
   TrendingDown,
   TrendingUp,
   ShoppingCart,
+  // Icônes pour les catégories
+  Zap,
+  Battery,
+  Sun,
+  Lightbulb,
+  Bed,
+  Droplets,
+  Sofa,
+  Thermometer,
+  Flame,
+  UtensilsCrossed,
+  Archive,
+  Lock,
+  Fan,
+  Snowflake,
+  Home,
+  Hammer,
+  Wrench,
+  Car,
+  Gauge,
+  Cable,
+  Plug,
+  Grid3X3,
+  FolderOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -55,11 +79,117 @@ const decodeHtmlEntities = (text: string | null | undefined): string => {
   return doc.documentElement.textContent || text;
 };
 
+// 🎨 Fonction pour obtenir l'icône d'une catégorie
+const getCategoryIcon = (categoryName: string) => {
+  const name = categoryName.toLowerCase();
+
+  // Électricité
+  if (name.includes("électri") || name.includes("electri")) return Zap;
+  if (name.includes("batterie")) return Battery;
+  if (name.includes("solaire") || name.includes("panneau")) return Sun;
+  if (name.includes("câble") || name.includes("cable")) return Cable;
+
+  // Éclairage
+  if (
+    name.includes("éclairage") ||
+    name.includes("eclairage") ||
+    name.includes("lumière") ||
+    name.includes("lumiere") ||
+    name.includes("led") ||
+    name.includes("spot")
+  )
+    return Lightbulb;
+
+  // Couchage
+  if (name.includes("couchage") || name.includes("matelas") || name.includes("lit") || name.includes("sommier"))
+    return Bed;
+
+  // Eau / Plomberie
+  if (
+    name.includes("eau") ||
+    name.includes("plomberie") ||
+    name.includes("robinet") ||
+    name.includes("réservoir") ||
+    name.includes("reservoir")
+  )
+    return Droplets;
+
+  // Mobilier
+  if (name.includes("mobilier") || name.includes("meuble") || name.includes("rangement") || name.includes("placard"))
+    return Sofa;
+
+  // Isolation
+  if (name.includes("isolation") || name.includes("thermique")) return Thermometer;
+
+  // Chauffage
+  if (name.includes("chauffage") || name.includes("chauffer")) return Flame;
+
+  // Cuisine
+  if (
+    name.includes("cuisine") ||
+    name.includes("cuisson") ||
+    name.includes("plaque") ||
+    name.includes("réchaud") ||
+    name.includes("rechaud")
+  )
+    return UtensilsCrossed;
+
+  // Réfrigération
+  if (
+    name.includes("frigo") ||
+    name.includes("réfrig") ||
+    name.includes("refrig") ||
+    name.includes("glacière") ||
+    name.includes("glaciere")
+  )
+    return Snowflake;
+
+  // Ventilation
+  if (name.includes("ventil") || name.includes("aération") || name.includes("aeration")) return Fan;
+
+  // Sécurité
+  if (name.includes("sécurité") || name.includes("securite") || name.includes("alarme") || name.includes("serrure"))
+    return Lock;
+
+  // Aménagement / Structure
+  if (name.includes("aménagement") || name.includes("amenagement") || name.includes("structure")) return Home;
+  if (name.includes("outillage") || name.includes("outil")) return Hammer;
+  if (name.includes("quincaillerie") || name.includes("visserie")) return Wrench;
+
+  // Véhicule
+  if (
+    name.includes("véhicule") ||
+    name.includes("vehicule") ||
+    name.includes("carrosserie") ||
+    name.includes("vitre") ||
+    name.includes("fenêtre") ||
+    name.includes("fenetre")
+  )
+    return Car;
+
+  // Régulation / Monitoring
+  if (name.includes("régul") || name.includes("regul") || name.includes("mppt") || name.includes("monitor"))
+    return Gauge;
+
+  // Branchement / Connexion
+  if (name.includes("prise") || name.includes("connect") || name.includes("branch")) return Plug;
+
+  // Consommables
+  if (name.includes("consommable") || name.includes("fourniture")) return Archive;
+
+  // Sans catégorie
+  if (name.includes("sans catégorie") || name.includes("sans categorie")) return FolderOpen;
+
+  // Par défaut
+  return Package;
+};
+
 interface Category {
   id: string;
   nom: string;
   parent_id: string | null;
   user_id: string;
+  icon?: string; // Emoji stocké dans la base
 }
 
 interface AccessoryOption {
@@ -192,6 +322,7 @@ const AccessoriesCatalogView = () => {
     interface CategoryGroup {
       mainCategory: string;
       mainCategoryId: string | null;
+      mainCategoryIcon?: string; // Emoji de la catégorie
       subGroups: Map<string, Accessory[]>;
     }
 
@@ -203,6 +334,7 @@ const AccessoriesCatalogView = () => {
           mainGroups.set("Sans catégorie", {
             mainCategory: "Sans catégorie",
             mainCategoryId: null,
+            mainCategoryIcon: "📁",
             subGroups: new Map([["Sans catégorie", []]]),
           });
         }
@@ -223,6 +355,7 @@ const AccessoriesCatalogView = () => {
         mainGroups.set(mainCategoryName, {
           mainCategory: mainCategoryName,
           mainCategoryId: mainCategory.id,
+          mainCategoryIcon: mainCategory.icon,
           subGroups: new Map(),
         });
       }
@@ -702,6 +835,8 @@ const AccessoriesCatalogView = () => {
                 {Array.from(groupedAccessories()).map(([mainCategoryName, group]) => {
                   const totalCount = Array.from(group.subGroups.values()).reduce((acc, items) => acc + items.length, 0);
                   const isActive = activeTab === mainCategoryName;
+                  const CategoryIcon = getCategoryIcon(mainCategoryName);
+                  const hasEmoji = group.mainCategoryIcon && group.mainCategoryIcon.length > 0;
 
                   return (
                     <button
@@ -716,6 +851,11 @@ const AccessoriesCatalogView = () => {
                         }
                       `}
                     >
+                      {hasEmoji ? (
+                        <span className="text-base">{group.mainCategoryIcon}</span>
+                      ) : (
+                        <CategoryIcon className="h-4 w-4" />
+                      )}
                       {mainCategoryName}
                       <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
                         {totalCount}
@@ -751,37 +891,48 @@ const AccessoriesCatalogView = () => {
               ) : activeTab === "__all__" ? (
                 // Afficher toutes les catégories
                 <div className="space-y-6">
-                  {Array.from(groupedAccessories()).map(([mainCategoryName, group]) => (
-                    <div key={mainCategoryName}>
-                      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-primary/30">
-                        <h3 className="text-lg font-semibold text-primary">{mainCategoryName}</h3>
-                        <Badge variant="outline">
-                          {Array.from(group.subGroups.values()).reduce((acc, items) => acc + items.length, 0)}{" "}
-                          article(s)
-                        </Badge>
-                      </div>
-
-                      {Array.from(group.subGroups).map(([subCategoryName, items]) => (
-                        <div key={`${mainCategoryName}-${subCategoryName}`} className="mb-4">
-                          {group.subGroups.size > 1 && (
-                            <div className="flex items-center gap-2 mb-2 ml-2">
-                              <span className="text-sm font-medium text-muted-foreground">↳ {subCategoryName}</span>
-                              <Badge variant="outline" className="text-xs">
-                                {items.length}
-                              </Badge>
-                            </div>
+                  {Array.from(groupedAccessories()).map(([mainCategoryName, group]) => {
+                    const CategoryIcon = getCategoryIcon(mainCategoryName);
+                    const hasEmoji = group.mainCategoryIcon && group.mainCategoryIcon.length > 0;
+                    return (
+                      <div key={mainCategoryName}>
+                        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-primary/30">
+                          {hasEmoji ? (
+                            <span className="text-xl">{group.mainCategoryIcon}</span>
+                          ) : (
+                            <CategoryIcon className="h-5 w-5 text-primary" />
                           )}
-                          <div
-                            className={
-                              viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-3"
-                            }
-                          >
-                            {items.map((accessory) => renderAccessoryCard(accessory))}
-                          </div>
+                          <h3 className="text-lg font-semibold text-primary">{mainCategoryName}</h3>
+                          <Badge variant="outline">
+                            {Array.from(group.subGroups.values()).reduce((acc, items) => acc + items.length, 0)}{" "}
+                            article(s)
+                          </Badge>
                         </div>
-                      ))}
-                    </div>
-                  ))}
+
+                        {Array.from(group.subGroups).map(([subCategoryName, items]) => (
+                          <div key={`${mainCategoryName}-${subCategoryName}`} className="mb-4">
+                            {group.subGroups.size > 1 && (
+                              <div className="flex items-center gap-2 mb-2 ml-2">
+                                <span className="text-sm font-medium text-muted-foreground">↳ {subCategoryName}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  {items.length}
+                                </Badge>
+                              </div>
+                            )}
+                            <div
+                              className={
+                                viewMode === "grid"
+                                  ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                                  : "space-y-3"
+                              }
+                            >
+                              {items.map((accessory) => renderAccessoryCard(accessory))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 // Afficher uniquement la catégorie sélectionnée
