@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { OfficialDocumentUploadDialog } from "./OfficialDocumentUploadDialog";
 import { PdfViewerModal } from "@/components/PdfViewerModal";
-import { CategoryManagementDialog } from "./CategoryManagementDialog";
+import CategoryManagementDialog from "./CategoryManagementDialog";
 
 interface OfficialDocument {
   id: string;
@@ -389,9 +389,10 @@ export function AdminOfficialDocumentsManager() {
 
       {/* Dialog de gestion des catégories */}
       <CategoryManagementDialog
-        open={categoryManagementOpen}
-        onOpenChange={setCategoryManagementOpen}
-        onCategoryUpdated={loadCategories}
+        isOpen={categoryManagementOpen}
+        onClose={() => setCategoryManagementOpen(false)}
+        onSuccess={loadCategories}
+        categories={categories}
       />
 
       {/* Dialog d'upload */}
