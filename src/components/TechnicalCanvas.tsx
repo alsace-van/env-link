@@ -154,7 +154,7 @@ const ELECTRICAL_TYPES: Record<
     color: string;
     bgColor: string;
     borderColor: string;
-    category: "production" | "stockage" | "regulation" | "conversion" | "consommateur" | "distribution";
+    category: "production" | "stockage" | "regulation" | "conversion" | "consommateur" | "distribution" | "neutre";
   }
 > = {
   // Types principaux
@@ -246,6 +246,31 @@ const ELECTRICAL_TYPES: Record<
     borderColor: "border-gray-400",
     category: "distribution",
   },
+  // Type neutre (porte-fusibles, borniers, etc.)
+  neutre: {
+    label: "Accessoire",
+    icon: Cable,
+    color: "text-slate-600",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-300",
+    category: "neutre",
+  },
+  accessoire: {
+    label: "Accessoire",
+    icon: Cable,
+    color: "text-slate-600",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-300",
+    category: "neutre",
+  },
+  fusible: {
+    label: "Fusible",
+    icon: Cable,
+    color: "text-slate-600",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-300",
+    category: "neutre",
+  },
   // Alias (pour compatibilité avec les valeurs existantes en base)
   producteur: {
     label: "Producteur",
@@ -283,6 +308,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
   const item = data.item as ElectricalItem;
   const handles = (data.handles as BlockHandles) || DEFAULT_HANDLES;
   const onUpdateHandles = data.onUpdateHandles as ((nodeId: string, handles: BlockHandles) => void) | undefined;
+  const onDeleteItem = data.onDeleteItem as ((nodeId: string) => void) | undefined;
 
   if (!item) return null;
 
@@ -317,51 +343,43 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
     });
   };
 
-  // Bouton pour ajouter/supprimer des handles
-  const HandleControl = ({ side, position }: { side: "top" | "bottom" | "left" | "right"; position: string }) => {
+  // Contrôle discret pour ajuster les handles (petit badge avec compteur)
+  const HandleControl = ({ side }: { side: "top" | "bottom" | "left" | "right" }) => {
     if (!selected || !onUpdateHandles) return null;
 
-    const isHorizontal = side === "top" || side === "bottom";
     const currentCount = handles[side];
+    const isHorizontal = side === "top" || side === "bottom";
 
     const positionClasses: Record<string, string> = {
-      top: "top-0 left-1/2 -translate-x-1/2 -translate-y-full",
-      bottom: "bottom-0 left-1/2 -translate-x-1/2 translate-y-full",
-      left: "left-0 top-1/2 -translate-y-1/2 -translate-x-full",
-      right: "right-0 top-1/2 -translate-y-1/2 translate-x-full",
+      top: "-top-6 left-1/2 -translate-x-1/2",
+      bottom: "-bottom-6 left-1/2 -translate-x-1/2",
+      left: "top-1/2 -left-6 -translate-y-1/2",
+      right: "top-1/2 -right-6 -translate-y-1/2",
     };
 
     return (
       <div
-        className={`absolute ${positionClasses[side]} flex ${isHorizontal ? "flex-row" : "flex-col"} gap-0.5 bg-white rounded shadow-md border p-0.5 z-10`}
+        className={`absolute ${positionClasses[side]} flex ${isHorizontal ? "flex-row" : "flex-col"} items-center bg-white/95 rounded-full shadow-sm border border-gray-200 text-[10px] z-10`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          className="w-5 h-5 flex items-center justify-center text-xs font-bold text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30"
+          className="w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={(e) => {
             e.stopPropagation();
-            if (currentCount > 1) {
-              onUpdateHandles(item.id, { ...handles, [side]: currentCount - 1 });
-            }
+            if (currentCount > 1) onUpdateHandles(item.id, { ...handles, [side]: currentCount - 1 });
           }}
           disabled={currentCount <= 1}
-          title="Retirer un connecteur"
         >
           −
         </button>
-        <span className="w-5 h-5 flex items-center justify-center text-xs font-medium text-gray-500">
-          {currentCount}
-        </span>
+        <span className="w-3 text-center font-medium text-gray-600">{currentCount}</span>
         <button
-          className="w-5 h-5 flex items-center justify-center text-xs font-bold text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30"
+          className="w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full disabled:opacity-30 disabled:hover:bg-transparent"
           onClick={(e) => {
             e.stopPropagation();
-            if (currentCount < 8) {
-              onUpdateHandles(item.id, { ...handles, [side]: currentCount + 1 });
-            }
+            if (currentCount < 8) onUpdateHandles(item.id, { ...handles, [side]: currentCount + 1 });
           }}
           disabled={currentCount >= 8}
-          title="Ajouter un connecteur"
         >
           +
         </button>
@@ -379,10 +397,24 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       {generateHandles("left", handles.left, "target", Position.Left)}
 
       {/* Contrôles pour ajuster les handles (visibles quand sélectionné) */}
-      <HandleControl side="top" position="top" />
-      <HandleControl side="bottom" position="bottom" />
-      <HandleControl side="left" position="left" />
-      <HandleControl side="right" position="right" />
+      <HandleControl side="top" />
+      <HandleControl side="bottom" />
+      <HandleControl side="left" />
+      <HandleControl side="right" />
+
+      {/* Bouton supprimer (visible quand sélectionné) */}
+      {selected && onDeleteItem && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteItem(item.id);
+          }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md z-20 transition-colors"
+          title="Supprimer du schéma"
+        >
+          ×
+        </button>
+      )}
 
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${typeConfig.borderColor} bg-white/60 rounded-t-lg`}>
         <IconComponent className={`h-5 w-5 ${typeConfig.color}`} />
@@ -634,6 +666,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     toast.success(`${decodedName} ajouté au schéma`);
   };
 
+  // Supprimer un item du schéma (mais pas de la base)
+  const deleteItemFromSchema = useCallback((itemId: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+    // Supprimer aussi les edges liés à cet item
+    setEdges((prev) => prev.filter((e) => e.source_node_id !== itemId && e.target_node_id !== itemId));
+    // Supprimer les handles sauvegardés
+    setNodeHandles((prev) => {
+      const newHandles = { ...prev };
+      delete newHandles[itemId];
+      return newHandles;
+    });
+    toast.success("Accessoire retiré du schéma");
+  }, []);
+
   // Filtrer le scénario
   const filteredScenario = scenarioItems.filter(
     (item) =>
@@ -670,11 +716,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             item,
             handles,
             onUpdateHandles: updateNodeHandles,
+            onDeleteItem: deleteItemFromSchema,
           },
         };
       }) as any;
     });
-  }, [items, nodeHandles, updateNodeHandles]);
+  }, [items, nodeHandles, updateNodeHandles, deleteItemFromSchema]);
 
   // Fonction pour extraire le côté du handle (right, left, top, bottom)
   const getSideFromHandle = (handle: string | null | undefined): string => {
@@ -2042,7 +2089,6 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
         <AccessorySelector
           projectId={projectId}
-          a
           onSelectAccessory={handleSelectAccessory}
           onAddToCatalog={onExpenseAdded}
         />
