@@ -538,7 +538,7 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
         <IconComponent className="h-4 w-4" />
         <input
           type="text"
-          value={block.title || blockType.label}
+          value={block.title !== undefined && block.title !== null ? block.title : blockType.label}
           onChange={(e) => onUpdateBlock(block.id, { title: e.target.value })}
           onPointerDown={stopDrag}
           className="text-xs font-medium flex-1 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-300 rounded px-1 min-w-0 nodrag"
@@ -657,7 +657,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         }
                       }
                     }}
-                    className={`flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm ${
+                    onPointerDown={stopDrag}
+                    className={`flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm nodrag ${
                       isChecked ? "line-through text-muted-foreground" : ""
                     }`}
                     placeholder="Étape..."
@@ -732,7 +733,8 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                         }
                       }
                     }}
-                    className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm"
+                    onPointerDown={stopDrag}
+                    className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 p-0 text-sm nodrag"
                     placeholder="Élément..."
                   />
                   <button
@@ -1279,12 +1281,16 @@ const MechanicalProcedures = () => {
 
   // Mettre à jour un bloc
   const handleUpdateBlock = async (blockId: string, updates: Partial<ContentBlock>) => {
+    // 🔥 Mettre à jour l'état local IMMÉDIATEMENT (avant l'appel API)
+    setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
+
     try {
       const { error } = await (supabase as any).from("mechanical_blocks").update(updates).eq("id", blockId);
 
-      if (error) throw error;
-
-      setBlocks(blocks.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
+      if (error) {
+        console.error("Erreur mise à jour bloc:", error);
+        // Recharger les blocs en cas d'erreur pour resynchroniser
+      }
     } catch (error) {
       console.error("Erreur mise à jour bloc:", error);
     }
