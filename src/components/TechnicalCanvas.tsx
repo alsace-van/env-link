@@ -469,6 +469,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Charger le scénario principal
   useEffect(() => {
     const loadPrincipalScenario = async () => {
+      console.log("[Schema] Recherche scénario principal pour projet:", projectId);
       const { data, error } = await (supabase as any)
         .from("project_scenarios")
         .select("id")
@@ -476,13 +477,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         .eq("est_principal", true)
         .single();
 
+      console.log("[Schema] Scénario principal:", { data, error });
+
       if (!error && data) {
         setPrincipalScenarioId(data.id);
+        // Ne pas mettre loading à false ici, attendre que loadItems finisse
       } else {
         // Fallback sans scénario
         loadItemsWithoutScenario();
       }
-      setLoading(false);
     };
 
     loadPrincipalScenario();
@@ -491,59 +494,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Charger les items quand le scénario est chargé
   useEffect(() => {
     if (principalScenarioId) {
-      loadItems();
+      loadItems().then(() => setLoading(false));
       loadSchemaData();
     }
   }, [principalScenarioId]);
 
   const loadItemsWithoutScenario = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("project_expenses")
-      .select(
-        `
-        *, 
-        accessories_catalog:catalog_id (type_electrique, puissance_watts, capacite_ah)
-      `,
-      )
-      .eq("project_id", projectId);
-    if (data) {
-      // Filtrer et mapper les items avec un type électrique (depuis expense ou catalogue)
-      const electricalItems = data
-        .filter((d: any) => d.type_electrique || d.accessories_catalog?.type_electrique)
-        .map((d: any) => ({
-          ...d,
-          type_electrique: d.type_electrique || d.accessories_catalog?.type_electrique,
-          puissance_watts: d.puissance_watts || d.accessories_catalog?.puissance_watts,
-          capacite_ah: d.capacite_ah || d.accessories_catalog?.capacite_ah,
-        }));
-      setItems(electricalItems as ElectricalItem[]);
-    }
+      .select("*")
+      .eq("project_id", projectId)
+      .not("type_electrique", "is", null);
+    console.log("[Schema] loadItemsWithoutScenario:", { projectId, data, error });
+    if (data) setItems(data as ElectricalItem[]);
     setLoading(false);
   };
 
   const loadItems = async () => {
     if (!principalScenarioId) return;
-    const { data } = await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from("project_expenses")
-      .select(
-        `
-        *, 
-        accessories_catalog:catalog_id (type_electrique, puissance_watts, capacite_ah)
-      `,
-      )
-      .eq("scenario_id", principalScenarioId);
-    if (data) {
-      // Filtrer et mapper les items avec un type électrique (depuis expense ou catalogue)
-      const electricalItems = data
-        .filter((d: any) => d.type_electrique || d.accessories_catalog?.type_electrique)
-        .map((d: any) => ({
-          ...d,
-          type_electrique: d.type_electrique || d.accessories_catalog?.type_electrique,
-          puissance_watts: d.puissance_watts || d.accessories_catalog?.puissance_watts,
-          capacite_ah: d.capacite_ah || d.accessories_catalog?.capacite_ah,
-        }));
-      setItems(electricalItems as ElectricalItem[]);
-    }
+      .select("*")
+      .eq("scenario_id", principalScenarioId)
+      .not("type_electrique", "is", null);
+    console.log("[Schema] loadItems:", { principalScenarioId, count: data?.length, data, error });
+    if (data) setItems(data as ElectricalItem[]);
   };
 
   const loadSchemaData = () => {
@@ -598,23 +573,22 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Charger les articles du scénario principal
   const loadScenarioItems = async () => {
+    console.log("[Schema] loadScenarioItems - principalScenarioId:", principalScenarioId);
     if (!principalScenarioId) return;
     setScenarioLoading(true);
-    const { data } = await (supabase as any)
+    const { data, error } = await (supabase as any)
       .from("project_expenses")
       .select(
-        `
-        id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, 
-        tension_volts, intensite_amperes, type_electrique, quantite, catalog_id,
-        accessories_catalog:catalog_id (type_electrique, puissance_watts, capacite_ah)
-      `,
+        "id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, tension_volts, intensite_amperes, type_electrique, quantite",
       )
       .eq("scenario_id", principalScenarioId)
       .order("nom_accessoire");
+    console.log("[Schema] loadScenarioItems result:", { count: data?.length, error, items_in_schema: items.length });
     if (data) {
       // Filtrer les items déjà présents dans le schéma
       const existingIds = items.map((i) => i.id);
       const availableItems = data.filter((d: any) => !existingIds.includes(d.id));
+      console.log("[Schema] availableItems:", availableItems.length, "existingIds:", existingIds);
       setScenarioItems(availableItems);
     }
     setScenarioLoading(false);
@@ -623,19 +597,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Ajouter un article du scénario au schéma
   const addFromScenario = (expense: any) => {
     const decodedName = decodeHtmlEntities(expense.nom_accessoire);
-    // Récupérer le type depuis le catalogue si disponible, sinon depuis l'expense
-    const catalogData = expense.accessories_catalog;
-    const typeElectrique = expense.type_electrique || catalogData?.type_electrique || "consommateur";
-    const puissanceWatts = expense.puissance_watts || catalogData?.puissance_watts;
-    const capaciteAh = expense.capacite_ah || catalogData?.capacite_ah;
-
+    // Si pas de type_electrique, on met "consommateur" par défaut
     const newItem: ElectricalItem = {
       id: expense.id,
       nom_accessoire: decodedName,
-      type_electrique: typeElectrique,
+      type_electrique: expense.type_electrique || "consommateur",
       quantite: expense.quantite || 1,
-      puissance_watts: puissanceWatts,
-      capacite_ah: capaciteAh,
+      puissance_watts: expense.puissance_watts,
+      capacite_ah: expense.capacite_ah,
       tension_volts: expense.tension_volts,
       intensite_amperes: expense.intensite_amperes,
       marque: expense.marque,
@@ -648,15 +617,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   };
 
   // Filtrer le scénario
-  const filteredScenario = scenarioItems.filter((item) => {
-    const searchLower = scenarioSearch.toLowerCase();
-    const effectiveType = item.type_electrique || item.accessories_catalog?.type_electrique;
-    return (
-      item.nom_accessoire?.toLowerCase().includes(searchLower) ||
-      item.marque?.toLowerCase().includes(searchLower) ||
-      effectiveType?.toLowerCase().includes(searchLower)
-    );
-  });
+  const filteredScenario = scenarioItems.filter(
+    (item) =>
+      item.nom_accessoire?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
+      item.marque?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
+      item.type_electrique?.toLowerCase().includes(scenarioSearch.toLowerCase()),
+  );
 
   // Synchroniser les nodes avec les items
   useEffect(() => {
@@ -934,14 +900,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 ) : (
                   <div className="p-2 space-y-1">
                     {filteredScenario.map((item) => {
-                      // Récupérer le type depuis l'expense ou le catalogue
-                      const effectiveType = item.type_electrique || item.accessories_catalog?.type_electrique;
-                      const typeConfig = effectiveType
-                        ? ELECTRICAL_TYPES[effectiveType] || ELECTRICAL_TYPES.consommateur
+                      const typeConfig = item.type_electrique
+                        ? ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur
                         : { icon: Lightbulb, color: "text-gray-400" };
                       const IconComponent = typeConfig.icon;
-                      const puissance = item.puissance_watts || item.accessories_catalog?.puissance_watts;
-                      const capacite = item.capacite_ah || item.accessories_catalog?.capacite_ah;
                       return (
                         <button
                           key={item.id}
@@ -955,9 +917,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             </div>
                             <div className="text-xs text-gray-500 flex items-center gap-2">
                               {item.marque && <span>{item.marque}</span>}
-                              {puissance && <span>{puissance}W</span>}
-                              {capacite && <span>{capacite}Ah</span>}
-                              {!effectiveType && <span className="text-orange-500">(sans type)</span>}
+                              {item.puissance_watts && <span>{item.puissance_watts}W</span>}
+                              {item.capacite_ah && <span>{item.capacite_ah}Ah</span>}
+                              {!item.type_electrique && <span className="text-orange-500">(sans type)</span>}
                             </div>
                           </div>
                           <Plus className="h-4 w-4 text-gray-400" />
