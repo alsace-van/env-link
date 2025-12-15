@@ -339,6 +339,7 @@ interface CustomBlockData {
   onSearchExpenses: (query: string, linkedProjectId?: string) => Promise<LinkedExpense[]>;
   onLinkExpense: (expense: LinkedExpense) => void;
   onUpdateExpense: (expenseId: string, updates: Partial<LinkedExpense>) => void;
+  globalUsedQuantities: Map<string, number>; // 🔥 Quantités utilisées globalement sur TOUS les blocs
   suppliers: string[]; // 🔥 Liste des fournisseurs enregistrés
   projects: ProjectItem[];
   currentProjectId: string;
@@ -362,6 +363,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
     onSearchExpenses,
     onLinkExpense,
     onUpdateExpense,
+    globalUsedQuantities,
     suppliers,
     projects,
     currentProjectId,
@@ -1048,29 +1050,40 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                             <span className="font-medium">{expense.prix.toFixed(2)}€</span>
                             {/* Sélecteur de quantité éditable */}
-                            <div className="flex items-center gap-0.5 bg-gray-100 rounded px-1">
-                              <span className="text-gray-500">×</span>
-                              <input
-                                type="number"
-                                min="1"
-                                max={expense.quantite}
-                                value={expense.quantiteBloc ?? expense.quantite}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  const newQty = Math.max(1, Math.min(expense.quantite, parseInt(e.target.value) || 1));
-                                  const newExpenses = expenses.map((exp) =>
-                                    exp.id === expense.id ? { ...exp, quantiteBloc: newQty } : exp,
-                                  );
-                                  onUpdate({ linkedExpenses: newExpenses });
-                                }}
-                                onClick={stopPropagation}
-                                onPointerDown={stopPropagation}
-                                className="w-8 h-5 text-center text-sm font-medium bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-blue-400 rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                              {expense.quantite > 1 && (
-                                <span className="text-gray-400 text-[10px]">/{expense.quantite}</span>
-                              )}
-                            </div>
+                            {(() => {
+                              // 🔥 Calculer la quantité max disponible pour CE bloc
+                              // = quantité totale - quantité utilisée dans les AUTRES blocs
+                              const currentQtyInThisBlock = expense.quantiteBloc ?? expense.quantite;
+                              const globalUsed = globalUsedQuantities.get(expense.id) || 0;
+                              const usedInOtherBlocks = globalUsed - currentQtyInThisBlock;
+                              const maxAvailable = expense.quantite - usedInOtherBlocks;
+
+                              return (
+                                <div className="flex items-center gap-0.5 bg-gray-100 rounded px-1">
+                                  <span className="text-gray-500">×</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={maxAvailable}
+                                    value={currentQtyInThisBlock}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      const newQty = Math.max(1, Math.min(maxAvailable, parseInt(e.target.value) || 1));
+                                      const newExpenses = expenses.map((exp) =>
+                                        exp.id === expense.id ? { ...exp, quantiteBloc: newQty } : exp,
+                                      );
+                                      onUpdate({ linkedExpenses: newExpenses });
+                                    }}
+                                    onClick={stopPropagation}
+                                    onPointerDown={stopPropagation}
+                                    className="w-8 h-5 text-center text-sm font-medium bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-blue-400 rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  />
+                                  {expense.quantite > 1 && (
+                                    <span className="text-gray-400 text-[10px]">/{maxAvailable}</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
 
@@ -1290,22 +1303,12 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   try {
                     // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
                     const results = await onSearchExpenses("", block.linkedProjectId);
-                    // 🔥 Calculer la quantité utilisée dans CE bloc pour chaque article
-                    // On utilise quantiteBloc si défini, sinon on considère que l'article
-                    // utilise TOUTE sa quantité (comportement legacy)
-                    const usedInThisBlock = new Map<string, number>();
-                    expenses.forEach((e) => {
-                      // Si quantiteBloc est défini, c'est la quantité utilisée
-                      // Sinon, l'article a été ajouté avant la feature et utilise tout
-                      const used = e.quantiteBloc !== undefined ? e.quantiteBloc : e.quantite;
-                      usedInThisBlock.set(e.id, used);
-                    });
 
-                    // Filtrer les articles complètement utilisés, garder ceux avec quantité restante
+                    // 🔥 Utiliser les quantités GLOBALES (tous les blocs) pour filtrer
                     const availableResults = results
                       .map((r) => {
-                        const used = usedInThisBlock.get(r.id) || 0;
-                        const remaining = r.quantite - used;
+                        const globalUsed = globalUsedQuantities.get(r.id) || 0;
+                        const remaining = r.quantite - globalUsed;
                         return { ...r, quantiteRestante: remaining };
                       })
                       .filter((r) => r.quantiteRestante > 0);
@@ -1346,17 +1349,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                         try {
                           // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
                           const results = await onSearchExpenses(value, block.linkedProjectId);
-                          // 🔥 Calculer la quantité utilisée dans CE bloc pour chaque article
-                          const usedInThisBlock = new Map<string, number>();
-                          expenses.forEach((e) => {
-                            const used = e.quantiteBloc !== undefined ? e.quantiteBloc : e.quantite;
-                            usedInThisBlock.set(e.id, used);
-                          });
-                          // Filtrer les articles complètement utilisés
+                          // 🔥 Utiliser les quantités GLOBALES (tous les blocs) pour filtrer
                           const availableResults = results
                             .map((r) => {
-                              const used = usedInThisBlock.get(r.id) || 0;
-                              const remaining = r.quantite - used;
+                              const globalUsed = globalUsedQuantities.get(r.id) || 0;
+                              const remaining = r.quantite - globalUsed;
                               return { ...r, quantiteRestante: remaining };
                             })
                             .filter((r) => r.quantiteRestante > 0);
@@ -1390,35 +1387,32 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                               // 🔥 Vérifier si l'article est déjà dans le bloc
                               const existingExpense = expenses.find((e) => e.id === expense.id);
 
-                              let newQty: number;
-
                               if (existingExpense) {
                                 // L'article existe déjà → augmenter quantiteBloc de 1
                                 const currentQty =
                                   existingExpense.quantiteBloc !== undefined
                                     ? existingExpense.quantiteBloc
                                     : existingExpense.quantite;
-                                newQty = currentQty + 1;
                                 const newExpenses = expenses.map((exp) =>
-                                  exp.id === expense.id ? { ...exp, quantiteBloc: newQty } : exp,
+                                  exp.id === expense.id ? { ...exp, quantiteBloc: currentQty + 1 } : exp,
                                 );
                                 onUpdate({ linkedExpenses: newExpenses });
                               } else {
                                 // Nouvel article → l'ajouter avec quantiteBloc = 1
-                                newQty = 1;
                                 if (onLinkExpense) {
                                   onLinkExpense({ ...expense, quantiteBloc: 1 });
                                 }
                               }
 
                               setExpenseSearchQuery("");
-                              // 🔥 Mettre à jour la liste des résultats avec la nouvelle quantité restante
-                              const remaining = expense.quantite - newQty;
-                              if (remaining <= 0) {
+                              // 🔥 La quantité restante GLOBALE diminue de 1
+                              // expense.quantiteRestante est déjà calculé globalement
+                              const newRemaining = (expense.quantiteRestante || 0) - 1;
+                              if (newRemaining <= 0) {
                                 setExpenseSearchResults((prev) => prev.filter((e) => e.id !== expense.id));
                               } else {
                                 setExpenseSearchResults((prev) =>
-                                  prev.map((e) => (e.id === expense.id ? { ...e, quantiteRestante: remaining } : e)),
+                                  prev.map((e) => (e.id === expense.id ? { ...e, quantiteRestante: newRemaining } : e)),
                                 );
                               }
                             }}
@@ -4106,6 +4100,21 @@ export default function DailyNotesCanvas({
     });
   }, [blocks, selectedDate]);
 
+  // 🔥 Calculer les quantités utilisées globalement sur TOUS les blocs
+  const globalUsedQuantities = useMemo(() => {
+    const used = new Map<string, number>();
+    blocks.forEach((block) => {
+      if (block.linkedExpenses) {
+        block.linkedExpenses.forEach((expense) => {
+          const qty = expense.quantiteBloc !== undefined ? expense.quantiteBloc : expense.quantite;
+          const current = used.get(expense.id) || 0;
+          used.set(expense.id, current + qty);
+        });
+      }
+    });
+    return used;
+  }, [blocks]);
+
   useEffect(() => {
     // Toujours recréer les nodes (plus de comparaison qui peut bugger)
     const newNodes = blocks.map((block) => ({
@@ -4129,6 +4138,7 @@ export default function DailyNotesCanvas({
         onSearchExpenses: searchExpenses,
         onLinkExpense: (expense: LinkedExpense) => linkExpense(block.id, expense),
         onUpdateExpense: updateExpense,
+        globalUsedQuantities, // 🔥 Passer les quantités globales
         suppliers,
         projects,
         currentProjectId: projectId,
@@ -4167,6 +4177,7 @@ export default function DailyNotesCanvas({
     searchExpenses,
     linkExpense,
     updateExpense,
+    globalUsedQuantities,
     suppliers,
     projects,
     projectId,
