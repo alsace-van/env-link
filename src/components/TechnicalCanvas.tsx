@@ -117,6 +117,7 @@ interface SchemaEdge {
   label?: string;
   strokeWidth?: number;
   section?: string; // Section de câble ex: "2.5mm²", "6mm²"
+  bridge?: boolean; // Pont pour passer au-dessus des autres câbles
 }
 
 // Sections de câble courantes
@@ -498,10 +499,25 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const loadItemsWithoutScenario = async () => {
     const { data } = await supabase
       .from("project_expenses")
-      .select("*")
-      .eq("project_id", projectId)
-      .not("type_electrique", "is", null);
-    if (data) setItems(data as ElectricalItem[]);
+      .select(
+        `
+        *, 
+        accessories_catalog:catalog_id (type_electrique, puissance_watts, capacite_ah)
+      `,
+      )
+      .eq("project_id", projectId);
+    if (data) {
+      // Filtrer et mapper les items avec un type électrique (depuis expense ou catalogue)
+      const electricalItems = data
+        .filter((d: any) => d.type_electrique || d.accessories_catalog?.type_electrique)
+        .map((d: any) => ({
+          ...d,
+          type_electrique: d.type_electrique || d.accessories_catalog?.type_electrique,
+          puissance_watts: d.puissance_watts || d.accessories_catalog?.puissance_watts,
+          capacite_ah: d.capacite_ah || d.accessories_catalog?.capacite_ah,
+        }));
+      setItems(electricalItems as ElectricalItem[]);
+    }
     setLoading(false);
   };
 
@@ -509,10 +525,25 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (!principalScenarioId) return;
     const { data } = await (supabase as any)
       .from("project_expenses")
-      .select("*")
-      .eq("scenario_id", principalScenarioId)
-      .not("type_electrique", "is", null);
-    if (data) setItems(data as ElectricalItem[]);
+      .select(
+        `
+        *, 
+        accessories_catalog:catalog_id (type_electrique, puissance_watts, capacite_ah)
+      `,
+      )
+      .eq("scenario_id", principalScenarioId);
+    if (data) {
+      // Filtrer et mapper les items avec un type électrique (depuis expense ou catalogue)
+      const electricalItems = data
+        .filter((d: any) => d.type_electrique || d.accessories_catalog?.type_electrique)
+        .map((d: any) => ({
+          ...d,
+          type_electrique: d.type_electrique || d.accessories_catalog?.type_electrique,
+          puissance_watts: d.puissance_watts || d.accessories_catalog?.puissance_watts,
+          capacite_ah: d.capacite_ah || d.accessories_catalog?.capacite_ah,
+        }));
+      setItems(electricalItems as ElectricalItem[]);
+    }
   };
 
   const loadSchemaData = () => {
@@ -572,7 +603,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const { data } = await (supabase as any)
       .from("project_expenses")
       .select(
-        "id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, tension_volts, intensite_amperes, type_electrique, quantite",
+        `
+        id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, 
+        tension_volts, intensite_amperes, type_electrique, quantite, catalog_id,
+        accessories_catalog:catalog_id (type_electrique, puissance_watts, capacite_ah)
+      `,
       )
       .eq("scenario_id", principalScenarioId)
       .order("nom_accessoire");
@@ -588,14 +623,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Ajouter un article du scénario au schéma
   const addFromScenario = (expense: any) => {
     const decodedName = decodeHtmlEntities(expense.nom_accessoire);
-    // Si pas de type_electrique, on met "consommateur" par défaut
+    // Récupérer le type depuis le catalogue si disponible, sinon depuis l'expense
+    const catalogData = expense.accessories_catalog;
+    const typeElectrique = expense.type_electrique || catalogData?.type_electrique || "consommateur";
+    const puissanceWatts = expense.puissance_watts || catalogData?.puissance_watts;
+    const capaciteAh = expense.capacite_ah || catalogData?.capacite_ah;
+
     const newItem: ElectricalItem = {
       id: expense.id,
       nom_accessoire: decodedName,
-      type_electrique: expense.type_electrique || "consommateur",
+      type_electrique: typeElectrique,
       quantite: expense.quantite || 1,
-      puissance_watts: expense.puissance_watts,
-      capacite_ah: expense.capacite_ah,
+      puissance_watts: puissanceWatts,
+      capacite_ah: capaciteAh,
       tension_volts: expense.tension_volts,
       intensite_amperes: expense.intensite_amperes,
       marque: expense.marque,
@@ -608,12 +648,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   };
 
   // Filtrer le scénario
-  const filteredScenario = scenarioItems.filter(
-    (item) =>
-      item.nom_accessoire?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
-      item.marque?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
-      item.type_electrique?.toLowerCase().includes(scenarioSearch.toLowerCase()),
-  );
+  const filteredScenario = scenarioItems.filter((item) => {
+    const searchLower = scenarioSearch.toLowerCase();
+    const effectiveType = item.type_electrique || item.accessories_catalog?.type_electrique;
+    return (
+      item.nom_accessoire?.toLowerCase().includes(searchLower) ||
+      item.marque?.toLowerCase().includes(searchLower) ||
+      effectiveType?.toLowerCase().includes(searchLower)
+    );
+  });
 
   // Synchroniser les nodes avec les items
   useEffect(() => {
@@ -697,13 +740,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const sourceIndex = sourceGroup.findIndex((e) => e.id === edge.id);
         const targetIndex = targetGroup.findIndex((e) => e.id === edge.id);
 
-        // Offset de 20px par edge supplémentaire, centré autour de 0
+        // Offset de 25px par edge supplémentaire, centré autour de 0
         const groupSize = Math.max(sourceGroup.length, targetGroup.length);
         const edgeIndex = Math.max(sourceIndex, targetIndex);
-        const offset = (edgeIndex - (groupSize - 1) / 2) * 25;
+        let offset = (edgeIndex - (groupSize - 1) / 2) * 25;
 
-        // Créer un ID de marker unique basé sur la couleur pour éviter les conflits
-        const markerId = `arrow-${edgeColor.replace("#", "")}`;
+        // Ajouter un offset supplémentaire pour les ponts
+        if (edge.bridge) {
+          offset += 50;
+        }
 
         return {
           id: edge.id,
@@ -718,13 +763,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           labelBgStyle: { fill: "white", fillOpacity: 0.9 },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: edgeColor,
-            width: 20,
-            height: 20,
-            strokeWidth: 1,
-          },
+          // Pas de flèche
           style: {
             strokeWidth: isSelected ? edgeWidth + 2 : edgeWidth,
             stroke: edgeColor,
@@ -772,6 +811,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     },
     [selectedEdgeId],
   );
+
+  const toggleEdgeBridge = useCallback(() => {
+    if (!selectedEdgeId) return;
+    setEdges((prev) => prev.map((e) => (e.id === selectedEdgeId ? { ...e, bridge: !e.bridge } : e)));
+  }, [selectedEdgeId]);
 
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
 
@@ -890,10 +934,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 ) : (
                   <div className="p-2 space-y-1">
                     {filteredScenario.map((item) => {
-                      const typeConfig = item.type_electrique
-                        ? ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur
+                      // Récupérer le type depuis l'expense ou le catalogue
+                      const effectiveType = item.type_electrique || item.accessories_catalog?.type_electrique;
+                      const typeConfig = effectiveType
+                        ? ELECTRICAL_TYPES[effectiveType] || ELECTRICAL_TYPES.consommateur
                         : { icon: Lightbulb, color: "text-gray-400" };
                       const IconComponent = typeConfig.icon;
+                      const puissance = item.puissance_watts || item.accessories_catalog?.puissance_watts;
+                      const capacite = item.capacite_ah || item.accessories_catalog?.capacite_ah;
                       return (
                         <button
                           key={item.id}
@@ -907,9 +955,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             </div>
                             <div className="text-xs text-gray-500 flex items-center gap-2">
                               {item.marque && <span>{item.marque}</span>}
-                              {item.puissance_watts && <span>{item.puissance_watts}W</span>}
-                              {item.capacite_ah && <span>{item.capacite_ah}Ah</span>}
-                              {!item.type_electrique && <span className="text-orange-500">(sans type)</span>}
+                              {puissance && <span>{puissance}W</span>}
+                              {capacite && <span>{capacite}Ah</span>}
+                              {!effectiveType && <span className="text-orange-500">(sans type)</span>}
                             </div>
                           </div>
                           <Plus className="h-4 w-4 text-gray-400" />
@@ -1147,6 +1195,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       ))}
                     </select>
                   </div>
+
+                  <div className="w-px h-6 bg-gray-200" />
+
+                  {/* Pont (passer au-dessus) */}
+                  <button
+                    onClick={toggleEdgeBridge}
+                    className={`px-2 py-1 text-xs rounded border transition-all flex items-center gap-1 ${selectedEdge.bridge ? "bg-amber-500 text-white border-amber-500" : "bg-white border-gray-300 hover:border-gray-400"}`}
+                    title="Faire passer le câble au-dessus des autres"
+                  >
+                    <span className="text-sm">⌒</span>
+                    Pont
+                  </button>
 
                   <div className="w-px h-6 bg-gray-200" />
 
