@@ -1,3 +1,4 @@
+// VERSION 2.0 - 15/12/2025 - Nouveaux emojis (lit, frigo, cuisine, etc.)
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
