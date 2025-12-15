@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Search, Plus, Clock, TrendingUp, Settings, Trash2, AlertTriangle, Pencil } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateTemplateDialog } from "./CreateTemplateDialog";
-import CategoryManagementDialog from "../CategoryManagementDialog";
+import { CategoryManagementDialog } from "./CategoryManagementDialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertDialog,
