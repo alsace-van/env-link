@@ -14,6 +14,7 @@ import {
   useEdgesState,
   addEdge,
   Connection,
+  ConnectionMode,
   Edge,
   Node,
   NodeProps,
@@ -226,6 +227,8 @@ interface BlockEdge {
   id: string;
   source_block_id: string;
   target_block_id: string;
+  source_handle?: string | null;
+  target_handle?: string | null;
   edge_type?: string;
   animated?: boolean;
   label?: string;
@@ -970,12 +973,20 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                     key={expense.id}
                     className={`p-2 rounded-lg border relative ${getStatusColor(expense.statut_livraison)}`}
                   >
-                    {/* 🔥 Handle pour cet article - positionné à droite au centre */}
+                    {/* 🔥 Handle source pour cet article - positionné à droite au centre */}
                     <Handle
                       type="source"
                       position={Position.Right}
                       id={`order-item-${index}`}
                       className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white !right-[-8px]"
+                      style={{ top: "50%", transform: "translateY(-50%)" }}
+                    />
+                    {/* 🔥 Handle target pour cet article - positionné à gauche au centre */}
+                    <Handle
+                      type="target"
+                      position={Position.Left}
+                      id={`order-target-${index}`}
+                      className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white !left-[-8px]"
                       style={{ top: "50%", transform: "translateY(-50%)" }}
                     />
 
@@ -1747,10 +1758,10 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
         }}
       >
         {/* Handles de connexion */}
-        <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
-        <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
-        <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
-        <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+        <Handle type="target" position={Position.Top} id="zone-top" className="!bg-blue-500 !w-3 !h-3" />
+        <Handle type="target" position={Position.Left} id="zone-left" className="!bg-blue-500 !w-3 !h-3" />
+        <Handle type="source" position={Position.Bottom} id="zone-bottom" className="!bg-green-500 !w-3 !h-3" />
+        <Handle type="source" position={Position.Right} id="zone-right" className="!bg-green-500 !w-3 !h-3" />
 
         {renderContent()}
 
@@ -1827,13 +1838,13 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
       {block.type === "list" || block.type === "checklist" ? (
         <>
           {/* Handle cible en haut */}
-          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Top} id="top-main" className="!bg-blue-500 !w-3 !h-3" />
           <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
 
-          {/* 🔥 Handles dynamiques pour chaque ligne */}
+          {/* 🔥 Handles dynamiques pour chaque ligne - source à droite */}
           {(Array.isArray(block.content) ? block.content : []).map((_, index) => (
             <Handle
-              key={`list-item-${index}`}
+              key={`list-source-${index}`}
               type="source"
               position={Position.Right}
               id={`list-item-${index}`}
@@ -1843,48 +1854,66 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
               }}
             />
           ))}
+          {/* 🔥 Handles dynamiques pour chaque ligne - target à gauche */}
+          {(Array.isArray(block.content) ? block.content : []).map((_, index) => (
+            <Handle
+              key={`list-target-${index}`}
+              type="target"
+              position={Position.Left}
+              id={`list-target-${index}`}
+              className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white"
+              style={{
+                top: `${44 + index * 32 + 16}px`, // 44px header + 32px par ligne + centrage
+              }}
+            />
+          ))}
 
           {/* Handle source en bas */}
-          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Bottom} id="bottom-main" className="!bg-green-500 !w-3 !h-3" />
         </>
       ) : block.type === "task" ? (
         <>
           {/* Handle cible en haut */}
-          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Top} id="top-main" className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
 
           {/* Les handles pour chaque tâche sont rendus DANS le contenu, pas ici */}
 
           {/* Handle source en bas */}
-          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Bottom} id="bottom-main" className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Right} id="right-main" className="!bg-green-500 !w-3 !h-3" />
         </>
       ) : block.type === "order" ? (
         <>
           {/* Handle cible en haut et gauche */}
-          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Top} id="top-main" className="!bg-blue-500 !w-3 !h-3" />
           <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
 
           {/* Les handles pour chaque article sont rendus DANS le contenu, pas ici */}
 
           {/* Handle source en bas */}
-          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Bottom} id="bottom-main" className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Right} id="right-main" className="!bg-green-500 !w-3 !h-3" />
         </>
       ) : block.type === "supplier" ? (
         <>
           {/* Handle cible en haut */}
-          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Top} id="top-main" className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
 
           {/* Les handles pour chaque fournisseur sont rendus DANS le contenu, pas ici */}
 
           {/* Handle source en bas */}
-          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Bottom} id="bottom-main" className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Right} id="right-main" className="!bg-green-500 !w-3 !h-3" />
         </>
       ) : (
         <>
           {/* Handles standard pour les autres types */}
-          <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
-          <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
-          <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
-          <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Top} id="top-main" className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="target" position={Position.Left} id="left-main" className="!bg-blue-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Bottom} id="bottom-main" className="!bg-green-500 !w-3 !h-3" />
+          <Handle type="source" position={Position.Right} id="right-main" className="!bg-green-500 !w-3 !h-3" />
         </>
       )}
 
@@ -4042,6 +4071,8 @@ export default function DailyNotesCanvas({
         id: edge.id,
         source: edge.source_block_id,
         target: edge.target_block_id,
+        sourceHandle: edge.source_handle || undefined,
+        targetHandle: edge.target_handle || undefined,
         type: "smoothstep",
         animated: edge.animated || false,
         label: edge.label,
@@ -4231,6 +4262,8 @@ export default function DailyNotesCanvas({
       id: crypto.randomUUID(),
       source_block_id: connection.source,
       target_block_id: connection.target,
+      source_handle: connection.sourceHandle || null,
+      target_handle: connection.targetHandle || null,
       edge_type: "smoothstep",
       animated: false,
     };
@@ -5302,6 +5335,7 @@ export default function DailyNotesCanvas({
                     onConnect={handleConnect}
                     onEdgeClick={handleEdgeClick}
                     nodeTypes={nodeTypes}
+                    connectionMode={ConnectionMode.Loose}
                     deleteKeyCode={["Backspace", "Delete"]}
                     onNodesDelete={(deletedNodes) => {
                       console.log(
