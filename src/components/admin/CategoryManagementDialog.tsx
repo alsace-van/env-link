@@ -24,53 +24,35 @@ interface CategoryManagementDialogProps {
 }
 
 const emojiOptions = [
-  // Électricité
   "⚡",
   "🔌",
   "🔋",
   "☀️",
   "💡",
-  // Eau / Plomberie
   "💧",
   "🚿",
-  "🚰",
-  // Chauffage / Température
   "🔥",
   "🌡️",
   "❄️",
-  // Couchage / Confort
   "🛏️",
   "🛋️",
-  "🧸",
-  // Cuisine
   "🍳",
-  "🥘",
   "🧊",
-  // Structure / Aménagement
   "🏗️",
   "🪟",
   "🚪",
   "🪵",
-  // Outillage
   "🔧",
   "🔩",
   "🛠️",
   "⚙️",
   "🪜",
-  // Rangement
   "📦",
   "🗄️",
   "🎨",
-  // Véhicule
   "🚐",
-  "🚗",
-  "🪞",
-  // Sécurité
   "🔒",
-  "🚨",
-  // Divers
   "📁",
-  "🏷️",
   "✨",
 ];
 
