@@ -1009,9 +1009,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       const availableQty = totalQty - usedQty;
 
                       return (
-                        <div
+                        <button
                           key={item.id}
-                          className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 transition-colors"
+                          onClick={() => addFromScenario(item, 1)}
+                          className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
                         >
                           <IconComponent className={`h-4 w-4 shrink-0 ${typeConfig.color}`} />
                           <div className="flex-1 min-w-0">
@@ -1024,44 +1025,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               {!item.type_electrique && <span className="text-orange-500">(sans type)</span>}
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs text-gray-400">
                               {usedQty}/{totalQty}
                             </span>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="default"
-                              className="w-6 h-6 p-0 text-xs pointer-events-auto"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                console.log("[Schema] Button +1 clicked for:", item.nom_accessoire);
-                                addFromScenario(item, 1);
-                              }}
-                              title="Ajouter 1"
-                            >
-                              +1
-                            </Button>
-                            {availableQty > 1 && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                className="h-6 px-1.5 text-xs pointer-events-auto"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  console.log("[Schema] Button +all clicked for:", item.nom_accessoire);
-                                  addFromScenario(item, availableQty);
-                                }}
-                                title={`Ajouter tout (${availableQty})`}
-                              >
-                                +{availableQty}
-                              </Button>
-                            )}
+                            <Plus className="h-4 w-4 text-gray-400" />
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
