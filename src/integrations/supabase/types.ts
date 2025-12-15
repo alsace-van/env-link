@@ -1602,7 +1602,9 @@ export type Database = {
           id: string
           label: string | null
           source_block_id: string
+          source_handle: string | null
           target_block_id: string
+          target_handle: string | null
           updated_at: string | null
         }
         Insert: {
@@ -1613,7 +1615,9 @@ export type Database = {
           id?: string
           label?: string | null
           source_block_id: string
+          source_handle?: string | null
           target_block_id: string
+          target_handle?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -1624,7 +1628,9 @@ export type Database = {
           id?: string
           label?: string | null
           source_block_id?: string
+          source_handle?: string | null
           target_block_id?: string
+          target_handle?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -2268,6 +2274,7 @@ export type Database = {
         Row: {
           accessory_id: string | null
           amount: number | null
+          capacite_ah: number | null
           categorie: string | null
           category: string | null
           created_at: string | null
@@ -2324,6 +2331,7 @@ export type Database = {
         Insert: {
           accessory_id?: string | null
           amount?: number | null
+          capacite_ah?: number | null
           categorie?: string | null
           category?: string | null
           created_at?: string | null
@@ -2380,6 +2388,7 @@ export type Database = {
         Update: {
           accessory_id?: string | null
           amount?: number | null
+          capacite_ah?: number | null
           categorie?: string | null
           category?: string | null
           created_at?: string | null
@@ -2482,13 +2491,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "view_work_scenario_stats"
             referencedColumns: ["scenario_id"]
-          },
-          {
-            foreignKeyName: "project_expenses_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "project_expenses_todo_id_fkey"
@@ -3896,15 +3898,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "supplier_expenses_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       supplier_ocr_templates: {
         Row: {
@@ -3959,37 +3953,106 @@ export type Database = {
       }
       suppliers: {
         Row: {
-          address: string | null
+          activity_number: string | null
+          address_line1: string | null
+          address_line2: string | null
+          bank_bic: string | null
+          bank_iban: string | null
+          bank_name: string | null
+          business_number: string | null
+          categories: string[] | null
+          city: string | null
+          code: string | null
+          comment: string | null
+          country_iso2: string | null
+          country_label: string | null
           created_at: string | null
+          default_payment_term_id: number | null
+          default_payment_type_id: number | null
           email: string | null
+          enabled: boolean | null
+          evoliz_supplier_id: number | null
+          fax: string | null
           id: string
+          last_synced_at: string | null
+          legal_form: string | null
+          mobile: string | null
           name: string
-          notes: string | null
           phone: string | null
+          postcode: string | null
+          tags: string[] | null
           updated_at: string | null
           user_id: string
+          vat_number: string | null
+          website: string | null
         }
         Insert: {
-          address?: string | null
+          activity_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          bank_bic?: string | null
+          bank_iban?: string | null
+          bank_name?: string | null
+          business_number?: string | null
+          categories?: string[] | null
+          city?: string | null
+          code?: string | null
+          comment?: string | null
+          country_iso2?: string | null
+          country_label?: string | null
           created_at?: string | null
+          default_payment_term_id?: number | null
+          default_payment_type_id?: number | null
           email?: string | null
+          enabled?: boolean | null
+          evoliz_supplier_id?: number | null
+          fax?: string | null
           id?: string
+          last_synced_at?: string | null
+          legal_form?: string | null
+          mobile?: string | null
           name: string
-          notes?: string | null
           phone?: string | null
+          postcode?: string | null
+          tags?: string[] | null
           updated_at?: string | null
           user_id: string
+          vat_number?: string | null
+          website?: string | null
         }
         Update: {
-          address?: string | null
+          activity_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          bank_bic?: string | null
+          bank_iban?: string | null
+          bank_name?: string | null
+          business_number?: string | null
+          categories?: string[] | null
+          city?: string | null
+          code?: string | null
+          comment?: string | null
+          country_iso2?: string | null
+          country_label?: string | null
           created_at?: string | null
+          default_payment_term_id?: number | null
+          default_payment_type_id?: number | null
           email?: string | null
+          enabled?: boolean | null
+          evoliz_supplier_id?: number | null
+          fax?: string | null
           id?: string
+          last_synced_at?: string | null
+          legal_form?: string | null
+          mobile?: string | null
           name?: string
-          notes?: string | null
           phone?: string | null
+          postcode?: string | null
+          tags?: string[] | null
           updated_at?: string | null
           user_id?: string
+          vat_number?: string | null
+          website?: string | null
         }
         Relationships: []
       }
@@ -5078,13 +5141,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "view_work_scenario_stats"
             referencedColumns: ["scenario_id"]
-          },
-          {
-            foreignKeyName: "project_expenses_supplier_id_fkey"
-            columns: ["supplier_id"]
-            isOneToOne: false
-            referencedRelation: "suppliers"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "project_expenses_todo_id_fkey"
