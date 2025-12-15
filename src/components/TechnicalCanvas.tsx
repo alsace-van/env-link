@@ -157,6 +157,7 @@ const ELECTRICAL_TYPES: Record<
     category: "production" | "stockage" | "regulation" | "conversion" | "consommateur" | "distribution";
   }
 > = {
+  // Types principaux
   panneau: {
     label: "Panneau solaire",
     icon: Sun,
@@ -244,6 +245,23 @@ const ELECTRICAL_TYPES: Record<
     bgColor: "bg-gray-50",
     borderColor: "border-gray-400",
     category: "distribution",
+  },
+  // Alias (pour compatibilité avec les valeurs existantes en base)
+  producteur: {
+    label: "Producteur",
+    icon: Sun,
+    color: "text-yellow-600",
+    bgColor: "bg-yellow-50",
+    borderColor: "border-yellow-400",
+    category: "production",
+  },
+  stockage: {
+    label: "Stockage",
+    icon: Battery,
+    color: "text-green-600",
+    bgColor: "bg-green-50",
+    borderColor: "border-green-400",
+    category: "stockage",
   },
 };
 
