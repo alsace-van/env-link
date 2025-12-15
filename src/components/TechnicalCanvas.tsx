@@ -620,24 +620,33 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const stored = localStorage.getItem(`electrical_schema_${projectId}`);
     const savedNodes = stored ? JSON.parse(stored).nodes || [] : [];
 
-    const newNodes = items.map((item, index) => {
-      const savedNode = savedNodes.find((n: any) => n.expense_id === item.id);
-      const handles = nodeHandles[item.id] || DEFAULT_HANDLES;
-      return {
-        id: item.id,
-        type: "electricalBlock",
-        position: {
-          x: savedNode?.position_x ?? 100 + (index % 4) * 300,
-          y: savedNode?.position_y ?? 100 + Math.floor(index / 4) * 250,
-        },
-        data: {
-          item,
-          handles,
-          onUpdateHandles: updateNodeHandles,
-        },
-      };
+    setNodes((currentNodes) => {
+      return items.map((item, index) => {
+        // Chercher d'abord dans les nodes actuels (position en temps réel)
+        const currentNode = currentNodes.find((n) => n.id === item.id);
+        // Sinon chercher dans le localStorage
+        const savedNode = savedNodes.find((n: any) => n.expense_id === item.id);
+        const handles = nodeHandles[item.id] || DEFAULT_HANDLES;
+
+        // Priorité: position actuelle > position sauvegardée > position par défaut
+        const position = currentNode?.position ??
+          (savedNode ? { x: savedNode.position_x, y: savedNode.position_y } : null) ?? {
+            x: 100 + (index % 4) * 300,
+            y: 100 + Math.floor(index / 4) * 250,
+          };
+
+        return {
+          id: item.id,
+          type: "electricalBlock",
+          position,
+          data: {
+            item,
+            handles,
+            onUpdateHandles: updateNodeHandles,
+          },
+        };
+      }) as any;
     });
-    setNodes(newNodes as any);
   }, [items, nodeHandles, updateNodeHandles]);
 
   // Fonction pour extraire le côté du handle (right, left, top, bottom)
