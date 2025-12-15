@@ -725,10 +725,13 @@ const ExpenseFormDialog = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Non applicable</SelectItem>
-                  <SelectItem value="consommateur">Consommateur</SelectItem>
-                  <SelectItem value="producteur">Producteur</SelectItem>
-                  <SelectItem value="stockage">Stockage</SelectItem>
-                  <SelectItem value="convertisseur">Convertisseur</SelectItem>
+                  <SelectItem value="producteur">🟡 Producteur (panneau)</SelectItem>
+                  <SelectItem value="stockage">🟢 Stockage (batterie)</SelectItem>
+                  <SelectItem value="regulateur">🔵 Régulateur (MPPT)</SelectItem>
+                  <SelectItem value="convertisseur">🟣 Convertisseur (DC/AC)</SelectItem>
+                  <SelectItem value="chargeur">🟠 Chargeur (230V, booster)</SelectItem>
+                  <SelectItem value="consommateur">🔴 Consommateur</SelectItem>
+                  <SelectItem value="neutre">⚪ Accessoire (fusible, bornier...)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
