@@ -2042,6 +2042,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
         <AccessorySelector
           projectId={projectId}
+          a
           onSelectAccessory={handleSelectAccessory}
           onAddToCatalog={onExpenseAdded}
         />
