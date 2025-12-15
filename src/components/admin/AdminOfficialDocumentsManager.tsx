@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { OfficialDocumentUploadDialog } from "./OfficialDocumentUploadDialog";
 import { PdfViewerModal } from "@/components/PdfViewerModal";
-import CategoryManagementDialog from "../CategoryManagementDialog";
+import { CategoryManagementDialog } from "./CategoryManagementDialog";
 
 interface OfficialDocument {
   id: string;
