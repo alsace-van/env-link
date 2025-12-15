@@ -61,6 +61,13 @@ import paper from "paper";
 import { supabase } from "@/integrations/supabase/client";
 import { getErrorMessage } from "@/lib/utils";
 
+// 🔥 Fonction pour décoder les entités HTML
+const decodeHtmlEntities = (text: string | null | undefined): string => {
+  if (!text) return "";
+  const doc = new DOMParser().parseFromString(text, "text/html");
+  return doc.documentElement.textContent || text;
+};
+
 interface TechnicalCanvasProps {
   projectId: string;
   onExpenseAdded?: () => void;
@@ -244,7 +251,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${typeConfig.borderColor} bg-white/60 rounded-t-lg`}>
         <IconComponent className={`h-5 w-5 ${typeConfig.color}`} />
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{item.nom_accessoire}</div>
+          <div className="font-medium text-sm truncate">{decodeHtmlEntities(item.nom_accessoire)}</div>
           {item.marque && <div className="text-xs text-gray-500 truncate">{item.marque}</div>}
         </div>
         <Badge variant="outline" className={`text-xs ${typeConfig.color} border-current shrink-0`}>
@@ -410,9 +417,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Ajouter un article du catalogue au schéma
   const addFromCatalog = (catalogItem: any) => {
+    const decodedName = decodeHtmlEntities(catalogItem.nom);
     const newItem: ElectricalItem = {
       id: `catalog-${catalogItem.id}-${Date.now()}`,
-      nom_accessoire: catalogItem.nom,
+      nom_accessoire: decodedName,
       type_electrique: catalogItem.type_electrique,
       quantite: 1,
       puissance_watts: catalogItem.puissance_watts,
@@ -423,7 +431,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setItems((prev) => [...prev, newItem]);
     setCatalogOpen(false);
     setCatalogSearch("");
-    toast.success(`${catalogItem.nom} ajouté au schéma`);
+    toast.success(`${decodedName} ajouté au schéma`);
   };
 
   // Filtrer le catalogue
@@ -617,7 +625,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         >
                           <IconComponent className={`h-4 w-4 shrink-0 ${typeConfig.color}`} />
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{item.nom}</div>
+                            <div className="text-sm font-medium truncate">{decodeHtmlEntities(item.nom)}</div>
                             <div className="text-xs text-gray-500 flex items-center gap-2">
                               {item.marque && <span>{item.marque}</span>}
                               {item.puissance_watts && <span>{item.puissance_watts}W</span>}
@@ -1457,7 +1465,8 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
     const scope = paperScopeRef.current;
 
-    const name = accessory.nom_accessoire || accessory.nom || "Accessoire";
+    const rawName = accessory.nom_accessoire || accessory.nom || "Accessoire";
+    const name = decodeHtmlEntities(rawName);
     const details = [accessory.marque, accessory.categorie || accessory.categories?.nom, accessory.type_electrique]
       .filter(Boolean)
       .join(" | ");
