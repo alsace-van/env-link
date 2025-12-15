@@ -77,6 +77,10 @@ const ExpenseFormDialog = ({
   const [showMarqueList, setShowMarqueList] = useState(false);
   const [filteredMarques, setFilteredMarques] = useState<string[]>([]);
 
+  // Fournisseurs (autocomplete)
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+
   const [catalogCategories, setCatalogCategories] = useState<{ id: string; nom: string }[]>([]);
   const [isNewCatalogCategory, setIsNewCatalogCategory] = useState(false);
   const [catalogCategoryId, setCatalogCategoryId] = useState("");
@@ -98,6 +102,7 @@ const ExpenseFormDialog = ({
       loadExistingMarques();
       loadCatalogCategories();
       loadCatalogAccessories();
+      loadSuppliers();
 
       // Load expense data if editing
       if (expense) {
@@ -232,6 +237,19 @@ const ExpenseFormDialog = ({
       setCatalogAccessories(data);
     }
   };
+
+  // Charger les fournisseurs
+  const loadSuppliers = async () => {
+    const { data } = await supabase.from("suppliers").select("id, name").order("name");
+    if (data) {
+      setSuppliers(data);
+    }
+  };
+
+  // Filtrer les fournisseurs selon la recherche
+  const filteredSuppliers = suppliers.filter((s) =>
+    s.name.toLowerCase().includes((formData.fournisseur || "").toLowerCase()),
+  );
 
   const loadOptionsForExpense = async (expenseId: string, accessoryId: string) => {
     try {
@@ -982,11 +1000,38 @@ const ExpenseFormDialog = ({
 
             <div className="space-y-2">
               <Label htmlFor="fournisseur">Fournisseur</Label>
-              <Input
-                id="fournisseur"
-                value={formData.fournisseur}
-                onChange={(e) => setFormData({ ...formData, fournisseur: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  id="fournisseur"
+                  value={formData.fournisseur}
+                  onChange={(e) => {
+                    setFormData({ ...formData, fournisseur: e.target.value });
+                    setShowSupplierDropdown(true);
+                  }}
+                  onFocus={() => setShowSupplierDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
+                  placeholder="Rechercher un fournisseur..."
+                  autoComplete="off"
+                />
+                {showSupplierDropdown && formData.fournisseur && filteredSuppliers.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                    {filteredSuppliers.slice(0, 10).map((supplier) => (
+                      <button
+                        key={supplier.id}
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormData({ ...formData, fournisseur: supplier.name });
+                          setShowSupplierDropdown(false);
+                        }}
+                      >
+                        {supplier.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
