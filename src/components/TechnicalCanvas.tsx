@@ -1,7 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Connection,
+  Edge,
+  Node,
+  NodeProps,
+  Handle,
+  Position,
+  MarkerType,
+  Panel,
+  ConnectionMode,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import {
   Pencil,
   Square,
@@ -15,6 +34,21 @@ import {
   Download,
   Save,
   X,
+  Maximize2,
+  Minimize2,
+  Sun,
+  Battery,
+  Zap,
+  Plug,
+  Cable,
+  Gauge,
+  Lightbulb,
+  Fan,
+  Refrigerator,
+  Waves,
+  Loader2,
+  Boxes,
+  PenTool,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -33,6 +67,589 @@ interface CanvasInstanceProps {
   onExpenseAdded?: () => void;
   onSchemaDeleted?: () => void;
 }
+
+// ============================================
+// TYPES POUR LE MODE BLOCS
+// ============================================
+
+interface ElectricalItem {
+  id: string;
+  nom_accessoire: string;
+  type_electrique: string;
+  quantite: number;
+  puissance_watts?: number | null;
+  intensite_amperes?: number | null;
+  capacite_ah?: number | null;
+  tension_volts?: number | null;
+  marque?: string | null;
+  prix_unitaire?: number | null;
+}
+
+interface SchemaEdge {
+  id: string;
+  source_node_id: string;
+  target_node_id: string;
+  source_handle?: string | null;
+  target_handle?: string | null;
+  color?: string;
+  label?: string;
+}
+
+// Configuration des types électriques
+const ELECTRICAL_TYPES: Record<
+  string,
+  {
+    label: string;
+    icon: any;
+    color: string;
+    bgColor: string;
+    borderColor: string;
+    category: "production" | "stockage" | "regulation" | "conversion" | "consommateur" | "distribution";
+  }
+> = {
+  panneau: {
+    label: "Panneau solaire",
+    icon: Sun,
+    color: "text-yellow-600",
+    bgColor: "bg-yellow-50",
+    borderColor: "border-yellow-400",
+    category: "production",
+  },
+  batterie: {
+    label: "Batterie",
+    icon: Battery,
+    color: "text-green-600",
+    bgColor: "bg-green-50",
+    borderColor: "border-green-400",
+    category: "stockage",
+  },
+  regulateur: {
+    label: "Régulateur MPPT",
+    icon: Gauge,
+    color: "text-blue-600",
+    bgColor: "bg-blue-50",
+    borderColor: "border-blue-400",
+    category: "regulation",
+  },
+  convertisseur: {
+    label: "Convertisseur",
+    icon: Zap,
+    color: "text-purple-600",
+    bgColor: "bg-purple-50",
+    borderColor: "border-purple-400",
+    category: "conversion",
+  },
+  chargeur: {
+    label: "Chargeur",
+    icon: Plug,
+    color: "text-orange-600",
+    bgColor: "bg-orange-50",
+    borderColor: "border-orange-400",
+    category: "conversion",
+  },
+  consommateur: {
+    label: "Consommateur",
+    icon: Lightbulb,
+    color: "text-red-600",
+    bgColor: "bg-red-50",
+    borderColor: "border-red-400",
+    category: "consommateur",
+  },
+  eclairage: {
+    label: "Éclairage",
+    icon: Lightbulb,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-400",
+    category: "consommateur",
+  },
+  ventilation: {
+    label: "Ventilation",
+    icon: Fan,
+    color: "text-cyan-600",
+    bgColor: "bg-cyan-50",
+    borderColor: "border-cyan-400",
+    category: "consommateur",
+  },
+  refrigeration: {
+    label: "Réfrigération",
+    icon: Refrigerator,
+    color: "text-sky-600",
+    bgColor: "bg-sky-50",
+    borderColor: "border-sky-400",
+    category: "consommateur",
+  },
+  pompe: {
+    label: "Pompe à eau",
+    icon: Waves,
+    color: "text-teal-600",
+    bgColor: "bg-teal-50",
+    borderColor: "border-teal-400",
+    category: "consommateur",
+  },
+  distribution: {
+    label: "Distribution",
+    icon: Cable,
+    color: "text-gray-600",
+    bgColor: "bg-gray-50",
+    borderColor: "border-gray-400",
+    category: "distribution",
+  },
+};
+
+// Couleurs des câbles
+const CABLE_COLORS = [
+  { value: "#ef4444", label: "Rouge (+)" },
+  { value: "#3b82f6", label: "Bleu (-)" },
+  { value: "#000000", label: "Noir (masse)" },
+  { value: "#22c55e", label: "Vert (terre)" },
+  { value: "#f97316", label: "Orange" },
+  { value: "#a855f7", label: "Violet" },
+];
+
+// ============================================
+// COMPOSANT BLOC ÉLECTRIQUE (pour ReactFlow)
+// ============================================
+
+const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
+  const item = data.item as ElectricalItem;
+  if (!item) return null;
+
+  const typeConfig = ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur;
+  const IconComponent = typeConfig.icon;
+
+  return (
+    <div
+      className={`rounded-lg border-2 shadow-lg group ${selected ? "ring-2 ring-blue-500 shadow-xl" : ""} ${typeConfig.bgColor} ${typeConfig.borderColor}`}
+      style={{ minWidth: 200, maxWidth: 280 }}
+    >
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="top"
+        className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className="!bg-blue-500 !w-3 !h-3 !border-2 !border-white"
+      />
+
+      <div className={`flex items-center gap-2 px-3 py-2 border-b ${typeConfig.borderColor} bg-white/60 rounded-t-lg`}>
+        <IconComponent className={`h-5 w-5 ${typeConfig.color}`} />
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm truncate">{item.nom_accessoire}</div>
+          {item.marque && <div className="text-xs text-gray-500 truncate">{item.marque}</div>}
+        </div>
+        <Badge variant="outline" className={`text-xs ${typeConfig.color} border-current shrink-0`}>
+          x{item.quantite}
+        </Badge>
+      </div>
+
+      <div className="p-3 space-y-1.5">
+        {item.puissance_watts && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Puissance</span>
+            <span className="font-medium text-gray-900">{item.puissance_watts} W</span>
+          </div>
+        )}
+        {item.capacite_ah && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Capacité</span>
+            <span className="font-medium text-gray-900">{item.capacite_ah} Ah</span>
+          </div>
+        )}
+        {item.tension_volts && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Tension</span>
+            <span className="font-medium text-gray-900">{item.tension_volts} V</span>
+          </div>
+        )}
+        {item.intensite_amperes && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Intensité</span>
+            <span className="font-medium text-gray-900">{item.intensite_amperes} A</span>
+          </div>
+        )}
+        {item.quantite > 1 && item.puissance_watts && (
+          <div className="flex items-center justify-between text-xs bg-white/50 rounded px-2 py-1 mt-2">
+            <span className="text-gray-600">Total</span>
+            <span className="font-bold text-gray-900">{item.puissance_watts * item.quantite} W</span>
+          </div>
+        )}
+      </div>
+
+      <div className="px-3 pb-2">
+        <Badge className={`text-xs ${typeConfig.bgColor} ${typeConfig.color} border ${typeConfig.borderColor}`}>
+          {typeConfig.label}
+        </Badge>
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className="!bg-green-500 !w-3 !h-3 !border-2 !border-white"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className="!bg-green-500 !w-3 !h-3 !border-2 !border-white"
+      />
+    </div>
+  );
+};
+
+const blockNodeTypes = { electricalBlock: ElectricalBlockNode };
+
+// ============================================
+// COMPOSANT MODE BLOCS
+// ============================================
+
+interface BlocksInstanceProps {
+  projectId: string;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
+}
+
+const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksInstanceProps) => {
+  const [items, setItems] = useState<ElectricalItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [principalScenarioId, setPrincipalScenarioId] = useState<string | null>(null);
+  const [edges, setEdges] = useState<SchemaEdge[]>([]);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
+
+  // Charger le scénario principal
+  useEffect(() => {
+    const loadPrincipalScenario = async () => {
+      const { data, error } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("est_principal", true)
+        .single();
+
+      if (!error && data) {
+        setPrincipalScenarioId(data.id);
+      } else {
+        // Fallback sans scénario
+        loadItemsWithoutScenario();
+      }
+      setLoading(false);
+    };
+
+    loadPrincipalScenario();
+  }, [projectId]);
+
+  // Charger les items quand le scénario est chargé
+  useEffect(() => {
+    if (principalScenarioId) {
+      loadItems();
+      loadSchemaData();
+    }
+  }, [principalScenarioId]);
+
+  const loadItemsWithoutScenario = async () => {
+    const { data } = await supabase
+      .from("project_expenses")
+      .select("*")
+      .eq("project_id", projectId)
+      .not("type_electrique", "is", null);
+    if (data) setItems(data as ElectricalItem[]);
+    setLoading(false);
+  };
+
+  const loadItems = async () => {
+    if (!principalScenarioId) return;
+    const { data } = await (supabase as any)
+      .from("project_expenses")
+      .select("*")
+      .eq("scenario_id", principalScenarioId)
+      .not("type_electrique", "is", null);
+    if (data) setItems(data as ElectricalItem[]);
+  };
+
+  const loadSchemaData = () => {
+    const stored = localStorage.getItem(`electrical_schema_${projectId}`);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      setEdges(parsed.edges || []);
+    }
+  };
+
+  // Synchroniser les nodes avec les items
+  useEffect(() => {
+    const stored = localStorage.getItem(`electrical_schema_${projectId}`);
+    const savedNodes = stored ? JSON.parse(stored).nodes || [] : [];
+
+    const newNodes = items.map((item, index) => {
+      const savedNode = savedNodes.find((n: any) => n.expense_id === item.id);
+      return {
+        id: item.id,
+        type: "electricalBlock",
+        position: {
+          x: savedNode?.position_x ?? 100 + (index % 4) * 300,
+          y: savedNode?.position_y ?? 100 + Math.floor(index / 4) * 250,
+        },
+        data: { item },
+      };
+    });
+    setNodes(newNodes as any);
+  }, [items]);
+
+  // Synchroniser les edges
+  useEffect(() => {
+    setFlowEdges(
+      edges.map((edge) => {
+        const isSelected = edge.id === selectedEdgeId;
+        const edgeColor = edge.color || "#64748b";
+        return {
+          id: edge.id,
+          source: edge.source_node_id,
+          target: edge.target_node_id,
+          sourceHandle: edge.source_handle || undefined,
+          targetHandle: edge.target_handle || undefined,
+          type: "smoothstep",
+          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor },
+          style: {
+            strokeWidth: isSelected ? 4 : 2,
+            stroke: edgeColor,
+            filter: isSelected ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))" : undefined,
+          },
+        };
+      }) as any,
+    );
+  }, [edges, selectedEdgeId]);
+
+  const handleConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+    const newEdge: SchemaEdge = {
+      id: `edge-${Date.now()}`,
+      source_node_id: connection.source,
+      target_node_id: connection.target,
+      source_handle: connection.sourceHandle || null,
+      target_handle: connection.targetHandle || null,
+      color: "#ef4444",
+    };
+    setEdges((prev) => [...prev, newEdge]);
+  }, []);
+
+  const updateEdgeColor = useCallback(
+    (color: string) => {
+      if (!selectedEdgeId) return;
+      setEdges((prev) => prev.map((e) => (e.id === selectedEdgeId ? { ...e, color } : e)));
+    },
+    [selectedEdgeId],
+  );
+
+  const deleteSelectedEdge = useCallback(() => {
+    if (!selectedEdgeId) return;
+    setEdges((prev) => prev.filter((e) => e.id !== selectedEdgeId));
+    setSelectedEdgeId(null);
+  }, [selectedEdgeId]);
+
+  const saveSchema = async () => {
+    setSaving(true);
+    try {
+      const schemaToSave = {
+        nodes: nodes.map((node) => ({
+          id: node.id,
+          expense_id: node.id,
+          position_x: node.position.x,
+          position_y: node.position.y,
+        })),
+        edges,
+      };
+      localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
+      toast.success("Schéma sauvegardé");
+    } catch {
+      toast.error("Erreur lors de la sauvegarde");
+    }
+    setSaving(false);
+  };
+
+  const resetSchema = () => {
+    if (!confirm("Réinitialiser le schéma ?")) return;
+    localStorage.removeItem(`electrical_schema_${projectId}`);
+    setEdges([]);
+    loadItems();
+    toast.success("Schéma réinitialisé");
+  };
+
+  // Calculs résumé
+  const totalProduction = items
+    .filter((i) => ELECTRICAL_TYPES[i.type_electrique]?.category === "production")
+    .reduce((sum, i) => sum + (i.puissance_watts || 0) * i.quantite, 0);
+  const totalConsommation = items
+    .filter((i) => ELECTRICAL_TYPES[i.type_electrique]?.category === "consommateur")
+    .reduce((sum, i) => sum + (i.puissance_watts || 0) * i.quantite, 0);
+  const totalStockage = items
+    .filter((i) => ELECTRICAL_TYPES[i.type_electrique]?.category === "stockage")
+    .reduce((sum, i) => sum + (i.capacite_ah || 0) * i.quantite, 0);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex flex-col gap-4 ${isFullscreen ? "fixed inset-0 z-50 bg-white p-4" : "h-[600px]"}`}>
+      {/* Barre d'outils */}
+      <div className="flex items-center justify-between gap-4 flex-wrap shrink-0">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50 rounded-lg border border-yellow-200">
+            <Sun className="h-4 w-4 text-yellow-600" />
+            <span className="text-sm font-medium">{totalProduction} W</span>
+            <span className="text-xs text-yellow-600">prod.</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-lg border border-green-200">
+            <Battery className="h-4 w-4 text-green-600" />
+            <span className="text-sm font-medium">{totalStockage} Ah</span>
+            <span className="text-xs text-green-600">stock.</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-lg border border-red-200">
+            <Zap className="h-4 w-4 text-red-600" />
+            <span className="text-sm font-medium">{totalConsommation} W</span>
+            <span className="text-xs text-red-600">conso.</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={resetSchema}>
+            <Trash2 className="h-4 w-4 mr-1" />
+            Réinitialiser
+          </Button>
+          <Button size="sm" onClick={saveSchema} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}Sauvegarder
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleFullscreen}
+            title={isFullscreen ? "Quitter plein écran" : "Plein écran"}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* Canvas ReactFlow */}
+      <div className="flex-1 border rounded-lg overflow-hidden bg-white">
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <Cable className="h-16 w-16 mb-4 text-gray-300" />
+            <p className="text-lg font-medium">Aucun équipement électrique</p>
+            <p className="text-sm mt-1">Ajoutez des articles avec un type électrique dans votre scénario</p>
+          </div>
+        ) : (
+          <ReactFlow
+            nodes={nodes}
+            edges={flowEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={handleConnect}
+            onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
+            onEdgeDoubleClick={(_, edge) => {
+              setEdges((prev) => prev.filter((e) => e.id !== edge.id));
+              setSelectedEdgeId(null);
+            }}
+            onPaneClick={() => setSelectedEdgeId(null)}
+            nodeTypes={blockNodeTypes}
+            connectionMode={ConnectionMode.Loose}
+            deleteKeyCode={null}
+            selectionKeyCode={null}
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            minZoom={0.2}
+            maxZoom={2}
+            defaultEdgeOptions={{
+              type: "smoothstep",
+              markerEnd: { type: MarkerType.ArrowClosed },
+              style: { strokeWidth: 2 },
+            }}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background gap={20} size={1} />
+            <Controls />
+            <MiniMap
+              nodeColor={(node) => {
+                const item = (node.data as any)?.item as ElectricalItem;
+                if (!item) return "#e2e8f0";
+                const config = ELECTRICAL_TYPES[item.type_electrique];
+                if (!config) return "#e2e8f0";
+                switch (config.category) {
+                  case "production":
+                    return "#fef08a";
+                  case "stockage":
+                    return "#bbf7d0";
+                  case "consommateur":
+                    return "#fecaca";
+                  case "regulation":
+                    return "#bfdbfe";
+                  case "conversion":
+                    return "#e9d5ff";
+                  default:
+                    return "#e2e8f0";
+                }
+              }}
+              maskColor="rgba(0,0,0,0.1)"
+            />
+            <Panel position="top-right">
+              <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border">
+                💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les{" "}
+                <span className="text-blue-600 font-semibold">bleus</span>
+              </div>
+            </Panel>
+            {selectedEdgeId && (
+              <Panel position="bottom-center">
+                <div className="bg-white rounded-lg shadow-lg p-3 border flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-700">Câble:</span>
+                  <div className="flex gap-1">
+                    {CABLE_COLORS.map((cable) => (
+                      <button
+                        key={cable.value}
+                        className={`w-6 h-6 rounded-full border-2 transition-all ${edges.find((e) => e.id === selectedEdgeId)?.color === cable.value ? "border-blue-500 scale-110" : "border-gray-300"}`}
+                        style={{ backgroundColor: cable.value }}
+                        onClick={() => updateEdgeColor(cable.value)}
+                        title={cable.label}
+                      />
+                    ))}
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 text-red-500" onClick={deleteSelectedEdge}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </Panel>
+            )}
+          </ReactFlow>
+        )}
+      </div>
+
+      {/* Légende */}
+      <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap shrink-0">
+        <span className="font-medium">Câbles:</span>
+        {CABLE_COLORS.map((cable) => (
+          <div key={cable.value} className="flex items-center gap-1">
+            <div className="w-4 h-1 rounded" style={{ backgroundColor: cable.value }} />
+            <span>{cable.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ============================================
+// MODE DESSIN (existant)
+// ============================================
 
 // Constantes pour le snapping
 const SNAP_ANGLE_THRESHOLD = 15;
@@ -93,14 +710,14 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         const containerHeight = Math.min(window.innerHeight - 300, containerWidth * 0.6); // Ratio 16:10 max
         setCanvasSize({
           width: Math.max(800, containerWidth - 32), // Min 800px, -32px pour le padding
-          height: Math.max(500, containerHeight)
+          height: Math.max(500, containerHeight),
         });
       }
     };
 
     updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
+    window.addEventListener("resize", updateCanvasSize);
+    return () => window.removeEventListener("resize", updateCanvasSize);
   }, []);
 
   useEffect(() => {
@@ -517,7 +1134,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         currentPath = null;
 
         console.log("Active layer children:", scope.project.activeLayer.children.length);
-        
+
         // Forcer le rendu du canvas
         scope.view.update();
       }
@@ -531,7 +1148,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
   const handleTextSubmit = () => {
     if (!textInputRef.current || !paperScopeRef.current) return;
-    
+
     const scope = paperScopeRef.current;
 
     const text = textInputRef.current.value.trim();
@@ -571,7 +1188,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
   const handleDelete = () => {
     if (!paperScopeRef.current) return;
-    
+
     const scope = paperScopeRef.current;
 
     // Trouver l'élément sélectionné
@@ -633,7 +1250,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
   const handleSave = async () => {
     if (!paperScopeRef.current) return;
-    
+
     const scope = paperScopeRef.current;
 
     try {
@@ -649,7 +1266,9 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
         if (error) throw error;
       } else {
         // Create new schema
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) throw new Error("Non authentifié");
 
         const { data, error } = await (supabase as any)
@@ -713,7 +1332,7 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
 
   const handleSelectAccessory = (accessory: any, source: "expense" | "catalog") => {
     if (!paperScopeRef.current) return;
-    
+
     const scope = paperScopeRef.current;
 
     const name = accessory.nom_accessoire || accessory.nom || "Accessoire";
@@ -894,7 +1513,13 @@ const CanvasInstance = ({ projectId, schemaNumber, onExpenseAdded, onSchemaDelet
             autoFocus
           />
         )}
-        <canvas ref={canvasRef} width={canvasSize.width} height={canvasSize.height} className="w-full" style={{ display: "block" }} />
+        <canvas
+          ref={canvasRef}
+          width={canvasSize.width}
+          height={canvasSize.height}
+          className="w-full"
+          style={{ display: "block" }}
+        />
       </div>
     </div>
   );
@@ -904,6 +1529,8 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const [schemas, setSchemas] = useState<number[]>([1]);
   const [activeTab, setActiveTab] = useState("canvas1");
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"blocks" | "drawing">("blocks");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Charger les schémas existants
   useEffect(() => {
@@ -933,7 +1560,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
   const handleAddCanvas = () => {
     const nextNumber = Math.max(...schemas) + 1;
-    setSchemas(prev => [...prev, nextNumber]);
+    setSchemas((prev) => [...prev, nextNumber]);
     setActiveTab(`canvas${nextNumber}`);
     toast.success(`Schéma ${nextNumber} ajouté`);
   };
@@ -952,14 +1579,14 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         .eq("schema_number", schemaNumber);
       await result;
 
-      setSchemas(prev => prev.filter(s => s !== schemaNumber));
-      
+      setSchemas((prev) => prev.filter((s) => s !== schemaNumber));
+
       // Revenir au premier schéma si on supprime le schéma actif
       if (activeTab === `canvas${schemaNumber}`) {
-        const remainingSchemas = schemas.filter(s => s !== schemaNumber);
+        const remainingSchemas = schemas.filter((s) => s !== schemaNumber);
         setActiveTab(`canvas${remainingSchemas[0]}`);
       }
-      
+
       toast.success(`Schéma ${schemaNumber} supprimé`);
     } catch (error) {
       console.error("Erreur lors de la suppression:", error);
@@ -967,51 +1594,108 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     }
   };
 
+  // Gérer Escape pour quitter le plein écran
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen]);
+
   if (isLoading) {
     return <div className="text-center py-8 text-muted-foreground">Chargement des schémas...</div>;
   }
 
   return (
-    <div className="space-y-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex items-center gap-2 mb-4">
-          <TabsList className="flex-1">
-            {schemas.map((schemaNum) => (
-              <div key={schemaNum} className="relative inline-flex items-center">
-                <TabsTrigger value={`canvas${schemaNum}`} className="pr-8">
-                  Schéma {schemaNum}
-                </TabsTrigger>
-                {schemas.length > 1 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-1 h-5 w-5 p-0 hover:bg-destructive/10"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveCanvas(schemaNum);
-                    }}
-                  >
-                    <X className="h-3 w-3 text-destructive" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </TabsList>
-          <Button onClick={handleAddCanvas} size="sm" variant="outline">
-            + Ajouter un schéma
+    <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-white p-4" : "space-y-4"}`}>
+      {/* Toggle Mode Blocs / Dessin */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-2 p-1 bg-muted rounded-lg">
+          <Button
+            variant={viewMode === "blocks" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("blocks")}
+            className="gap-2"
+          >
+            <Boxes className="h-4 w-4" />
+            Mode Blocs
+          </Button>
+          <Button
+            variant={viewMode === "drawing" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setViewMode("drawing")}
+            className="gap-2"
+          >
+            <PenTool className="h-4 w-4" />
+            Mode Dessin
           </Button>
         </div>
-        {schemas.map((schemaNum) => (
-          <TabsContent key={schemaNum} value={`canvas${schemaNum}`}>
-            <CanvasInstance 
-              projectId={projectId} 
-              schemaNumber={schemaNum}
-              onExpenseAdded={onExpenseAdded}
-              onSchemaDeleted={() => handleRemoveCanvas(schemaNum)}
-            />
-          </TabsContent>
-        ))}
-      </Tabs>
+
+        {viewMode === "drawing" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            title={isFullscreen ? "Quitter plein écran (Échap)" : "Plein écran"}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
+        )}
+      </div>
+
+      {/* Contenu selon le mode */}
+      {viewMode === "blocks" ? (
+        <BlocksInstance
+          projectId={projectId}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+        />
+      ) : (
+        <div className={isFullscreen ? "h-[calc(100vh-80px)]" : ""}>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <div className="flex items-center gap-2 mb-4">
+              <TabsList className="flex-1">
+                {schemas.map((schemaNum) => (
+                  <div key={schemaNum} className="relative inline-flex items-center">
+                    <TabsTrigger value={`canvas${schemaNum}`} className="pr-8">
+                      Schéma {schemaNum}
+                    </TabsTrigger>
+                    {schemas.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 h-5 w-5 p-0 hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveCanvas(schemaNum);
+                        }}
+                      >
+                        <X className="h-3 w-3 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </TabsList>
+              <Button onClick={handleAddCanvas} size="sm" variant="outline">
+                + Ajouter un schéma
+              </Button>
+            </div>
+            {schemas.map((schemaNum) => (
+              <TabsContent key={schemaNum} value={`canvas${schemaNum}`}>
+                <CanvasInstance
+                  projectId={projectId}
+                  schemaNumber={schemaNum}
+                  onExpenseAdded={onExpenseAdded}
+                  onSchemaDeleted={() => handleRemoveCanvas(schemaNum)}
+                />
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
+      )}
     </div>
   );
 };
