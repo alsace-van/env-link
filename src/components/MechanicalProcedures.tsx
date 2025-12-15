@@ -470,7 +470,7 @@ const PROCEDURE_CATEGORIES = [
 // CUSTOM BLOCK NODE POUR REACT FLOW
 // ============================================
 
-const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
+const CustomBlockNode = ({ data, selected }: NodeProps) => {
   const block = data.block as ContentBlock;
   const onUpdateBlock = data.onUpdateBlock as (id: string, updates: Partial<ContentBlock>) => void;
   const onDeleteBlock = data.onDeleteBlock as (id: string) => void;
@@ -811,9 +811,9 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
       <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
     </div>
   );
-});
+};
 
-CustomBlockNode.displayName = "CustomBlockNode";
+// CustomBlockNode.displayName = "CustomBlockNode"; // Plus nécessaire sans memo
 
 // Types de nodes pour React Flow
 const nodeTypes = {
@@ -1689,7 +1689,7 @@ const MechanicalProcedures = () => {
   // Synchroniser les nodes quand les blocs changent (seulement si nécessaire)
   useEffect(() => {
     const currentIds = blocks
-      .map((b) => `${b.id}-${b.content?.slice(0, 50)}-${b.width}-${b.height}-${b.image_url}-${b.audio_url}`)
+      .map((b) => `${b.id}-${b.title}-${b.content}-${b.width}-${b.height}-${b.image_url}-${b.audio_url}`)
       .join(",");
     if (currentIds !== blocksIdsRef.current) {
       blocksIdsRef.current = currentIds;
@@ -1699,7 +1699,7 @@ const MechanicalProcedures = () => {
           type: "customBlock",
           position: { x: block.position_x, y: block.position_y },
           data: {
-            block,
+            block: { ...block }, // 🔥 Copie pour forcer la mise à jour du memo
             onUpdateBlock: handleUpdateBlock,
             onDeleteBlock: handleDeleteBlock,
             onChecklistToggle: handleChecklistToggle,
