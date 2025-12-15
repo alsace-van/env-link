@@ -579,13 +579,42 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setNodes(newNodes as any);
   }, [items]);
 
-  // Synchroniser les edges
+  // Synchroniser les edges avec offset pour éviter la superposition
   useEffect(() => {
+    // Grouper les edges par source pour calculer les offsets
+    const edgesBySource: Record<string, SchemaEdge[]> = {};
+    edges.forEach((edge) => {
+      const key = `${edge.source_node_id}-${edge.source_handle || "default"}`;
+      if (!edgesBySource[key]) edgesBySource[key] = [];
+      edgesBySource[key].push(edge);
+    });
+
+    // Grouper aussi par target
+    const edgesByTarget: Record<string, SchemaEdge[]> = {};
+    edges.forEach((edge) => {
+      const key = `${edge.target_node_id}-${edge.target_handle || "default"}`;
+      if (!edgesByTarget[key]) edgesByTarget[key] = [];
+      edgesByTarget[key].push(edge);
+    });
+
     setFlowEdges(
       edges.map((edge) => {
         const isSelected = edge.id === selectedEdgeId;
         const edgeColor = edge.color || "#64748b";
         const edgeWidth = edge.strokeWidth || 2;
+
+        // Calculer l'offset basé sur la position dans le groupe
+        const sourceKey = `${edge.source_node_id}-${edge.source_handle || "default"}`;
+        const targetKey = `${edge.target_node_id}-${edge.target_handle || "default"}`;
+        const sourceGroup = edgesBySource[sourceKey] || [];
+        const targetGroup = edgesByTarget[targetKey] || [];
+
+        const sourceIndex = sourceGroup.findIndex((e) => e.id === edge.id);
+        const targetIndex = targetGroup.findIndex((e) => e.id === edge.id);
+
+        // Offset de 15px par edge supplémentaire
+        const offset = Math.max(sourceIndex, targetIndex) * 15;
+
         return {
           id: edge.id,
           source: edge.source_node_id,
@@ -593,6 +622,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           sourceHandle: edge.source_handle || undefined,
           targetHandle: edge.target_handle || undefined,
           type: "smoothstep",
+          pathOptions: { offset: offset, borderRadius: 8 },
           label: edge.section || undefined,
           labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: "white", fillOpacity: 0.9 },
