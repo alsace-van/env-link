@@ -222,6 +222,8 @@ interface BlockEdge {
   chapter_id: string;
   source_block_id: string;
   target_block_id: string;
+  source_handle?: string | null; // 🔥 Handle source (pour connexion par ligne)
+  target_handle?: string | null; // 🔥 Handle target (pour connexion par ligne)
   label?: string;
   edge_type: string;
   animated: boolean;
@@ -615,7 +617,15 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
               const text = line.replace(/^\[x?\]\s*/, "");
 
               return (
-                <div key={index} className="flex items-center gap-2 group/item">
+                <div key={index} className="flex items-center gap-2 group/item relative">
+                  {/* 🔥 Handle target à gauche de chaque ligne */}
+                  <Handle
+                    type="target"
+                    position={Position.Left}
+                    id={`checklist-target-${index}`}
+                    className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white !left-[-12px]"
+                    style={{ top: "50%", transform: "translateY(-50%)" }}
+                  />
                   <button
                     type="button"
                     onClick={() => onChecklistToggle(block.id, index)}
@@ -665,6 +675,14 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   >
                     <X className="h-3 w-3" />
                   </button>
+                  {/* 🔥 Handle source à droite de chaque ligne */}
+                  <Handle
+                    type="source"
+                    position={Position.Right}
+                    id={`checklist-source-${index}`}
+                    className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white !right-[-12px]"
+                    style={{ top: "50%", transform: "translateY(-50%)" }}
+                  />
                 </div>
               );
             })}
@@ -683,7 +701,15 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
               const text = line.replace(/^[•\-]\s*/, "");
 
               return (
-                <div key={index} className="flex items-center gap-2 group/item">
+                <div key={index} className="flex items-center gap-2 group/item relative">
+                  {/* 🔥 Handle target à gauche de chaque ligne */}
+                  <Handle
+                    type="target"
+                    position={Position.Left}
+                    id={`list-target-${index}`}
+                    className="!bg-blue-500 !w-2.5 !h-2.5 !border-2 !border-white !left-[-12px]"
+                    style={{ top: "50%", transform: "translateY(-50%)" }}
+                  />
                   <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
                   <input
                     type="text"
@@ -722,6 +748,14 @@ const CustomBlockNode = memo(({ data, selected }: NodeProps) => {
                   >
                     <X className="h-3 w-3" />
                   </button>
+                  {/* 🔥 Handle source à droite de chaque ligne */}
+                  <Handle
+                    type="source"
+                    position={Position.Right}
+                    id={`list-source-${index}`}
+                    className="!bg-green-500 !w-2.5 !h-2.5 !border-2 !border-white !right-[-12px]"
+                    style={{ top: "50%", transform: "translateY(-50%)" }}
+                  />
                 </div>
               );
             })}
@@ -1663,6 +1697,8 @@ const MechanicalProcedures = () => {
         id: edge.id,
         source: edge.source_block_id,
         target: edge.target_block_id,
+        sourceHandle: edge.source_handle || undefined, // 🔥 Utiliser le handle source
+        targetHandle: edge.target_handle || undefined, // 🔥 Utiliser le handle target
         type: edge.edge_type || "smoothstep",
         animated: edge.animated,
         label: edge.label,
@@ -1684,6 +1720,8 @@ const MechanicalProcedures = () => {
             chapter_id: activeChapterId,
             source_block_id: connection.source,
             target_block_id: connection.target,
+            source_handle: connection.sourceHandle || null, // 🔥 Capturer le handle source
+            target_handle: connection.targetHandle || null, // 🔥 Capturer le handle target
             edge_type: "smoothstep",
             animated: false,
           })
