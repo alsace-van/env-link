@@ -87,6 +87,11 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     [],
   );
 
+  // Fournisseurs (autocomplete)
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+
   // Options payantes
   const [options, setOptions] = useState<
     Array<{
@@ -105,6 +110,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     if (isOpen) {
       setCategoriesLoaded(false);
       loadCategories();
+      loadSuppliers();
       if (accessory) {
         loadOptions(accessory.id);
       } else {
@@ -112,6 +118,19 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
       }
     }
   }, [isOpen, accessory?.id]);
+
+  // Charger les fournisseurs
+  const loadSuppliers = async () => {
+    const { data } = await supabase.from("suppliers").select("id, name").order("name");
+    if (data) {
+      setSuppliers(data);
+    }
+  };
+
+  // Filtrer les fournisseurs selon la recherche
+  const filteredSuppliers = suppliers.filter((s) =>
+    s.name.toLowerCase().includes((supplierSearch || formData.fournisseur || "").toLowerCase()),
+  );
 
   // Initialiser le formulaire une fois les catégories chargées
   useEffect(() => {
@@ -1310,15 +1329,40 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="fournisseur">Fournisseur</Label>
-              <Input
-                id="fournisseur"
-                type="text"
-                value={formData.fournisseur}
-                onChange={(e) => setFormData({ ...formData, fournisseur: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Nom du fournisseur"
-                autoComplete="off"
-              />
+              <div className="relative">
+                <Input
+                  id="fournisseur"
+                  type="text"
+                  value={formData.fournisseur}
+                  onChange={(e) => {
+                    setFormData({ ...formData, fournisseur: e.target.value });
+                    setShowSupplierDropdown(true);
+                  }}
+                  onFocus={() => setShowSupplierDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="Rechercher un fournisseur..."
+                  autoComplete="off"
+                />
+                {showSupplierDropdown && formData.fournisseur && filteredSuppliers.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                    {filteredSuppliers.slice(0, 10).map((supplier) => (
+                      <button
+                        key={supplier.id}
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormData({ ...formData, fournisseur: supplier.name });
+                          setShowSupplierDropdown(false);
+                        }}
+                      >
+                        {supplier.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
