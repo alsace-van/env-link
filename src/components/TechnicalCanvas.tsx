@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ReactFlow,
   Background,
@@ -49,6 +52,8 @@ import {
   Loader2,
   Boxes,
   PenTool,
+  Plus,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -322,6 +327,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [edges, setEdges] = useState<SchemaEdge[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
+  // États pour le sélecteur catalogue
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogItems, setCatalogItems] = useState<any[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(false);
+
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
 
@@ -382,6 +393,46 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setEdges(parsed.edges || []);
     }
   };
+
+  // Charger les articles du catalogue avec type électrique
+  const loadCatalogItems = async () => {
+    setCatalogLoading(true);
+    const { data } = await supabase
+      .from("accessories_catalog")
+      .select(
+        "id, nom, marque, prix_vente_ttc, puissance_watts, capacite_ah, type_electrique, category_id, categories(nom)",
+      )
+      .not("type_electrique", "is", null)
+      .order("nom");
+    if (data) setCatalogItems(data);
+    setCatalogLoading(false);
+  };
+
+  // Ajouter un article du catalogue au schéma
+  const addFromCatalog = (catalogItem: any) => {
+    const newItem: ElectricalItem = {
+      id: `catalog-${catalogItem.id}-${Date.now()}`,
+      nom_accessoire: catalogItem.nom,
+      type_electrique: catalogItem.type_electrique,
+      quantite: 1,
+      puissance_watts: catalogItem.puissance_watts,
+      capacite_ah: catalogItem.capacite_ah,
+      marque: catalogItem.marque,
+      prix_unitaire: catalogItem.prix_vente_ttc,
+    };
+    setItems((prev) => [...prev, newItem]);
+    setCatalogOpen(false);
+    setCatalogSearch("");
+    toast.success(`${catalogItem.nom} ajouté au schéma`);
+  };
+
+  // Filtrer le catalogue
+  const filteredCatalog = catalogItems.filter(
+    (item) =>
+      item.nom?.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+      item.marque?.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+      item.type_electrique?.toLowerCase().includes(catalogSearch.toLowerCase()),
+  );
 
   // Synchroniser les nodes avec les items
   useEffect(() => {
@@ -523,6 +574,66 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* 🔥 Bouton ajouter depuis le catalogue */}
+          <Popover
+            open={catalogOpen}
+            onOpenChange={(open) => {
+              setCatalogOpen(open);
+              if (open) loadCatalogItems();
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1">
+                <Plus className="h-4 w-4" />
+                Catalogue
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 p-0" align="end">
+              <div className="p-3 border-b">
+                <Input
+                  placeholder="Rechercher..."
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  className="h-8"
+                />
+              </div>
+              <ScrollArea className="h-64">
+                {catalogLoading ? (
+                  <div className="flex items-center justify-center h-32">
+                    <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                  </div>
+                ) : filteredCatalog.length === 0 ? (
+                  <div className="text-center text-sm text-gray-500 py-8">Aucun article électrique trouvé</div>
+                ) : (
+                  <div className="p-2 space-y-1">
+                    {filteredCatalog.map((item) => {
+                      const typeConfig = ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur;
+                      const IconComponent = typeConfig.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => addFromCatalog(item)}
+                          className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
+                        >
+                          <IconComponent className={`h-4 w-4 shrink-0 ${typeConfig.color}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{item.nom}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                              {item.marque && <span>{item.marque}</span>}
+                              {item.puissance_watts && <span>{item.puissance_watts}W</span>}
+                              {item.capacite_ah && <span>{item.capacite_ah}Ah</span>}
+                            </div>
+                          </div>
+                          <Plus className="h-4 w-4 text-gray-400" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
+            </PopoverContent>
+          </Popover>
+
           <Button variant="outline" size="sm" onClick={resetSchema}>
             <Trash2 className="h-4 w-4 mr-1" />
             Réinitialiser
@@ -547,7 +658,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <Cable className="h-16 w-16 mb-4 text-gray-300" />
             <p className="text-lg font-medium">Aucun équipement électrique</p>
-            <p className="text-sm mt-1">Ajoutez des articles avec un type électrique dans votre scénario</p>
+            <p className="text-sm mt-1 mb-4">Ajoutez des articles depuis le catalogue</p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCatalogOpen(true);
+                loadCatalogItems();
+              }}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Ajouter depuis le catalogue
+            </Button>
           </div>
         ) : (
           <ReactFlow
