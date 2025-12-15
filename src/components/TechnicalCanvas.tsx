@@ -632,6 +632,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const edgeIndex = Math.max(sourceIndex, targetIndex);
         const offset = (edgeIndex - (groupSize - 1) / 2) * 25;
 
+        // Créer un ID de marker unique basé sur la couleur pour éviter les conflits
+        const markerId = `arrow-${edgeColor.replace("#", "")}`;
+
         return {
           id: edge.id,
           source: edge.source_node_id,
@@ -645,7 +648,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           labelBgStyle: { fill: "white", fillOpacity: 0.9 },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
-          markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor, width: 15, height: 15 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: edgeColor,
+            width: 20,
+            height: 20,
+            strokeWidth: 1,
+          },
           style: {
             strokeWidth: isSelected ? edgeWidth + 2 : edgeWidth,
             stroke: edgeColor,
