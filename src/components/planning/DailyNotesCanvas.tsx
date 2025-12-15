@@ -1288,12 +1288,21 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   try {
                     // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
                     const results = await onSearchExpenses("", block.linkedProjectId);
-                    // 🔥 Calculer la quantité restante pour chaque article
-                    const usedQuantities = new Map(expenses.map((e) => [e.id, e.quantiteBloc ?? e.quantite]));
+                    // 🔥 Calculer la quantité utilisée dans CE bloc pour chaque article
+                    // On utilise quantiteBloc si défini, sinon on considère que l'article
+                    // utilise TOUTE sa quantité (comportement legacy)
+                    const usedInThisBlock = new Map<string, number>();
+                    expenses.forEach((e) => {
+                      // Si quantiteBloc est défini, c'est la quantité utilisée
+                      // Sinon, l'article a été ajouté avant la feature et utilise tout
+                      const used = e.quantiteBloc !== undefined ? e.quantiteBloc : e.quantite;
+                      usedInThisBlock.set(e.id, used);
+                    });
+
                     // Filtrer les articles complètement utilisés, garder ceux avec quantité restante
                     const availableResults = results
                       .map((r) => {
-                        const used = usedQuantities.get(r.id) || 0;
+                        const used = usedInThisBlock.get(r.id) || 0;
                         const remaining = r.quantite - used;
                         return { ...r, quantiteRestante: remaining };
                       })
@@ -1335,12 +1344,16 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                         try {
                           // 🔥 Passer le linkedProjectId du bloc pour filtrer les dépenses
                           const results = await onSearchExpenses(value, block.linkedProjectId);
-                          // 🔥 Calculer la quantité restante pour chaque article
-                          const usedQuantities = new Map(expenses.map((e) => [e.id, e.quantiteBloc ?? e.quantite]));
-                          // Filtrer les articles complètement utilisés, garder ceux avec quantité restante
+                          // 🔥 Calculer la quantité utilisée dans CE bloc pour chaque article
+                          const usedInThisBlock = new Map<string, number>();
+                          expenses.forEach((e) => {
+                            const used = e.quantiteBloc !== undefined ? e.quantiteBloc : e.quantite;
+                            usedInThisBlock.set(e.id, used);
+                          });
+                          // Filtrer les articles complètement utilisés
                           const availableResults = results
                             .map((r) => {
-                              const used = usedQuantities.get(r.id) || 0;
+                              const used = usedInThisBlock.get(r.id) || 0;
                               const remaining = r.quantite - used;
                               return { ...r, quantiteRestante: remaining };
                             })
@@ -1375,31 +1388,35 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                               // 🔥 Vérifier si l'article est déjà dans le bloc
                               const existingExpense = expenses.find((e) => e.id === expense.id);
 
+                              let newQty: number;
+
                               if (existingExpense) {
                                 // L'article existe déjà → augmenter quantiteBloc de 1
-                                const currentQty = existingExpense.quantiteBloc ?? existingExpense.quantite;
+                                const currentQty =
+                                  existingExpense.quantiteBloc !== undefined
+                                    ? existingExpense.quantiteBloc
+                                    : existingExpense.quantite;
+                                newQty = currentQty + 1;
                                 const newExpenses = expenses.map((exp) =>
-                                  exp.id === expense.id ? { ...exp, quantiteBloc: currentQty + 1 } : exp,
+                                  exp.id === expense.id ? { ...exp, quantiteBloc: newQty } : exp,
                                 );
                                 onUpdate({ linkedExpenses: newExpenses });
                               } else {
                                 // Nouvel article → l'ajouter avec quantiteBloc = 1
+                                newQty = 1;
                                 if (onLinkExpense) {
-                                  // 🔥 Ajouter avec quantiteBloc = 1 (on ne prend qu'un seul)
                                   onLinkExpense({ ...expense, quantiteBloc: 1 });
                                 }
                               }
 
                               setExpenseSearchQuery("");
-                              // 🔥 Recalculer la quantité restante
-                              const newUsed = (expenses.find((e) => e.id === expense.id)?.quantiteBloc ?? 0) + 1;
-                              if (newUsed >= expense.quantite) {
+                              // 🔥 Mettre à jour la liste des résultats avec la nouvelle quantité restante
+                              const remaining = expense.quantite - newQty;
+                              if (remaining <= 0) {
                                 setExpenseSearchResults((prev) => prev.filter((e) => e.id !== expense.id));
                               } else {
                                 setExpenseSearchResults((prev) =>
-                                  prev.map((e) =>
-                                    e.id === expense.id ? { ...e, quantiteRestante: expense.quantite - newUsed } : e,
-                                  ),
+                                  prev.map((e) => (e.id === expense.id ? { ...e, quantiteRestante: remaining } : e)),
                                 );
                               }
                             }}
