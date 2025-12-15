@@ -1,8 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, Download, Eye, Filter, Loader2, AlertCircle, Plus, Trash2, Edit, Upload, Settings } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import React, { useState, useEffect } from "react";
+import {
+  FileText,
+  Download,
+  Eye,
+  Filter,
+  Loader2,
+  AlertCircle,
+  Plus,
+  Trash2,
+  Edit,
+  Upload,
+  Settings,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,10 +24,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { OfficialDocumentUploadDialog } from './OfficialDocumentUploadDialog';
-import { PdfViewerModal } from '@/components/PdfViewerModal';
-import { CategoryManagementDialog } from './CategoryManagementDialog';
+} from "@/components/ui/alert-dialog";
+import { OfficialDocumentUploadDialog } from "./OfficialDocumentUploadDialog";
+import { PdfViewerModal } from "@/components/PdfViewerModal";
+import CategoryManagementDialog from "../CategoryManagementDialog";
 
 interface OfficialDocument {
   id: string;
@@ -41,7 +53,7 @@ export function AdminOfficialDocumentsManager() {
   const [filteredDocuments, setFilteredDocuments] = useState<OfficialDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [deleteDocId, setDeleteDocId] = useState<string | null>(null);
   const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
@@ -60,14 +72,14 @@ export function AdminOfficialDocumentsManager() {
   const loadCategories = async () => {
     try {
       const { data, error: fetchError } = await supabase
-        .from('official_document_categories')
-        .select('*')
-        .order('display_order', { ascending: true });
+        .from("official_document_categories")
+        .select("*")
+        .order("display_order", { ascending: true });
 
       if (fetchError) throw fetchError;
       setCategories(data || []);
     } catch (err) {
-      console.error('Erreur lors du chargement des catégories:', err);
+      console.error("Erreur lors du chargement des catégories:", err);
     }
   };
 
@@ -77,27 +89,27 @@ export function AdminOfficialDocumentsManager() {
       setError(null);
 
       const { data, error: fetchError } = await supabase
-        .from('official_documents')
-        .select('*')
-        .order('category', { ascending: true })
-        .order('name', { ascending: true });
+        .from("official_documents")
+        .select("*")
+        .order("category", { ascending: true })
+        .order("name", { ascending: true });
 
       if (fetchError) throw fetchError;
 
       setDocuments((data || []) as any);
     } catch (err) {
-      console.error('Erreur lors du chargement des documents:', err);
-      setError('Impossible de charger les documents officiels');
+      console.error("Erreur lors du chargement des documents:", err);
+      setError("Impossible de charger les documents officiels");
     } finally {
       setLoading(false);
     }
   };
 
   const filterDocuments = () => {
-    if (selectedCategory === 'all') {
+    if (selectedCategory === "all") {
       setFilteredDocuments(documents);
     } else {
-      setFilteredDocuments(documents.filter(doc => doc.category === selectedCategory));
+      setFilteredDocuments(documents.filter((doc) => doc.category === selectedCategory));
     }
   };
 
@@ -105,35 +117,30 @@ export function AdminOfficialDocumentsManager() {
     if (!deleteDocId) return;
 
     try {
-      const docToDelete = documents.find(d => d.id === deleteDocId);
+      const docToDelete = documents.find((d) => d.id === deleteDocId);
       if (!docToDelete) return;
 
       // Supprimer le fichier du storage
-      if (docToDelete.file_url.includes('official-documents')) {
-        const urlParts = docToDelete.file_url.split('/');
+      if (docToDelete.file_url.includes("official-documents")) {
+        const urlParts = docToDelete.file_url.split("/");
         const fileName = urlParts[urlParts.length - 1];
-        
-        const { error: storageError } = await supabase.storage
-          .from('official-documents')
-          .remove([fileName]);
+
+        const { error: storageError } = await supabase.storage.from("official-documents").remove([fileName]);
 
         if (storageError) {
-          console.error('Erreur lors de la suppression du fichier:', storageError);
+          console.error("Erreur lors de la suppression du fichier:", storageError);
         }
       }
 
       // Supprimer l'entrée de la base de données
-      const { error: dbError } = await supabase
-        .from('official_documents')
-        .delete()
-        .eq('id', deleteDocId);
+      const { error: dbError } = await supabase.from("official_documents").delete().eq("id", deleteDocId);
 
       if (dbError) throw dbError;
 
-      toast.success('Document supprimé avec succès');
+      toast.success("Document supprimé avec succès");
       loadDocuments();
     } catch (error: any) {
-      console.error('Erreur lors de la suppression:', error);
+      console.error("Erreur lors de la suppression:", error);
       toast.error(`Erreur: ${error.message}`);
     } finally {
       setDeleteDocId(null);
@@ -142,52 +149,49 @@ export function AdminOfficialDocumentsManager() {
 
   const toggleDocumentActive = async (docId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('official_documents')
-        .update({ is_active: !currentStatus })
-        .eq('id', docId);
+      const { error } = await supabase.from("official_documents").update({ is_active: !currentStatus }).eq("id", docId);
 
       if (error) throw error;
 
-      toast.success(currentStatus ? 'Document désactivé' : 'Document activé');
+      toast.success(currentStatus ? "Document désactivé" : "Document activé");
       loadDocuments();
     } catch (error: any) {
-      console.error('Erreur lors de la mise à jour:', error);
+      console.error("Erreur lors de la mise à jour:", error);
       toast.error(`Erreur: ${error.message}`);
     }
   };
 
   const handleViewDocument = (url: string) => {
     // Si c'est un PDF, ouvrir dans le viewer intégré
-    if (url.toLowerCase().endsWith('.pdf') || url.includes('.pdf')) {
+    if (url.toLowerCase().endsWith(".pdf") || url.includes(".pdf")) {
       setViewingPdfUrl(url);
     } else {
       // Pour les autres types de fichiers, ouvrir dans un nouvel onglet
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 
   const getCategoryColor = (categoryName: string) => {
-    const category = categories.find(c => c.name === categoryName);
-    if (!category) return 'bg-gray-100 text-gray-800 border-gray-200';
-    
+    const category = categories.find((c) => c.name === categoryName);
+    if (!category) return "bg-gray-100 text-gray-800 border-gray-200";
+
     const colorMap: Record<string, string> = {
-      blue: 'bg-blue-100 text-blue-800 border-blue-200',
-      green: 'bg-green-100 text-green-800 border-green-200',
-      purple: 'bg-purple-100 text-purple-800 border-purple-200',
-      orange: 'bg-orange-100 text-orange-800 border-orange-200',
-      red: 'bg-red-100 text-red-800 border-red-200',
-      yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      pink: 'bg-pink-100 text-pink-800 border-pink-200',
-      gray: 'bg-gray-100 text-gray-800 border-gray-200',
+      blue: "bg-blue-100 text-blue-800 border-blue-200",
+      green: "bg-green-100 text-green-800 border-green-200",
+      purple: "bg-purple-100 text-purple-800 border-purple-200",
+      orange: "bg-orange-100 text-orange-800 border-orange-200",
+      red: "bg-red-100 text-red-800 border-red-200",
+      yellow: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      pink: "bg-pink-100 text-pink-800 border-pink-200",
+      gray: "bg-gray-100 text-gray-800 border-gray-200",
     };
-    
-    return colorMap[category.color] || 'bg-gray-100 text-gray-800 border-gray-200';
+
+    return colorMap[category.color] || "bg-gray-100 text-gray-800 border-gray-200";
   };
 
   const getCategoryIcon = (categoryName: string) => {
-    const category = categories.find(c => c.name === categoryName);
-    return category?.icon || '📄';
+    const category = categories.find((c) => c.name === categoryName);
+    return category?.icon || "📄";
   };
 
   if (loading) {
@@ -249,9 +253,9 @@ export function AdminOfficialDocumentsManager() {
           <span className="font-medium">Filtrer :</span>
         </div>
         <Button
-          variant={selectedCategory === 'all' ? 'default' : 'outline'}
+          variant={selectedCategory === "all" ? "default" : "outline"}
           size="sm"
-          onClick={() => setSelectedCategory('all')}
+          onClick={() => setSelectedCategory("all")}
         >
           Tous
           <span className="ml-2">{documents.length}</span>
@@ -259,15 +263,13 @@ export function AdminOfficialDocumentsManager() {
         {categories.map((category) => (
           <Button
             key={category.id}
-            variant={selectedCategory === category.name ? 'default' : 'outline'}
+            variant={selectedCategory === category.name ? "default" : "outline"}
             size="sm"
             onClick={() => setSelectedCategory(category.name)}
           >
             <span className="mr-1">{category.icon}</span>
             {category.name}
-            <span className="ml-2">
-              {documents.filter(d => d.category === category.name).length}
-            </span>
+            <span className="ml-2">{documents.filter((d) => d.category === category.name).length}</span>
           </Button>
         ))}
       </div>
@@ -278,8 +280,8 @@ export function AdminOfficialDocumentsManager() {
           <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
           <p className="text-foreground font-medium">Aucun document trouvé</p>
           <p className="text-sm text-muted-foreground mt-1">
-            {selectedCategory === 'all'
-              ? 'Aucun document officiel disponible'
+            {selectedCategory === "all"
+              ? "Aucun document officiel disponible"
               : `Aucun document dans la catégorie "${selectedCategory}"`}
           </p>
         </div>
@@ -298,12 +300,10 @@ export function AdminOfficialDocumentsManager() {
                   {/* Informations du document */}
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold">
-                        {doc.name}
-                      </h3>
+                      <h3 className="text-lg font-semibold">{doc.name}</h3>
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-medium border ${getCategoryColor(
-                          doc.category
+                          doc.category,
                         )}`}
                       >
                         {doc.category}
@@ -322,9 +322,7 @@ export function AdminOfficialDocumentsManager() {
 
                     {doc.description && (
                       <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                        {doc.description.length > 200
-                          ? doc.description.substring(0, 200) + '...'
-                          : doc.description}
+                        {doc.description.length > 200 ? doc.description.substring(0, 200) + "..." : doc.description}
                       </p>
                     )}
                   </div>
@@ -341,27 +339,19 @@ export function AdminOfficialDocumentsManager() {
                     <Eye className="w-4 h-4" />
                   </Button>
 
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    asChild
-                  >
-                    <a
-                      href={doc.file_url}
-                      download
-                      title="Télécharger le document"
-                    >
+                  <Button variant="ghost" size="sm" asChild>
+                    <a href={doc.file_url} download title="Télécharger le document">
                       <Download className="w-4 h-4" />
                     </a>
                   </Button>
 
                   <Button
-                    variant={doc.is_active ? 'outline' : 'default'}
+                    variant={doc.is_active ? "outline" : "default"}
                     size="sm"
                     onClick={() => toggleDocumentActive(doc.id, doc.is_active)}
-                    title={doc.is_active ? 'Désactiver' : 'Activer'}
+                    title={doc.is_active ? "Désactiver" : "Activer"}
                   >
-                    {doc.is_active ? 'Actif' : 'Inactif'}
+                    {doc.is_active ? "Actif" : "Inactif"}
                   </Button>
 
                   <Button
@@ -385,16 +375,12 @@ export function AdminOfficialDocumentsManager() {
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
             <span className="text-sm font-medium">
-              {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} affiché
-              {filteredDocuments.length > 1 ? 's' : ''}
+              {filteredDocuments.length} document{filteredDocuments.length > 1 ? "s" : ""} affiché
+              {filteredDocuments.length > 1 ? "s" : ""}
             </span>
           </div>
-          {selectedCategory !== 'all' && (
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => setSelectedCategory('all')}
-            >
+          {selectedCategory !== "all" && (
+            <Button variant="link" size="sm" onClick={() => setSelectedCategory("all")}>
               Voir tous les documents ({documents.length})
             </Button>
           )}
@@ -422,13 +408,16 @@ export function AdminOfficialDocumentsManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer ce document ? Cette action est irréversible
-              et supprimera également le fichier du stockage.
+              Êtes-vous sûr de vouloir supprimer ce document ? Cette action est irréversible et supprimera également le
+              fichier du stockage.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteDocument} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDeleteDocument}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>
