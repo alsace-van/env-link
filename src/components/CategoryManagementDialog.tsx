@@ -1,3 +1,4 @@
+// VERSION 2.0 - 15/12/2025 - Nouveaux emojis (lit, frigo, cuisine, etc.)
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,38 @@ interface CategoryManagementDialogProps {
   categories: Category[];
 }
 
-const emojiOptions = ['💧', '⚡', '🔥', '🪟', '🔧', '🪵', '🎨', '📦', '🏗️', '🔌', '🚿', '🌡️', '🪜', '🔩', '🛠️'];
+const emojiOptions = [
+  "⚡",
+  "🔌",
+  "🔋",
+  "☀️",
+  "💡",
+  "💧",
+  "🚿",
+  "🔥",
+  "🌡️",
+  "❄️",
+  "🛏️",
+  "🛋️",
+  "🍳",
+  "🧊",
+  "🏗️",
+  "🪟",
+  "🚪",
+  "🪵",
+  "🔧",
+  "🔩",
+  "🛠️",
+  "⚙️",
+  "🪜",
+  "📦",
+  "🗄️",
+  "🎨",
+  "🚐",
+  "🔒",
+  "📁",
+  "✨",
+];
 
 const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: CategoryManagementDialogProps) => {
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -126,7 +158,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
           style={{ marginLeft: `${level * 16}px` }}
         >
           <div className="flex items-center gap-2">
-            <span className="text-lg">{category.icon || '📦'}</span>
+            <span className="text-lg">{category.icon || "📦"}</span>
             <span className="text-sm">{category.nom}</span>
           </div>
           <div className="flex gap-1">
@@ -136,7 +168,7 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
               onClick={() => {
                 setEditingCategory(category);
                 setEditCategoryName(category.nom);
-                setEditCategoryIcon(category.icon || '📦');
+                setEditCategoryIcon(category.icon || "📦");
                 setEditParentCategoryId(category.parent_id);
               }}
               className="h-8 w-8"
@@ -216,8 +248,8 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
                         onClick={() => setEditCategoryIcon(emoji)}
                         className={`text-2xl p-2 rounded border-2 transition-all ${
                           editCategoryIcon === emoji
-                            ? 'border-primary bg-primary/10 scale-110'
-                            : 'border-border hover:border-primary/50'
+                            ? "border-primary bg-primary/10 scale-110"
+                            : "border-border hover:border-primary/50"
                         }`}
                       >
                         {emoji}
@@ -312,8 +344,8 @@ const CategoryManagementDialog = ({ isOpen, onClose, onSuccess, categories }: Ca
                         onClick={() => setNewCategoryIcon(emoji)}
                         className={`text-2xl p-2 rounded border-2 transition-all ${
                           newCategoryIcon === emoji
-                            ? 'border-primary bg-primary/10 scale-110'
-                            : 'border-border hover:border-primary/50'
+                            ? "border-primary bg-primary/10 scale-110"
+                            : "border-border hover:border-primary/50"
                         }`}
                       >
                         {emoji}
