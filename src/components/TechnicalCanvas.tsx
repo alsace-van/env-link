@@ -191,12 +191,12 @@ const ELECTRICAL_TYPES: Record<
     category: "conversion",
   },
   chargeur: {
-    label: "Chargeur",
+    label: "Chargeur 230V",
     icon: Plug,
     color: "text-orange-600",
     bgColor: "bg-orange-50",
     borderColor: "border-orange-400",
-    category: "conversion",
+    category: "production",
   },
   consommateur: {
     label: "Consommateur",
@@ -531,52 +531,35 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       if (!error && data) {
         setPrincipalScenarioId(data.id);
-        // Ne pas mettre loading à false ici, attendre que loadItems finisse
       } else {
         // Fallback sans scénario
-        loadItemsWithoutScenario();
+        setLoading(false);
       }
     };
 
     loadPrincipalScenario();
   }, [projectId]);
 
-  // Charger les items quand le scénario est chargé
+  // Charger les items sauvegardés quand le scénario est chargé
   useEffect(() => {
     if (principalScenarioId) {
-      loadItems().then(() => setLoading(false));
       loadSchemaData();
+      setLoading(false);
     }
   }, [principalScenarioId]);
 
-  const loadItemsWithoutScenario = async () => {
-    const { data, error } = await supabase
-      .from("project_expenses")
-      .select("*")
-      .eq("project_id", projectId)
-      .not("type_electrique", "is", null);
-    console.log("[Schema] loadItemsWithoutScenario:", { projectId, data, error });
-    if (data) setItems(data as ElectricalItem[]);
-    setLoading(false);
-  };
-
-  const loadItems = async () => {
-    if (!principalScenarioId) return;
-    const { data, error } = await (supabase as any)
-      .from("project_expenses")
-      .select("*")
-      .eq("scenario_id", principalScenarioId)
-      .not("type_electrique", "is", null);
-    console.log("[Schema] loadItems:", { principalScenarioId, count: data?.length, data, error });
-    if (data) setItems(data as ElectricalItem[]);
-  };
-
-  const loadSchemaData = () => {
+  // Charger les items sauvegardés dans le schéma (depuis localStorage)
+  const loadSchemaData = async () => {
     const stored = localStorage.getItem(`electrical_schema_${projectId}`);
     if (stored) {
       const parsed = JSON.parse(stored);
       setEdges(parsed.edges || []);
       setNodeHandles(parsed.nodeHandles || {});
+
+      // Charger les items sauvegardés
+      if (parsed.items && parsed.items.length > 0) {
+        setItems(parsed.items);
+      }
     }
   };
 
@@ -635,24 +618,40 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       .order("nom_accessoire");
     console.log("[Schema] loadScenarioItems result:", { count: data?.length, error, items_in_schema: items.length });
     if (data) {
-      // Filtrer les items déjà présents dans le schéma
-      const existingIds = items.map((i) => i.id);
-      const availableItems = data.filter((d: any) => !existingIds.includes(d.id));
-      console.log("[Schema] availableItems:", availableItems.length, "existingIds:", existingIds);
-      setScenarioItems(availableItems);
+      setScenarioItems(data);
     }
     setScenarioLoading(false);
   };
 
-  // Ajouter un article du scénario au schéma
-  const addFromScenario = (expense: any) => {
+  // Compter combien d'items d'un expense sont déjà dans le schéma
+  const getUsedQuantity = (expenseId: string) => {
+    return items
+      .filter((i) => i.id === expenseId || i.id.startsWith(`${expenseId}-`))
+      .reduce((sum, i) => sum + i.quantite, 0);
+  };
+
+  // Ajouter un article du scénario au schéma (1 à la fois)
+  const addFromScenario = (expense: any, quantity: number = 1) => {
     const decodedName = decodeHtmlEntities(expense.nom_accessoire);
-    // Si pas de type_electrique, on met "consommateur" par défaut
+    const usedQty = getUsedQuantity(expense.id);
+    const availableQty = (expense.quantite || 1) - usedQty;
+
+    if (quantity > availableQty) {
+      toast.error(`Seulement ${availableQty} disponible(s)`);
+      return;
+    }
+
+    // Créer un ID unique pour chaque instance
+    const instanceId =
+      usedQty === 0 && quantity === (expense.quantite || 1)
+        ? expense.id // Si on prend tout d'un coup, garder l'ID original
+        : `${expense.id}-${Date.now()}`; // Sinon créer un ID unique
+
     const newItem: ElectricalItem = {
-      id: expense.id,
+      id: instanceId,
       nom_accessoire: decodedName,
       type_electrique: expense.type_electrique || "consommateur",
-      quantite: expense.quantite || 1,
+      quantite: quantity,
       puissance_watts: expense.puissance_watts,
       capacite_ah: expense.capacite_ah,
       tension_volts: expense.tension_volts,
@@ -661,9 +660,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       prix_unitaire: expense.prix_unitaire,
     };
     setItems((prev) => [...prev, newItem]);
-    // Retirer l'item de la liste du scénario
-    setScenarioItems((prev) => prev.filter((i) => i.id !== expense.id));
-    toast.success(`${decodedName} ajouté au schéma`);
+    toast.success(`${quantity}x ${decodedName} ajouté au schéma`);
   };
 
   // Supprimer un item du schéma (mais pas de la base)
@@ -680,13 +677,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     toast.success("Accessoire retiré du schéma");
   }, []);
 
-  // Filtrer le scénario
-  const filteredScenario = scenarioItems.filter(
-    (item) =>
+  // Filtrer le scénario (exclure les items entièrement utilisés)
+  const filteredScenario = scenarioItems.filter((item) => {
+    const usedQty = getUsedQuantity(item.id);
+    const totalQty = item.quantite || 1;
+    const hasAvailable = usedQty < totalQty;
+    const matchesSearch =
       item.nom_accessoire?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
       item.marque?.toLowerCase().includes(scenarioSearch.toLowerCase()) ||
-      item.type_electrique?.toLowerCase().includes(scenarioSearch.toLowerCase()),
-  );
+      item.type_electrique?.toLowerCase().includes(scenarioSearch.toLowerCase());
+    return hasAvailable && matchesSearch;
+  });
 
   // Synchroniser les nodes avec les items
   useEffect(() => {
@@ -868,6 +869,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         })),
         edges,
         nodeHandles,
+        items, // Sauvegarder aussi les items ajoutés au schéma
       };
       localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
       toast.success("Schéma sauvegardé");
@@ -878,11 +880,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   };
 
   const resetSchema = () => {
-    if (!confirm("Réinitialiser le schéma ?")) return;
+    if (!confirm("Réinitialiser le schéma ? Tous les blocs et câbles seront supprimés.")) return;
     localStorage.removeItem(`electrical_schema_${projectId}`);
+    setItems([]);
     setEdges([]);
     setNodeHandles({});
-    loadItems();
     toast.success("Schéma réinitialisé");
   };
 
@@ -960,7 +962,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   <div className="text-center text-sm text-gray-500 py-8">Aucun scénario principal défini</div>
                 ) : filteredScenario.length === 0 ? (
                   <div className="text-center text-sm text-gray-500 py-8">
-                    {scenarioItems.length === 0 ? "Tous les articles sont déjà dans le schéma" : "Aucun article trouvé"}
+                    {scenarioSearch ? "Aucun article trouvé" : "Tous les articles sont déjà dans le schéma"}
                   </div>
                 ) : (
                   <div className="p-2 space-y-1">
@@ -969,11 +971,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         ? ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur
                         : { icon: Lightbulb, color: "text-gray-400" };
                       const IconComponent = typeConfig.icon;
+                      const usedQty = getUsedQuantity(item.id);
+                      const totalQty = item.quantite || 1;
+                      const availableQty = totalQty - usedQty;
+
                       return (
-                        <button
+                        <div
                           key={item.id}
-                          onClick={() => addFromScenario(item)}
-                          className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
+                          className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 transition-colors"
                         >
                           <IconComponent className={`h-4 w-4 shrink-0 ${typeConfig.color}`} />
                           <div className="flex-1 min-w-0">
@@ -983,12 +988,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             <div className="text-xs text-gray-500 flex items-center gap-2">
                               {item.marque && <span>{item.marque}</span>}
                               {item.puissance_watts && <span>{item.puissance_watts}W</span>}
-                              {item.capacite_ah && <span>{item.capacite_ah}Ah</span>}
                               {!item.type_electrique && <span className="text-orange-500">(sans type)</span>}
                             </div>
                           </div>
-                          <Plus className="h-4 w-4 text-gray-400" />
-                        </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-xs text-gray-400">
+                              {usedQty}/{totalQty}
+                            </span>
+                            <button
+                              onClick={() => addFromScenario(item, 1)}
+                              className="w-6 h-6 flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium"
+                              title="Ajouter 1"
+                            >
+                              +1
+                            </button>
+                            {availableQty > 1 && (
+                              <button
+                                onClick={() => addFromScenario(item, availableQty)}
+                                className="px-1.5 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs"
+                                title={`Ajouter tout (${availableQty})`}
+                              >
+                                +{availableQty}
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
