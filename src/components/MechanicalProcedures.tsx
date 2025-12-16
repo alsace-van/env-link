@@ -650,6 +650,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   <input
                     type="text"
                     value={text}
+                    data-checklist-input={`${block.id}-${index}`}
                     onChange={(e) => {
                       const lines = block.content.split("\n");
                       const prefix = lines[index].startsWith("[x]") ? "[x] " : "[] ";
@@ -730,6 +731,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   <input
                     type="text"
                     value={text}
+                    data-list-input={`${block.id}-${index}`}
                     onChange={(e) => {
                       const lines = block.content.split("\n");
                       lines[index] = "• " + e.target.value;
@@ -1497,7 +1499,7 @@ const MechanicalProcedures = () => {
     const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
 
-    const newContent = block.content + "\n[] Nouvelle étape";
+    const newContent = block.content + "\n[] ";
 
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
 
@@ -1509,8 +1511,10 @@ const MechanicalProcedures = () => {
       const input = document.querySelector(
         `[data-checklist-input="${blockId}-${lines.length - 1}"]`,
       ) as HTMLInputElement;
-      input?.focus();
-    }, 50);
+      if (input) {
+        input.focus();
+      }
+    }, 100);
   };
 
   // Ajouter une ligne après un index spécifique (checklist)
@@ -1526,11 +1530,14 @@ const MechanicalProcedures = () => {
 
     await handleUpdateBlock(blockId, { content: newContent });
 
-    // Focus sur le nouvel élément
+    // Focus sur le nouvel élément avec un délai suffisant pour le re-render
     setTimeout(() => {
       const input = document.querySelector(`[data-checklist-input="${blockId}-${afterIndex + 1}"]`) as HTMLInputElement;
-      input?.focus();
-    }, 50);
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 100);
   };
 
   // Modifier le texte d'une ligne de checklist
@@ -1573,7 +1580,7 @@ const MechanicalProcedures = () => {
     const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
 
-    const newContent = block.content + "\n• Nouvel élément";
+    const newContent = block.content + "\n• ";
 
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, content: newContent } : b)));
 
@@ -1583,8 +1590,10 @@ const MechanicalProcedures = () => {
     setTimeout(() => {
       const lines = newContent.split("\n");
       const input = document.querySelector(`[data-list-input="${blockId}-${lines.length - 1}"]`) as HTMLInputElement;
-      input?.focus();
-    }, 50);
+      if (input) {
+        input.focus();
+      }
+    }, 100);
   };
 
   // Ajouter un élément après un index spécifique (liste)
@@ -1600,11 +1609,14 @@ const MechanicalProcedures = () => {
 
     await handleUpdateBlock(blockId, { content: newContent });
 
-    // Focus sur le nouvel élément
+    // Focus sur le nouvel élément avec un délai suffisant pour le re-render
     setTimeout(() => {
       const input = document.querySelector(`[data-list-input="${blockId}-${afterIndex + 1}"]`) as HTMLInputElement;
-      input?.focus();
-    }, 50);
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }, 100);
   };
 
   // Modifier le texte d'une ligne de liste
