@@ -526,9 +526,12 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
       className={`rounded-lg border-2 shadow-md ${selected ? "ring-2 ring-blue-500 shadow-lg" : ""} ${blockType.bgColor} ${blockType.borderColor}`}
       style={{ width: block.width, minHeight: 80 }}
     >
-      {/* Handles de connexion */}
+      {/* Handles de connexion entrée */}
       <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
-      <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
+      {/* Handle gauche seulement si pas list/checklist (ils ont des handles par ligne) */}
+      {block.type !== "list" && block.type !== "checklist" && (
+        <Handle type="target" position={Position.Left} className="!bg-blue-500 !w-3 !h-3" />
+      )}
 
       {/* Header du bloc */}
       <div
@@ -808,7 +811,10 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
       {/* Handles de connexion sortie */}
       <Handle type="source" position={Position.Bottom} className="!bg-green-500 !w-3 !h-3" />
-      <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+      {/* Handle droite seulement si pas list/checklist (ils ont des handles par ligne) */}
+      {block.type !== "list" && block.type !== "checklist" && (
+        <Handle type="source" position={Position.Right} className="!bg-green-500 !w-3 !h-3" />
+      )}
     </div>
   );
 };
