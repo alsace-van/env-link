@@ -100,8 +100,20 @@ export default function EvolizClientsPage() {
     setImportingClientId(null);
   };
 
+  // Si chargement de la config en cours
+  if (configLoading) {
+    return (
+      <div className="container mx-auto py-6 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+          <p className="text-muted-foreground">Chargement de la configuration Evoliz...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Si pas configuré
-  if (!configLoading && !isConfigured) {
+  if (!isConfigured) {
     return (
       <div className="container mx-auto py-6 max-w-4xl">
         <Alert>
@@ -232,6 +244,7 @@ export default function EvolizClientsPage() {
                       key={client.clientid}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => {
+                        console.log("🔍 Client cliqué:", client);
                         setSelectedClient(client);
                         setShowDetailDialog(true);
                       }}
@@ -322,9 +335,15 @@ export default function EvolizClientsPage() {
       </Card>
 
       {/* Dialog Détail Client */}
-      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-lg">
-          {selectedClient && (
+      <Dialog
+        open={showDetailDialog}
+        onOpenChange={(open) => {
+          console.log("🔍 Dialog onOpenChange:", open);
+          setShowDetailDialog(open);
+        }}
+      >
+        <DialogContent className="max-w-lg z-[100]">
+          {selectedClient ? (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -436,6 +455,8 @@ export default function EvolizClientsPage() {
                 </Button>
               </DialogFooter>
             </>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">Chargement...</div>
           )}
         </DialogContent>
       </Dialog>
