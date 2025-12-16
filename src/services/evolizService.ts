@@ -1,6 +1,7 @@
 // ============================================
 // SERVICE API EVOLIZ
 // Utilise l'Edge Function comme proxy pour éviter CORS
+// VERSION: 2.1 - Ajout period, date_min, date_max pour getInvoices
 // ============================================
 
 import { supabase } from "@/integrations/supabase/client";
@@ -427,12 +428,18 @@ class EvolizApiService {
     status?: string;
     page?: number;
     per_page?: number;
+    period?: string; // lastmonth, currentmonth, last3months, last6months, currentyear, lastyear, fiscalyear, lastfiscalyear, vatperiod, custom
+    date_min?: string; // Format: YYYY-MM-DD (requis si period=custom)
+    date_max?: string; // Format: YYYY-MM-DD (requis si period=custom)
   }): Promise<EvolizApiResponse<EvolizInvoice[]>> {
     const queryParams = new URLSearchParams();
     if (params?.clientid) queryParams.append("clientid", params.clientid.toString());
     if (params?.status) queryParams.append("status", params.status);
     if (params?.page) queryParams.append("page", params.page.toString());
     if (params?.per_page) queryParams.append("per_page", params.per_page.toString());
+    if (params?.period) queryParams.append("period", params.period);
+    if (params?.date_min) queryParams.append("date_min", params.date_min);
+    if (params?.date_max) queryParams.append("date_max", params.date_max);
 
     const query = queryParams.toString();
     const endpoint = `/invoices${query ? `?${query}` : ""}`;
