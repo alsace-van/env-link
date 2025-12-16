@@ -95,6 +95,13 @@ const getInvoiceStatusBadge = (status: string | undefined) => {
   return <Badge className={colorClass}>{label}</Badge>;
 };
 
+// Helper pour extraire le status string depuis l'objet invoice
+const getInvoiceStatusString = (invoice: EvolizInvoice): string | undefined => {
+  if (!invoice.status) return undefined;
+  if (typeof invoice.status === "string") return invoice.status;
+  return invoice.status.label;
+};
+
 export default function EvolizClientsPage() {
   const { isConfigured, isLoading: configLoading } = useEvolizConfig();
   const { clients, mappings, isLoading, fetchClients, getMappings, importClientFromEvoliz, unlinkClient } =
@@ -150,40 +157,12 @@ export default function EvolizClientsPage() {
     setLoadingInvoices(true);
     setClientInvoices([]);
     try {
-      console.log("[DEBUG] Chargement factures pour clientid:", clientId);
-
-      // Test 1: avec filtre clientid
-      const response = await evolizApi.getInvoices({ clientid: clientId, status: "all", per_page: 100 });
-      console.log("[DEBUG] Réponse factures avec clientid:", response.data?.length || 0, "factures");
-
-      // Test 2: sans filtre pour voir si l'API retourne des factures
-      if (response.data?.length === 0) {
-        console.log("[DEBUG] Aucune facture avec filtre, test SANS filtre clientid...");
-        const allInvoices = await evolizApi.getInvoices({ status: "all", per_page: 50 });
-        console.log("[DEBUG] Factures SANS filtre:", allInvoices.data?.length || 0, "factures");
-
-        // Afficher tous les clientid uniques des factures
-        if (allInvoices.data?.length > 0) {
-          const uniqueClientIds = [...new Set(allInvoices.data.map((inv) => inv.client?.clientid))];
-          console.log("[DEBUG] ClientIDs uniques dans les factures:", uniqueClientIds);
-
-          // Chercher si une facture correspond au nom du client sélectionné
-          const clientName = selectedClient?.name?.toLowerCase();
-          const matchingInvoice = allInvoices.data.find(
-            (inv) =>
-              inv.client?.name?.toLowerCase().includes(clientName || "") ||
-              clientName?.includes(inv.client?.name?.toLowerCase() || ""),
-          );
-          if (matchingInvoice) {
-            console.log("[DEBUG] Facture trouvée pour client similaire:", {
-              invoiceClientId: matchingInvoice.client?.clientid,
-              invoiceClientName: matchingInvoice.client?.name,
-              selectedClientId: clientId,
-              selectedClientName: selectedClient?.name,
-            });
-          }
-        }
-      }
+      // Charger toutes les factures du client (status=all pour inclure brouillons, payées, etc.)
+      const response = await evolizApi.getInvoices({
+        clientid: clientId,
+        status: "all",
+        per_page: 100,
+      });
 
       setClientInvoices(response.data || []);
     } catch (err) {
@@ -233,8 +212,12 @@ export default function EvolizClientsPage() {
 
   // Ouvrir le PDF dans un nouvel onglet
   const openInvoicePdf = (invoice: EvolizInvoice) => {
-    if (invoice.document_link) {
-      window.open(invoice.document_link, "_blank");
+    // Priorité : webdoc (lien public) > document_link > file (nécessite auth)
+    const pdfUrl = invoice.webdoc || invoice.document_link || invoice.file;
+    if (pdfUrl) {
+      window.open(pdfUrl, "_blank");
+    } else {
+      console.warn("Aucun lien PDF disponible pour cette facture", invoice.invoiceid);
     }
   };
 
@@ -677,8 +660,8 @@ export default function EvolizClientsPage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              {getInvoiceStatusBadge(invoice.status?.label)}
-                              {invoice.document_link && (
+                              {getInvoiceStatusBadge(getInvoiceStatusString(invoice))}
+                              {(invoice.webdoc || invoice.file || invoice.document_link) && (
                                 <Button variant="outline" size="sm" onClick={() => openInvoicePdf(invoice)}>
                                   <Eye className="h-4 w-4 mr-1" />
                                   PDF
