@@ -159,10 +159,29 @@ export default function EvolizClientsPage() {
       // Test 2: sans filtre pour voir si l'API retourne des factures
       if (response.data?.length === 0) {
         console.log("[DEBUG] Aucune facture avec filtre, test SANS filtre clientid...");
-        const allInvoices = await evolizApi.getInvoices({ status: "all", per_page: 10 });
+        const allInvoices = await evolizApi.getInvoices({ status: "all", per_page: 50 });
         console.log("[DEBUG] Factures SANS filtre:", allInvoices.data?.length || 0, "factures");
+
+        // Afficher tous les clientid uniques des factures
         if (allInvoices.data?.length > 0) {
-          console.log("[DEBUG] Première facture:", JSON.stringify(allInvoices.data[0], null, 2));
+          const uniqueClientIds = [...new Set(allInvoices.data.map((inv) => inv.client?.clientid))];
+          console.log("[DEBUG] ClientIDs uniques dans les factures:", uniqueClientIds);
+
+          // Chercher si une facture correspond au nom du client sélectionné
+          const clientName = selectedClient?.name?.toLowerCase();
+          const matchingInvoice = allInvoices.data.find(
+            (inv) =>
+              inv.client?.name?.toLowerCase().includes(clientName || "") ||
+              clientName?.includes(inv.client?.name?.toLowerCase() || ""),
+          );
+          if (matchingInvoice) {
+            console.log("[DEBUG] Facture trouvée pour client similaire:", {
+              invoiceClientId: matchingInvoice.client?.clientid,
+              invoiceClientName: matchingInvoice.client?.name,
+              selectedClientId: clientId,
+              selectedClientName: selectedClient?.name,
+            });
+          }
         }
       }
 
