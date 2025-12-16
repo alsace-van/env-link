@@ -637,7 +637,7 @@ export default function EvolizClientsPage() {
                                   </span>
                                   <span className="flex items-center gap-1">
                                     <Euro className="h-3 w-3" />
-                                    {formatAmount(invoice.total?.total_vat_include)}
+                                    {formatAmount(invoice.total?.vat_include)}
                                   </span>
                                 </div>
                               </div>
