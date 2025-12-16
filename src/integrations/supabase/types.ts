@@ -635,41 +635,59 @@ export type Database = {
         Row: {
           address: string | null
           city: string | null
+          client_type: string | null
+          company_name: string | null
           country: string | null
           created_at: string | null
           email: string | null
+          evoliz_client_id: number | null
           first_name: string | null
           id: string
           last_name: string | null
+          notes: string | null
           phone: string | null
           postal_code: string | null
+          siret: string | null
           updated_at: string | null
+          vat_number: string | null
         }
         Insert: {
           address?: string | null
           city?: string | null
+          client_type?: string | null
+          company_name?: string | null
           country?: string | null
           created_at?: string | null
           email?: string | null
+          evoliz_client_id?: number | null
           first_name?: string | null
           id?: string
           last_name?: string | null
+          notes?: string | null
           phone?: string | null
           postal_code?: string | null
+          siret?: string | null
           updated_at?: string | null
+          vat_number?: string | null
         }
         Update: {
           address?: string | null
           city?: string | null
+          client_type?: string | null
+          company_name?: string | null
           country?: string | null
           created_at?: string | null
           email?: string | null
+          evoliz_client_id?: number | null
           first_name?: string | null
           id?: string
           last_name?: string | null
+          notes?: string | null
           phone?: string | null
           postal_code?: string | null
+          siret?: string | null
           updated_at?: string | null
+          vat_number?: string | null
         }
         Relationships: []
       }
