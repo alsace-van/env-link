@@ -16,6 +16,7 @@ import {
   Position,
   MarkerType,
   Panel,
+  ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import dagre from "dagre";
@@ -890,6 +891,10 @@ const MechanicalProcedures = () => {
   const dragElementRef = useRef<HTMLElement | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
+  // 🔥 Refs pour ReactFlow (pour positionner les nouveaux blocs au centre)
+  const reactFlowContainerRef = useRef<HTMLDivElement>(null);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+
   // États pour le resize des blocs
   const resizingBlockIdRef = useRef<string | null>(null);
   const resizeStartRef = useRef({ width: 0, height: 0, x: 0, y: 0 });
@@ -1276,14 +1281,33 @@ const MechanicalProcedures = () => {
         height = 320;
       }
 
+      // 🔥 Calculer la position au centre de la vue visible
+      let posX = 100;
+      let posY = 100;
+
+      const container = reactFlowContainerRef.current;
+      const rfInstance = reactFlowInstanceRef.current;
+
+      if (rfInstance && container) {
+        // Utiliser screenToFlowPosition pour convertir le centre de l'écran
+        const centerScreen = {
+          x: container.clientWidth / 2,
+          y: container.clientHeight / 2,
+        };
+        const flowPosition = rfInstance.screenToFlowPosition(centerScreen);
+        // Petit offset aléatoire pour éviter l'empilement exact
+        posX = flowPosition.x - width / 2 + Math.random() * 50;
+        posY = flowPosition.y - height / 2 + Math.random() * 50;
+      }
+
       const { data, error } = await (supabase as any)
         .from("mechanical_blocks")
         .insert({
           chapter_id: activeChapterId,
           type: type,
           content: content,
-          position_x: 50 + Math.random() * 100,
-          position_y: 50 + blocks.length * 20,
+          position_x: posX,
+          position_y: posY,
           width: width,
           height: height,
           order_index: blocks.length,
@@ -3733,7 +3757,7 @@ ${block.content}`,
             </div>
 
             {/* Canvas React Flow */}
-            <div className="flex-1 relative overflow-hidden">
+            <div className="flex-1 relative overflow-hidden" ref={reactFlowContainerRef}>
               {!activeChapterId ? (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-muted/5">
                   <div className="text-center">
@@ -3757,6 +3781,9 @@ ${block.content}`,
                   onEdgesChange={onEdgesChange}
                   onNodeDragStop={handleNodeDragStop}
                   onConnect={handleConnect}
+                  onInit={(instance) => {
+                    reactFlowInstanceRef.current = instance;
+                  }}
                   onEdgeClick={(_, edge) => {
                     if (confirm("Supprimer cette connexion ?")) {
                       handleDeleteEdge(edge.id);
