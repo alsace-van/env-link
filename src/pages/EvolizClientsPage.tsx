@@ -1,24 +1,21 @@
 // ============================================
 // PAGE CLIENTS EVOLIZ
 // Synchro bidirectionnelle avec VPB
+// Avec onglet Factures et Contacts
 // ============================================
 
 import React, { useEffect, useState } from "react";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
 import { useEvolizClients } from "@/hooks/useEvolizClients";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { evolizApi } from "@/services/evolizService";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,13 +28,11 @@ import {
   RefreshCw,
   Users,
   ExternalLink,
-  Link2,
   Unlink,
   Settings,
   AlertCircle,
   Search,
   Download,
-  Upload,
   MoreHorizontal,
   Building2,
   User,
@@ -45,29 +40,80 @@ import {
   Phone,
   MapPin,
   Check,
+  Receipt,
+  Calendar,
+  Euro,
+  FileText,
+  Eye,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { EvolizClient } from "@/types/evoliz.types";
+import type { EvolizClient, EvolizInvoice, EvolizContactClient } from "@/types/evoliz.types";
 import { Link } from "react-router-dom";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
+
+// Helper pour formater les montants
+const formatAmount = (amount: number | undefined): string => {
+  if (amount === undefined || amount === null) return "0,00 €";
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(amount);
+};
+
+// Helper pour formater les dates
+const formatDate = (dateStr: string | undefined): string => {
+  if (!dateStr) return "-";
+  try {
+    return format(new Date(dateStr), "dd/MM/yyyy", { locale: fr });
+  } catch {
+    return dateStr;
+  }
+};
+
+// Helper pour le statut des factures
+const getInvoiceStatusBadge = (status: string | undefined) => {
+  const labels: Record<string, string> = {
+    filled: "Brouillon",
+    create: "Créée",
+    sent: "Envoyée",
+    inpayment: "En cours",
+    paid: "Payée",
+    match: "Lettrée",
+    unpaid: "Impayée",
+    nopaid: "Non payée",
+  };
+  const colors: Record<string, string> = {
+    filled: "bg-gray-100 text-gray-700",
+    create: "bg-blue-100 text-blue-700",
+    sent: "bg-cyan-100 text-cyan-700",
+    inpayment: "bg-orange-100 text-orange-700",
+    paid: "bg-green-100 text-green-700",
+    match: "bg-green-100 text-green-700",
+    unpaid: "bg-red-100 text-red-700",
+    nopaid: "bg-yellow-100 text-yellow-700",
+  };
+  const label = labels[status || ""] || status || "Inconnu";
+  const colorClass = colors[status || ""] || "bg-gray-100 text-gray-700";
+  return <Badge className={colorClass}>{label}</Badge>;
+};
 
 export default function EvolizClientsPage() {
   const { isConfigured, isLoading: configLoading } = useEvolizConfig();
-  const {
-    clients,
-    mappings,
-    isLoading,
-    isSyncing,
-    error,
-    fetchClients,
-    getMappings,
-    importClientFromEvoliz,
-    unlinkClient,
-  } = useEvolizClients();
+  const { clients, mappings, isLoading, fetchClients, getMappings, importClientFromEvoliz, unlinkClient } =
+    useEvolizClients();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<EvolizClient | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [importingClientId, setImportingClientId] = useState<number | null>(null);
+
+  // États pour les factures
+  const [clientInvoices, setClientInvoices] = useState<EvolizInvoice[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+
+  // États pour les contacts
+  const [clientContacts, setClientContacts] = useState<EvolizContactClient[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+
+  const [activeTab, setActiveTab] = useState("infos");
 
   // Charger au montage
   useEffect(() => {
@@ -77,14 +123,65 @@ export default function EvolizClientsPage() {
     }
   }, [isConfigured, configLoading]);
 
+  // Charger les données quand on sélectionne un client
+  useEffect(() => {
+    if (selectedClient && showDetailDialog) {
+      loadClientContacts(selectedClient.clientid);
+      loadClientInvoices(selectedClient.clientid);
+    }
+  }, [selectedClient, showDetailDialog]);
+
+  // Charger les contacts d'un client
+  const loadClientContacts = async (clientId: number) => {
+    setLoadingContacts(true);
+    setClientContacts([]);
+    try {
+      const response = await evolizApi.getClientContacts(clientId);
+      setClientContacts(response.data || []);
+    } catch (err) {
+      console.error("Erreur chargement contacts:", err);
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  // Charger les factures d'un client
+  const loadClientInvoices = async (clientId: number) => {
+    setLoadingInvoices(true);
+    setClientInvoices([]);
+    try {
+      const response = await evolizApi.getInvoices({ clientid: clientId, per_page: 50 });
+      setClientInvoices(response.data || []);
+    } catch (err) {
+      console.error("Erreur chargement factures:", err);
+    } finally {
+      setLoadingInvoices(false);
+    }
+  };
+
+  // Obtenir l'email du contact principal (favori ou premier)
+  const getPrimaryContactEmail = (): string | null => {
+    if (clientContacts.length === 0) return null;
+    const favorite = clientContacts.find((c) => c.favorite);
+    if (favorite?.email) return favorite.email;
+    const withEmail = clientContacts.find((c) => c.email);
+    return withEmail?.email || null;
+  };
+
+  // Obtenir le contact principal
+  const getPrimaryContact = (): EvolizContactClient | null => {
+    if (clientContacts.length === 0) return null;
+    return clientContacts.find((c) => c.favorite) || clientContacts[0];
+  };
+
   // Filtrer les clients
   const filteredClients = clients.filter((client) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
       client.name?.toLowerCase().includes(search) ||
-      client.email?.toLowerCase().includes(search) ||
-      client.address?.town?.toLowerCase().includes(search)
+      client.address?.town?.toLowerCase().includes(search) ||
+      client.code?.toLowerCase().includes(search)
     );
   });
 
@@ -98,6 +195,23 @@ export default function EvolizClientsPage() {
     setImportingClientId(clientId);
     await importClientFromEvoliz(clientId);
     setImportingClientId(null);
+  };
+
+  // Ouvrir le PDF dans un nouvel onglet
+  const openInvoicePdf = (invoice: EvolizInvoice) => {
+    if (invoice.document_link) {
+      window.open(invoice.document_link, "_blank");
+    }
+  };
+
+  // Réinitialiser quand on ferme la modale
+  const handleCloseDialog = (open: boolean) => {
+    if (!open) {
+      setActiveTab("infos");
+      setClientInvoices([]);
+      setClientContacts([]);
+    }
+    setShowDetailDialog(open);
   };
 
   // Si chargement de la config en cours
@@ -132,6 +246,9 @@ export default function EvolizClientsPage() {
     );
   }
 
+  const primaryContact = getPrimaryContact();
+  const primaryEmail = getPrimaryContactEmail();
+
   return (
     <div className="container mx-auto py-6">
       <div className="flex items-center justify-between mb-6">
@@ -165,73 +282,35 @@ export default function EvolizClientsPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Rechercher par nom, email, ville..."
+              placeholder="Rechercher par nom, code, ville..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
+              className="pl-10"
             />
           </div>
         </CardContent>
       </Card>
 
-      {/* Erreur */}
-      {error && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Stats rapides */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{clients.length}</div>
-            <div className="text-sm text-muted-foreground">Clients Evoliz</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{mappings.length}</div>
-            <div className="text-sm text-muted-foreground">Liés à VPB</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{clients.filter((c) => c.type === "Professionnel").length}</div>
-            <div className="text-sm text-muted-foreground">Professionnels</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{clients.filter((c) => c.type === "Particulier").length}</div>
-            <div className="text-sm text-muted-foreground">Particuliers</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tableau des clients */}
+      {/* Table clients */}
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : filteredClients.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Aucun client trouvé</p>
+              {searchTerm ? "Aucun client trouvé" : "Aucun client dans Evoliz"}
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Client</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Ville</TableHead>
+                  <TableHead className="hidden md:table-cell">Type</TableHead>
+                  <TableHead className="hidden lg:table-cell">Ville</TableHead>
                   <TableHead>VPB</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -255,17 +334,21 @@ export default function EvolizClientsPage() {
                           ) : (
                             <User className="h-4 w-4 text-muted-foreground" />
                           )}
-                          <span className="font-medium">{client.name}</span>
+                          <div>
+                            <span className="font-medium">{client.name}</span>
+                            {client.code && <span className="text-xs text-muted-foreground ml-2">({client.code})</span>}
+                          </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <Badge variant={client.type === "Professionnel" ? "default" : "secondary"}>{client.type}</Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{client.email || "-"}</TableCell>
-                      <TableCell className="text-muted-foreground">{client.address?.town || "-"}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground">
+                        {client.address?.town || "-"}
+                      </TableCell>
                       <TableCell>
                         {isLinked ? (
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                             <Check className="h-3 w-3 mr-1" />
                             Lié
                           </Badge>
@@ -333,9 +416,9 @@ export default function EvolizClientsPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog Détail Client */}
-      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-lg">
+      {/* Dialog Détail Client avec Onglets */}
+      <Dialog open={showDetailDialog} onOpenChange={handleCloseDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           {selectedClient ? (
             <>
               <DialogHeader>
@@ -346,98 +429,235 @@ export default function EvolizClientsPage() {
                     <User className="h-5 w-5" />
                   )}
                   {selectedClient.name}
+                  {selectedClient.code && (
+                    <span className="text-sm font-normal text-muted-foreground">({selectedClient.code})</span>
+                  )}
                 </DialogTitle>
                 <div className="flex items-center gap-2 pt-1">
                   <Badge variant={selectedClient.type === "Professionnel" ? "default" : "secondary"}>
                     {selectedClient.type}
                   </Badge>
+                  {isClientLinked(selectedClient.clientid) && (
+                    <Badge className="bg-green-100 text-green-700">Lié à VPB</Badge>
+                  )}
                 </div>
               </DialogHeader>
 
-              <div className="space-y-4">
-                {/* Contact */}
-                <div className="space-y-2">
-                  {selectedClient.email && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                      <a href={`mailto:${selectedClient.email}`} className="text-primary hover:underline">
-                        {selectedClient.email}
-                      </a>
-                    </div>
-                  )}
-                  {(selectedClient.phone || selectedClient.mobile) && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Phone className="h-4 w-4 text-muted-foreground" />
-                      <span>{selectedClient.phone || selectedClient.mobile}</span>
-                    </div>
-                  )}
-                  {selectedClient.address && (
-                    <div className="flex items-start gap-2 text-sm">
-                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                      <div>
-                        {selectedClient.address.addr && <p>{selectedClient.address.addr}</p>}
-                        <p>
-                          {selectedClient.address.postcode} {selectedClient.address.town}
-                        </p>
-                        {selectedClient.address.country && (
-                          <p className="text-muted-foreground">
-                            {typeof selectedClient.address.country === "object"
-                              ? (selectedClient.address.country as any).label
-                              : selectedClient.address.country}
-                          </p>
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="infos" className="flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Informations
+                  </TabsTrigger>
+                  <TabsTrigger value="factures" className="flex items-center gap-2">
+                    <Receipt className="h-4 w-4" />
+                    Factures
+                    {clientInvoices.length > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-5 px-1.5">
+                        {clientInvoices.length}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Onglet Informations */}
+                <TabsContent value="infos" className="flex-1 overflow-auto mt-4">
+                  <div className="space-y-6">
+                    {/* Contact principal */}
+                    <div className="space-y-3">
+                      <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                        Contact {loadingContacts && <Loader2 className="h-3 w-3 inline animate-spin ml-1" />}
+                      </h4>
+
+                      <div className="flex items-center gap-2 text-sm">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        {loadingContacts ? (
+                          <span className="text-muted-foreground">Chargement...</span>
+                        ) : primaryEmail ? (
+                          <a href={`mailto:${primaryEmail}`} className="text-primary hover:underline">
+                            {primaryEmail}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground italic">Aucun contact avec email</span>
                         )}
                       </div>
+
+                      {primaryContact &&
+                        (primaryContact.tel_primary || selectedClient.phone || selectedClient.mobile) && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <span>{primaryContact.tel_primary || selectedClient.phone || selectedClient.mobile}</span>
+                          </div>
+                        )}
+
+                      {selectedClient.address && (
+                        <div className="flex items-start gap-2 text-sm">
+                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                          <div>
+                            {selectedClient.address.addr && <p>{selectedClient.address.addr}</p>}
+                            <p>
+                              {selectedClient.address.postcode} {selectedClient.address.town}
+                            </p>
+                            {selectedClient.address.country && (
+                              <p className="text-muted-foreground">
+                                {typeof selectedClient.address.country === "object"
+                                  ? (selectedClient.address.country as any).label
+                                  : selectedClient.address.country}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* Infos pro */}
-                {selectedClient.type === "Professionnel" && (
-                  <div className="border-t pt-4 space-y-2">
-                    {selectedClient.siret && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">SIRET</span>
-                        <span className="font-mono">{selectedClient.siret}</span>
+                    {/* Liste des contacts */}
+                    {clientContacts.length > 1 && (
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                          Tous les contacts ({clientContacts.length})
+                        </h4>
+                        <div className="space-y-2">
+                          {clientContacts.map((contact) => (
+                            <div
+                              key={contact.contactid}
+                              className="flex items-center justify-between p-2 rounded-lg bg-muted/50"
+                            >
+                              <div className="flex items-center gap-2">
+                                <User className="h-4 w-4 text-muted-foreground" />
+                                <div>
+                                  <p className="text-sm font-medium">
+                                    {contact.firstname} {contact.lastname}
+                                    {contact.favorite && (
+                                      <Badge variant="secondary" className="ml-2 text-xs">
+                                        Principal
+                                      </Badge>
+                                    )}
+                                  </p>
+                                  {contact.email && <p className="text-xs text-muted-foreground">{contact.email}</p>}
+                                </div>
+                              </div>
+                              {contact.profil && (
+                                <span className="text-xs text-muted-foreground">{contact.profil}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    {selectedClient.vat_number && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">N° TVA</span>
-                        <span className="font-mono">{selectedClient.vat_number}</span>
+
+                    {/* Infos pro */}
+                    {selectedClient.type === "Professionnel" && (
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                          Informations légales
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          {selectedClient.business_number && (
+                            <>
+                              <span className="text-muted-foreground">SIRET</span>
+                              <span className="font-mono">{selectedClient.business_number}</span>
+                            </>
+                          )}
+                          {selectedClient.vat_number && (
+                            <>
+                              <span className="text-muted-foreground">N° TVA</span>
+                              <span className="font-mono">{selectedClient.vat_number}</span>
+                            </>
+                          )}
+                          {selectedClient.legalform && (
+                            <>
+                              <span className="text-muted-foreground">Forme juridique</span>
+                              <span>{selectedClient.legalform}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     )}
+
+                    {/* Actions */}
+                    <div className="pt-4 border-t">
+                      {isClientLinked(selectedClient.clientid) ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-green-700 flex items-center gap-1">
+                            <Check className="h-4 w-4" />
+                            Lié à un client VPB
+                          </span>
+                          <Button variant="outline" size="sm" onClick={() => unlinkClient(selectedClient.clientid)}>
+                            <Unlink className="h-4 w-4 mr-1" />
+                            Délier
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          className="w-full"
+                          onClick={() => handleImport(selectedClient.clientid)}
+                          disabled={importingClientId === selectedClient.clientid}
+                        >
+                          {importingClientId === selectedClient.clientid ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4 mr-2" />
+                          )}
+                          Importer dans VPB
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                )}
+                </TabsContent>
 
-                {/* Statut liaison */}
-                <div className="border-t pt-4">
-                  {isClientLinked(selectedClient.clientid) ? (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-green-700 flex items-center gap-1">
-                        <Check className="h-4 w-4" />
-                        Lié à un client VPB
-                      </span>
-                      <Button variant="outline" size="sm" onClick={() => unlinkClient(selectedClient.clientid)}>
-                        <Unlink className="h-4 w-4 mr-1" />
-                        Délier
-                      </Button>
+                {/* Onglet Factures */}
+                <TabsContent value="factures" className="flex-1 overflow-auto mt-4">
+                  {loadingInvoices ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : clientInvoices.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Receipt className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                      <p>Aucune facture pour ce client</p>
                     </div>
                   ) : (
-                    <Button
-                      className="w-full"
-                      onClick={() => handleImport(selectedClient.clientid)}
-                      disabled={importingClientId === selectedClient.clientid}
-                    >
-                      {importingClientId === selectedClient.clientid ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4 mr-2" />
-                      )}
-                      Importer dans VPB
-                    </Button>
+                    <ScrollArea className="h-[400px]">
+                      <div className="space-y-2">
+                        {clientInvoices.map((invoice) => (
+                          <div
+                            key={invoice.invoiceid}
+                            className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <FileText className="h-8 w-8 text-muted-foreground" />
+                              <div>
+                                <p className="font-medium">
+                                  {invoice.document_number || `Facture #${invoice.invoiceid}`}
+                                </p>
+                                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    {formatDate(invoice.documentdate)}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Euro className="h-3 w-3" />
+                                    {formatAmount(invoice.total?.total_vat_include)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {getInvoiceStatusBadge(invoice.status?.label)}
+                              {invoice.document_link && (
+                                <Button variant="outline" size="sm" onClick={() => openInvoicePdf(invoice)}>
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  PDF
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   )}
-                </div>
-              </div>
+                </TabsContent>
+              </Tabs>
 
               <DialogFooter>
                 <Button variant="outline" asChild>
