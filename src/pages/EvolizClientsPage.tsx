@@ -244,7 +244,6 @@ export default function EvolizClientsPage() {
                       key={client.clientid}
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => {
-                        console.log("🔍 Client cliqué:", client);
                         setSelectedClient(client);
                         setShowDetailDialog(true);
                       }}
@@ -335,14 +334,8 @@ export default function EvolizClientsPage() {
       </Card>
 
       {/* Dialog Détail Client */}
-      <Dialog
-        open={showDetailDialog}
-        onOpenChange={(open) => {
-          console.log("🔍 Dialog onOpenChange:", open);
-          setShowDetailDialog(open);
-        }}
-      >
-        <DialogContent className="max-w-lg z-[100]">
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        <DialogContent className="max-w-lg">
           {selectedClient ? (
             <>
               <DialogHeader>
@@ -354,11 +347,11 @@ export default function EvolizClientsPage() {
                   )}
                   {selectedClient.name}
                 </DialogTitle>
-                <DialogDescription>
+                <div className="flex items-center gap-2 pt-1">
                   <Badge variant={selectedClient.type === "Professionnel" ? "default" : "secondary"}>
                     {selectedClient.type}
                   </Badge>
-                </DialogDescription>
+                </div>
               </DialogHeader>
 
               <div className="space-y-4">
@@ -387,7 +380,11 @@ export default function EvolizClientsPage() {
                           {selectedClient.address.postcode} {selectedClient.address.town}
                         </p>
                         {selectedClient.address.country && (
-                          <p className="text-muted-foreground">{selectedClient.address.country}</p>
+                          <p className="text-muted-foreground">
+                            {typeof selectedClient.address.country === "object"
+                              ? (selectedClient.address.country as any).label
+                              : selectedClient.address.country}
+                          </p>
                         )}
                       </div>
                     </div>
