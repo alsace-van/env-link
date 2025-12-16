@@ -2,6 +2,7 @@
 // PAGE CLIENTS EVOLIZ
 // Synchro bidirectionnelle avec VPB
 // Avec onglet Factures et Contacts
+// VERSION: 2.2 - Ajout bouton Retour dans le dialog
 // ============================================
 
 import React, { useEffect, useState } from "react";
@@ -45,6 +46,7 @@ import {
   Euro,
   FileText,
   Eye,
+  ArrowLeft,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { EvolizClient, EvolizInvoice, EvolizContactClient } from "@/types/evoliz.types";
@@ -686,7 +688,11 @@ export default function EvolizClientsPage() {
                 </TabsContent>
               </Tabs>
 
-              <DialogFooter>
+              <DialogFooter className="flex justify-between sm:justify-between">
+                <Button variant="ghost" onClick={handleCloseDialog}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Retour
+                </Button>
                 <Button variant="outline" asChild>
                   <a
                     href={`https://www.evoliz.com/clients/${selectedClient.clientid}`}
