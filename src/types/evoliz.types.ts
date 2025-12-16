@@ -531,10 +531,14 @@ export interface EvolizInvoice {
     label: string;
     recovery: boolean;
   };
-  status?: {
-    label: string;
-    sub_status?: string | null;
-  };
+  // L'API retourne status comme string OU objet selon le contexte
+  status?:
+    | string
+    | {
+        label: string;
+        sub_status?: string | null;
+      };
+  status_code?: number;
   enabled?: boolean;
   locked?: boolean;
   client?: {
@@ -544,7 +548,11 @@ export interface EvolizInvoice {
     civility?: string;
   };
   items?: EvolizInvoiceItem[];
-  document_link?: string;
+  // Liens vers le document
+  file?: string; // URL API (nécessite auth) - ex: https://www.evoliz.io/api/companies/73531/files/invoice/24279055
+  webdoc?: string; // URL publique - ex: https://www.evoliz.com/.../modules/webdoc/...
+  document_link?: string; // Ancien champ (compatibilité)
+  links?: string;
   created_at?: string;
   updated_at?: string;
 }
