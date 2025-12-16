@@ -104,12 +104,6 @@ export function useEvolizClients(): UseEvolizClientsReturn {
         }
 
         setClients(allClients);
-
-        // Debug: afficher les premiers clientid
-        console.log(
-          "[DEBUG CLIENTS] Premiers clients chargés:",
-          allClients.slice(0, 5).map((c) => ({ clientid: c.clientid, name: c.name, code: c.code })),
-        );
       } catch (err) {
         const message = err instanceof Error ? err.message : "Erreur de chargement";
         setError(message);
