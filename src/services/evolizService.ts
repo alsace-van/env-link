@@ -435,8 +435,11 @@ class EvolizApiService {
     if (params?.per_page) queryParams.append("per_page", params.per_page.toString());
 
     const query = queryParams.toString();
+    const endpoint = `/invoices${query ? `?${query}` : ""}`;
+    debugLog("getInvoices endpoint:", endpoint);
+
     return this.callProxy<EvolizApiResponse<EvolizInvoice[]>>({
-      endpoint: `/invoices${query ? `?${query}` : ""}`,
+      endpoint,
     });
   }
 
