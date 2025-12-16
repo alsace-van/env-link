@@ -1,6 +1,9 @@
-// components/planning/DailyNotesCanvas.tsx
+// ============================================
+// COMPOSANT: DailyNotesCanvas
 // Outil de prise de notes journalières complet
 // ReactFlow pour les blocs et connexions + Paper.js pour le dessin libre
+// VERSION: 3.0 - Ajout Ctrl+A (tout sélectionner), bouton Tout supprimer
+// ============================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -97,6 +100,7 @@ import {
   Maximize2,
   Layers,
   Scissors,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, parseISO, addDays, subDays, isToday, isSameDay } from "date-fns";
@@ -4474,22 +4478,58 @@ export default function DailyNotesCanvas({
     toast.success("Connexion supprimée");
   }, [selectedEdgeId]);
 
-  // 🔥 Supprimer l'edge sélectionné avec Delete/Backspace
+  // 🔥 Supprimer l'edge sélectionné avec Delete/Backspace + Ctrl+A pour tout sélectionner
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedEdgeId) {
-        // Ne pas déclencher si on est dans un input
-        if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+      // Ne pas déclencher si on est dans un input
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+        return;
+      }
+
+      // Ctrl+A : Sélectionner tous les blocs
+      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+        e.preventDefault();
+        const allBlockIds = blocks.map((b) => b.id);
+        setSelectedBlockIds(allBlockIds);
+        return;
+      }
+
+      // Ctrl+Shift+Backspace/Delete : Tout supprimer (blocs et connexions)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "Delete" || e.key === "Backspace")) {
+        e.preventDefault();
+        if (window.confirm("Supprimer TOUS les blocs et connexions du canvas ?")) {
+          setBlocks([]);
+          setEdges([]);
+          setSelectedBlockIds([]);
+          setSelectedEdgeId(null);
+        }
+        return;
+      }
+
+      // Delete/Backspace : Supprimer l'edge sélectionné ou les blocs sélectionnés
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+
+        // Supprimer les blocs sélectionnés
+        if (selectedBlockIds.length > 0) {
+          setBlocks((prev) => prev.filter((b) => !selectedBlockIds.includes(b.id)));
+          setEdges((prev) =>
+            prev.filter((edge) => !selectedBlockIds.includes(edge.source) && !selectedBlockIds.includes(edge.target)),
+          );
+          setSelectedBlockIds([]);
           return;
         }
-        e.preventDefault();
-        deleteSelectedEdge();
+
+        // Supprimer l'edge sélectionné
+        if (selectedEdgeId) {
+          deleteSelectedEdge();
+        }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedEdgeId, deleteSelectedEdge]);
+  }, [selectedEdgeId, deleteSelectedEdge, blocks, selectedBlockIds]);
 
   // ============================================
   // PAPER.JS DRAWING
@@ -5515,6 +5555,28 @@ export default function DailyNotesCanvas({
             </Button>
             <Button variant="ghost" size="icon" onClick={clearCanvas} title="Effacer dessin">
               <Trash2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (blocks.length === 0 && edges.length === 0) {
+                  toast.info("Le canvas est déjà vide");
+                  return;
+                }
+                if (window.confirm(`Supprimer tous les blocs (${blocks.length}) et connexions (${edges.length}) ?`)) {
+                  setBlocks([]);
+                  setEdges([]);
+                  setSelectedBlockIds([]);
+                  setSelectedEdgeId(null);
+                  clearCanvas(); // Aussi effacer le dessin
+                  toast.success("Canvas vidé");
+                }
+              }}
+              title="Tout supprimer (Ctrl+Shift+Suppr)"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <XCircle className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" onClick={exportAsImage} title="Exporter">
               <Download className="h-4 w-4" />
