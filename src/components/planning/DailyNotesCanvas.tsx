@@ -2,7 +2,7 @@
 // COMPOSANT: DailyNotesCanvas
 // Outil de prise de notes journalières complet
 // ReactFlow pour les blocs et connexions + Paper.js pour le dessin libre
-// VERSION: 3.0 - Ajout Ctrl+A (tout sélectionner), bouton Tout supprimer
+// VERSION: 3.1 - Fix selectedBlockIds state manquant
 // ============================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -2603,6 +2603,7 @@ export default function DailyNotesCanvas({
   const [blocks, setBlocks] = useState<NoteBlock[]>([]);
   const [edges, setEdges] = useState<BlockEdge[]>([]);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]); // Multi-sélection
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null); // 🔥 Edge sélectionné
   const [isLoading, setIsLoading] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
