@@ -18,6 +18,8 @@ import type {
   EvolizPurchaseClassification,
   EvolizPaymentTerm,
   EvolizApiResponse,
+  EvolizInvoice,
+  EvolizContactClient,
 } from "@/types/evoliz.types";
 
 const DEBUG = true;
@@ -415,6 +417,40 @@ class EvolizApiService {
   async getPaymentTerms(): Promise<EvolizApiResponse<EvolizPaymentTerm[]>> {
     return this.callProxy<EvolizApiResponse<EvolizPaymentTerm[]>>({
       endpoint: "/payterms",
+    });
+  }
+
+  // --- INVOICES (FACTURES) ---
+
+  async getInvoices(params?: {
+    clientid?: number;
+    status?: string;
+    page?: number;
+    per_page?: number;
+  }): Promise<EvolizApiResponse<EvolizInvoice[]>> {
+    const queryParams = new URLSearchParams();
+    if (params?.clientid) queryParams.append("clientid", params.clientid.toString());
+    if (params?.status) queryParams.append("status", params.status);
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.per_page) queryParams.append("per_page", params.per_page.toString());
+
+    const query = queryParams.toString();
+    return this.callProxy<EvolizApiResponse<EvolizInvoice[]>>({
+      endpoint: `/invoices${query ? `?${query}` : ""}`,
+    });
+  }
+
+  async getInvoice(invoiceId: number): Promise<EvolizInvoice> {
+    return this.callProxy<EvolizInvoice>({
+      endpoint: `/invoices/${invoiceId}`,
+    });
+  }
+
+  // --- CLIENT CONTACTS ---
+
+  async getClientContacts(clientId: number): Promise<EvolizApiResponse<EvolizContactClient[]>> {
+    return this.callProxy<EvolizApiResponse<EvolizContactClient[]>>({
+      endpoint: `/contacts-clients?clientid=${clientId}`,
     });
   }
 }
