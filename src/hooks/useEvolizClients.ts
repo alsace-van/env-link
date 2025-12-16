@@ -1,6 +1,7 @@
 // ============================================
 // HOOK useEvolizClients
 // Gestion des clients Evoliz avec synchro bidirectionnelle
+// VERSION: 1.1 - Fix parsing pays (objet JSON)
 // ============================================
 
 import { useState, useEffect, useCallback } from "react";
@@ -342,6 +343,16 @@ export function useEvolizClients(): UseEvolizClientsReturn {
         const firstName = nameParts[0] || "";
         const lastName = nameParts.slice(1).join(" ") || "";
 
+        // Parser le pays (peut être un objet ou une string)
+        let countryValue: string | null = null;
+        if (evolizClient.address?.country) {
+          if (typeof evolizClient.address.country === "object") {
+            countryValue = (evolizClient.address.country as any).label || null;
+          } else {
+            countryValue = evolizClient.address.country;
+          }
+        }
+
         // Créer dans VPB (table clients)
         const { data: vpbClient, error: vpbError } = await supabase
           .from("clients")
@@ -353,7 +364,7 @@ export function useEvolizClients(): UseEvolizClientsReturn {
             address: evolizClient.address?.addr,
             postal_code: evolizClient.address?.postcode,
             city: evolizClient.address?.town,
-            country: evolizClient.address?.country,
+            country: countryValue,
           })
           .select()
           .single();
