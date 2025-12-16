@@ -506,3 +506,105 @@ export const EVOLIZ_QUOTE_STATUS_COLORS: Record<string, string> = {
   invoiced: "indigo",
   close: "gray",
 };
+
+// --- INVOICES (FACTURES) ---
+
+export interface EvolizInvoice {
+  invoiceid: number;
+  userid?: number;
+  external_document_number?: string | null;
+  document_number?: string;
+  documentdate?: string;
+  execalidate?: string | null;
+  duedate?: string;
+  object?: string | null;
+  comment?: string | null;
+  currency?: string;
+  retention?: any;
+  total?: EvolizTotal;
+  term?: {
+    paytermid: number;
+    label: string;
+    recovery: boolean;
+  };
+  status?: {
+    label: string;
+    sub_status?: string | null;
+  };
+  enabled?: boolean;
+  locked?: boolean;
+  client?: {
+    clientid: number;
+    code?: string;
+    name: string;
+    civility?: string;
+  };
+  items?: EvolizInvoiceItem[];
+  document_link?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EvolizInvoiceItem {
+  itemid?: number;
+  type: "article" | "text" | "sub_total";
+  articleid?: number;
+  reference?: string;
+  designation?: string;
+  quantity?: number;
+  unit?: string;
+  unit_price_vat_exclude?: number;
+  unit_price_vat_include?: number;
+  vat_rate?: number;
+  rebate?: string | number;
+  total_vat_exclude?: number;
+  total_vat_include?: number;
+}
+
+export const EVOLIZ_INVOICE_STATUS_LABELS: Record<string, string> = {
+  filled: "Brouillon",
+  create: "Créée",
+  sent: "Envoyée",
+  inpayment: "En cours",
+  paid: "Payée",
+  match: "Lettrée",
+  unpaid: "Impayée",
+  nopaid: "Non payée",
+};
+
+export const EVOLIZ_INVOICE_STATUS_COLORS: Record<string, string> = {
+  filled: "gray",
+  create: "blue",
+  sent: "cyan",
+  inpayment: "orange",
+  paid: "green",
+  match: "green",
+  unpaid: "red",
+  nopaid: "yellow",
+};
+
+// --- CONTACT CLIENT ---
+
+export interface EvolizContactClient {
+  contactid: number;
+  userid?: number;
+  client?: {
+    clientid: number;
+    code?: string;
+    name: string;
+  };
+  civility?: string;
+  lastname?: string;
+  firstname?: string;
+  email?: string;
+  profil?: string;
+  label_tel_primary?: string;
+  tel_primary?: string;
+  label_tel_secondary?: string;
+  tel_secondary?: string;
+  label_tel_tertiary?: string;
+  tel_tertiary?: string;
+  enabled?: boolean;
+  consent?: "without" | "authorized" | "unauthorized";
+  favorite?: boolean;
+}
