@@ -1,3 +1,9 @@
+// ============================================
+// COMPOSANT: ExpensesSummary
+// Statistiques & Analyses du projet
+// VERSION: 2.0 - Intégration main d'œuvre dans les totaux
+// ============================================
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -293,7 +299,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
         </Card>
       )}
 
-      {/* Section Dépenses matériel */}
+      {/* Section Totaux (Matériel + Travaux) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
           <CardHeader className="pb-2">
@@ -303,6 +309,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
           </CardHeader>
           <CardContent className="pb-3">
             <div className="text-xl font-bold text-red-600">{totalExpenses.toFixed(2)} €</div>
+            <div className="text-xs text-muted-foreground mt-1">Matériel uniquement</div>
           </CardContent>
         </Card>
 
@@ -313,7 +320,19 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3">
-            <div className="text-xl font-bold text-green-600">{totalSales.toFixed(2)} €</div>
+            <div className="text-xl font-bold text-green-600">{(totalSales + workStats.totalTTC).toFixed(2)} €</div>
+            {workStats.totalTTC > 0 && (
+              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Matériel:</span>
+                  <span>{totalSales.toFixed(2)} €</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Travaux:</span>
+                  <span>{workStats.totalTTC.toFixed(2)} €</span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -324,10 +343,23 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-3">
-            <div className="text-xl font-bold text-blue-600">{totalMargin.toFixed(2)} €</div>
-            {totalExpenses > 0 && (
+            <div className="text-xl font-bold text-blue-600">{(totalMargin + workStats.totalHT).toFixed(2)} €</div>
+            {totalExpenses + workStats.totalHT > 0 && (
               <div className="text-xs text-muted-foreground mt-1">
-                {((totalMargin / totalExpenses) * 100).toFixed(1)}% de marge
+                {(((totalMargin + workStats.totalHT) / (totalExpenses + workStats.totalHT)) * 100).toFixed(1)}% de marge
+                globale
+              </div>
+            )}
+            {workStats.totalHT > 0 && (
+              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                <div className="flex justify-between">
+                  <span>Matériel:</span>
+                  <span>{totalMargin.toFixed(2)} €</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Travaux:</span>
+                  <span>{workStats.totalHT.toFixed(2)} €</span>
+                </div>
               </div>
             )}
             <div className="text-xs text-muted-foreground mt-1">TVA 20% déduite</div>
@@ -337,7 +369,7 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
 
       <PaymentTransactions
         currentProjectId={projectId}
-        totalSales={totalSales}
+        totalSales={totalSales + workStats.totalTTC}
         onPaymentChange={() => setPaymentRefresh((prev) => prev + 1)}
       />
 
