@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,9 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Upload, Plus, FileText, X } from "lucide-react";
+import { Upload, Plus, FileText, X, Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface NoticeUploadDialogProps {
   trigger?: React.ReactNode;
@@ -31,6 +34,8 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [existingCategories, setExistingCategories] = useState<string[]>([]);
+  const [categoriePopoverOpen, setCategoriePopoverOpen] = useState(false);
+  const [categorieSearch, setCategorieSearch] = useState("");
 
   // Auto-open when preselectedAccessoryId changes
   useEffect(() => {
@@ -48,7 +53,9 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   }, [open]);
 
   const loadAccessories = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const { data, error } = await supabase
@@ -66,10 +73,10 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   };
 
   const loadExistingCategories = async () => {
-    const { data, error } = await supabase
+    const { data, error } = (await supabase
       .from("notices_database")
       .select("categorie")
-      .not("categorie", "is", null) as any;
+      .not("categorie", "is", null)) as any;
 
     if (error) {
       console.error("Erreur lors du chargement des catégories:", error);
@@ -83,10 +90,9 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
 
   const handleFileSelect = (file: File) => {
     // Vérifier le type de fichier (PDF uniquement) - accepter plusieurs types MIME pour PDF
-    const isPDF = file.type === "application/pdf" || 
-                  file.type === "application/x-pdf" || 
-                  file.name.toLowerCase().endsWith('.pdf');
-    
+    const isPDF =
+      file.type === "application/pdf" || file.type === "application/x-pdf" || file.name.toLowerCase().endsWith(".pdf");
+
     if (!isPDF) {
       toast.error("Seuls les fichiers PDF sont acceptés");
       return;
@@ -132,15 +138,15 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
   };
 
   const uploadFile = async (file: File): Promise<string | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return null;
 
     const fileExt = file.name.split(".").pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
-    const { data, error } = await supabase.storage
-      .from("notice-files")
-      .upload(fileName, file);
+    const { data, error } = await supabase.storage.from("notice-files").upload(fileName, file);
 
     if (error) {
       console.error("Error uploading file:", error);
@@ -166,7 +172,9 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
     setIsUploading(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Vous devez être connecté");
         return;
@@ -280,9 +288,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                isDragging
-                  ? "border-primary bg-primary/5"
-                  : "border-muted-foreground/25 hover:border-primary/50"
+                isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
               }`}
             >
               {selectedFile ? (
@@ -290,25 +296,16 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
                   <FileText className="h-8 w-8 text-primary" />
                   <div className="flex-1 text-left">
                     <p className="font-medium">{selectedFile.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+                    <p className="text-sm text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setSelectedFile(null)}
-                  >
+                  <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedFile(null)}>
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
                 <>
                   <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Glissez-déposez votre fichier PDF ici
-                  </p>
+                  <p className="text-sm text-muted-foreground mb-2">Glissez-déposez votre fichier PDF ici</p>
                   <p className="text-xs text-muted-foreground mb-4">ou</p>
                   <Button
                     type="button"
@@ -355,47 +352,95 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="marque">Marque</Label>
-              <Input
-                id="marque"
-                value={marque}
-                onChange={(e) => setMarque(e.target.value)}
-                placeholder="Marque"
-              />
+              <Input id="marque" value={marque} onChange={(e) => setMarque(e.target.value)} placeholder="Marque" />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="modele">Modèle</Label>
-              <Input
-                id="modele"
-                value={modele}
-                onChange={(e) => setModele(e.target.value)}
-                placeholder="Modèle"
-              />
+              <Input id="modele" value={modele} onChange={(e) => setModele(e.target.value)} placeholder="Modèle" />
             </div>
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="categorie">Catégorie</Label>
-            <Input
-              id="categorie"
-              value={categorie}
-              onChange={(e) => setCategorie(e.target.value)}
-              placeholder="Saisissez ou créez une catégorie"
-            />
-            {existingCategories.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <span className="text-xs text-muted-foreground">Suggestions :</span>
-                {existingCategories.map((cat) => (
-                  <Badge
-                    key={cat}
-                    variant="outline"
-                    className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                    onClick={() => setCategorie(cat)}
-                  >
-                    {cat}
-                  </Badge>
-                ))}
-              </div>
-            )}
+            <Popover open={categoriePopoverOpen} onOpenChange={setCategoriePopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={categoriePopoverOpen}
+                  className="w-full justify-between font-normal"
+                >
+                  {categorie || "Sélectionner ou créer une catégorie..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                <Command shouldFilter={false}>
+                  <CommandInput
+                    placeholder="Rechercher ou créer une catégorie..."
+                    value={categorieSearch}
+                    onValueChange={setCategorieSearch}
+                  />
+                  <CommandList>
+                    <CommandEmpty className="py-2 px-4 text-sm">
+                      {categorieSearch && (
+                        <button
+                          className="w-full text-left px-2 py-1.5 rounded hover:bg-accent flex items-center gap-2"
+                          onClick={() => {
+                            setCategorie(categorieSearch);
+                            setCategoriePopoverOpen(false);
+                            setCategorieSearch("");
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Créer "{categorieSearch}"
+                        </button>
+                      )}
+                    </CommandEmpty>
+                    {existingCategories.length > 0 && (
+                      <CommandGroup heading="Catégories existantes">
+                        {existingCategories
+                          .filter(
+                            (cat) => !categorieSearch || cat.toLowerCase().includes(categorieSearch.toLowerCase()),
+                          )
+                          .map((cat) => (
+                            <CommandItem
+                              key={cat}
+                              value={cat}
+                              onSelect={() => {
+                                setCategorie(cat);
+                                setCategoriePopoverOpen(false);
+                                setCategorieSearch("");
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", categorie === cat ? "opacity-100" : "opacity-0")} />
+                              {cat}
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    )}
+                    {categorieSearch &&
+                      !existingCategories.some((cat) => cat.toLowerCase() === categorieSearch.toLowerCase()) &&
+                      existingCategories.filter((cat) => cat.toLowerCase().includes(categorieSearch.toLowerCase()))
+                        .length > 0 && (
+                        <CommandGroup heading="Créer une nouvelle catégorie">
+                          <CommandItem
+                            value={`create-${categorieSearch}`}
+                            onSelect={() => {
+                              setCategorie(categorieSearch);
+                              setCategoriePopoverOpen(false);
+                              setCategorieSearch("");
+                            }}
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            Créer "{categorieSearch}"
+                          </CommandItem>
+                        </CommandGroup>
+                      )}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="grid gap-2">
