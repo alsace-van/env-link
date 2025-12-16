@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ProjectForm
 // Formulaire de création/édition de projet
-// VERSION: 2.0 - Intégration sélection client
+// VERSION: 2.2 - Fix parsing pays (objet JSON)
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -25,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { Plus, Scan, RotateCcw, UserPlus, Building2, User, X } from "lucide-react";
 import { VehicleRegistrationScanner } from "./VehicleRegistrationScanner";
-import { ClientSelectorDialog, type VPBClient } from "./ClientSelectorDialog";
+import { ClientSelectorDialog, type VPBClient } from "./ClientSelector";
 import type { VehicleRegistrationData } from "@/lib/registrationCardParser";
 
 interface VehicleCatalog {
@@ -166,11 +166,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
   // Charger un client existant par son ID
   const loadExistingClient = async (clientId: string) => {
     try {
-      const { data, error } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("id", clientId)
-        .single();
+      const { data, error } = await supabase.from("clients").select("*").eq("id", clientId).single();
 
       if (error) throw error;
       if (data) {
@@ -184,7 +180,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
   // Handler quand un client est sélectionné
   const handleClientSelected = (client: VPBClient) => {
     setSelectedClient(client);
-    
+
     // Pré-remplir les champs propriétaire
     const nomInput = document.getElementById("nom_proprietaire") as HTMLInputElement;
     const adresseInput = document.getElementById("adresse_proprietaire") as HTMLInputElement;
@@ -199,12 +195,25 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       }
     }
     if (adresseInput && client.address) {
+      // Parser le pays (peut être un objet JSON ou une string)
+      let countryStr: string | null = null;
+      if (client.country) {
+        if (typeof client.country === "object") {
+          // C'est un objet type {"label":"France","iso2":"FR"}
+          countryStr = (client.country as any).label || null;
+        } else {
+          countryStr = client.country;
+        }
+      }
+
       const fullAddress = [
         client.address,
         client.postal_code,
         client.city,
-        client.country !== "France" ? client.country : null
-      ].filter(Boolean).join(", ");
+        countryStr && countryStr !== "France" ? countryStr : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
       adresseInput.value = fullAddress;
     }
     if (telephoneInput && client.phone) {
@@ -214,7 +223,9 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       emailInput.value = client.email;
     }
 
-    toast.success(`Client "${client.client_type === "professionnel" && client.company_name ? client.company_name : `${client.first_name || ""} ${client.last_name || ""}`.trim()}" associé au projet`);
+    toast.success(
+      `Client "${client.client_type === "professionnel" && client.company_name ? client.company_name : `${client.first_name || ""} ${client.last_name || ""}`.trim()}" associé au projet`,
+    );
   };
 
   // Dissocier le client du projet
@@ -687,12 +698,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
             <div className="space-y-4 pt-4 border-t">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-muted-foreground">Client / Propriétaire</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowClientSelector(true)}
-                >
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowClientSelector(true)}>
                   <UserPlus className="h-4 w-4 mr-2" />
                   {selectedClient ? "Changer de client" : "Associer un client"}
                 </Button>
@@ -703,11 +709,13 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                 <div className="p-3 bg-muted/50 rounded-lg border">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-full ${
-                        selectedClient.client_type === "professionnel" 
-                          ? "bg-blue-100 text-blue-700" 
-                          : "bg-gray-100 text-gray-700"
-                      }`}>
+                      <div
+                        className={`p-2 rounded-full ${
+                          selectedClient.client_type === "professionnel"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
                         {selectedClient.client_type === "professionnel" ? (
                           <Building2 className="h-4 w-4" />
                         ) : (
