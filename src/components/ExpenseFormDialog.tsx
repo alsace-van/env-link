@@ -1,3 +1,9 @@
+// ============================================
+// COMPOSANT: ExpenseFormDialog
+// Formulaire d'ajout/modification de dépense
+// VERSION: 2.0 - Fix suggestions catalogue si déjà lié
+// ============================================
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -169,7 +175,14 @@ const ExpenseFormDialog = ({
   }, [formData.marque, existingMarques]);
 
   // Filter accessories based on search
+  // Ne pas proposer de suggestions si l'article est déjà lié au catalogue
   useEffect(() => {
+    // Si déjà lié à un article du catalogue, ne pas proposer de suggestions
+    if (selectedAccessoryId) {
+      setFilteredAccessories([]);
+      return;
+    }
+
     if (formData.nom_accessoire && formData.nom_accessoire.length >= 2) {
       const searchTerm = formData.nom_accessoire.toLowerCase();
       const filtered = catalogAccessories.filter(
@@ -182,7 +195,7 @@ const ExpenseFormDialog = ({
     } else {
       setFilteredAccessories([]);
     }
-  }, [formData.nom_accessoire, catalogAccessories]);
+  }, [formData.nom_accessoire, catalogAccessories, selectedAccessoryId]);
 
   const loadExistingMarques = async () => {
     const { data: expensesData } = (await supabase
@@ -692,7 +705,20 @@ const ExpenseFormDialog = ({
                 </div>
               )}
               {selectedAccessoryId && (
-                <div className="text-xs text-green-600 mt-1">✓ Article du catalogue sélectionné</div>
+                <div className="flex items-center justify-between text-xs text-green-600 mt-1 p-2 bg-green-50 rounded border border-green-200">
+                  <span>✓ Lié au catalogue</span>
+                  <button
+                    type="button"
+                    className="text-red-500 hover:text-red-700 text-xs underline"
+                    onClick={() => {
+                      setSelectedAccessoryId(null);
+                      setAvailableOptions([]);
+                      setSelectedOptions([]);
+                    }}
+                  >
+                    Délier
+                  </button>
+                </div>
               )}
             </div>
 
