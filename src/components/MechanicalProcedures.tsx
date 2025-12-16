@@ -1281,24 +1281,19 @@ const MechanicalProcedures = () => {
         height = 320;
       }
 
-      // 🔥 Calculer la position au centre de la vue visible
-      let posX = 100;
-      let posY = 100;
+      // 🔥 Position en grille simple - tous les blocs regroupés
+      // Calcul: 3 blocs par ligne, espacés de 350px horizontalement et 200px verticalement
+      const blocksPerRow = 3;
+      const gapX = 350;
+      const gapY = 200;
+      const startX = 50;
+      const startY = 50;
 
-      const container = reactFlowContainerRef.current;
-      const rfInstance = reactFlowInstanceRef.current;
+      const row = Math.floor(blocks.length / blocksPerRow);
+      const col = blocks.length % blocksPerRow;
 
-      if (rfInstance && container) {
-        // Utiliser screenToFlowPosition pour convertir le centre de l'écran
-        const centerScreen = {
-          x: container.clientWidth / 2,
-          y: container.clientHeight / 2,
-        };
-        const flowPosition = rfInstance.screenToFlowPosition(centerScreen);
-        // Petit offset aléatoire pour éviter l'empilement exact
-        posX = flowPosition.x - width / 2 + Math.random() * 50;
-        posY = flowPosition.y - height / 2 + Math.random() * 50;
-      }
+      const posX = startX + col * gapX;
+      const posY = startY + row * gapY;
 
       const { data, error } = await (supabase as any)
         .from("mechanical_blocks")
@@ -1320,6 +1315,18 @@ const MechanicalProcedures = () => {
       setBlocks([...blocks, data]);
       setSelectedBlockId(data.id);
       setIsIconPickerOpen(false);
+
+      // 🔥 Afficher tous les blocs après un court délai
+      setTimeout(() => {
+        if (reactFlowInstanceRef.current) {
+          reactFlowInstanceRef.current.fitView({
+            padding: 0.2,
+            duration: 300,
+            // Pas de filtre nodes = affiche tous les blocs
+          });
+        }
+      }, 100);
+
       toast.success("Bloc ajouté");
     } catch (error) {
       console.error("Erreur création bloc:", error);
@@ -3765,78 +3772,82 @@ ${block.content}`,
                     <p>Sélectionnez ou créez un chapitre</p>
                   </div>
                 </div>
-              ) : blocks.length === 0 ? (
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-muted/5">
-                  <div className="text-center">
-                    <StickyNote className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p>Aucun bloc dans ce chapitre</p>
-                    <p className="text-sm">Utilisez la barre d'outils pour ajouter du contenu</p>
-                  </div>
-                </div>
               ) : (
-                <ReactFlow
-                  nodes={nodes}
-                  edges={flowEdges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onNodeDragStop={handleNodeDragStop}
-                  onConnect={handleConnect}
-                  onInit={(instance) => {
-                    reactFlowInstanceRef.current = instance;
-                  }}
-                  onEdgeClick={(_, edge) => {
-                    if (confirm("Supprimer cette connexion ?")) {
-                      handleDeleteEdge(edge.id);
-                    }
-                  }}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  snapToGrid
-                  snapGrid={[20, 20]}
-                  connectionMode={"loose" as any}
-                  deleteKeyCode={null}
-                  selectionKeyCode={null}
-                  multiSelectionKeyCode={null}
-                  defaultEdgeOptions={{
-                    type: "smoothstep",
-                    markerEnd: { type: MarkerType.ArrowClosed },
-                    style: { strokeWidth: 2, stroke: "#64748b" },
-                  }}
-                  proOptions={{ hideAttribution: true }}
-                  nodesDraggable={true}
-                  nodesConnectable={true}
-                  elementsSelectable={true}
-                  selectNodesOnDrag={false}
-                  panOnDrag={[1, 2]}
-                  zoomOnScroll={true}
-                  zoomOnPinch={true}
-                  minZoom={0.2}
-                  maxZoom={2}
-                >
-                  <Background gap={20} size={1} />
-                  <Controls />
-                  <MiniMap
-                    nodeColor={(node) => {
-                      const block = node.data?.block as ContentBlock;
-                      if (!block) return "#e2e8f0";
-                      switch (block.type) {
-                        case "checklist":
-                          return "#86efac";
-                        case "warning":
-                          return "#fde047";
-                        case "tip":
-                          return "#93c5fd";
-                        case "tools":
-                          return "#fdba74";
-                        case "audio":
-                          return "#c4b5fd";
-                        default:
-                          return "#e2e8f0";
+                <>
+                  {/* Message si aucun bloc */}
+                  {blocks.length === 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground pointer-events-none z-10">
+                      <div className="text-center">
+                        <StickyNote className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                        <p>Aucun bloc dans ce chapitre</p>
+                        <p className="text-sm">Utilisez la barre d'outils pour ajouter du contenu</p>
+                      </div>
+                    </div>
+                  )}
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={flowEdges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeDragStop={handleNodeDragStop}
+                    onConnect={handleConnect}
+                    onInit={(instance) => {
+                      reactFlowInstanceRef.current = instance;
+                    }}
+                    onEdgeClick={(_, edge) => {
+                      if (confirm("Supprimer cette connexion ?")) {
+                        handleDeleteEdge(edge.id);
                       }
                     }}
-                    maskColor="rgba(0,0,0,0.1)"
-                  />
-                </ReactFlow>
+                    nodeTypes={nodeTypes}
+                    fitView
+                    snapToGrid
+                    snapGrid={[20, 20]}
+                    connectionMode={"loose" as any}
+                    deleteKeyCode={null}
+                    selectionKeyCode={null}
+                    multiSelectionKeyCode={null}
+                    defaultEdgeOptions={{
+                      type: "smoothstep",
+                      markerEnd: { type: MarkerType.ArrowClosed },
+                      style: { strokeWidth: 2, stroke: "#64748b" },
+                    }}
+                    proOptions={{ hideAttribution: true }}
+                    nodesDraggable={true}
+                    nodesConnectable={true}
+                    elementsSelectable={true}
+                    selectNodesOnDrag={false}
+                    panOnDrag={[1, 2]}
+                    zoomOnScroll={true}
+                    zoomOnPinch={true}
+                    minZoom={0.2}
+                    maxZoom={2}
+                  >
+                    <Background gap={20} size={1} />
+                    <Controls />
+                    <MiniMap
+                      nodeColor={(node) => {
+                        const block = node.data?.block as ContentBlock;
+                        if (!block) return "#e2e8f0";
+                        switch (block.type) {
+                          case "checklist":
+                            return "#86efac";
+                          case "warning":
+                            return "#fde047";
+                          case "tip":
+                            return "#93c5fd";
+                          case "tools":
+                            return "#fdba74";
+                          case "audio":
+                            return "#c4b5fd";
+                          default:
+                            return "#e2e8f0";
+                        }
+                      }}
+                      maskColor="rgba(0,0,0,0.1)"
+                    />
+                  </ReactFlow>
+                </>
               )}
             </div>
           </div>
