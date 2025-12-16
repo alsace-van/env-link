@@ -1,298 +1,554 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { Check, Plus } from "lucide-react";
+import { toast } from "sonner";
+import { Upload, Plus, FileText, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Notice {
-  id: string;
-  titre: string;
-  marque?: string;
-  modele?: string;
-  categorie?: string;
-  description?: string;
-  notice_url: string;
+interface NoticeUploadDialogProps {
+  trigger?: React.ReactNode;
+  onSuccess?: () => void;
+  preselectedAccessoryId?: string;
 }
 
-interface NoticeEditDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  notice: Notice | null;
-  onSuccess: () => void;
-}
-
-export const NoticeEditDialog = ({ isOpen, onClose, notice, onSuccess }: NoticeEditDialogProps) => {
-  const [formData, setFormData] = useState({
-    titre: "",
-    marque: "",
-    modele: "",
-    categorie: "",
-    description: "",
-  });
-  const [isSaving, setIsSaving] = useState(false);
-
-  // États pour l'autocomplétion
+export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId }: NoticeUploadDialogProps) => {
+  const [open, setOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [titre, setTitre] = useState("");
+  const [marque, setMarque] = useState("");
+  const [modele, setModele] = useState("");
+  const [categorie, setCategorie] = useState("");
+  const [description, setDescription] = useState("");
+  const [urlNotice, setUrlNotice] = useState("");
+  const [accessories, setAccessories] = useState<Array<{ id: string; nom: string; marque?: string }>>([]);
+  const [selectedAccessoryId, setSelectedAccessoryId] = useState<string>("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [existingCategories, setExistingCategories] = useState<string[]>([]);
   const [existingMarques, setExistingMarques] = useState<string[]>([]);
   const [categoriePopoverOpen, setCategoriePopoverOpen] = useState(false);
   const [marquePopoverOpen, setMarquePopoverOpen] = useState(false);
 
+  // Auto-open when preselectedAccessoryId changes
   useEffect(() => {
-    if (notice) {
-      setFormData({
-        titre: notice.titre || "",
-        marque: notice.marque || "",
-        modele: notice.modele || "",
-        categorie: notice.categorie || "",
-        description: notice.description || "",
-      });
+    if (preselectedAccessoryId) {
+      setOpen(true);
+      setSelectedAccessoryId(preselectedAccessoryId);
     }
-  }, [notice]);
+  }, [preselectedAccessoryId]);
 
-  // Charger les catégories et marques existantes à l'ouverture
   useEffect(() => {
-    if (isOpen) {
+    if (open) {
+      loadAccessories();
       loadExistingData();
     }
-  }, [isOpen]);
+  }, [open]);
+
+  const loadAccessories = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("accessories_catalog")
+      .select("id, nom, marque")
+      .eq("user_id", user.id)
+      .order("nom");
+
+    if (error) {
+      console.error("Error loading accessories:", error);
+      return;
+    }
+
+    setAccessories(data || []);
+  };
 
   const loadExistingData = async () => {
     try {
       const { data, error } = (await supabase.from("notices_database").select("categorie, marque")) as any;
 
       if (error) {
-        console.error("Erreur chargement données:", error);
+        console.error("Erreur lors du chargement des données:", error);
         return;
       }
 
-      // Extraire les catégories uniques
-      const categories = [...new Set(data.map((item: any) => item.categorie).filter(Boolean))].sort() as string[];
-      setExistingCategories(categories);
+      // Extraire les catégories uniques et les trier
+      const categories = [...new Set(data.map((item: any) => item.categorie).filter(Boolean))].sort();
+      setExistingCategories(categories as string[]);
 
-      // Extraire les marques uniques
-      const marques = [...new Set(data.map((item: any) => item.marque).filter(Boolean))].sort() as string[];
-      setExistingMarques(marques);
+      // Extraire les marques uniques et les trier
+      const marques = [...new Set(data.map((item: any) => item.marque).filter(Boolean))].sort();
+      setExistingMarques(marques as string[]);
     } catch (error) {
       console.error("Erreur:", error);
     }
   };
 
-  const handleChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  const handleFileSelect = (file: File) => {
+    // Vérifier le type de fichier (PDF uniquement) - accepter plusieurs types MIME pour PDF
+    const isPDF =
+      file.type === "application/pdf" || file.type === "application/x-pdf" || file.name.toLowerCase().endsWith(".pdf");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!notice) return;
-
-    if (!formData.titre.trim()) {
-      toast.error("Le titre est obligatoire");
+    if (!isPDF) {
+      toast.error("Seuls les fichiers PDF sont acceptés");
       return;
     }
 
-    setIsSaving(true);
+    // Vérifier la taille (max 20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("Le fichier ne doit pas dépasser 20 MB");
+      return;
+    }
 
-    try {
-      const { error } = await supabase
-        .from("notices_database")
-        .update({
-          titre: formData.titre.trim(),
-          marque: formData.marque.trim() || null,
-          modele: formData.modele.trim() || null,
-          categorie: formData.categorie.trim() || null,
-          description: formData.description.trim() || null,
-        } as any)
-        .eq("id", notice.id);
-
-      if (error) {
-        console.error("Error updating notice:", error);
-        toast.error("Erreur lors de la modification");
-        return;
-      }
-
-      toast.success("Notice modifiée avec succès");
-      onSuccess();
-      onClose();
-    } catch (error) {
-      console.error("Error:", error);
-      toast.error("Erreur lors de la modification");
-    } finally {
-      setIsSaving(false);
+    setSelectedFile(file);
+    if (!titre) {
+      setTitre(file.name.replace(/\.pdf$/i, ""));
     }
   };
 
-  // Composant réutilisable pour l'autocomplétion
-  const AutocompleteInput = ({
-    id,
-    label,
-    value,
-    onChange,
-    placeholder,
-    existingValues,
-    isOpen,
-    setIsOpen,
-  }: {
-    id: string;
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-    existingValues: string[];
-    isOpen: boolean;
-    setIsOpen: (open: boolean) => void;
-  }) => {
-    const filteredValues = existingValues.filter((v) => !value || v.toLowerCase().includes(value.toLowerCase()));
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
 
-    return (
-      <div className="space-y-2">
-        <Label htmlFor={id}>{label}</Label>
-        <div className="relative">
-          <Input
-            id={id}
-            value={value}
-            onChange={(e) => {
-              onChange(e.target.value);
-              setIsOpen(true);
-            }}
-            onFocus={() => setIsOpen(true)}
-            onBlur={() => {
-              setTimeout(() => setIsOpen(false), 200);
-            }}
-            placeholder={placeholder}
-            autoComplete="off"
-          />
-          {isOpen && (existingValues.length > 0 || value) && (
-            <div className="absolute z-[100] top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md max-h-[200px] overflow-auto">
-              {filteredValues.length > 0 ? (
-                filteredValues.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    className={cn(
-                      "w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2",
-                      value === v && "bg-accent",
-                    )}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onChange(v);
-                      setIsOpen(false);
-                    }}
-                  >
-                    {value === v && <Check className="h-4 w-4 text-primary" />}
-                    <span className={value === v ? "" : "ml-6"}>{v}</span>
-                  </button>
-                ))
-              ) : existingValues.length > 0 ? (
-                <div className="px-3 py-2 text-sm text-muted-foreground">Aucune correspondance</div>
-              ) : null}
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
 
-              {value && !existingValues.some((v) => v.toLowerCase() === value.toLowerCase()) && (
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 border-t"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setIsOpen(false);
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                  Créer "{value}"
-                </button>
-              )}
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
 
-              {!value && existingValues.length === 0 && (
-                <div className="px-3 py-2 text-sm text-muted-foreground">Tapez pour créer une valeur</div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const uploadFile = async (file: File): Promise<string | null> => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    const { data, error } = await supabase.storage.from("notice-files").upload(fileName, file);
+
+    if (error) {
+      console.error("Error uploading file:", error);
+      toast.error("Erreur lors de l'upload du fichier");
+      return null;
+    }
+
+    // Return the file path instead of a signed URL
+    return fileName;
+  };
+
+  const handleSubmit = async () => {
+    if (!titre) {
+      toast.error("Le titre est requis");
+      return;
+    }
+
+    if (!selectedFile && !urlNotice) {
+      toast.error("Veuillez uploader un fichier ou fournir une URL");
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Vous devez être connecté");
+        return;
+      }
+
+      let finalUrl = urlNotice;
+
+      // Upload file if selected
+      if (selectedFile) {
+        const uploadedUrl = await uploadFile(selectedFile);
+        if (!uploadedUrl) {
+          return;
+        }
+        finalUrl = uploadedUrl;
+      }
+
+      // Insert notice
+      const { data: notice, error: noticeError } = await supabase
+        .from("notices_database")
+        .insert({
+          titre,
+          marque,
+          modele,
+          categorie,
+          description,
+          notice_url: finalUrl,
+          user_id: user.id,
+        })
+        .select()
+        .single();
+
+      if (noticeError) {
+        toast.error("Erreur lors de l'ajout de la notice");
+        console.error(noticeError);
+        return;
+      }
+
+      // Link accessory to notice if selected
+      if (selectedAccessoryId && notice) {
+        const { error: linkError } = await supabase
+          .from("accessories_catalog")
+          .update({ notice_id: notice.id } as any)
+          .eq("id", selectedAccessoryId);
+
+        if (linkError) {
+          console.error("Error linking accessory:", linkError);
+          toast.warning("Notice créée mais non liée à l'accessoire");
+        }
+      }
+
+      toast.success("Notice ajoutée avec succès !");
+      setOpen(false);
+      resetForm();
+      onSuccess?.();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erreur lors de l'ajout de la notice");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    resetForm();
+    onSuccess?.(); // Call onSuccess to clear preselectedAccessoryId in parent
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    if (newOpen) {
+      setOpen(true);
+    } else {
+      handleClose();
+    }
+  };
+
+  const resetForm = () => {
+    setTitre("");
+    setMarque("");
+    setModele("");
+    setCategorie("");
+    setDescription("");
+    setUrlNotice("");
+    setSelectedAccessoryId("");
+    setSelectedFile(null);
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        {trigger || (
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            Ajouter une notice
+          </Button>
+        )}
+      </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Modifier la notice</DialogTitle>
+          <DialogTitle>Ajouter une notice</DialogTitle>
+          <CardDescription>
+            Renseignez les informations de la notice et liez-la éventuellement à un accessoire
+          </CardDescription>
         </DialogHeader>
+        <div className="grid gap-4 py-4">
+          {/* Zone de drag and drop */}
+          <div className="grid gap-2">
+            <Label>Fichier notice (PDF)</Label>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
+              }`}
+            >
+              {selectedFile ? (
+                <div className="flex items-center justify-center gap-3">
+                  <FileText className="h-8 w-8 text-primary" />
+                  <div className="flex-1 text-left">
+                    <p className="font-medium">{selectedFile.name}</p>
+                    <p className="text-sm text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedFile(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground mb-2">Glissez-déposez votre fichier PDF ici</p>
+                  <p className="text-xs text-muted-foreground mb-4">ou</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById("file-input")?.click()}
+                  >
+                    Parcourir les fichiers
+                  </Button>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept=".pdf"
+                    className="hidden"
+                    onChange={handleFileInputChange}
+                  />
+                </>
+              )}
+            </div>
+          </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="titre">
-              Titre <span className="text-red-500">*</span>
-            </Label>
+          {/* URL alternative */}
+          <div className="grid gap-2">
+            <Label htmlFor="url">Ou URL de la notice</Label>
+            <Input
+              id="url"
+              value={urlNotice}
+              onChange={(e) => setUrlNotice(e.target.value)}
+              placeholder="https://..."
+              type="url"
+              disabled={!!selectedFile}
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="titre">Titre *</Label>
             <Input
               id="titre"
-              value={formData.titre}
-              onChange={(e) => handleChange("titre", e.target.value)}
+              value={titre}
+              onChange={(e) => setTitre(e.target.value)}
               placeholder="Titre de la notice"
-              required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <AutocompleteInput
-              id="marque"
-              label="Marque"
-              value={formData.marque}
-              onChange={(value) => handleChange("marque", value)}
-              placeholder="Marque (optionnel)"
-              existingValues={existingMarques}
-              isOpen={marquePopoverOpen}
-              setIsOpen={setMarquePopoverOpen}
-            />
+            <div className="grid gap-2">
+              <Label htmlFor="marque">Marque</Label>
+              <div className="relative">
+                <Input
+                  id="marque"
+                  value={marque}
+                  onChange={(e) => {
+                    setMarque(e.target.value);
+                    setMarquePopoverOpen(true);
+                  }}
+                  onFocus={() => setMarquePopoverOpen(true)}
+                  onBlur={() => {
+                    setTimeout(() => setMarquePopoverOpen(false), 200);
+                  }}
+                  placeholder="Marque"
+                  autoComplete="off"
+                />
+                {marquePopoverOpen && (existingMarques.length > 0 || marque) && (
+                  <div className="absolute z-[100] top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md max-h-[200px] overflow-auto">
+                    {(() => {
+                      const filteredMarques = existingMarques.filter(
+                        (m) => !marque || m.toLowerCase().includes(marque.toLowerCase()),
+                      );
 
-            <div className="space-y-2">
+                      return (
+                        <>
+                          {filteredMarques.length > 0 ? (
+                            filteredMarques.map((m) => (
+                              <button
+                                key={m}
+                                type="button"
+                                className={cn(
+                                  "w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2",
+                                  marque === m && "bg-accent",
+                                )}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMarque(m);
+                                  setMarquePopoverOpen(false);
+                                }}
+                              >
+                                {marque === m && <Check className="h-4 w-4 text-primary" />}
+                                <span className={marque === m ? "" : "ml-6"}>{m}</span>
+                              </button>
+                            ))
+                          ) : existingMarques.length > 0 ? (
+                            <div className="px-3 py-2 text-sm text-muted-foreground">Aucune correspondance</div>
+                          ) : null}
+
+                          {marque && !existingMarques.some((m) => m.toLowerCase() === marque.toLowerCase()) && (
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 border-t"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMarquePopoverOpen(false);
+                              }}
+                            >
+                              <Plus className="h-4 w-4" />
+                              Créer "{marque}"
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="modele">Modèle</Label>
-              <Input
-                id="modele"
-                value={formData.modele}
-                onChange={(e) => handleChange("modele", e.target.value)}
-                placeholder="Modèle (optionnel)"
-              />
+              <Input id="modele" value={modele} onChange={(e) => setModele(e.target.value)} placeholder="Modèle" />
             </div>
           </div>
 
-          <AutocompleteInput
-            id="categorie"
-            label="Catégorie"
-            value={formData.categorie}
-            onChange={(value) => handleChange("categorie", value)}
-            placeholder="Catégorie (optionnel)"
-            existingValues={existingCategories}
-            isOpen={categoriePopoverOpen}
-            setIsOpen={setCategoriePopoverOpen}
-          />
+          <div className="grid gap-2">
+            <Label htmlFor="categorie">Catégorie</Label>
+            <div className="relative">
+              <Input
+                id="categorie"
+                value={categorie}
+                onChange={(e) => {
+                  setCategorie(e.target.value);
+                  setCategoriePopoverOpen(true);
+                }}
+                onFocus={() => setCategoriePopoverOpen(true)}
+                onBlur={() => {
+                  // Délai pour permettre le clic sur les options
+                  setTimeout(() => setCategoriePopoverOpen(false), 200);
+                }}
+                placeholder="Saisissez ou sélectionnez une catégorie"
+                autoComplete="off"
+              />
+              {categoriePopoverOpen && (
+                <div className="absolute z-[100] top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md max-h-[200px] overflow-auto">
+                  {(() => {
+                    const filteredCategories = existingCategories.filter(
+                      (cat) => !categorie || cat.toLowerCase().includes(categorie.toLowerCase()),
+                    );
 
-          <div className="space-y-2">
+                    return (
+                      <>
+                        {filteredCategories.length > 0 ? (
+                          filteredCategories.map((cat) => (
+                            <button
+                              key={cat}
+                              type="button"
+                              className={cn(
+                                "w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2",
+                                categorie === cat && "bg-accent",
+                              )}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCategorie(cat);
+                                setCategoriePopoverOpen(false);
+                              }}
+                            >
+                              {categorie === cat && <Check className="h-4 w-4 text-primary" />}
+                              <span className={categorie === cat ? "" : "ml-6"}>{cat}</span>
+                            </button>
+                          ))
+                        ) : existingCategories.length > 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">Aucune correspondance</div>
+                        ) : null}
+
+                        {categorie &&
+                          !existingCategories.some((cat) => cat.toLowerCase() === categorie.toLowerCase()) && (
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 border-t"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCategoriePopoverOpen(false);
+                              }}
+                            >
+                              <Plus className="h-4 w-4" />
+                              Créer "{categorie}"
+                            </button>
+                          )}
+
+                        {!categorie && existingCategories.length === 0 && (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">
+                            Aucune catégorie. Tapez pour en créer une.
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              value={formData.description}
-              onChange={(e) => handleChange("description", e.target.value)}
-              placeholder="Description de la notice (optionnel)"
-              rows={4}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Description de la notice"
+              rows={3}
             />
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
-              Annuler
-            </Button>
-            <Button type="submit" disabled={isSaving}>
-              {isSaving ? "Enregistrement..." : "Enregistrer"}
-            </Button>
-          </DialogFooter>
-        </form>
+          <div className="grid gap-2">
+            <Label htmlFor="accessory">Lier à un accessoire (optionnel)</Label>
+            <Select value={selectedAccessoryId} onValueChange={setSelectedAccessoryId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner un accessoire" />
+              </SelectTrigger>
+              <SelectContent>
+                {accessories.map((acc) => (
+                  <SelectItem key={acc.id} value={acc.id}>
+                    {acc.nom} {acc.marque ? `(${acc.marque})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button onClick={handleSubmit} disabled={isUploading} className="w-full">
+            {isUploading ? (
+              "Ajout en cours..."
+            ) : (
+              <>
+                <Upload className="h-4 w-4 mr-2" />
+                Ajouter la notice
+              </>
+            )}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
