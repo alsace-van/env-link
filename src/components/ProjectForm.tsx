@@ -1,3 +1,9 @@
+// ============================================
+// COMPOSANT: ProjectForm
+// Formulaire de création/édition de projet
+// VERSION: 2.0 - Intégration sélection client
+// ============================================
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -5,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,8 +23,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, Scan, RotateCcw } from "lucide-react";
+import { Plus, Scan, RotateCcw, UserPlus, Building2, User, X } from "lucide-react";
 import { VehicleRegistrationScanner } from "./VehicleRegistrationScanner";
+import { ClientSelectorDialog, type VPBClient } from "./ClientSelectorDialog";
 import type { VehicleRegistrationData } from "@/lib/registrationCardParser";
 
 interface VehicleCatalog {
@@ -81,6 +89,10 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
   const [newMarqueToCreate, setNewMarqueToCreate] = useState<string>("");
   const [newModeleToCreate, setNewModeleToCreate] = useState<string>("");
 
+  // États pour le client
+  const [showClientSelector, setShowClientSelector] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<VPBClient | null>(null);
+
   // Compute available options for cascade dropdowns
   const availableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
 
@@ -143,8 +155,73 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       if (existingProject.photo_url) {
         setPhotoPreview(existingProject.photo_url);
       }
+
+      // Charger le client lié si présent
+      if (existingProject.client_id) {
+        loadExistingClient(existingProject.client_id);
+      }
     }
   }, [isEditMode, existingProject]);
+
+  // Charger un client existant par son ID
+  const loadExistingClient = async (clientId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("*")
+        .eq("id", clientId)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setSelectedClient(data as VPBClient);
+      }
+    } catch (err) {
+      console.error("Erreur chargement client:", err);
+    }
+  };
+
+  // Handler quand un client est sélectionné
+  const handleClientSelected = (client: VPBClient) => {
+    setSelectedClient(client);
+    
+    // Pré-remplir les champs propriétaire
+    const nomInput = document.getElementById("nom_proprietaire") as HTMLInputElement;
+    const adresseInput = document.getElementById("adresse_proprietaire") as HTMLInputElement;
+    const telephoneInput = document.getElementById("telephone_proprietaire") as HTMLInputElement;
+    const emailInput = document.getElementById("email_proprietaire") as HTMLInputElement;
+
+    if (nomInput) {
+      if (client.client_type === "professionnel" && client.company_name) {
+        nomInput.value = client.company_name;
+      } else {
+        nomInput.value = `${client.first_name || ""} ${client.last_name || ""}`.trim();
+      }
+    }
+    if (adresseInput && client.address) {
+      const fullAddress = [
+        client.address,
+        client.postal_code,
+        client.city,
+        client.country !== "France" ? client.country : null
+      ].filter(Boolean).join(", ");
+      adresseInput.value = fullAddress;
+    }
+    if (telephoneInput && client.phone) {
+      telephoneInput.value = client.phone;
+    }
+    if (emailInput && client.email) {
+      emailInput.value = client.email;
+    }
+
+    toast.success(`Client "${client.client_type === "professionnel" && client.company_name ? client.company_name : `${client.first_name || ""} ${client.last_name || ""}`.trim()}" associé au projet`);
+  };
+
+  // Dissocier le client du projet
+  const handleRemoveClient = () => {
+    setSelectedClient(null);
+    toast.info("Client dissocié du projet");
+  };
 
   // ✅ useEffect pour remplir les champs avec les données scannées
   // IMPORTANT: On écrase TOUJOURS les champs avec les nouvelles données scannées
@@ -450,6 +527,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       created_by: user.id,
       user_id: user.id,
       nom: (formData.get("nom_projet") as string) || "Nouveau projet",
+      client_id: selectedClient?.id || null,
       nom_proprietaire: formData.get("nom_proprietaire") as string,
       adresse_proprietaire: formData.get("adresse_proprietaire") as string,
       telephone_proprietaire: formData.get("telephone_proprietaire") as string,
@@ -607,7 +685,63 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
             </div>
 
             <div className="space-y-4 pt-4 border-t">
-              <h3 className="text-sm font-semibold text-muted-foreground">Informations Propriétaire</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-muted-foreground">Client / Propriétaire</h3>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowClientSelector(true)}
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  {selectedClient ? "Changer de client" : "Associer un client"}
+                </Button>
+              </div>
+
+              {/* Affichage du client sélectionné */}
+              {selectedClient && (
+                <div className="p-3 bg-muted/50 rounded-lg border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-full ${
+                        selectedClient.client_type === "professionnel" 
+                          ? "bg-blue-100 text-blue-700" 
+                          : "bg-gray-100 text-gray-700"
+                      }`}>
+                        {selectedClient.client_type === "professionnel" ? (
+                          <Building2 className="h-4 w-4" />
+                        ) : (
+                          <User className="h-4 w-4" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium">
+                          {selectedClient.client_type === "professionnel" && selectedClient.company_name
+                            ? selectedClient.company_name
+                            : `${selectedClient.first_name || ""} ${selectedClient.last_name || ""}`.trim()}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {selectedClient.email || selectedClient.city || "Pas de contact"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={selectedClient.client_type === "professionnel" ? "default" : "secondary"}>
+                        {selectedClient.client_type === "professionnel" ? "Pro" : "Particulier"}
+                      </Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={handleRemoveClient}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="nom_proprietaire">Nom du propriétaire *</Label>
@@ -979,6 +1113,14 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialogue de sélection de client */}
+      <ClientSelectorDialog
+        open={showClientSelector}
+        onOpenChange={setShowClientSelector}
+        onClientSelected={handleClientSelected}
+        currentClientId={selectedClient?.id}
+      />
     </>
   );
 };
