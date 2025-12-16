@@ -157,11 +157,21 @@ export default function EvolizClientsPage() {
     setLoadingInvoices(true);
     setClientInvoices([]);
     try {
-      // Charger toutes les factures du client (status=all pour inclure brouillons, payées, etc.)
+      // Calculer les dates pour récupérer TOUTES les factures
+      // date_min: 2015-01-01 (assez ancien pour tout couvrir)
+      // date_max: aujourd'hui + 1 mois (pour inclure les factures futures éventuelles)
+      const today = new Date();
+      const dateMax = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const dateMaxStr = dateMax.toISOString().split("T")[0];
+
+      // Charger toutes les factures du client avec période personnalisée
       const response = await evolizApi.getInvoices({
         clientid: clientId,
         status: "all",
         per_page: 100,
+        period: "custom",
+        date_min: "2015-01-01",
+        date_max: dateMaxStr,
       });
 
       setClientInvoices(response.data || []);
