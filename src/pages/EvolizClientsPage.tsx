@@ -15,13 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,29 +97,22 @@ const getInvoiceStatusBadge = (status: string | undefined) => {
 
 export default function EvolizClientsPage() {
   const { isConfigured, isLoading: configLoading } = useEvolizConfig();
-  const {
-    clients,
-    mappings,
-    isLoading,
-    fetchClients,
-    getMappings,
-    importClientFromEvoliz,
-    unlinkClient,
-  } = useEvolizClients();
+  const { clients, mappings, isLoading, fetchClients, getMappings, importClientFromEvoliz, unlinkClient } =
+    useEvolizClients();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClient, setSelectedClient] = useState<EvolizClient | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [importingClientId, setImportingClientId] = useState<number | null>(null);
-  
+
   // États pour les factures
   const [clientInvoices, setClientInvoices] = useState<EvolizInvoice[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
-  
+
   // États pour les contacts
   const [clientContacts, setClientContacts] = useState<EvolizContactClient[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
-  
+
   const [activeTab, setActiveTab] = useState("infos");
 
   // Charger au montage
@@ -163,7 +150,22 @@ export default function EvolizClientsPage() {
     setLoadingInvoices(true);
     setClientInvoices([]);
     try {
+      console.log("[DEBUG] Chargement factures pour clientid:", clientId);
+
+      // Test 1: avec filtre clientid
       const response = await evolizApi.getInvoices({ clientid: clientId, status: "all", per_page: 100 });
+      console.log("[DEBUG] Réponse factures avec clientid:", response.data?.length || 0, "factures");
+
+      // Test 2: sans filtre pour voir si l'API retourne des factures
+      if (response.data?.length === 0) {
+        console.log("[DEBUG] Aucune facture avec filtre, test SANS filtre clientid...");
+        const allInvoices = await evolizApi.getInvoices({ status: "all", per_page: 10 });
+        console.log("[DEBUG] Factures SANS filtre:", allInvoices.data?.length || 0, "factures");
+        if (allInvoices.data?.length > 0) {
+          console.log("[DEBUG] Première facture:", JSON.stringify(allInvoices.data[0], null, 2));
+        }
+      }
+
       setClientInvoices(response.data || []);
     } catch (err) {
       console.error("Erreur chargement factures:", err);
@@ -175,16 +177,16 @@ export default function EvolizClientsPage() {
   // Obtenir l'email du contact principal (favori ou premier)
   const getPrimaryContactEmail = (): string | null => {
     if (clientContacts.length === 0) return null;
-    const favorite = clientContacts.find(c => c.favorite);
+    const favorite = clientContacts.find((c) => c.favorite);
     if (favorite?.email) return favorite.email;
-    const withEmail = clientContacts.find(c => c.email);
+    const withEmail = clientContacts.find((c) => c.email);
     return withEmail?.email || null;
   };
 
   // Obtenir le contact principal
   const getPrimaryContact = (): EvolizContactClient | null => {
     if (clientContacts.length === 0) return null;
-    return clientContacts.find(c => c.favorite) || clientContacts[0];
+    return clientContacts.find((c) => c.favorite) || clientContacts[0];
   };
 
   // Filtrer les clients
@@ -349,16 +351,12 @@ export default function EvolizClientsPage() {
                           )}
                           <div>
                             <span className="font-medium">{client.name}</span>
-                            {client.code && (
-                              <span className="text-xs text-muted-foreground ml-2">({client.code})</span>
-                            )}
+                            {client.code && <span className="text-xs text-muted-foreground ml-2">({client.code})</span>}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
-                        <Badge variant={client.type === "Professionnel" ? "default" : "secondary"}>
-                          {client.type}
-                        </Badge>
+                        <Badge variant={client.type === "Professionnel" ? "default" : "secondary"}>{client.type}</Badge>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-muted-foreground">
                         {client.address?.town || "-"}
@@ -485,7 +483,7 @@ export default function EvolizClientsPage() {
                       <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
                         Contact {loadingContacts && <Loader2 className="h-3 w-3 inline animate-spin ml-1" />}
                       </h4>
-                      
+
                       <div className="flex items-center gap-2 text-sm">
                         <Mail className="h-4 w-4 text-muted-foreground" />
                         {loadingContacts ? (
@@ -499,15 +497,14 @@ export default function EvolizClientsPage() {
                         )}
                       </div>
 
-                      {primaryContact && (primaryContact.tel_primary || selectedClient.phone || selectedClient.mobile) && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Phone className="h-4 w-4 text-muted-foreground" />
-                          <span>
-                            {primaryContact.tel_primary || selectedClient.phone || selectedClient.mobile}
-                          </span>
-                        </div>
-                      )}
-                      
+                      {primaryContact &&
+                        (primaryContact.tel_primary || selectedClient.phone || selectedClient.mobile) && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            <span>{primaryContact.tel_primary || selectedClient.phone || selectedClient.mobile}</span>
+                          </div>
+                        )}
+
                       {selectedClient.address && (
                         <div className="flex items-start gap-2 text-sm">
                           <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
@@ -518,8 +515,8 @@ export default function EvolizClientsPage() {
                             </p>
                             {selectedClient.address.country && (
                               <p className="text-muted-foreground">
-                                {typeof selectedClient.address.country === 'object' 
-                                  ? (selectedClient.address.country as any).label 
+                                {typeof selectedClient.address.country === "object"
+                                  ? (selectedClient.address.country as any).label
                                   : selectedClient.address.country}
                               </p>
                             )}
@@ -536,8 +533,8 @@ export default function EvolizClientsPage() {
                         </h4>
                         <div className="space-y-2">
                           {clientContacts.map((contact) => (
-                            <div 
-                              key={contact.contactid} 
+                            <div
+                              key={contact.contactid}
                               className="flex items-center justify-between p-2 rounded-lg bg-muted/50"
                             >
                               <div className="flex items-center gap-2">
@@ -546,12 +543,12 @@ export default function EvolizClientsPage() {
                                   <p className="text-sm font-medium">
                                     {contact.firstname} {contact.lastname}
                                     {contact.favorite && (
-                                      <Badge variant="secondary" className="ml-2 text-xs">Principal</Badge>
+                                      <Badge variant="secondary" className="ml-2 text-xs">
+                                        Principal
+                                      </Badge>
                                     )}
                                   </p>
-                                  {contact.email && (
-                                    <p className="text-xs text-muted-foreground">{contact.email}</p>
-                                  )}
+                                  {contact.email && <p className="text-xs text-muted-foreground">{contact.email}</p>}
                                 </div>
                               </div>
                               {contact.profil && (
@@ -663,11 +660,7 @@ export default function EvolizClientsPage() {
                             <div className="flex items-center gap-2">
                               {getInvoiceStatusBadge(invoice.status?.label)}
                               {invoice.document_link && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openInvoicePdf(invoice)}
-                                >
+                                <Button variant="outline" size="sm" onClick={() => openInvoicePdf(invoice)}>
                                   <Eye className="h-4 w-4 mr-1" />
                                   PDF
                                 </Button>
@@ -695,9 +688,7 @@ export default function EvolizClientsPage() {
               </DialogFooter>
             </>
           ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              Chargement...
-            </div>
+            <div className="py-8 text-center text-muted-foreground">Chargement...</div>
           )}
         </DialogContent>
       </Dialog>
