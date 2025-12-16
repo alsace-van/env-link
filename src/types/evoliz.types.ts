@@ -63,6 +63,10 @@ export interface EvolizClient {
   mobile?: string | null;
   type?: "Professionnel" | "Particulier";
   siret?: string | null;
+  business_number?: string | null; // SIRET
+  business_identification_number?: string | null; // SIREN
+  legalform?: string | null; // Forme juridique (SAS, SARL, etc.)
+  activity_number?: string | null; // APE/NAF
   vat_number?: string | null;
   comment?: string | null;
   payment_term?: number;
