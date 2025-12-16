@@ -2,7 +2,7 @@
 // PAGE CLIENTS EVOLIZ
 // Synchro bidirectionnelle avec VPB
 // Avec onglet Factures et Contacts
-// VERSION: 2.3 - Fix bouton Retour onClick
+// VERSION: 2.4 - Ajout bouton Retour au dashboard
 // ============================================
 
 import React, { useEffect, useState } from "react";
@@ -280,6 +280,16 @@ export default function EvolizClientsPage() {
 
   return (
     <div className="container mx-auto py-6">
+      {/* Bouton retour */}
+      <div className="mb-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Retour au dashboard
+          </Link>
+        </Button>
+      </div>
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
