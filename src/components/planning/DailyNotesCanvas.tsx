@@ -2,7 +2,7 @@
 // COMPOSANT: DailyNotesCanvas
 // Outil de prise de notes journalières complet
 // ReactFlow pour les blocs et connexions + Paper.js pour le dessin libre
-// VERSION: 3.1 - Fix selectedBlockIds state manquant
+// VERSION: 3.2 - Fix propriétés source_block_id/target_block_id
 // ============================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -4515,7 +4515,10 @@ export default function DailyNotesCanvas({
         if (selectedBlockIds.length > 0) {
           setBlocks((prev) => prev.filter((b) => !selectedBlockIds.includes(b.id)));
           setEdges((prev) =>
-            prev.filter((edge) => !selectedBlockIds.includes(edge.source) && !selectedBlockIds.includes(edge.target)),
+            prev.filter(
+              (edge) =>
+                !selectedBlockIds.includes(edge.source_block_id) && !selectedBlockIds.includes(edge.target_block_id),
+            ),
           );
           setSelectedBlockIds([]);
           return;
