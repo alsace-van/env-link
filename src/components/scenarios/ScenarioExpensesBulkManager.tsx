@@ -1,7 +1,8 @@
 // ============================================
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
-// Sélection, suppression, filtrage
+// Sélection, suppression, changement de catégorie
+// VERSION: 2.0 - Ajout changement catégorie en masse
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -19,7 +20,19 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Loader2, Trash2, Search, Package, Calendar, Filter, CheckSquare, Square, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Trash2,
+  Search,
+  Package,
+  Calendar,
+  Filter,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  FolderOpen,
+  Tag,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface ExpenseItem {
@@ -30,6 +43,11 @@ interface ExpenseItem {
   prix_vente_ttc: number | null;
   categorie: string | null;
   created_at: string;
+}
+
+interface CatalogCategory {
+  id: string;
+  nom: string;
 }
 
 interface ScenarioExpensesBulkManagerProps {
@@ -85,6 +103,9 @@ export function ScenarioExpensesBulkManager({
   const [filterCategorie, setFilterCategorie] = useState<string>("all");
   const [filterDate, setFilterDate] = useState<string>("all");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>([]);
+  const [targetCategory, setTargetCategory] = useState<string>("");
 
   // Charger les dépenses
   const loadItems = async () => {
@@ -106,19 +127,35 @@ export function ScenarioExpensesBulkManager({
     }
   };
 
+  // Charger les catégories du catalogue
+  const loadCatalogCategories = async () => {
+    try {
+      const { data, error } = await supabase.from("categories").select("id, nom").order("nom");
+
+      if (data) {
+        setCatalogCategories(data);
+      }
+    } catch (error: any) {
+      console.error("Erreur chargement catégories:", error);
+    }
+  };
+
   // Charger quand on ouvre
   useEffect(() => {
     if (open) {
       loadItems();
+      loadCatalogCategories();
       setSelectedIds(new Set());
       setSearchTerm("");
       setFilterCategorie("all");
       setFilterDate("all");
       setShowDeleteConfirm(false);
+      setShowCategoryDialog(false);
+      setTargetCategory("");
     }
   }, [open, scenarioId]);
 
-  // Extraire les catégories uniques
+  // Extraire les catégories uniques des articles existants
   const uniqueCategories = useMemo(() => {
     const categories = new Set<string>();
     items.forEach((item) => {
@@ -184,7 +221,7 @@ export function ScenarioExpensesBulkManager({
     });
   };
 
-  // Tout sélectionner (filtrés)
+  // Tout sélectionner (filtré)
   const selectAll = () => {
     setSelectedIds(new Set(filteredItems.map((item) => item.id)));
   };
@@ -194,7 +231,7 @@ export function ScenarioExpensesBulkManager({
     setSelectedIds(new Set());
   };
 
-  // Inverser sélection
+  // Inverser la sélection
   const invertSelection = () => {
     setSelectedIds((prev) => {
       const next = new Set<string>();
@@ -233,6 +270,36 @@ export function ScenarioExpensesBulkManager({
     },
   });
 
+  // Changer la catégorie des sélectionnés
+  const categoryMutation = useMutation({
+    mutationFn: async () => {
+      const idsToUpdate = Array.from(selectedIds);
+      if (idsToUpdate.length === 0 || !targetCategory) return 0;
+
+      const { error } = await supabase
+        .from("project_expenses")
+        .update({ categorie: targetCategory })
+        .in("id", idsToUpdate);
+
+      if (error) throw error;
+      return idsToUpdate.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["scenarios", projectId] });
+      toast.success(`${count} article(s) déplacé(s) vers "${targetCategory}"`);
+      setShowCategoryDialog(false);
+      setTargetCategory("");
+      setSelectedIds(new Set());
+      loadItems();
+      onComplete?.();
+    },
+    onError: (error: any) => {
+      console.error("Erreur changement catégorie:", error);
+      toast.error("Erreur lors du changement de catégorie");
+    },
+  });
+
   // Calcul du total sélectionné
   const totalSelected = useMemo(() => {
     return filteredItems
@@ -242,14 +309,16 @@ export function ScenarioExpensesBulkManager({
 
   return (
     <>
-      <Dialog open={open && !showDeleteConfirm} onOpenChange={onOpenChange}>
+      <Dialog open={open && !showDeleteConfirm && !showCategoryDialog} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
               Gestion du scénario ({items.length} articles)
             </DialogTitle>
-            <DialogDescription>Sélectionnez les articles à gérer ou supprimer en masse</DialogDescription>
+            <DialogDescription>
+              Sélectionnez les articles pour les supprimer ou changer leur catégorie
+            </DialogDescription>
           </DialogHeader>
 
           {/* Barre de filtres */}
@@ -291,7 +360,7 @@ export function ScenarioExpensesBulkManager({
                 <SelectValue placeholder="Date" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Toutes les dates</SelectItem>
+                <SelectItem value="all">Toutes dates</SelectItem>
                 {uniqueDates.map((d) => (
                   <SelectItem key={d} value={d}>
                     {d}
@@ -321,10 +390,23 @@ export function ScenarioExpensesBulkManager({
             </div>
 
             {selectedIds.size > 0 && (
-              <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
-                <Trash2 className="h-4 w-4 mr-1" />
-                Supprimer ({selectedIds.size})
-              </Button>
+              <div className="flex items-center gap-2">
+                {/* Bouton changer catégorie */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCategoryDialog(true)}
+                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                >
+                  <FolderOpen className="h-4 w-4 mr-1" />
+                  Catégorie ({selectedIds.size})
+                </Button>
+                {/* Bouton supprimer */}
+                <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Supprimer ({selectedIds.size})
+                </Button>
+              </div>
             )}
           </div>
 
@@ -342,13 +424,12 @@ export function ScenarioExpensesBulkManager({
             ) : (
               <div className="border rounded-lg">
                 {/* En-tête tableau */}
-                <div className="grid grid-cols-[auto_1fr_60px_100px_100px_140px_100px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b sticky top-0">
+                <div className="grid grid-cols-[auto_1fr_60px_100px_100px_100px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b sticky top-0">
                   <div></div>
                   <div>Nom</div>
                   <div className="text-center">Qté</div>
                   <div className="text-right">Prix HT</div>
                   <div className="text-right">Prix TTC</div>
-                  <div>Ajouté le</div>
                   <div>Catégorie</div>
                 </div>
 
@@ -357,7 +438,7 @@ export function ScenarioExpensesBulkManager({
                   {filteredItems.map((item) => (
                     <div
                       key={item.id}
-                      className={`grid grid-cols-[auto_1fr_60px_100px_100px_140px_100px] gap-2 items-center px-3 py-2 hover:bg-muted/20 cursor-pointer ${
+                      className={`grid grid-cols-[auto_1fr_60px_100px_100px_100px] gap-2 items-center px-3 py-2 hover:bg-muted/20 cursor-pointer ${
                         selectedIds.has(item.id) ? "bg-blue-50" : ""
                       }`}
                       onClick={() => toggleSelect(item.id)}
@@ -380,10 +461,12 @@ export function ScenarioExpensesBulkManager({
 
                       <div className="text-sm text-right font-medium">{formatAmount(item.prix_vente_ttc)}</div>
 
-                      <div className="text-xs text-muted-foreground">{formatDateTime(item.created_at)}</div>
-
                       <div className="text-xs truncate" title={item.categorie || ""}>
-                        {item.categorie || "-"}
+                        <span
+                          className={`px-2 py-0.5 rounded ${item.categorie ? "bg-gray-100" : "bg-yellow-100 text-yellow-700"}`}
+                        >
+                          {item.categorie || "Non classé"}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -395,6 +478,109 @@ export function ScenarioExpensesBulkManager({
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Fermer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog changement de catégorie */}
+      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderOpen className="h-5 w-5 text-blue-600" />
+              Changer la catégorie
+            </DialogTitle>
+            <DialogDescription>
+              Déplacer <strong>{selectedIds.size} article(s)</strong> vers une nouvelle catégorie
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <label className="text-sm font-medium mb-2 block">Nouvelle catégorie</label>
+            <Select value={targetCategory} onValueChange={setTargetCategory}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner une catégorie..." />
+              </SelectTrigger>
+              <SelectContent>
+                {/* Catégories du catalogue */}
+                {catalogCategories.length > 0 && (
+                  <>
+                    <SelectItem
+                      value="__header_catalog"
+                      disabled
+                      className="text-xs text-muted-foreground font-semibold"
+                    >
+                      — Catégories du catalogue —
+                    </SelectItem>
+                    {catalogCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.nom}>
+                        {cat.nom}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+                {/* Catégories existantes dans les articles */}
+                {uniqueCategories.length > 0 && (
+                  <>
+                    <SelectItem
+                      value="__header_existing"
+                      disabled
+                      className="text-xs text-muted-foreground font-semibold"
+                    >
+                      — Catégories existantes —
+                    </SelectItem>
+                    {uniqueCategories
+                      .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
+                      .map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {cat}
+                        </SelectItem>
+                      ))}
+                  </>
+                )}
+              </SelectContent>
+            </Select>
+
+            {/* Aperçu des articles sélectionnés */}
+            <div className="mt-4 max-h-[150px] overflow-y-auto border rounded-lg p-2 bg-muted/30">
+              <p className="text-xs text-muted-foreground mb-1">Articles sélectionnés :</p>
+              <ul className="text-sm space-y-0.5">
+                {filteredItems
+                  .filter((item) => selectedIds.has(item.id))
+                  .slice(0, 10)
+                  .map((item) => (
+                    <li key={item.id} className="flex items-center gap-1 text-xs">
+                      <span className="text-blue-500">•</span>
+                      <span className="truncate">{item.nom_accessoire}</span>
+                    </li>
+                  ))}
+                {selectedIds.size > 10 && (
+                  <li className="text-xs text-muted-foreground">... et {selectedIds.size - 10} autre(s)</li>
+                )}
+              </ul>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={() => categoryMutation.mutate()}
+              disabled={categoryMutation.isPending || !targetCategory || targetCategory.startsWith("__")}
+            >
+              {categoryMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Modification...
+                </>
+              ) : (
+                <>
+                  <Tag className="h-4 w-4 mr-2" />
+                  Appliquer
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
