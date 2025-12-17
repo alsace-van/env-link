@@ -2,7 +2,7 @@
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
 // Sélection, suppression, changement de catégorie
-// VERSION: 3.0 - Dropdown catégorie inline par ligne
+// VERSION: 3.1 - Ajout bouton "Nouveau" dans les dropdowns
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -425,7 +425,12 @@ export function ScenarioExpensesBulkManager({
                   <Select
                     value=""
                     onValueChange={(value) => {
-                      if (value && !value.startsWith("__")) {
+                      if (value === "__new__") {
+                        const newCat = prompt("Nom de la nouvelle catégorie :");
+                        if (newCat && newCat.trim()) {
+                          bulkUpdateCategory(newCat.trim());
+                        }
+                      } else if (value && !value.startsWith("__")) {
                         bulkUpdateCategory(value);
                       }
                     }}
@@ -435,6 +440,10 @@ export function ScenarioExpensesBulkManager({
                       <span>Catégorie ({selectedIds.size})</span>
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__new__" className="text-blue-600 font-medium">
+                        + Nouvelle catégorie...
+                      </SelectItem>
+                      <div className="h-px bg-border my-1" />
                       {catalogCategories.map((cat) => (
                         <SelectItem key={cat.id} value={cat.nom}>
                           {cat.nom}
@@ -508,12 +517,25 @@ export function ScenarioExpensesBulkManager({
                       {/* Dropdown catégorie inline */}
                       <Select
                         value={item.categorie || "__none__"}
-                        onValueChange={(value) => updateItemCategory(item.id, value === "__none__" ? null : value)}
+                        onValueChange={(value) => {
+                          if (value === "__new__") {
+                            const newCat = prompt("Nom de la nouvelle catégorie :");
+                            if (newCat && newCat.trim()) {
+                              updateItemCategory(item.id, newCat.trim());
+                            }
+                          } else {
+                            updateItemCategory(item.id, value === "__none__" ? null : value);
+                          }
+                        }}
                       >
                         <SelectTrigger className="h-7 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="__new__" className="text-blue-600 font-medium">
+                            + Nouveau...
+                          </SelectItem>
+                          <div className="h-px bg-border my-1" />
                           <SelectItem value="__none__">
                             <span className="text-yellow-600">Non classé</span>
                           </SelectItem>
