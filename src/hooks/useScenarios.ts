@@ -244,7 +244,10 @@ export const useScenarios = (projectId: string) => {
   const clearDevisHistory = async () => {
     try {
       // Supprimer les snapshots de devis
-      const { error: snapshotError } = await (supabase as any).from("devis_snapshots").delete().eq("project_id", projectId);
+      const { error: snapshotError } = await (supabase as any)
+        .from("devis_snapshots")
+        .delete()
+        .eq("project_id", projectId);
 
       if (snapshotError) {
         console.error("Erreur suppression snapshots:", snapshotError);
@@ -269,6 +272,24 @@ export const useScenarios = (projectId: string) => {
     }
   };
 
+  // Changer le statut d'un scénario (brouillon, validé, facturé)
+  const updateScenarioStatut = async (scenarioId: string, statut: "brouillon" | "validé" | "facturé") => {
+    const { error } = await (supabase
+      .from("project_scenarios" as any)
+      .update({ statut })
+      .eq("id", scenarioId) as any);
+
+    if (error) {
+      toast.error("Erreur lors du changement de statut");
+      console.error(error);
+      return false;
+    }
+
+    toast.success(`Statut changé en "${statut}"`);
+    await loadScenarios();
+    return true;
+  };
+
   return {
     scenarios,
     principalScenario,
@@ -280,6 +301,7 @@ export const useScenarios = (projectId: string) => {
     promoteScenario,
     unlockScenario,
     clearDevisHistory,
+    updateScenarioStatut,
     reloadScenarios: loadScenarios,
   };
 };
