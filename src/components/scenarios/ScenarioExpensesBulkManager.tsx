@@ -2,7 +2,7 @@
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
 // Sélection, suppression, changement de catégorie
-// VERSION: 2.0 - Ajout changement catégorie en masse
+// VERSION: 2.2 - Modale agrandie + décodage HTML + textes tronqués
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -34,6 +34,28 @@ import {
   Tag,
 } from "lucide-react";
 import { toast } from "sonner";
+
+// Fonction pour décoder les entités HTML
+const decodeHtmlEntities = (text: string): string => {
+  if (!text) return text;
+  return text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+// Tronquer le texte si trop long
+const truncateText = (text: string, maxLength: number = 60): string => {
+  const decoded = decodeHtmlEntities(text);
+  if (decoded.length <= maxLength) return decoded;
+  return decoded.substring(0, maxLength) + "...";
+};
 
 interface ExpenseItem {
   id: string;
@@ -450,8 +472,8 @@ export function ScenarioExpensesBulkManager({
                       />
 
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="truncate text-sm" title={item.nom_accessoire}>
-                          {item.nom_accessoire}
+                        <span className="truncate text-sm" title={decodeHtmlEntities(item.nom_accessoire)}>
+                          {truncateText(item.nom_accessoire, 50)}
                         </span>
                       </div>
 
@@ -485,7 +507,7 @@ export function ScenarioExpensesBulkManager({
 
       {/* Dialog changement de catégorie */}
       <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderOpen className="h-5 w-5 text-blue-600" />
@@ -543,20 +565,24 @@ export function ScenarioExpensesBulkManager({
             </Select>
 
             {/* Aperçu des articles sélectionnés */}
-            <div className="mt-4 max-h-[150px] overflow-y-auto border rounded-lg p-2 bg-muted/30">
-              <p className="text-xs text-muted-foreground mb-1">Articles sélectionnés :</p>
-              <ul className="text-sm space-y-0.5">
+            <div className="mt-4 max-h-[200px] overflow-y-auto border rounded-lg p-3 bg-muted/30">
+              <p className="text-xs text-muted-foreground mb-2">Articles sélectionnés :</p>
+              <ul className="text-sm space-y-1">
                 {filteredItems
                   .filter((item) => selectedIds.has(item.id))
-                  .slice(0, 10)
+                  .slice(0, 15)
                   .map((item) => (
-                    <li key={item.id} className="flex items-center gap-1 text-xs">
-                      <span className="text-blue-500">•</span>
-                      <span className="truncate">{item.nom_accessoire}</span>
+                    <li key={item.id} className="flex items-center gap-2">
+                      <span className="text-blue-500 flex-shrink-0">•</span>
+                      <span className="truncate text-xs" title={decodeHtmlEntities(item.nom_accessoire)}>
+                        {truncateText(item.nom_accessoire, 60)}
+                      </span>
                     </li>
                   ))}
-                {selectedIds.size > 10 && (
-                  <li className="text-xs text-muted-foreground">... et {selectedIds.size - 10} autre(s)</li>
+                {selectedIds.size > 15 && (
+                  <li className="text-xs text-muted-foreground font-medium pt-1">
+                    ... et {selectedIds.size - 15} autre(s)
+                  </li>
                 )}
               </ul>
             </div>
@@ -609,8 +635,10 @@ export function ScenarioExpensesBulkManager({
                   .map((item) => (
                     <li key={item.id} className="flex items-center gap-2">
                       <span className="text-red-500 flex-shrink-0">•</span>
-                      <span className="whitespace-nowrap">{item.nom_accessoire}</span>
-                      <span className="text-muted-foreground">×{item.quantite}</span>
+                      <span className="truncate" title={decodeHtmlEntities(item.nom_accessoire)}>
+                        {truncateText(item.nom_accessoire, 50)}
+                      </span>
+                      <span className="text-muted-foreground flex-shrink-0">×{item.quantite}</span>
                     </li>
                   ))}
               </ul>
