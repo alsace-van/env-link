@@ -3,6 +3,7 @@
 // Import d'un devis Evoliz vers le projet VPB
 // - Matériel → Scénario (project_expenses)
 // - Main d'œuvre → Travaux (project_todos)
+// VERSION: 2.0 - Liaison auto des tâches au scénario principal
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -158,6 +159,14 @@ export function ImportFromEvolizDialog({
 
       // 2. Importer les lignes MO dans project_todos
       if (travauxLines.length > 0) {
+        // Récupérer le scénario principal pour lier les tâches
+        const { data: mainScenario } = await (supabase as any)
+          .from("project_scenarios")
+          .select("id")
+          .eq("project_id", projectId)
+          .eq("est_principal", true)
+          .single();
+
         // Récupérer ou créer une catégorie "Import Evoliz"
         let categoryId: string;
 
@@ -194,6 +203,7 @@ export function ImportFromEvolizDialog({
             project_id: projectId,
             user_id: user.id,
             category_id: categoryId,
+            work_scenario_id: mainScenario?.id || null, // 🔥 Lier au scénario principal
             title: decodeHtmlEntities(line.designation),
             completed: false,
             display_order: index + 1,
