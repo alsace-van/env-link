@@ -2,7 +2,7 @@
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
 // Sélection, suppression, changement de catégorie
-// VERSION: 2.2 - Modale agrandie + décodage HTML + textes tronqués
+// VERSION: 3.0 - Dropdown catégorie inline par ligne
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -31,7 +31,6 @@ import {
   Square,
   AlertTriangle,
   FolderOpen,
-  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -125,9 +124,7 @@ export function ScenarioExpensesBulkManager({
   const [filterCategorie, setFilterCategorie] = useState<string>("all");
   const [filterDate, setFilterDate] = useState<string>("all");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
   const [catalogCategories, setCatalogCategories] = useState<CatalogCategory[]>([]);
-  const [targetCategory, setTargetCategory] = useState<string>("");
 
   // Charger les dépenses
   const loadItems = async () => {
@@ -172,8 +169,6 @@ export function ScenarioExpensesBulkManager({
       setFilterCategorie("all");
       setFilterDate("all");
       setShowDeleteConfirm(false);
-      setShowCategoryDialog(false);
-      setTargetCategory("");
     }
   }, [open, scenarioId]);
 
@@ -266,6 +261,51 @@ export function ScenarioExpensesBulkManager({
     });
   };
 
+  // Mettre à jour la catégorie d'un seul article (instantané)
+  const updateItemCategory = async (itemId: string, newCategory: string | null) => {
+    try {
+      const { error } = await supabase.from("project_expenses").update({ categorie: newCategory }).eq("id", itemId);
+
+      if (error) throw error;
+
+      // Mise à jour locale pour réactivité immédiate
+      setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, categorie: newCategory } : item)));
+
+      // Invalider le cache
+      queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
+    } catch (error: any) {
+      console.error("Erreur changement catégorie:", error);
+      toast.error("Erreur lors du changement de catégorie");
+    }
+  };
+
+  // Mettre à jour la catégorie de plusieurs articles en masse (via dropdown)
+  const bulkUpdateCategory = async (newCategory: string) => {
+    const idsToUpdate = Array.from(selectedIds);
+    if (idsToUpdate.length === 0) return;
+
+    try {
+      const { error } = await supabase
+        .from("project_expenses")
+        .update({ categorie: newCategory })
+        .in("id", idsToUpdate);
+
+      if (error) throw error;
+
+      // Mise à jour locale
+      setItems((prev) => prev.map((item) => (selectedIds.has(item.id) ? { ...item, categorie: newCategory } : item)));
+
+      // Invalider le cache
+      queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
+
+      toast.success(`${idsToUpdate.length} article(s) → "${newCategory}"`);
+      setSelectedIds(new Set());
+    } catch (error: any) {
+      console.error("Erreur changement catégorie en masse:", error);
+      toast.error("Erreur lors du changement de catégorie");
+    }
+  };
+
   // Supprimer les sélectionnés
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -292,36 +332,6 @@ export function ScenarioExpensesBulkManager({
     },
   });
 
-  // Changer la catégorie des sélectionnés
-  const categoryMutation = useMutation({
-    mutationFn: async () => {
-      const idsToUpdate = Array.from(selectedIds);
-      if (idsToUpdate.length === 0 || !targetCategory) return 0;
-
-      const { error } = await supabase
-        .from("project_expenses")
-        .update({ categorie: targetCategory })
-        .in("id", idsToUpdate);
-
-      if (error) throw error;
-      return idsToUpdate.length;
-    },
-    onSuccess: (count) => {
-      queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
-      queryClient.invalidateQueries({ queryKey: ["scenarios", projectId] });
-      toast.success(`${count} article(s) déplacé(s) vers "${targetCategory}"`);
-      setShowCategoryDialog(false);
-      setTargetCategory("");
-      setSelectedIds(new Set());
-      loadItems();
-      onComplete?.();
-    },
-    onError: (error: any) => {
-      console.error("Erreur changement catégorie:", error);
-      toast.error("Erreur lors du changement de catégorie");
-    },
-  });
-
   // Calcul du total sélectionné
   const totalSelected = useMemo(() => {
     return filteredItems
@@ -331,7 +341,7 @@ export function ScenarioExpensesBulkManager({
 
   return (
     <>
-      <Dialog open={open && !showDeleteConfirm && !showCategoryDialog} onOpenChange={onOpenChange}>
+      <Dialog open={open && !showDeleteConfirm} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -403,37 +413,54 @@ export function ScenarioExpensesBulkManager({
                 <Square className="h-4 w-4 mr-1" />
                 Aucun
               </Button>
-              <Button variant="outline" size="sm" onClick={invertSelection}>
-                Inverser
-              </Button>
               <span className="text-sm text-muted-foreground ml-2">
-                {selectedIds.size} sélectionné(s) sur {filteredItems.length} • {formatAmount(totalSelected)}
+                {selectedIds.size} / {filteredItems.length} • {formatAmount(totalSelected)}
               </span>
             </div>
 
-            {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2">
-                {/* Bouton changer catégorie */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowCategoryDialog(true)}
-                  className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                >
-                  <FolderOpen className="h-4 w-4 mr-1" />
-                  Catégorie ({selectedIds.size})
-                </Button>
-                {/* Bouton supprimer */}
-                <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Supprimer ({selectedIds.size})
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Changement catégorie en masse */}
+              {selectedIds.size > 0 && (
+                <>
+                  <Select
+                    value=""
+                    onValueChange={(value) => {
+                      if (value && !value.startsWith("__")) {
+                        bulkUpdateCategory(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[160px] h-8 text-xs">
+                      <FolderOpen className="h-3 w-3 mr-1" />
+                      <span>Catégorie ({selectedIds.size})</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {catalogCategories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.nom}>
+                          {cat.nom}
+                        </SelectItem>
+                      ))}
+                      {uniqueCategories
+                        .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
+                        .map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Supprimer ({selectedIds.size})
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Liste des articles */}
-          <div className="flex-1 overflow-y-auto max-h-[400px]">
+          <div className="flex-1 overflow-y-auto max-h-[450px]">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -446,11 +473,10 @@ export function ScenarioExpensesBulkManager({
             ) : (
               <div className="border rounded-lg">
                 {/* En-tête tableau */}
-                <div className="grid grid-cols-[auto_1fr_60px_100px_100px_100px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b sticky top-0">
+                <div className="grid grid-cols-[auto_1fr_60px_90px_150px] gap-2 px-3 py-2 bg-muted/50 text-xs font-medium text-muted-foreground border-b sticky top-0">
                   <div></div>
                   <div>Nom</div>
                   <div className="text-center">Qté</div>
-                  <div className="text-right">Prix HT</div>
                   <div className="text-right">Prix TTC</div>
                   <div>Catégorie</div>
                 </div>
@@ -460,36 +486,53 @@ export function ScenarioExpensesBulkManager({
                   {filteredItems.map((item) => (
                     <div
                       key={item.id}
-                      className={`grid grid-cols-[auto_1fr_60px_100px_100px_100px] gap-2 items-center px-3 py-2 hover:bg-muted/20 cursor-pointer ${
+                      className={`grid grid-cols-[auto_1fr_60px_90px_150px] gap-2 items-center px-3 py-1.5 hover:bg-muted/20 ${
                         selectedIds.has(item.id) ? "bg-blue-50" : ""
                       }`}
-                      onClick={() => toggleSelect(item.id)}
                     >
-                      <Checkbox
-                        checked={selectedIds.has(item.id)}
-                        onCheckedChange={() => toggleSelect(item.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
+                      <Checkbox checked={selectedIds.has(item.id)} onCheckedChange={() => toggleSelect(item.id)} />
 
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className="flex items-center gap-2 min-w-0 cursor-pointer"
+                        onClick={() => toggleSelect(item.id)}
+                      >
                         <span className="truncate text-sm" title={decodeHtmlEntities(item.nom_accessoire)}>
-                          {truncateText(item.nom_accessoire, 50)}
+                          {truncateText(item.nom_accessoire, 45)}
                         </span>
                       </div>
 
                       <div className="text-sm text-center">{item.quantite}</div>
 
-                      <div className="text-sm text-right text-muted-foreground">{formatAmount(item.prix)}</div>
-
                       <div className="text-sm text-right font-medium">{formatAmount(item.prix_vente_ttc)}</div>
 
-                      <div className="text-xs truncate" title={item.categorie || ""}>
-                        <span
-                          className={`px-2 py-0.5 rounded ${item.categorie ? "bg-gray-100" : "bg-yellow-100 text-yellow-700"}`}
-                        >
-                          {item.categorie || "Non classé"}
-                        </span>
-                      </div>
+                      {/* Dropdown catégorie inline */}
+                      <Select
+                        value={item.categorie || "__none__"}
+                        onValueChange={(value) => updateItemCategory(item.id, value === "__none__" ? null : value)}
+                      >
+                        <SelectTrigger className="h-7 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">
+                            <span className="text-yellow-600">Non classé</span>
+                          </SelectItem>
+                          {/* Catégories du catalogue */}
+                          {catalogCategories.map((cat) => (
+                            <SelectItem key={cat.id} value={cat.nom}>
+                              {cat.nom}
+                            </SelectItem>
+                          ))}
+                          {/* Catégories existantes non dans le catalogue */}
+                          {uniqueCategories
+                            .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
+                            .map((cat) => (
+                              <SelectItem key={cat} value={cat}>
+                                {cat}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   ))}
                 </div>
@@ -500,113 +543,6 @@ export function ScenarioExpensesBulkManager({
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Fermer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog changement de catégorie */}
-      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FolderOpen className="h-5 w-5 text-blue-600" />
-              Changer la catégorie
-            </DialogTitle>
-            <DialogDescription>
-              Déplacer <strong>{selectedIds.size} article(s)</strong> vers une nouvelle catégorie
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4">
-            <label className="text-sm font-medium mb-2 block">Nouvelle catégorie</label>
-            <Select value={targetCategory} onValueChange={setTargetCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sélectionner une catégorie..." />
-              </SelectTrigger>
-              <SelectContent>
-                {/* Catégories du catalogue */}
-                {catalogCategories.length > 0 && (
-                  <>
-                    <SelectItem
-                      value="__header_catalog"
-                      disabled
-                      className="text-xs text-muted-foreground font-semibold"
-                    >
-                      — Catégories du catalogue —
-                    </SelectItem>
-                    {catalogCategories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.nom}>
-                        {cat.nom}
-                      </SelectItem>
-                    ))}
-                  </>
-                )}
-                {/* Catégories existantes dans les articles */}
-                {uniqueCategories.length > 0 && (
-                  <>
-                    <SelectItem
-                      value="__header_existing"
-                      disabled
-                      className="text-xs text-muted-foreground font-semibold"
-                    >
-                      — Catégories existantes —
-                    </SelectItem>
-                    {uniqueCategories
-                      .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
-                      .map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                  </>
-                )}
-              </SelectContent>
-            </Select>
-
-            {/* Aperçu des articles sélectionnés */}
-            <div className="mt-4 max-h-[200px] overflow-y-auto border rounded-lg p-3 bg-muted/30">
-              <p className="text-xs text-muted-foreground mb-2">Articles sélectionnés :</p>
-              <ul className="text-sm space-y-1">
-                {filteredItems
-                  .filter((item) => selectedIds.has(item.id))
-                  .slice(0, 15)
-                  .map((item) => (
-                    <li key={item.id} className="flex items-center gap-2">
-                      <span className="text-blue-500 flex-shrink-0">•</span>
-                      <span className="truncate text-xs" title={decodeHtmlEntities(item.nom_accessoire)}>
-                        {truncateText(item.nom_accessoire, 60)}
-                      </span>
-                    </li>
-                  ))}
-                {selectedIds.size > 15 && (
-                  <li className="text-xs text-muted-foreground font-medium pt-1">
-                    ... et {selectedIds.size - 15} autre(s)
-                  </li>
-                )}
-              </ul>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>
-              Annuler
-            </Button>
-            <Button
-              onClick={() => categoryMutation.mutate()}
-              disabled={categoryMutation.isPending || !targetCategory || targetCategory.startsWith("__")}
-            >
-              {categoryMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Modification...
-                </>
-              ) : (
-                <>
-                  <Tag className="h-4 w-4 mr-2" />
-                  Appliquer
-                </>
-              )}
             </Button>
           </DialogFooter>
         </DialogContent>
