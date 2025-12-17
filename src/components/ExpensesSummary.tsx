@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpensesSummary
 // Statistiques & Analyses du projet
-// VERSION: 2.0 - Intégration main d'œuvre dans les totaux
+// VERSION: 2.1 - Fix calcul HT travaux (dérivé du TTC si forfait_ht manquant)
 // ============================================
 
 import { useEffect, useState } from "react";
@@ -91,7 +91,18 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
     const stats: WorkStats = {
       totalTasks: tasks?.length || 0,
       completedTasks: tasks?.filter((t: any) => t.completed).length || 0,
-      totalHT: tasks?.reduce((sum: number, t: any) => sum + (t.forfait_ht || 0), 0) || 0,
+      // Calcul du HT : utiliser forfait_ht si disponible, sinon dériver du TTC (TVA 20%)
+      totalHT:
+        tasks?.reduce((sum: number, t: any) => {
+          if (t.forfait_ht && t.forfait_ht > 0) {
+            return sum + t.forfait_ht;
+          } else if (t.forfait_ttc && t.forfait_ttc > 0) {
+            // HT = TTC / 1.20 (TVA 20%)
+            const tvaRate = t.tva_rate || 20;
+            return sum + t.forfait_ttc / (1 + tvaRate / 100);
+          }
+          return sum;
+        }, 0) || 0,
       totalTTC: tasks?.reduce((sum: number, t: any) => sum + (t.forfait_ttc || 0), 0) || 0,
       totalEstimatedHours: tasks?.reduce((sum: number, t: any) => sum + (t.estimated_hours || 0), 0) || 0,
       totalActualHours:
