@@ -1,6 +1,8 @@
 // types/scenarios.ts
 // Types pour le système de scénarios
 
+export type ScenarioStatut = "brouillon" | "validé" | "facturé";
+
 export interface Scenario {
   id: string;
   project_id: string;
@@ -9,6 +11,9 @@ export interface Scenario {
   icone: string;
   est_principal: boolean;
   ordre: number;
+  statut?: ScenarioStatut;
+  evoliz_quote_id?: string;
+  evoliz_quote_number?: string;
   created_at: string;
   updated_at: string;
 }
@@ -78,7 +83,7 @@ export interface ExpensesHistory {
   scenario_id: string | null;
   expense_id: string | null;
   ancienne_depense_json: any;
-  action: 'modification' | 'suppression' | 'remplacement' | 'ajout';
+  action: "modification" | "suppression" | "remplacement" | "ajout";
   raison_changement?: string;
   remplace_par_id?: string | null;
   date_modification: string;
@@ -87,7 +92,7 @@ export interface ExpensesHistory {
 
 export interface ProjectWithStatus {
   id: string;
-  statut_financier: 'brouillon' | 'devis_envoye' | 'devis_accepte' | 'en_cours' | 'termine';
+  statut_financier: "brouillon" | "devis_envoye" | "devis_accepte" | "en_cours" | "termine";
   date_validation_devis?: string | null;
   date_encaissement_acompte?: string | null;
   montant_acompte?: number | null;
