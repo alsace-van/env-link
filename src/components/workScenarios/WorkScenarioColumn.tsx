@@ -1,5 +1,6 @@
 // components/workScenarios/WorkScenarioColumn.tsx
 // Colonne d'un scénario de travaux avec ses tâches
+// VERSION: 1.1 - Badges statut + menu changement statut
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -7,9 +8,19 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Plus, Lock, MoreVertical, Copy, Trash2, Star, 
-  Euro, Clock, CheckCircle2, Edit2, Eye, EyeOff
+import {
+  Plus,
+  Lock,
+  MoreVertical,
+  Copy,
+  Trash2,
+  Star,
+  Euro,
+  Clock,
+  CheckCircle2,
+  Edit2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -46,20 +57,23 @@ const WorkScenarioColumn = ({
 }: WorkScenarioColumnProps) => {
   const [showAddTask, setShowAddTask] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
-  
-  const { deleteScenario, duplicateScenario, promoteScenario } = useScenarios(projectId);
+
+  const { deleteScenario, duplicateScenario, promoteScenario, updateScenarioStatut } = useScenarios(projectId);
   const { duplicateTasksToScenario, createTask } = useWorkScenarios(projectId);
 
-  const progress = stats.totalTasks > 0 
-    ? (stats.completedTasks / stats.totalTasks) * 100 
-    : 0;
+  const progress = stats.totalTasks > 0 ? (stats.completedTasks / stats.totalTasks) * 100 : 0;
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', { 
-      style: 'currency', 
-      currency: 'EUR',
-      minimumFractionDigits: 2 
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 2,
     }).format(amount);
+  };
+
+  const handleChangeStatut = async (statut: "brouillon" | "validé" | "facturé") => {
+    await updateScenarioStatut(scenario.id, statut);
+    onScenarioChange();
   };
 
   const handleDuplicate = async () => {
@@ -91,25 +105,26 @@ const WorkScenarioColumn = ({
   };
 
   // Filtrer les tâches à afficher
-  const visibleTasks = showCompleted 
-    ? tasks 
-    : tasks.filter(t => !t.completed);
+  const visibleTasks = showCompleted ? tasks : tasks.filter((t) => !t.completed);
 
   // Grouper par catégorie
-  const tasksByCategory = visibleTasks.reduce((acc, task) => {
-    const catId = task.category_id || 'uncategorized';
-    if (!acc[catId]) {
-      acc[catId] = {
-        category: task.work_categories,
-        tasks: []
-      };
-    }
-    acc[catId].tasks.push(task);
-    return acc;
-  }, {} as Record<string, { category: any; tasks: WorkTask[] }>);
+  const tasksByCategory = visibleTasks.reduce(
+    (acc, task) => {
+      const catId = task.category_id || "uncategorized";
+      if (!acc[catId]) {
+        acc[catId] = {
+          category: task.work_categories,
+          tasks: [],
+        };
+      }
+      acc[catId].tasks.push(task);
+      return acc;
+    },
+    {} as Record<string, { category: any; tasks: WorkTask[] }>,
+  );
 
   return (
-    <Card className={`h-full flex flex-col ${scenario.est_principal ? 'border-blue-300 border-2' : ''}`}>
+    <Card className={`h-full flex flex-col ${scenario.est_principal ? "border-blue-300 border-2" : ""}`}>
       {/* Header du scénario */}
       <CardHeader className="pb-2 space-y-2" style={{ backgroundColor: `${scenario.couleur}15` }}>
         <div className="flex items-center justify-between">
@@ -117,13 +132,23 @@ const WorkScenarioColumn = ({
             <span className="text-xl">{scenario.icone}</span>
             <h3 className="font-semibold">{scenario.nom}</h3>
             {scenario.est_principal && (
-              <Badge variant="default" className="text-xs">Principal</Badge>
+              <Badge variant="default" className="text-xs">
+                Principal
+              </Badge>
             )}
-            {isLocked && (
-              <Lock className="h-4 w-4 text-amber-600" />
+            {(scenario as any).statut === "facturé" && (
+              <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50">
+                Facturé
+              </Badge>
             )}
+            {(scenario as any).statut === "validé" && (
+              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 bg-blue-50">
+                Validé
+              </Badge>
+            )}
+            {isLocked && <Lock className="h-4 w-4 text-amber-600" />}
           </div>
-          
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -133,11 +158,32 @@ const WorkScenarioColumn = ({
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setShowCompleted(!showCompleted)}>
                 {showCompleted ? (
-                  <><EyeOff className="h-4 w-4 mr-2" /> Masquer terminées</>
+                  <>
+                    <EyeOff className="h-4 w-4 mr-2" /> Masquer terminées
+                  </>
                 ) : (
-                  <><Eye className="h-4 w-4 mr-2" /> Afficher terminées</>
+                  <>
+                    <Eye className="h-4 w-4 mr-2" /> Afficher terminées
+                  </>
                 )}
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {/* Changer le statut */}
+              {(scenario as any).statut !== "facturé" && (
+                <DropdownMenuItem onClick={() => handleChangeStatut("facturé")}>
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" /> Marquer Facturé
+                </DropdownMenuItem>
+              )}
+              {(scenario as any).statut !== "validé" && (
+                <DropdownMenuItem onClick={() => handleChangeStatut("validé")}>
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-blue-600" /> Marquer Validé
+                </DropdownMenuItem>
+              )}
+              {(scenario as any).statut && (scenario as any).statut !== "brouillon" && (
+                <DropdownMenuItem onClick={() => handleChangeStatut("brouillon")}>
+                  <Euro className="h-4 w-4 mr-2 text-gray-400" /> Remettre en brouillon
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleDuplicate}>
                 <Copy className="h-4 w-4 mr-2" /> Dupliquer
@@ -148,10 +194,7 @@ const WorkScenarioColumn = ({
                     <Star className="h-4 w-4 mr-2" /> Définir comme principal
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={handleDelete}
-                    className="text-red-600"
-                  >
+                  <DropdownMenuItem onClick={handleDelete} className="text-red-600">
                     <Trash2 className="h-4 w-4 mr-2" /> Supprimer
                   </DropdownMenuItem>
                 </>
@@ -169,22 +212,18 @@ const WorkScenarioColumn = ({
             <span className="font-medium">{Math.round(progress)}%</span>
           </div>
           <Progress value={progress} className="h-1.5" />
-          
+
           <div className="grid grid-cols-2 gap-2 pt-1">
             <div className="text-center p-2 bg-white/50 dark:bg-black/20 rounded">
               <p className="text-xs text-muted-foreground">HT</p>
-              <p className="font-bold text-blue-700 dark:text-blue-400">
-                {formatCurrency(stats.totalHT)}
-              </p>
+              <p className="font-bold text-blue-700 dark:text-blue-400">{formatCurrency(stats.totalHT)}</p>
             </div>
             <div className="text-center p-2 bg-white/50 dark:bg-black/20 rounded">
               <p className="text-xs text-muted-foreground">TTC</p>
-              <p className="font-bold text-green-700 dark:text-green-400">
-                {formatCurrency(stats.totalTTC)}
-              </p>
+              <p className="font-bold text-green-700 dark:text-green-400">{formatCurrency(stats.totalTTC)}</p>
             </div>
           </div>
-          
+
           <div className="flex justify-between text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
@@ -206,7 +245,7 @@ const WorkScenarioColumn = ({
               <div key={catId} className="space-y-2">
                 {/* En-tête de catégorie */}
                 {category && (
-                  <div 
+                  <div
                     className="flex items-center gap-2 px-2 py-1 rounded text-sm font-medium"
                     style={{ backgroundColor: `${category.color}20`, color: category.color }}
                   >
@@ -217,16 +256,11 @@ const WorkScenarioColumn = ({
                     </Badge>
                   </div>
                 )}
-                
+
                 {/* Tâches de cette catégorie */}
                 <div className="space-y-2 pl-2">
                   {catTasks.map((task) => (
-                    <WorkTaskCard
-                      key={task.id}
-                      task={task}
-                      isLocked={isLocked}
-                      onUpdate={onTaskChange}
-                    />
+                    <WorkTaskCard key={task.id} task={task} isLocked={isLocked} onUpdate={onTaskChange} />
                   ))}
                 </div>
               </div>
@@ -234,10 +268,7 @@ const WorkScenarioColumn = ({
 
             {visibleTasks.length === 0 && (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                {showCompleted 
-                  ? "Aucune tâche dans ce scénario"
-                  : "Toutes les tâches sont terminées"
-                }
+                {showCompleted ? "Aucune tâche dans ce scénario" : "Toutes les tâches sont terminées"}
               </div>
             )}
           </div>
@@ -247,12 +278,7 @@ const WorkScenarioColumn = ({
       {/* Footer - Bouton ajouter */}
       {!isLocked && (
         <div className="p-3 border-t">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="w-full"
-            onClick={() => setShowAddTask(true)}
-          >
+          <Button variant="outline" size="sm" className="w-full" onClick={() => setShowAddTask(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Ajouter une tâche
           </Button>
