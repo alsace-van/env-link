@@ -1,3 +1,9 @@
+// ============================================
+// MechanicalProcedures.tsx
+// Gestion des procédures mécaniques avec canvas
+// VERSION: 2.0 - Ajout resize des blocs photo
+// ============================================
+
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -478,6 +484,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   const onChecklistToggle = data.onChecklistToggle as (id: string, index: number) => void;
   const onAddChecklistItem = data.onAddChecklistItem as (id: string, afterIndex?: number) => void;
   const onAddListItem = data.onAddListItem as (id: string, afterIndex?: number) => void;
+  const onResizeStart = data.onResizeStart as ((e: React.MouseEvent, id: string) => void) | undefined;
 
   if (!block) return null;
 
@@ -524,8 +531,12 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
   return (
     <div
-      className={`rounded-lg border-2 shadow-md ${selected ? "ring-2 ring-blue-500 shadow-lg" : ""} ${blockType.bgColor} ${blockType.borderColor}`}
-      style={{ width: block.width, minHeight: 80 }}
+      className={`content-block rounded-lg border-2 shadow-md ${selected ? "ring-2 ring-blue-500 shadow-lg" : ""} ${blockType.bgColor} ${blockType.borderColor}`}
+      style={{
+        width: block.width,
+        minHeight: block.type === "image" && block.height ? block.height : 80,
+        height: block.type === "image" && block.height ? block.height : "auto",
+      }}
     >
       {/* Handles de connexion entrée */}
       <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3" />
@@ -563,11 +574,20 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
       </div>
 
       {/* Contenu du bloc - ÉDITABLE */}
-      <div className="p-3 nodrag" onPointerDown={stopDrag}>
+      <div className="p-3 nodrag relative" onPointerDown={stopDrag}>
         {block.type === "image" ? (
-          <div>
+          <div className="relative" style={{ minHeight: block.height ? block.height - 60 : 120 }}>
             {block.image_url ? (
-              <img src={block.image_url} alt="Illustration" className="max-w-full rounded" />
+              <img
+                src={block.image_url}
+                alt="Illustration"
+                className="rounded object-contain"
+                style={{
+                  width: "100%",
+                  height: block.height ? block.height - 60 : "auto",
+                  maxHeight: block.height ? block.height - 60 : 300,
+                }}
+              />
             ) : (
               <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded cursor-pointer hover:bg-muted/50">
                 <Upload className="h-8 w-8 text-muted-foreground mb-2" />
@@ -585,6 +605,19 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   }}
                 />
               </label>
+            )}
+            {/* Poignée de redimensionnement pour le bloc image */}
+            {onResizeStart && (
+              <div
+                className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize z-10 nodrag"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  onResizeStart(e, block.id);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <div className="absolute bottom-1 right-1 w-3 h-3 border-r-2 border-b-2 border-gray-400 hover:border-blue-500 transition-colors" />
+              </div>
             )}
           </div>
         ) : block.type === "audio" ? (
@@ -1277,7 +1310,8 @@ const MechanicalProcedures = () => {
         width = 80;
         height = 80;
       } else if (type === "image") {
-        height = 200;
+        width = 350;
+        height = 280;
       } else if (type === "audio") {
         width = 400;
         height = 320;
@@ -1723,6 +1757,7 @@ const MechanicalProcedures = () => {
         onAddListItem: handleAddListItemAfter,
         onImageUpload: handleImageUpload,
         onAudioUpload: handleAudioUpload,
+        onResizeStart: handleResizeMouseDown,
       },
       style: { width: block.width, height: "auto" },
     }));
@@ -1756,6 +1791,7 @@ const MechanicalProcedures = () => {
             onAddListItem: handleAddListItemAfter,
             onImageUpload: handleImageUpload,
             onAudioUpload: handleAudioUpload,
+            onResizeStart: handleResizeMouseDown,
           },
           style: { width: block.width, height: "auto" },
         })),
@@ -1983,6 +2019,7 @@ const MechanicalProcedures = () => {
       const newHeight = Math.max(100, resizeStartRef.current.height + deltaY);
 
       dragElementRef.current.style.width = `${newWidth}px`;
+      dragElementRef.current.style.height = `${newHeight}px`;
       dragElementRef.current.style.minHeight = `${newHeight}px`;
     };
 
