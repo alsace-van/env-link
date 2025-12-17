@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpensesSummary
 // Statistiques & Analyses du projet
-// VERSION: 2.1 - Fix calcul HT travaux (dérivé du TTC si forfait_ht manquant)
+// VERSION: 3.0 - Inclut tous les scénarios facturés/validés dans les calculs
 // ============================================
 
 import { useEffect, useState } from "react";
@@ -60,25 +60,33 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
     loadWorkStats();
   }, [projectId, refreshTrigger, paymentRefresh]);
 
-  // 🔥 Charger les statistiques des travaux
+  // 🔥 Charger les statistiques des travaux (tous les scénarios facturés/validés)
   const loadWorkStats = async () => {
-    // Trouver le scénario principal
-    const { data: scenario } = await (supabase as any)
+    // Trouver tous les scénarios facturés ou validés (ou le principal si pas de statut)
+    const { data: scenariosData } = await (supabase as any)
       .from("project_scenarios")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("est_principal", true)
-      .single();
+      .select("id, statut, est_principal")
+      .eq("project_id", projectId);
 
-    // Charger les tâches (avec ou sans scénario)
+    // Filtrer les scénarios à inclure dans les stats
+    const includedScenarioIds = (scenariosData || [])
+      .filter(
+        (s: any) =>
+          s.statut === "facturé" ||
+          s.statut === "validé" ||
+          (s.est_principal && (!s.statut || s.statut === "brouillon")),
+      )
+      .map((s: any) => s.id);
+
+    // Charger les tâches des scénarios inclus
     let query = (supabase as any)
       .from("project_todos")
       .select("*")
       .eq("project_id", projectId)
       .not("category_id", "is", null); // Seulement les tâches de la fiche de travaux
 
-    if (scenario?.id) {
-      query = query.eq("work_scenario_id", scenario.id);
+    if (includedScenarioIds.length > 0) {
+      query = query.in("work_scenario_id", includedScenarioIds);
     }
 
     const { data: tasks, error } = await query;
@@ -113,19 +121,27 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
   };
 
   const loadExpensesData = async () => {
-    // D'abord, trouver le scénario principal du projet
-    const { data: scenarios, error: scenarioError } = await (supabase as any)
+    // Trouver tous les scénarios facturés/validés (ou principal si pas de statut)
+    const { data: scenariosData, error: scenarioError } = await (supabase as any)
       .from("project_scenarios")
-      .select("id")
-      .eq("project_id", projectId)
-      .eq("est_principal", true)
-      .single();
+      .select("id, statut, est_principal")
+      .eq("project_id", projectId);
 
-    console.log("📊 Scénario principal trouvé:", scenarios, "Erreur:", scenarioError);
+    console.log("📊 Scénarios trouvés:", scenariosData, "Erreur:", scenarioError);
 
-    if (!scenarios) {
-      // Pas de scénario principal, charger toutes les dépenses du projet (fallback)
-      console.log("⚠️ Pas de scénario principal, fallback sur project_id");
+    // Filtrer les scénarios à inclure
+    const includedScenarioIds = (scenariosData || [])
+      .filter(
+        (s: any) =>
+          s.statut === "facturé" ||
+          s.statut === "validé" ||
+          (s.est_principal && (!s.statut || s.statut === "brouillon")),
+      )
+      .map((s: any) => s.id);
+
+    if (includedScenarioIds.length === 0) {
+      // Pas de scénario valide, charger toutes les dépenses du projet (fallback)
+      console.log("⚠️ Pas de scénario valide, fallback sur project_id");
       const { data, error } = await (supabase as any).from("project_expenses").select("*").eq("project_id", projectId);
       if (error) {
         console.error(error);
@@ -135,19 +151,19 @@ const ExpensesSummary = ({ projectId, refreshTrigger }: ExpensesSummaryProps) =>
       return;
     }
 
-    // Charger uniquement les dépenses du scénario principal
-    console.log("✅ Chargement dépenses du scénario:", scenarios.id);
+    // Charger les dépenses de tous les scénarios facturés/validés
+    console.log("✅ Chargement dépenses des scénarios:", includedScenarioIds);
     const { data, error } = await (supabase as any)
       .from("project_expenses")
       .select("*")
-      .eq("scenario_id", scenarios.id);
+      .in("scenario_id", includedScenarioIds);
 
     if (error) {
       console.error(error);
       return;
     }
 
-    console.log("📊 Dépenses chargées:", data?.length, "articles");
+    console.log("📊 Dépenses chargées:", data?.length, "articles (de", includedScenarioIds.length, "scénarios)");
     await processExpenses(data || []);
   };
 
