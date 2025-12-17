@@ -1,6 +1,6 @@
 // hooks/useWorkScenarios.ts
 // Hook pour gérer les scénarios de travaux d'un projet
-// VERSION: 1.1 - Fix calcul HT (dérivé du TTC si forfait_ht manquant)
+// VERSION: 2.0 - Stats globales incluent tous les scénarios facturés/validés
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -146,9 +146,15 @@ export const useWorkScenarios = (projectId: string) => {
     [getTasksForScenario],
   );
 
-  // Obtenir les stats globales (scénario principal)
+  // Obtenir les stats globales (tous les scénarios facturés/validés ou principal)
   const getPrincipalStats = useCallback((): WorkScenarioStats => {
-    if (!principalScenario) {
+    // Filtrer les scénarios à inclure dans les stats globales
+    const includedScenarios = scenarios.filter(
+      (s: any) =>
+        s.statut === "facturé" || s.statut === "validé" || (s.est_principal && (!s.statut || s.statut === "brouillon")),
+    );
+
+    if (includedScenarios.length === 0) {
       return {
         totalTasks: 0,
         completedTasks: 0,
@@ -158,8 +164,32 @@ export const useWorkScenarios = (projectId: string) => {
         totalActualHours: 0,
       };
     }
-    return getScenarioStats(principalScenario.id);
-  }, [principalScenario, getScenarioStats]);
+
+    // Agréger les stats de tous les scénarios inclus
+    const aggregatedStats = includedScenarios.reduce(
+      (acc, scenario) => {
+        const stats = getScenarioStats(scenario.id);
+        return {
+          totalTasks: acc.totalTasks + stats.totalTasks,
+          completedTasks: acc.completedTasks + stats.completedTasks,
+          totalHT: acc.totalHT + stats.totalHT,
+          totalTTC: acc.totalTTC + stats.totalTTC,
+          totalEstimatedHours: acc.totalEstimatedHours + stats.totalEstimatedHours,
+          totalActualHours: acc.totalActualHours + stats.totalActualHours,
+        };
+      },
+      {
+        totalTasks: 0,
+        completedTasks: 0,
+        totalHT: 0,
+        totalTTC: 0,
+        totalEstimatedHours: 0,
+        totalActualHours: 0,
+      },
+    );
+
+    return aggregatedStats;
+  }, [scenarios, getScenarioStats]);
 
   // Assigner une tâche à un scénario
   const assignTaskToScenario = async (taskId: string, scenarioId: string | null) => {
