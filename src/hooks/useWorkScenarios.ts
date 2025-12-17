@@ -1,5 +1,6 @@
 // hooks/useWorkScenarios.ts
 // Hook pour gérer les scénarios de travaux d'un projet
+// VERSION: 1.1 - Fix calcul HT (dérivé du TTC si forfait_ht manquant)
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,7 +76,8 @@ export const useWorkScenarios = (projectId: string) => {
 
     const { data, error } = await supabase
       .from("project_todos")
-      .select(`
+      .select(
+        `
         *,
         work_categories (
           id,
@@ -83,7 +85,8 @@ export const useWorkScenarios = (projectId: string) => {
           color,
           icon
         )
-      `)
+      `,
+      )
       .eq("project_id", projectId)
       .not("category_id", "is", null) // Seulement les tâches de la fiche de travaux
       .order("display_order", { ascending: true });
@@ -107,22 +110,41 @@ export const useWorkScenarios = (projectId: string) => {
   }, [loadScenarios, loadTasks]);
 
   // Obtenir les tâches d'un scénario
-  const getTasksForScenario = useCallback((scenarioId: string) => {
-    return tasks.filter(t => t.work_scenario_id === scenarioId);
-  }, [tasks]);
+  const getTasksForScenario = useCallback(
+    (scenarioId: string) => {
+      return tasks.filter((t) => t.work_scenario_id === scenarioId);
+    },
+    [tasks],
+  );
 
   // Calculer les stats d'un scénario
-  const getScenarioStats = useCallback((scenarioId: string): WorkScenarioStats => {
-    const scenarioTasks = getTasksForScenario(scenarioId);
-    return {
-      totalTasks: scenarioTasks.length,
-      completedTasks: scenarioTasks.filter(t => t.completed).length,
-      totalHT: scenarioTasks.reduce((sum, t) => sum + (t.forfait_ht || 0), 0),
-      totalTTC: scenarioTasks.reduce((sum, t) => sum + (t.forfait_ttc || 0), 0),
-      totalEstimatedHours: scenarioTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0),
-      totalActualHours: scenarioTasks.filter(t => t.completed).reduce((sum, t) => sum + (t.actual_hours || 0), 0),
-    };
-  }, [getTasksForScenario]);
+  const getScenarioStats = useCallback(
+    (scenarioId: string): WorkScenarioStats => {
+      const scenarioTasks = getTasksForScenario(scenarioId);
+
+      // Calcul du HT : utiliser forfait_ht si disponible, sinon dériver du TTC (TVA 20%)
+      const totalHT = scenarioTasks.reduce((sum, t) => {
+        if (t.forfait_ht && t.forfait_ht > 0) {
+          return sum + t.forfait_ht;
+        } else if (t.forfait_ttc && t.forfait_ttc > 0) {
+          // Calculer HT = TTC / 1.20 (TVA 20%)
+          const tvaRate = t.tva_rate || 20;
+          return sum + t.forfait_ttc / (1 + tvaRate / 100);
+        }
+        return sum;
+      }, 0);
+
+      return {
+        totalTasks: scenarioTasks.length,
+        completedTasks: scenarioTasks.filter((t) => t.completed).length,
+        totalHT: totalHT,
+        totalTTC: scenarioTasks.reduce((sum, t) => sum + (t.forfait_ttc || 0), 0),
+        totalEstimatedHours: scenarioTasks.reduce((sum, t) => sum + (t.estimated_hours || 0), 0),
+        totalActualHours: scenarioTasks.filter((t) => t.completed).reduce((sum, t) => sum + (t.actual_hours || 0), 0),
+      };
+    },
+    [getTasksForScenario],
+  );
 
   // Obtenir les stats globales (scénario principal)
   const getPrincipalStats = useCallback((): WorkScenarioStats => {
@@ -159,13 +181,13 @@ export const useWorkScenarios = (projectId: string) => {
   // Mettre à jour le forfait d'une tâche
   const updateTaskForfait = async (taskId: string, forfaitHT: number | null, tvaRate: number = 20) => {
     const forfaitTTC = forfaitHT ? Math.round(forfaitHT * (1 + tvaRate / 100) * 100) / 100 : null;
-    
+
     const { error } = await supabase
       .from("project_todos")
-      .update({ 
+      .update({
         forfait_ht: forfaitHT,
         forfait_ttc: forfaitTTC,
-        tva_rate: tvaRate
+        tva_rate: tvaRate,
       } as any)
       .eq("id", taskId);
 
@@ -222,7 +244,7 @@ export const useWorkScenarios = (projectId: string) => {
   // Dupliquer les tâches d'un scénario vers un autre
   const duplicateTasksToScenario = async (fromScenarioId: string, toScenarioId: string) => {
     const tasksToClone = getTasksForScenario(fromScenarioId);
-    
+
     if (tasksToClone.length === 0) {
       toast.info("Aucune tâche à dupliquer");
       return true;
@@ -230,7 +252,7 @@ export const useWorkScenarios = (projectId: string) => {
 
     const { data: userData } = await supabase.auth.getUser();
 
-    const newTasks = tasksToClone.map(task => ({
+    const newTasks = tasksToClone.map((task) => ({
       title: task.title,
       description: task.description,
       category_id: task.category_id,
@@ -259,10 +281,7 @@ export const useWorkScenarios = (projectId: string) => {
 
   // Supprimer une tâche
   const deleteTask = async (taskId: string) => {
-    const { error } = await supabase
-      .from("project_todos")
-      .delete()
-      .eq("id", taskId);
+    const { error } = await supabase.from("project_todos").delete().eq("id", taskId);
 
     if (error) {
       toast.error("Erreur lors de la suppression");
@@ -279,10 +298,10 @@ export const useWorkScenarios = (projectId: string) => {
   const updateTask = async (taskId: string, updates: Partial<WorkTask>) => {
     // Si on met à jour le forfait HT, recalculer le TTC
     if (updates.forfait_ht !== undefined) {
-      const task = tasks.find(t => t.id === taskId);
+      const task = tasks.find((t) => t.id === taskId);
       const tvaRate = updates.tva_rate ?? task?.tva_rate ?? 20;
-      updates.forfait_ttc = updates.forfait_ht 
-        ? Math.round(updates.forfait_ht * (1 + tvaRate / 100) * 100) / 100 
+      updates.forfait_ttc = updates.forfait_ht
+        ? Math.round(updates.forfait_ht * (1 + tvaRate / 100) * 100) / 100
         : null;
     }
 
@@ -303,11 +322,11 @@ export const useWorkScenarios = (projectId: string) => {
 
   // Toggle complétion d'une tâche
   const toggleTaskComplete = async (taskId: string, actualHours?: number) => {
-    const task = tasks.find(t => t.id === taskId);
+    const task = tasks.find((t) => t.id === taskId);
     if (!task) return false;
 
     const isCompleting = !task.completed;
-    
+
     const { error } = await supabase
       .from("project_todos")
       .update({
