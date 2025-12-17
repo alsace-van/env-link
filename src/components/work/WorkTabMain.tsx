@@ -1,3 +1,9 @@
+// ============================================
+// WorkTabMain.tsx
+// Onglet principal des travaux
+// VERSION: 1.1 - Badges statut scénarios (Facturé, Validé)
+// ============================================
+
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -412,7 +418,7 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
           {/* Filtre par scénario */}
           {scenarios && scenarios.length > 0 && (
             <Select value={selectedScenarioId} onValueChange={setSelectedScenarioId}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-[250px]">
                 <Layers className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Tous les scénarios" />
               </SelectTrigger>
@@ -423,13 +429,23 @@ export const WorkTabMain = ({ projectId }: WorkTabMainProps) => {
                 <SelectItem value="none">
                   <span className="flex items-center gap-2">❓ Sans scénario</span>
                 </SelectItem>
-                {scenarios.map((scenario) => (
+                {scenarios.map((scenario: any) => (
                   <SelectItem key={scenario.id} value={scenario.id}>
                     <span className="flex items-center gap-2">
                       {scenario.icone} {scenario.nom}
                       {scenario.est_principal && (
                         <Badge variant="outline" className="text-xs ml-1">
                           Principal
+                        </Badge>
+                      )}
+                      {scenario.statut === "facturé" && (
+                        <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+                          Facturé
+                        </Badge>
+                      )}
+                      {scenario.statut === "validé" && (
+                        <Badge variant="outline" className="text-xs text-blue-600 border-blue-300">
+                          Validé
                         </Badge>
                       )}
                     </span>
