@@ -3,7 +3,7 @@
 // Import d'un devis Evoliz vers le projet VPB
 // - Matériel → Scénario (project_expenses)
 // - Main d'œuvre → Travaux (project_todos)
-// VERSION: 2.0 - Liaison auto des tâches au scénario principal
+// VERSION: 3.0 - Ajout sélection catégorie à l'import
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -20,7 +20,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Package, Wrench, X, FileDown, AlertCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Package, Wrench, X, FileDown, AlertCircle, CheckSquare } from "lucide-react";
 import { toast } from "sonner";
 import { useHourlyRate } from "@/hooks/useHourlyRate";
 
@@ -35,7 +36,7 @@ const decodeHtmlEntities = (text: string): string => {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
-    .replace(/\s+/g, " ") // Remplace les espaces multiples par un seul
+    .replace(/\s+/g, " ")
     .trim();
 };
 
@@ -64,6 +65,12 @@ interface EvolizQuoteDetail {
 
 interface LineWithDestination extends EvolizQuoteLine {
   destination: LineDestination;
+  category: string;
+}
+
+interface CatalogCategory {
+  id: string;
+  nom: string;
 }
 
 interface ImportFromEvolizDialogProps {
@@ -85,6 +92,23 @@ export function ImportFromEvolizDialog({
   const { hourlyRateTTC, estimateHours } = useHourlyRate();
 
   const [lines, setLines] = useState<LineWithDestination[]>([]);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [defaultCategory, setDefaultCategory] = useState<string>("Import Evoliz");
+
+  // Charger les catégories
+  useEffect(() => {
+    const loadCategories = async () => {
+      const { data, error } = await supabase.from("categories").select("id, nom").order("nom");
+
+      if (data) {
+        setCategories(data);
+      }
+    };
+
+    if (open) {
+      loadCategories();
+    }
+  }, [open]);
 
   // Initialiser les lignes avec destination par défaut = scénario
   useEffect(() => {
@@ -93,17 +117,28 @@ export function ImportFromEvolizDialog({
         quote.items.map((item) => ({
           ...item,
           destination: "scenario" as LineDestination,
+          category: defaultCategory,
         })),
       );
     }
   }, [quote]);
 
-  // Changer la destination d'une ligne
+  // Mettre à jour les catégories quand defaultCategory change
+  const applyDefaultCategoryToAll = () => {
+    setLines((prev) =>
+      prev.map((line) => (line.destination === "scenario" ? { ...line, category: defaultCategory } : line)),
+    );
+    toast.success(`Catégorie "${defaultCategory}" appliquée à toutes les lignes Scénario`);
+  };
+
   const setLineDestination = (itemId: string, destination: LineDestination) => {
     setLines((prev) => prev.map((line) => (line.itemid === itemId ? { ...line, destination } : line)));
   };
 
-  // Tout mettre dans scénario
+  const setLineCategory = (itemId: string, category: string) => {
+    setLines((prev) => prev.map((line) => (line.itemid === itemId ? { ...line, category } : line)));
+  };
+
   const setAllToScenario = () => {
     setLines((prev) => prev.map((line) => ({ ...line, destination: "scenario" })));
   };
@@ -117,12 +152,10 @@ export function ImportFromEvolizDialog({
       } else if (line.destination === "travaux") {
         acc.travaux += line.total_vat_exclude;
         acc.travauxCount++;
-      } else {
-        acc.ignoreCount++;
       }
       return acc;
     },
-    { scenario: 0, travaux: 0, scenarioCount: 0, travauxCount: 0, ignoreCount: 0 },
+    { scenario: 0, travaux: 0, scenarioCount: 0, travauxCount: 0 },
   );
 
   // Mutation d'import
@@ -131,12 +164,12 @@ export function ImportFromEvolizDialog({
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) throw new Error("Non connecté");
+      if (!user) throw new Error("Non authentifié");
 
       const scenarioLines = lines.filter((l) => l.destination === "scenario");
       const travauxLines = lines.filter((l) => l.destination === "travaux");
 
-      // 1. Importer les lignes matériel dans project_expenses
+      // 1. Importer les lignes scénario dans project_expenses
       if (scenarioLines.length > 0) {
         const expenses = scenarioLines.map((line) => ({
           project_id: projectId,
@@ -144,9 +177,9 @@ export function ImportFromEvolizDialog({
           user_id: user.id,
           nom_accessoire: decodeHtmlEntities(line.designation),
           quantite: line.quantity,
-          prix: line.unit_price_vat_exclude, // Prix unitaire HT
-          prix_vente_ttc: line.unit_price_vat_exclude * 1.2, // Conversion TTC
-          categorie: "Import Evoliz",
+          prix: line.unit_price_vat_exclude,
+          prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
+          categorie: line.category,
           statut_paiement: "payé",
           imported_from_evoliz: true,
           evoliz_item_id: line.itemid,
@@ -203,11 +236,12 @@ export function ImportFromEvolizDialog({
             project_id: projectId,
             user_id: user.id,
             category_id: categoryId,
-            work_scenario_id: mainScenario?.id || null, // 🔥 Lier au scénario principal
+            work_scenario_id: mainScenario?.id || null,
             title: decodeHtmlEntities(line.designation),
             completed: false,
             display_order: index + 1,
             forfait_ttc: forfaitTTC,
+            forfait_ht: line.total_vat_exclude,
             estimated_hours: estimateHours(forfaitTTC),
             imported_from_evoliz: true,
             evoliz_item_id: line.itemid,
@@ -219,7 +253,7 @@ export function ImportFromEvolizDialog({
         if (error) throw error;
       }
 
-      // 3. Enregistrer l'import dans evoliz_imports
+      // 3. Enregistrer l'import
       await (supabase as any).from("evoliz_imports").insert({
         user_id: user.id,
         project_id: projectId,
@@ -260,36 +294,47 @@ export function ImportFromEvolizDialog({
     }
   };
 
-  const getDestinationLabel = (dest: LineDestination) => {
-    switch (dest) {
-      case "scenario":
-        return "Scénario";
-      case "travaux":
-        return "Travaux";
-      case "ignore":
-        return "Ignorer";
-    }
-  };
+  if (!quote) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileDown className="h-5 w-5" />
             Import devis {quote.document_number}
           </DialogTitle>
-          <DialogDescription>Classez chaque ligne : Scénario (matériel) ou Travaux (main d'œuvre)</DialogDescription>
+          <DialogDescription>Classez chaque ligne et assignez une catégorie pour le matériel</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Actions rapides */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/30 rounded-lg">
             <Button variant="outline" size="sm" onClick={setAllToScenario}>
               <Package className="h-4 w-4 mr-1" />
               Tout en Scénario
             </Button>
-            <span className="text-sm text-muted-foreground">puis ajustez les lignes main d'œuvre</span>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Catégorie par défaut:</span>
+              <Select value={defaultCategory} onValueChange={setDefaultCategory}>
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Import Evoliz">Import Evoliz</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.nom}>
+                      {cat.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="sm" onClick={applyDefaultCategoryToAll}>
+                <CheckSquare className="h-4 w-4 mr-1" />
+                Appliquer à tous
+              </Button>
+            </div>
           </div>
 
           {/* Liste des lignes */}
@@ -298,10 +343,10 @@ export function ImportFromEvolizDialog({
               <thead className="bg-muted/50 sticky top-0">
                 <tr>
                   <th className="text-left p-3 font-medium">Désignation</th>
-                  <th className="text-right p-3 font-medium w-20">Qté</th>
-                  <th className="text-right p-3 font-medium w-28">P.U. HT</th>
-                  <th className="text-right p-3 font-medium w-28">Total HT</th>
-                  <th className="text-center p-3 font-medium w-36">Destination</th>
+                  <th className="text-right p-3 font-medium w-16">Qté</th>
+                  <th className="text-right p-3 font-medium w-24">Total HT</th>
+                  <th className="text-center p-3 font-medium w-32">Destination</th>
+                  <th className="text-center p-3 font-medium w-44">Catégorie</th>
                 </tr>
               </thead>
               <tbody>
@@ -313,43 +358,64 @@ export function ImportFromEvolizDialog({
                     <td className="p-3">
                       <div className="flex items-center gap-2">
                         {getDestinationIcon(line.destination)}
-                        <span className={line.destination === "ignore" ? "line-through" : ""}>{line.designation}</span>
+                        <span
+                          className={`text-sm ${line.destination === "ignore" ? "line-through" : ""}`}
+                          title={line.designation}
+                        >
+                          {line.designation.length > 60 ? line.designation.substring(0, 60) + "..." : line.designation}
+                        </span>
                       </div>
                     </td>
-                    <td className="p-3 text-right text-sm">
-                      {line.quantity} {line.unit || ""}
-                    </td>
-                    <td className="p-3 text-right text-sm">{line.unit_price_vat_exclude.toFixed(2)} €</td>
-                    <td className="p-3 text-right font-medium">{line.total_vat_exclude.toFixed(2)} €</td>
+                    <td className="p-3 text-right text-sm">{line.quantity}</td>
+                    <td className="p-3 text-right font-medium text-sm">{line.total_vat_exclude.toFixed(2)} €</td>
                     <td className="p-3">
                       <Select
                         value={line.destination}
                         onValueChange={(v) => setLineDestination(line.itemid, v as LineDestination)}
                       >
-                        <SelectTrigger className="h-8">
+                        <SelectTrigger className="h-8 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="scenario">
                             <div className="flex items-center gap-2">
-                              <Package className="h-4 w-4 text-blue-600" />
+                              <Package className="h-3 w-3 text-blue-600" />
                               Scénario
                             </div>
                           </SelectItem>
                           <SelectItem value="travaux">
                             <div className="flex items-center gap-2">
-                              <Wrench className="h-4 w-4 text-orange-600" />
+                              <Wrench className="h-3 w-3 text-orange-600" />
                               Travaux
                             </div>
                           </SelectItem>
                           <SelectItem value="ignore">
                             <div className="flex items-center gap-2">
-                              <X className="h-4 w-4 text-gray-400" />
+                              <X className="h-3 w-3 text-gray-400" />
                               Ignorer
                             </div>
                           </SelectItem>
                         </SelectContent>
                       </Select>
+                    </td>
+                    <td className="p-3">
+                      {line.destination === "scenario" ? (
+                        <Select value={line.category} onValueChange={(v) => setLineCategory(line.itemid, v)}>
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Import Evoliz">Import Evoliz</SelectItem>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat.id} value={cat.nom}>
+                                {cat.nom}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -358,39 +424,33 @@ export function ImportFromEvolizDialog({
           </ScrollArea>
 
           {/* Récapitulatif */}
-          <div className="grid grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Package className="h-5 w-5 text-blue-600" />
-              <div>
-                <div className="text-sm text-muted-foreground">Scénario (matériel)</div>
-                <div className="font-semibold">
-                  {totals.scenarioCount} ligne(s) • {totals.scenario.toFixed(2)} € HT
-                </div>
+          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+            <div className="flex gap-6">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-blue-600" />
+                <span className="text-sm">
+                  <strong>{totals.scenarioCount}</strong> articles → Scénario
+                </span>
+                <Badge variant="secondary">{totals.scenario.toFixed(2)} € HT</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Wrench className="h-4 w-4 text-orange-600" />
+                <span className="text-sm">
+                  <strong>{totals.travauxCount}</strong> lignes → Travaux
+                </span>
+                <Badge variant="secondary">{totals.travaux.toFixed(2)} € HT</Badge>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Wrench className="h-5 w-5 text-orange-600" />
-              <div>
-                <div className="text-sm text-muted-foreground">Travaux (MO)</div>
-                <div className="font-semibold">
-                  {totals.travauxCount} ligne(s) • {totals.travaux.toFixed(2)} € HT
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <X className="h-5 w-5 text-gray-400" />
-              <div>
-                <div className="text-sm text-muted-foreground">Ignoré</div>
-                <div className="font-semibold">{totals.ignoreCount} ligne(s)</div>
-              </div>
+            <div className="text-right">
+              <span className="text-sm font-medium">Total: {(totals.scenario + totals.travaux).toFixed(2)} € HT</span>
             </div>
           </div>
 
-          {/* Warning si tout ignoré */}
-          {totals.scenarioCount + totals.travauxCount === 0 && (
-            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
-              <AlertCircle className="h-5 w-5" />
-              <span>Toutes les lignes sont ignorées. Rien ne sera importé.</span>
+          {/* Avertissement si rien à importer */}
+          {totals.scenarioCount === 0 && totals.travauxCount === 0 && (
+            <div className="flex items-center gap-2 p-3 bg-yellow-50 text-yellow-800 rounded-lg">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">Aucune ligne sélectionnée pour l'import</span>
             </div>
           )}
         </div>
@@ -401,12 +461,12 @@ export function ImportFromEvolizDialog({
           </Button>
           <Button
             onClick={() => importMutation.mutate()}
-            disabled={importMutation.isPending || totals.scenarioCount + totals.travauxCount === 0}
+            disabled={importMutation.isPending || (totals.scenarioCount === 0 && totals.travauxCount === 0)}
           >
             {importMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Import...
+                Import en cours...
               </>
             ) : (
               <>
