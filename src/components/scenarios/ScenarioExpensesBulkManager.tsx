@@ -2,7 +2,7 @@
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
 // Sélection, suppression, changement de catégorie
-// VERSION: 3.1 - Ajout bouton "Nouveau" dans les dropdowns
+// VERSION: 3.2 - Rafraîchissement automatique à la fermeture + toast confirmation
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -273,6 +273,9 @@ export function ScenarioExpensesBulkManager({
 
       // Invalider le cache
       queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
+
+      // Confirmation visuelle
+      toast.success(`Catégorie → "${newCategory || "Aucune"}"`);
     } catch (error: any) {
       console.error("Erreur changement catégorie:", error);
       toast.error("Erreur lors du changement de catégorie");
@@ -341,7 +344,15 @@ export function ScenarioExpensesBulkManager({
 
   return (
     <>
-      <Dialog open={open && !showDeleteConfirm} onOpenChange={onOpenChange}>
+      <Dialog
+        open={open && !showDeleteConfirm}
+        onOpenChange={(newOpen) => {
+          if (!newOpen) {
+            onComplete?.(); // Rafraîchir les données à la fermeture
+          }
+          onOpenChange(newOpen);
+        }}
+      >
         <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
