@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.1 - Récupération type_electrique depuis catalogue via accessory_id
+// VERSION: 2.2 - Fix requêtes catalogue (sans jointure Supabase)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -627,60 +627,67 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (!principalScenarioId) return;
     setScenarioLoading(true);
 
-    // Récupérer les expenses avec jointure sur le catalogue pour les infos techniques
-    const { data, error } = await (supabase as any)
+    // Récupérer les expenses du scénario
+    const { data: expenses, error } = await (supabase as any)
       .from("project_expenses")
       .select(
-        `
-        id, 
-        nom_accessoire, 
-        marque, 
-        prix_unitaire, 
-        puissance_watts, 
-        capacite_ah, 
-        type_electrique, 
-        quantite,
-        accessory_id,
-        accessories_catalog (
-          type_electrique,
-          puissance_watts,
-          capacite_ah,
-          marque
-        )
-      `,
+        "id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, type_electrique, quantite, accessory_id",
       )
       .eq("scenario_id", principalScenarioId)
       .order("nom_accessoire");
 
-    console.log("[Schema] loadScenarioItems raw result:", { count: data?.length, error });
+    console.log("[Schema] loadScenarioItems expenses:", { count: expenses?.length, error });
 
-    if (data) {
-      // Fusionner les données: priorité aux données de l'expense, sinon prendre du catalogue
-      const enrichedData = data
-        .map((expense: any) => {
-          const catalog = expense.accessories_catalog;
-          return {
-            id: expense.id,
-            nom_accessoire: expense.nom_accessoire,
-            marque: expense.marque || catalog?.marque,
-            prix_unitaire: expense.prix_unitaire,
-            quantite: expense.quantite,
-            // Prendre du catalogue si pas défini sur l'expense
-            type_electrique: expense.type_electrique || catalog?.type_electrique,
-            puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
-            capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
-          };
-        })
-        .filter((item: any) => item.type_electrique); // Filtrer ceux qui ont un type électrique
-
-      console.log("[Schema] loadScenarioItems enriched:", {
-        total: data.length,
-        withType: enrichedData.length,
-        items: enrichedData.map((i: any) => ({ nom: i.nom_accessoire, type: i.type_electrique })),
-      });
-
-      setScenarioItems(enrichedData);
+    if (error || !expenses) {
+      console.error("[Schema] Erreur chargement expenses:", error);
+      setScenarioLoading(false);
+      return;
     }
+
+    // Récupérer les accessory_ids non nulls pour enrichir depuis le catalogue
+    const accessoryIds = expenses.filter((e: any) => e.accessory_id).map((e: any) => e.accessory_id);
+
+    let catalogMap: Record<string, any> = {};
+
+    if (accessoryIds.length > 0) {
+      const { data: catalogItems } = await (supabase as any)
+        .from("accessories_catalog")
+        .select("id, type_electrique, puissance_watts, capacite_ah, marque")
+        .in("id", accessoryIds);
+
+      if (catalogItems) {
+        catalogItems.forEach((item: any) => {
+          catalogMap[item.id] = item;
+        });
+      }
+      console.log("[Schema] Catalogue items loaded:", Object.keys(catalogMap).length);
+    }
+
+    // Fusionner les données: priorité aux données de l'expense, sinon prendre du catalogue
+    const enrichedData = expenses
+      .map((expense: any) => {
+        const catalog = catalogMap[expense.accessory_id];
+        return {
+          id: expense.id,
+          nom_accessoire: expense.nom_accessoire,
+          marque: expense.marque || catalog?.marque,
+          prix_unitaire: expense.prix_unitaire,
+          quantite: expense.quantite,
+          // Prendre du catalogue si pas défini sur l'expense
+          type_electrique: expense.type_electrique || catalog?.type_electrique,
+          puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
+          capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
+        };
+      })
+      .filter((item: any) => item.type_electrique); // Filtrer ceux qui ont un type électrique
+
+    console.log("[Schema] loadScenarioItems enriched:", {
+      total: expenses.length,
+      withType: enrichedData.length,
+      items: enrichedData.map((i: any) => ({ nom: i.nom_accessoire, type: i.type_electrique })),
+    });
+
+    setScenarioItems(enrichedData);
     setScenarioLoading(false);
   };
 
