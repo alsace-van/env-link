@@ -1,3 +1,9 @@
+// ============================================
+// Account.tsx
+// Page Mon Compte avec onglets
+// VERSION: 1.1 - Ajout onglet Sauvegardes
+// ============================================
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,10 +35,12 @@ import {
   FileText,
   LogOut,
   KeyRound,
+  HardDrive,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import UserAISettings from "@/components/UserAISettings";
 import { UploadTokenManager } from "@/components/UploadTokenManager";
+import { BackupSettingsDialog } from "@/components/BackupSettingsDialog";
 
 interface UserProfile {
   id: string;
@@ -371,7 +379,7 @@ const Account = () => {
 
         {/* Onglets */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-5 w-full mb-6">
+          <TabsList className="grid grid-cols-6 w-full mb-6">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">Profil</span>
@@ -383,6 +391,10 @@ const Account = () => {
             <TabsTrigger value="subscription" className="flex items-center gap-2">
               <CreditCard className="h-4 w-4" />
               <span className="hidden sm:inline">Abonnement</span>
+            </TabsTrigger>
+            <TabsTrigger value="backup" className="flex items-center gap-2">
+              <HardDrive className="h-4 w-4" />
+              <span className="hidden sm:inline">Sauvegardes</span>
             </TabsTrigger>
             <TabsTrigger value="ai" className="flex items-center gap-2">
               <Bot className="h-4 w-4" />
@@ -705,6 +717,24 @@ const Account = () => {
                   <CreditCard className="h-12 w-12 mx-auto mb-3 opacity-30" />
                   <p>Aucune facture pour le moment</p>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Onglet Sauvegardes */}
+          <TabsContent value="backup" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <HardDrive className="h-5 w-5" />
+                  Paramètres de sauvegarde
+                </CardTitle>
+                <CardDescription>
+                  Configurez plusieurs destinations de sauvegarde pour protéger vos données
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <BackupSettingsDialog userId={user?.id} inline />
               </CardContent>
             </Card>
           </TabsContent>
