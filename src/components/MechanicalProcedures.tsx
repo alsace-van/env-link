@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 2.0 - Ajout resize des blocs photo
+// VERSION: 2.1 - Fix crash: déplacer handleResizeMouseDown avant useMemo
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -1686,6 +1686,71 @@ const MechanicalProcedures = () => {
     await handleUpdateBlock(blockId, { content: newContent });
   };
 
+  // Resize des blocs - DOIT être défini avant useMemo pour initialNodes
+  const handleResizeMouseDown = (e: React.MouseEvent, blockId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const element = (e.target as HTMLElement).closest(".content-block") as HTMLElement;
+    if (!element) return;
+
+    resizingBlockIdRef.current = blockId;
+    dragElementRef.current = element;
+    resizeStartRef.current = {
+      width: block.width,
+      height: block.height,
+      x: e.clientX,
+      y: e.clientY,
+    };
+
+    const handleResizeMove = (moveEvent: MouseEvent) => {
+      if (!resizingBlockIdRef.current || !dragElementRef.current) return;
+
+      const deltaX = moveEvent.clientX - resizeStartRef.current.x;
+      const deltaY = moveEvent.clientY - resizeStartRef.current.y;
+
+      const newWidth = Math.max(150, resizeStartRef.current.width + deltaX);
+      const newHeight = Math.max(100, resizeStartRef.current.height + deltaY);
+
+      dragElementRef.current.style.width = `${newWidth}px`;
+      dragElementRef.current.style.height = `${newHeight}px`;
+      dragElementRef.current.style.minHeight = `${newHeight}px`;
+    };
+
+    const handleResizeUp = (upEvent: MouseEvent) => {
+      if (resizingBlockIdRef.current && dragElementRef.current) {
+        const deltaX = upEvent.clientX - resizeStartRef.current.x;
+        const deltaY = upEvent.clientY - resizeStartRef.current.y;
+
+        const finalWidth = Math.max(150, resizeStartRef.current.width + deltaX);
+        const finalHeight = Math.max(100, resizeStartRef.current.height + deltaY);
+
+        // Sauvegarder en base
+        handleUpdateBlock(resizingBlockIdRef.current, {
+          width: finalWidth,
+          height: finalHeight,
+        });
+
+        // Mettre à jour le state
+        setBlocks((prev) =>
+          prev.map((b) => (b.id === resizingBlockIdRef.current ? { ...b, width: finalWidth, height: finalHeight } : b)),
+        );
+      }
+
+      resizingBlockIdRef.current = null;
+      dragElementRef.current = null;
+
+      window.removeEventListener("mousemove", handleResizeMove);
+      window.removeEventListener("mouseup", handleResizeUp);
+    };
+
+    window.addEventListener("mousemove", handleResizeMove);
+    window.addEventListener("mouseup", handleResizeUp);
+  };
+
   // Upload d'image pour un bloc
   const handleImageUpload = async (blockId: string, file: File) => {
     try {
@@ -1987,71 +2052,6 @@ const MechanicalProcedures = () => {
     await handleDeleteBlock(editingBlock.id);
     setIsEditBlockDialogOpen(false);
     setEditingBlock(null);
-  };
-
-  // Resize des blocs
-  const handleResizeMouseDown = (e: React.MouseEvent, blockId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const block = blocks.find((b) => b.id === blockId);
-    if (!block) return;
-
-    const element = (e.target as HTMLElement).closest(".content-block") as HTMLElement;
-    if (!element) return;
-
-    resizingBlockIdRef.current = blockId;
-    dragElementRef.current = element;
-    resizeStartRef.current = {
-      width: block.width,
-      height: block.height,
-      x: e.clientX,
-      y: e.clientY,
-    };
-
-    const handleResizeMove = (moveEvent: MouseEvent) => {
-      if (!resizingBlockIdRef.current || !dragElementRef.current) return;
-
-      const deltaX = moveEvent.clientX - resizeStartRef.current.x;
-      const deltaY = moveEvent.clientY - resizeStartRef.current.y;
-
-      const newWidth = Math.max(150, resizeStartRef.current.width + deltaX);
-      const newHeight = Math.max(100, resizeStartRef.current.height + deltaY);
-
-      dragElementRef.current.style.width = `${newWidth}px`;
-      dragElementRef.current.style.height = `${newHeight}px`;
-      dragElementRef.current.style.minHeight = `${newHeight}px`;
-    };
-
-    const handleResizeUp = (upEvent: MouseEvent) => {
-      if (resizingBlockIdRef.current && dragElementRef.current) {
-        const deltaX = upEvent.clientX - resizeStartRef.current.x;
-        const deltaY = upEvent.clientY - resizeStartRef.current.y;
-
-        const finalWidth = Math.max(150, resizeStartRef.current.width + deltaX);
-        const finalHeight = Math.max(100, resizeStartRef.current.height + deltaY);
-
-        // Sauvegarder en base
-        handleUpdateBlock(resizingBlockIdRef.current, {
-          width: finalWidth,
-          height: finalHeight,
-        });
-
-        // Mettre à jour le state
-        setBlocks((prev) =>
-          prev.map((b) => (b.id === resizingBlockIdRef.current ? { ...b, width: finalWidth, height: finalHeight } : b)),
-        );
-      }
-
-      resizingBlockIdRef.current = null;
-      dragElementRef.current = null;
-
-      window.removeEventListener("mousemove", handleResizeMove);
-      window.removeEventListener("mouseup", handleResizeUp);
-    };
-
-    window.addEventListener("mousemove", handleResizeMove);
-    window.addEventListener("mouseup", handleResizeUp);
   };
 
   // Plus besoin de useEffect pour les listeners de drag - ils sont attachés dans mousedown
