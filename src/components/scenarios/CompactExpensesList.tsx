@@ -1,5 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
+// VERSION: 2.0 - Groupement par catégorie avec séparateurs + décodage HTML
 // ✅ MODIFIÉ: Ajout bouton synchronisation catalogue + affichage champs techniques
 
 import { useState, useEffect } from "react";
@@ -369,6 +370,141 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
   const articlesWithTechData = expenses.filter((e) => e.type_electrique || e.puissance_watts).length;
   const articlesWithAccessoryId = expenses.filter((e) => e.accessory_id).length;
 
+  // Fonction pour décoder les entités HTML
+  const decodeHtml = (text: string) => {
+    if (!text) return text;
+    return text
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/<[^>]*>/g, "") // Enlever les balises HTML
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  // Fonction pour rendre une carte d'expense (évite la duplication)
+  const renderExpenseCard = (expense: Expense) => (
+    <Card key={expense.id} className="p-2.5">
+      <div className="flex items-start justify-between gap-2">
+        {/* Infos principales */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-1.5 mb-1">
+            <span className="text-sm shrink-0">{categoryIcons[expense.categorie] || "📦"}</span>
+            <h4 className="text-sm font-medium leading-tight">{decodeHtml(expense.nom_accessoire)}</h4>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+            {expense.marque && (
+              <Badge variant="secondary" className="text-xs py-0 px-1.5">
+                {expense.marque}
+              </Badge>
+            )}
+
+            {getElectricTypeBadge(expense)}
+
+            <span>{(expense.prix || 0).toFixed(2)} € × </span>
+            <Input
+              type="number"
+              min="1"
+              value={expense.quantite}
+              onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
+              className="h-5 w-10 text-center text-xs p-0.5"
+              disabled={isLocked}
+            />
+          </div>
+
+          {(expense.puissance_watts || expense.intensite_amperes) && (
+            <div className="flex items-center gap-2 mt-1 text-xs">
+              {expense.puissance_watts && (
+                <span className="text-yellow-600 dark:text-yellow-400 flex items-center gap-0.5">
+                  <Zap className="h-3 w-3" />
+                  {expense.puissance_watts}W
+                </span>
+              )}
+              {expense.intensite_amperes && (
+                <span className="text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
+                  <Battery className="h-3 w-3" />
+                  {expense.intensite_amperes}Ah
+                </span>
+              )}
+            </div>
+          )}
+
+          {expense.prix_vente_ttc && (
+            <div className="text-xs mt-1">
+              <span className="text-muted-foreground">Vente: </span>
+              <span className="font-semibold text-green-600">
+                {((expense.prix_vente_ttc || 0) * (expense.quantite || 1)).toFixed(2)} €
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={`h-6 w-6 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                  onClick={() => cycleDeliveryStatus(expense)}
+                  disabled={isLocked}
+                >
+                  {getDeliveryInfo(expense.statut_livraison).icon}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+              </TooltipContent>
+            </Tooltip>
+
+            {!isLocked && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => setEditingExpense(expense)}
+                    >
+                      <Edit className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Modifier</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => deleteExpense(expense.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Supprimer</p>
+                  </TooltipContent>
+                </Tooltip>
+              </>
+            )}
+          </TooltipProvider>
+        </div>
+      </div>
+    </Card>
+  );
+
   if (isLoading) {
     return <div className="text-center py-4 text-sm text-muted-foreground">Chargement...</div>;
   }
@@ -443,130 +579,36 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
         </div>
       )}
 
-      {/* Liste des dépenses */}
+      {/* Liste des dépenses - groupées par catégorie */}
       {filteredExpenses.length === 0 ? (
         <div className="text-center py-6 text-sm text-muted-foreground">Aucun article dans ce scénario</div>
+      ) : selectedCategory ? (
+        // Mode filtre : affichage simple d'une catégorie
+        <div className="space-y-2">{filteredExpenses.map((expense) => renderExpenseCard(expense))}</div>
       ) : (
-        <div className="space-y-2">
-          {filteredExpenses.map((expense) => (
-            <Card key={expense.id} className="p-2.5">
-              <div className="flex items-start justify-between gap-2">
-                {/* Infos principales */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start gap-1.5 mb-1">
-                    <span className="text-sm shrink-0">{categoryIcons[expense.categorie] || "📦"}</span>
-                    <h4 className="text-sm font-medium leading-tight">{expense.nom_accessoire}</h4>
-                  </div>
+        // Mode groupé : afficher toutes les catégories avec séparateurs
+        <div className="space-y-3">
+          {categories.map((cat) => {
+            const catExpenses = groupedByCategory[cat] || [];
+            if (catExpenses.length === 0) return null;
 
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                    {expense.marque && (
-                      <Badge variant="secondary" className="text-xs py-0 px-1.5">
-                        {expense.marque}
-                      </Badge>
-                    )}
+            const catTotal = catExpenses.reduce((sum, e) => sum + (e.prix_vente_ttc || e.prix || 0) * e.quantite, 0);
 
-                    {/* ✅ NOUVEAU: Badge type électrique */}
-                    {getElectricTypeBadge(expense)}
-
-                    <span>{(expense.prix || 0).toFixed(2)} € × </span>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={expense.quantite}
-                      onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
-                      className="h-5 w-10 text-center text-xs p-0.5"
-                      disabled={isLocked}
-                    />
-                  </div>
-
-                  {/* ✅ NOUVEAU: Affichage puissance/intensité si disponible */}
-                  {(expense.puissance_watts || expense.intensite_amperes) && (
-                    <div className="flex items-center gap-2 mt-1 text-xs">
-                      {expense.puissance_watts && (
-                        <span className="text-yellow-600 dark:text-yellow-400 flex items-center gap-0.5">
-                          <Zap className="h-3 w-3" />
-                          {expense.puissance_watts}W
-                        </span>
-                      )}
-                      {expense.intensite_amperes && (
-                        <span className="text-blue-600 dark:text-blue-400 flex items-center gap-0.5">
-                          <Battery className="h-3 w-3" />
-                          {expense.intensite_amperes}Ah
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {expense.prix_vente_ttc && (
-                    <div className="text-xs mt-1">
-                      <span className="text-muted-foreground">Vente: </span>
-                      <span className="font-semibold text-green-600">
-                        {((expense.prix_vente_ttc || 0) * (expense.quantite || 1)).toFixed(2)} €
-                      </span>
-                    </div>
-                  )}
+            return (
+              <div key={cat} className="space-y-2">
+                {/* Séparateur catégorie */}
+                <div className="flex items-center gap-2 py-1 px-2 bg-muted/50 rounded-md sticky top-0 z-10">
+                  <span className="text-sm">{categoryIcons[cat] || "📦"}</span>
+                  <span className="text-xs font-medium text-muted-foreground flex-1">{cat}</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {catExpenses.length} • {catTotal.toFixed(0)} €
+                  </Badge>
                 </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-1">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className={`h-6 w-6 ${getDeliveryInfo(expense.statut_livraison).color}`}
-                          onClick={() => cycleDeliveryStatus(expense)}
-                          disabled={isLocked}
-                        >
-                          {getDeliveryInfo(expense.statut_livraison).icon}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
-                      </TooltipContent>
-                    </Tooltip>
-
-                    {!isLocked && (
-                      <>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => setEditingExpense(expense)}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Modifier</p>
-                          </TooltipContent>
-                        </Tooltip>
-
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() => deleteExpense(expense.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Supprimer</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </>
-                    )}
-                  </TooltipProvider>
-                </div>
+                {/* Articles de cette catégorie */}
+                {catExpenses.map((expense) => renderExpenseCard(expense))}
               </div>
-            </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
