@@ -2,7 +2,7 @@
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
 // Sélection, suppression, changement de catégorie
-// VERSION: 3.2 - Rafraîchissement automatique à la fermeture + toast confirmation
+// VERSION: 3.3 - Catégories chargées depuis le catalogue (accessories_catalog)
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -146,16 +146,32 @@ export function ScenarioExpensesBulkManager({
     }
   };
 
-  // Charger les catégories du catalogue
+  // Charger les catégories du catalogue (accessories_catalog)
   const loadCatalogCategories = async () => {
     try {
-      const { data, error } = await supabase.from("categories").select("id, nom").order("nom");
+      // Récupérer les catégories distinctes du catalogue
+      const { data, error } = await supabase
+        .from("accessories_catalog")
+        .select("categorie")
+        .not("categorie", "is", null)
+        .not("categorie", "eq", "");
 
       if (data) {
-        setCatalogCategories(data);
+        // Extraire les catégories uniques
+        const uniqueCats = new Set<string>();
+        data.forEach((item: any) => {
+          if (item.categorie) {
+            uniqueCats.add(item.categorie);
+          }
+        });
+        // Convertir en format attendu par le composant
+        const categoriesArray = Array.from(uniqueCats)
+          .sort()
+          .map((nom, index) => ({ id: `cat-${index}`, nom }));
+        setCatalogCategories(categoriesArray);
       }
     } catch (error: any) {
-      console.error("Erreur chargement catégories:", error);
+      console.error("Erreur chargement catégories catalogue:", error);
     }
   };
 
