@@ -1,7 +1,7 @@
 // ============================================
 // EvolizClientsDialog.tsx
 // Modale pour consulter les clients Evoliz sans changer de page
-// VERSION: 1.2 - Fix scroll avec div overflow-auto
+// VERSION: 1.3 - Fix types TypeScript (type client, contacts, mappings)
 // ============================================
 
 import React, { useEffect, useState } from "react";
@@ -240,7 +240,7 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
   const handleImport = async (client: EvolizClient) => {
     setImportingClientId(client.clientid);
     try {
-      await importClientFromEvoliz(client);
+      await importClientFromEvoliz(client.clientid);
     } finally {
       setImportingClientId(null);
     }
@@ -249,7 +249,7 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
   const handleUnlink = async (clientId: number) => {
     const mapping = mappings.find((m) => m.evoliz_client_id === clientId);
     if (mapping) {
-      await unlinkClient(mapping.local_client_id!);
+      await unlinkClient(clientId);
     }
   };
 
@@ -376,7 +376,7 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
                       >
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {client.type === "company" ? (
+                            {client.type === "Professionnel" ? (
                               <Building2 className="h-4 w-4 text-muted-foreground" />
                             ) : (
                               <User className="h-4 w-4 text-muted-foreground" />
@@ -388,7 +388,9 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
                           </div>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          <Badge variant="outline">{client.type === "company" ? "Entreprise" : "Particulier"}</Badge>
+                          <Badge variant="outline">
+                            {client.type === "Professionnel" ? "Entreprise" : "Particulier"}
+                          </Badge>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
                           {client.address?.town && (
@@ -476,7 +478,11 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  {selectedClient.type === "company" ? <Building2 className="h-5 w-5" /> : <User className="h-5 w-5" />}
+                  {selectedClient.type === "Professionnel" ? (
+                    <Building2 className="h-5 w-5" />
+                  ) : (
+                    <User className="h-5 w-5" />
+                  )}
                   {selectedClient.name}
                   {isClientLinked(selectedClient.clientid) && (
                     <Badge className="bg-green-100 text-green-700 ml-2">Lié à VPB</Badge>
@@ -630,18 +636,16 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
                     <ScrollArea className="h-[300px]">
                       <div className="space-y-3">
                         {clientContacts.map((contact) => (
-                          <Card key={contact.contactclientid}>
+                          <Card key={contact.contactid}>
                             <CardContent className="pt-4">
                               <div className="flex items-start justify-between">
                                 <div>
                                   <p className="font-medium">
                                     {contact.civility} {contact.firstname} {contact.lastname}
                                   </p>
-                                  {contact.function && (
-                                    <p className="text-sm text-muted-foreground">{contact.function}</p>
-                                  )}
+                                  {contact.profil && <p className="text-sm text-muted-foreground">{contact.profil}</p>}
                                 </div>
-                                {contact.main && <Badge variant="secondary">Principal</Badge>}
+                                {contact.favorite && <Badge variant="secondary">Principal</Badge>}
                               </div>
                               <div className="mt-2 space-y-1 text-sm">
                                 {contact.email && (
@@ -652,16 +656,16 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
                                     </a>
                                   </p>
                                 )}
-                                {contact.phone && (
+                                {contact.tel_primary && (
                                   <p className="flex items-center gap-2">
                                     <Phone className="h-3 w-3" />
-                                    {contact.phone}
+                                    {contact.tel_primary}
                                   </p>
                                 )}
-                                {contact.mobile && (
+                                {contact.tel_secondary && (
                                   <p className="flex items-center gap-2">
                                     <Phone className="h-3 w-3" />
-                                    {contact.mobile}
+                                    {contact.tel_secondary}
                                   </p>
                                 )}
                               </div>
