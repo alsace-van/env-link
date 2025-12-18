@@ -1,7 +1,7 @@
 // ============================================
 // EvolizClientsDialog.tsx
 // Modale pour consulter les clients Evoliz sans changer de page
-// VERSION: 1.1 - Fix scroll dans la modale
+// VERSION: 1.2 - Fix scroll avec div overflow-auto
 // ============================================
 
 import React, { useEffect, useState } from "react";
@@ -15,13 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -162,7 +156,7 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
       const dateMax = futureDate.toISOString().split("T")[0];
 
       const response = await evolizApi.get(
-        `/invoices?clientid=${clientId}&period=custom&date_min=2015-01-01&date_max=${dateMax}&per_page=50`
+        `/invoices?clientid=${clientId}&period=custom&date_min=2015-01-01&date_max=${dateMax}&per_page=50`,
       );
       if (response && Array.isArray(response)) {
         setClientInvoices(response);
@@ -351,9 +345,8 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
             </Button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="h-full">
-              {isLoading ? (
+          <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(85vh - 180px)" }}>
+            {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
@@ -466,7 +459,6 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
                 </TableBody>
               </Table>
             )}
-            </ScrollArea>
           </div>
 
           <DialogFooter className="mt-4 flex-shrink-0">
@@ -484,11 +476,7 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  {selectedClient.type === "company" ? (
-                    <Building2 className="h-5 w-5" />
-                  ) : (
-                    <User className="h-5 w-5" />
-                  )}
+                  {selectedClient.type === "company" ? <Building2 className="h-5 w-5" /> : <User className="h-5 w-5" />}
                   {selectedClient.name}
                   {isClientLinked(selectedClient.clientid) && (
                     <Badge className="bg-green-100 text-green-700 ml-2">Lié à VPB</Badge>
