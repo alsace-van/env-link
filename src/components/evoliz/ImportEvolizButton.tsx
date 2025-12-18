@@ -3,7 +3,7 @@
 // Bouton + Modale pour importer un devis Evoliz
 // Étape 1: Choisir le devis
 // Étape 2: Cocher les lignes + choisir Matériel/MO + scénario cible
-// VERSION: 2.1 - Fix: retrait user_id de project_scenarios
+// VERSION: 2.2 - Nettoyage HTML des noms d'articles (entités &nbsp; etc.)
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -87,6 +87,23 @@ function formatDate(dateString: string): string {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+// Nettoyer les entités HTML et les balises
+function cleanHtmlEntities(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/<[^>]*>/g, "") // Enlever les balises HTML
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#\d+;/g, "") // Autres entités numériques
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // Détecter si une ligne est de la main d'œuvre
@@ -499,7 +516,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         // Filtrer les articles qui n'existent pas encore (par nom OU par référence)
         const newCatalogItems = scenarioLines
           .filter((line) => {
-            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
+            const cleanName = cleanHtmlEntities(line.designation);
             const ref = line.reference?.trim();
 
             // Vérifier si l'article existe déjà par nom
@@ -515,7 +532,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             return true;
           })
           .map((line) => {
-            const cleanName = line.designation.replace(/<[^>]*>/g, "").trim();
+            const cleanName = cleanHtmlEntities(line.designation);
             const prixVenteHT = line.unit_price_vat_exclude;
             const prixVenteTTC = prixVenteHT * 1.2;
             const prixAchatHT = line.purchase_unit_price_vat_exclude || null;
@@ -569,7 +586,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           project_id: projectId,
           scenario_id: finalScenarioId,
           user_id: user.id,
-          nom_accessoire: line.designation.replace(/<[^>]*>/g, "").trim(), // Nettoyer HTML
+          nom_accessoire: cleanHtmlEntities(line.designation),
           quantite: Math.round(line.quantity), // Forcer en entier
           prix: line.unit_price_vat_exclude,
           prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
@@ -622,7 +639,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
             user_id: user.id,
             category_id: categoryId,
             work_scenario_id: finalScenarioId, // ✅ Lier au scénario
-            title: line.designation.replace(/<[^>]*>/g, "").trim(),
+            title: cleanHtmlEntities(line.designation),
             completed: false,
             display_order: index + 1,
             forfait_ttc: forfaitTTC,
@@ -856,13 +873,9 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
                       <Checkbox checked={line.selected} onCheckedChange={() => toggleLine(line.itemid)} />
 
                       <div className="flex items-center gap-1 min-w-0">
-                        <div
-                          className="text-sm truncate"
-                          title={line.designation.replace(/<[^>]*>/g, "")}
-                          dangerouslySetInnerHTML={{
-                            __html: line.designation.replace(/\n/g, " "),
-                          }}
-                        />
+                        <div className="text-sm truncate" title={cleanHtmlEntities(line.designation)}>
+                          {cleanHtmlEntities(line.designation)}
+                        </div>
                         {line.catalog_enriched && (
                           <span title="Prix d'achat récupéré">
                             <Check className="h-3 w-3 text-green-600 flex-shrink-0" />
