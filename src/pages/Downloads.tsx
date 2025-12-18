@@ -1,5 +1,7 @@
+// VERSION: 1.1 - Fix bouton Retour avec fallback intelligent
+
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,11 +65,21 @@ const PLATFORM_ICONS: Record<string, string> = {
 
 const Downloads = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedChangelog, setExpandedChangelog] = useState<string | null>(null);
+
+  // Navigation intelligente : retour à la page précédente ou fallback vers accueil
+  const handleGoBack = () => {
+    if (window.history.state?.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
 
   useEffect(() => {
     loadDownloads();
@@ -152,7 +164,7 @@ const Downloads = () => {
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
       <div className="container max-w-6xl mx-auto py-8 px-4">
         {/* Header */}
-        <Button variant="ghost" onClick={() => navigate("/")} className="mb-6">
+        <Button variant="ghost" onClick={handleGoBack} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Retour
         </Button>
