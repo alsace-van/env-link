@@ -149,7 +149,7 @@ export default function EvolizSettingsPage() {
     <div className="container mx-auto py-8 px-4 max-w-2xl">
       {/* ====== BARRE DE NAVIGATION ====== */}
       <div className="flex items-center gap-2 mb-6">
-        <Button variant="ghost" size="sm" onClick={() => navigate(-1)} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Retour
         </Button>
