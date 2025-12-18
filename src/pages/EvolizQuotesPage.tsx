@@ -1,11 +1,11 @@
 // ============================================
 // PAGE DEVIS EVOLIZ - STRUCTURE CORRIGÉE
 // Basé sur la vraie structure API Evoliz
-// VERSION: 1.1 - Fix bouton Retour (navigate vers / au lieu de -1)
+// VERSION: 1.2 - Fix bouton Retour avec fallback intelligent
 // ============================================
 
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
 import { useEvolizQuotes } from "@/hooks/useEvolizQuotes";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,12 +84,23 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function EvolizQuotesPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isConfigured, isLoading: configLoading } = useEvolizConfig();
   const { quotes, isLoading, error, fetchQuotes } = useEvolizQuotes();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedQuote, setSelectedQuote] = useState<any | null>(null);
+
+  // Navigation intelligente : retour à la page précédente ou fallback vers accueil
+  const handleGoBack = () => {
+    // Vérifier si on a un historique de navigation dans cette session
+    if (window.history.state?.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
 
   // Charger les devis au montage
   useEffect(() => {
@@ -148,7 +159,7 @@ export default function EvolizQuotesPage() {
     <div className="container mx-auto py-8 px-4 max-w-6xl">
       {/* Navigation */}
       <div className="flex items-center gap-2 mb-6">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={handleGoBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Retour
         </Button>
