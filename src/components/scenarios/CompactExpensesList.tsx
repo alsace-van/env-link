@@ -1,7 +1,7 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.0 - Groupement par catégorie avec séparateurs + décodage HTML
-// ✅ MODIFIÉ: Ajout bouton synchronisation catalogue + affichage champs techniques
+// VERSION: 2.1 - Ajout coche verte si lié au catalogue
+// ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Edit, Trash2, Package, Truck, ArrowRight, RefreshCw, Zap, Battery, Sun } from "lucide-react";
+import { Plus, Edit, Trash2, Package, Truck, ArrowRight, RefreshCw, Zap, Battery, Sun, Check } from "lucide-react";
 import { toast } from "sonner";
 import ExpenseFormDialog from "@/components/ExpenseFormDialog";
 
@@ -394,7 +394,21 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-1.5 mb-1">
             <span className="text-sm shrink-0">{categoryIcons[expense.categorie] || "📦"}</span>
-            <h4 className="text-sm font-medium leading-tight">{decodeHtml(expense.nom_accessoire)}</h4>
+            <h4 className="text-sm font-medium leading-tight flex items-center gap-1">
+              {decodeHtml(expense.nom_accessoire)}
+              {expense.accessory_id && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Lié au catalogue</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </h4>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
