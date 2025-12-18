@@ -1,10 +1,11 @@
 // ============================================
 // PAGE CONFIGURATION EVOLIZ - VERSION AMÉLIORÉE
 // Statut visible, actions claires, bouton retour
+// VERSION: 1.1 - Fix bouton Retour avec fallback intelligent
 // ============================================
 
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,16 @@ import {
 
 export default function EvolizSettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Navigation intelligente : retour à la page précédente ou fallback vers accueil
+  const handleGoBack = () => {
+    if (window.history.state?.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
 
   const {
     credentials,
@@ -149,12 +160,12 @@ export default function EvolizSettingsPage() {
     <div className="container mx-auto py-8 px-4 max-w-2xl">
       {/* ====== BARRE DE NAVIGATION ====== */}
       <div className="flex items-center gap-2 mb-6">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={handleGoBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Retour
         </Button>
         <Separator orientation="vertical" className="h-6" />
-        <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-2">
           <Home className="h-4 w-4" />
           Tableau de bord
         </Button>
