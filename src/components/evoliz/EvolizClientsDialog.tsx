@@ -1,7 +1,7 @@
 // ============================================
 // EvolizClientsDialog.tsx
 // Modale pour consulter les clients Evoliz sans changer de page
-// VERSION: 1.0
+// VERSION: 1.1 - Fix scroll dans la modale
 // ============================================
 
 import React, { useEffect, useState } from "react";
@@ -317,8 +317,8 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
     <>
       {/* Dialog principal - Liste des clients */}
       <Dialog open={open && !showDetailDialog} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
               Clients Evoliz
@@ -328,7 +328,7 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-4 flex-shrink-0">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -351,8 +351,9 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
             </Button>
           </div>
 
-          <ScrollArea className="flex-1 -mx-6 px-6">
-            {isLoading ? (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="h-full">
+              {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
@@ -465,9 +466,10 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
                 </TableBody>
               </Table>
             )}
-          </ScrollArea>
+            </ScrollArea>
+          </div>
 
-          <DialogFooter className="mt-4">
+          <DialogFooter className="mt-4 flex-shrink-0">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Fermer
             </Button>
@@ -477,7 +479,7 @@ export function EvolizClientsDialog({ open, onOpenChange }: EvolizClientsDialogP
 
       {/* Dialog détail client */}
       <Dialog open={showDetailDialog} onOpenChange={(open) => !open && handleCloseDetailDialog()}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
           {selectedClient ? (
             <>
               <DialogHeader>
