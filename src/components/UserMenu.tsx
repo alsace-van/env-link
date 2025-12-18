@@ -1,3 +1,9 @@
+// ============================================
+// UserMenu.tsx
+// Menu utilisateur avec accès aux paramètres et Evoliz
+// VERSION: 1.1 - Clients Evoliz en modale au lieu de page
+// ============================================
+
 import { useState, useEffect } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +24,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { User as UserIcon, Settings, LogOut, Shield, Moon, Sun, Monitor, FileText, Users, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
+import { EvolizClientsDialog } from "@/components/evoliz/EvolizClientsDialog";
 
 interface UserMenuProps {
   user: User;
@@ -28,6 +35,7 @@ const UserMenu = ({ user }: UserMenuProps) => {
   const { theme, setTheme } = useTheme();
   const [isAdmin, setIsAdmin] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [showClientsDialog, setShowClientsDialog] = useState(false);
 
   useEffect(() => {
     checkAdminStatus();
@@ -92,6 +100,7 @@ const UserMenu = ({ user }: UserMenuProps) => {
   };
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -138,7 +147,7 @@ const UserMenu = ({ user }: UserMenuProps) => {
               <FileText className="h-4 w-4 mr-2" />
               Devis
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate("/evoliz/clients")}>
+            <DropdownMenuItem onClick={() => setShowClientsDialog(true)}>
               <Users className="h-4 w-4 mr-2" />
               Clients
             </DropdownMenuItem>
@@ -177,6 +186,13 @@ const UserMenu = ({ user }: UserMenuProps) => {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    
+    {/* Modale Clients Evoliz */}
+    <EvolizClientsDialog 
+      open={showClientsDialog} 
+      onOpenChange={setShowClientsDialog} 
+    />
+    </>
   );
 };
 
