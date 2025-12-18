@@ -1,7 +1,7 @@
 // ============================================
 // SERVICE API EVOLIZ
 // Utilise l'Edge Function comme proxy pour éviter CORS
-// VERSION: 2.1 - Ajout period, date_min, date_max pour getInvoices
+// VERSION: 2.2 - Ajout méthode get() générique
 // ============================================
 
 import { supabase } from "@/integrations/supabase/client";
@@ -117,6 +117,15 @@ class EvolizApiService {
         message: error instanceof Error ? error.message : "Erreur inconnue",
       };
     }
+  }
+
+  // --- GENERIC GET (pour endpoints non typés) ---
+
+  async get<T = any>(endpoint: string): Promise<T> {
+    return this.callProxy<T>({
+      endpoint,
+      method: "GET",
+    });
   }
 
   // --- CLIENTS ---
