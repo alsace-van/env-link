@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpenseFormDialog
 // Formulaire d'ajout/modification de dépense
-// VERSION: 2.1 - Fix: ne pas proposer suggestion si nom exactement identique
+// VERSION: 2.2 - Catégories chargées depuis le catalogue + suggestions groupées
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -224,10 +224,26 @@ const ExpenseFormDialog = ({
   };
 
   const loadCatalogCategories = async () => {
-    const { data } = await supabase.from("categories").select("id, nom").order("nom");
+    // Récupérer les catégories distinctes depuis le catalogue
+    const { data } = await supabase
+      .from("accessories_catalog")
+      .select("categorie")
+      .not("categorie", "is", null)
+      .not("categorie", "eq", "");
 
     if (data) {
-      setCatalogCategories(data);
+      // Extraire les catégories uniques
+      const uniqueCats = new Set<string>();
+      data.forEach((item: any) => {
+        if (item.categorie) {
+          uniqueCats.add(item.categorie);
+        }
+      });
+      // Convertir en format attendu
+      const categoriesArray = Array.from(uniqueCats)
+        .sort()
+        .map((nom, index) => ({ id: `cat-${index}`, nom }));
+      setCatalogCategories(categoriesArray);
     }
   };
 
@@ -1000,11 +1016,30 @@ const ExpenseFormDialog = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__new__">+ Nouvelle catégorie</SelectItem>
-                    {existingCategories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
+                    {/* Catégories du catalogue en premier */}
+                    {catalogCategories.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-muted-foreground font-medium">Catalogue</div>
+                        {catalogCategories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.nom}>
+                            {cat.nom}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {/* Catégories existantes pas dans le catalogue */}
+                    {existingCategories.filter((c) => !catalogCategories.find((cc) => cc.nom === c)).length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-muted-foreground font-medium mt-1">Autres</div>
+                        {existingCategories
+                          .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
+                          .map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {cat}
+                            </SelectItem>
+                          ))}
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               )}
