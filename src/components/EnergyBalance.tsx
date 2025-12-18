@@ -1,3 +1,9 @@
+// ============================================
+// EnergyBalance.tsx
+// Bilan énergétique du projet
+// VERSION: 2.2 - Correction affichage capacité batterie (Ah → Wh)
+// ============================================
+
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +27,7 @@ interface ElectricalItem {
   quantite: number;
   puissance_watts?: number | null;
   intensite_amperes?: number | null;
+  capacite_ah?: number | null;
   temps_utilisation_heures?: number | null;
   temps_production_heures?: number | null;
   prix_unitaire?: number | null;
@@ -109,14 +116,37 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     setLoading(true);
     const { data, error } = await supabase
       .from("project_expenses")
-      .select("*")
-      .eq("project_id", projectId)
-      .not("type_electrique", "is", null);
+      .select(
+        `
+        *,
+        accessories_catalog (
+          type_electrique,
+          puissance_watts,
+          capacite_ah,
+          marque
+        )
+      `,
+      )
+      .eq("project_id", projectId);
 
     if (error) {
       console.error("Erreur lors du chargement des équipements électriques:", error);
     } else {
-      setItems(data || []);
+      // Enrichir avec les données du catalogue si nécessaire
+      const enrichedData = (data || [])
+        .map((expense: any) => {
+          const catalog = expense.accessories_catalog;
+          return {
+            ...expense,
+            type_electrique: expense.type_electrique || catalog?.type_electrique,
+            puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
+            capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
+            marque: expense.marque || catalog?.marque,
+          };
+        })
+        .filter((item: any) => item.type_electrique);
+
+      setItems(enrichedData);
     }
     setLoading(false);
   };
@@ -154,16 +184,39 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     setLoading(true);
     const result: any = await (supabase as any)
       .from("project_expenses")
-      .select("*")
-      .eq("scenario_id", principalScenarioId)
-      .not("type_electrique", "is", null);
+      .select(
+        `
+        *,
+        accessories_catalog (
+          type_electrique,
+          puissance_watts,
+          capacite_ah,
+          marque
+        )
+      `,
+      )
+      .eq("scenario_id", principalScenarioId);
 
     const { data, error } = result;
 
     if (error) {
       console.error("Erreur lors du chargement des équipements électriques:", error);
     } else {
-      setItems(data || []);
+      // Enrichir avec les données du catalogue si nécessaire
+      const enrichedData = (data || [])
+        .map((expense: any) => {
+          const catalog = expense.accessories_catalog;
+          return {
+            ...expense,
+            type_electrique: expense.type_electrique || catalog?.type_electrique,
+            puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
+            capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
+            marque: expense.marque || catalog?.marque,
+          };
+        })
+        .filter((item: any) => item.type_electrique);
+
+      setItems(enrichedData);
     }
     setLoading(false);
   };
@@ -305,10 +358,10 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   const calculateBatteryCapacity = (itemsList: ElectricalItem[]) => {
     const storage = itemsList.filter((item) => item.type_electrique === "stockage");
     return storage.reduce((total, item) => {
-      // Pour les batteries, puissance_watts représente la capacité en Wh
-      const capacity = item.puissance_watts || 0;
+      // Pour les batteries : capacité en Wh = Ah * Voltage (12.8V par défaut pour LiFePO4)
+      const capacityWh = (item.capacite_ah || 0) * 12.8;
       const quantity = item.quantite || 1;
-      return total + capacity * quantity;
+      return total + capacityWh * quantity;
     }, 0);
   };
 
@@ -552,6 +605,8 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 const quantity = item.quantite || 1;
                 const usageTime = item.temps_utilisation_heures || 0;
                 const productionTime = item.temps_production_heures || 0;
+                // Pour les batteries : capacité en Wh = Ah * Voltage (12V par défaut)
+                const capacityWh = (item.capacite_ah || 0) * 12.8;
 
                 let totalValue = 0;
                 if (showTimeField === "production") {
@@ -559,7 +614,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                 } else if (showTimeField === "utilisation") {
                   totalValue = power * usageTime * quantity;
                 } else if (showTimeField === "autonomie") {
-                  totalValue = power * quantity; // Capacité totale
+                  totalValue = capacityWh * quantity; // Capacité totale en Wh
                 }
 
                 return (
@@ -628,7 +683,9 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                     {showTimeField === "autonomie" && (
                       <TableCell className="text-center">
                         <span className="text-muted-foreground">
-                          {item.puissance_watts ? `${item.puissance_watts} Wh` : "Non renseigné"}
+                          {item.capacite_ah
+                            ? `${item.capacite_ah} Ah (${(item.capacite_ah * 12.8).toFixed(0)} Wh)`
+                            : "Non renseigné"}
                         </span>
                       </TableCell>
                     )}
