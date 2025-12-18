@@ -3,7 +3,7 @@
 // Bouton + Modale pour importer un devis Evoliz
 // Étape 1: Choisir le devis
 // Étape 2: Cocher les lignes + choisir Matériel/MO + scénario cible
-// VERSION: 2.2 - Nettoyage HTML des noms d'articles (entités &nbsp; etc.)
+// VERSION: 2.3 - Liaison automatique dépenses ↔ catalogue lors de l'import
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -580,26 +580,50 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
         }
       }
 
-      // 2. Importer matériel dans project_expenses
+      // 2. Récupérer les IDs des articles du catalogue pour les lier aux dépenses
+      let catalogMap: Record<string, string> = {};
+      if (addToCatalog) {
+        const { data: catalogItems } = await (supabase as any)
+          .from("accessories_catalog")
+          .select("id, nom")
+          .eq("user_id", user.id);
+
+        if (catalogItems) {
+          catalogItems.forEach((item: any) => {
+            catalogMap[item.nom?.toLowerCase().trim()] = item.id;
+          });
+        }
+      }
+
+      // 3. Importer matériel dans project_expenses avec liaison catalogue
       if (scenarioLines.length > 0) {
-        const expenses = scenarioLines.map((line) => ({
-          project_id: projectId,
-          scenario_id: finalScenarioId,
-          user_id: user.id,
-          nom_accessoire: cleanHtmlEntities(line.designation),
-          quantite: Math.round(line.quantity), // Forcer en entier
-          prix: line.unit_price_vat_exclude,
-          prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
-          categorie: "Import Evoliz",
-          statut_paiement: "payé",
-        }));
+        const expenses = scenarioLines.map((line) => {
+          const cleanName = cleanHtmlEntities(line.designation);
+          const accessoryId = catalogMap[cleanName.toLowerCase().trim()] || null;
+
+          return {
+            project_id: projectId,
+            scenario_id: finalScenarioId,
+            user_id: user.id,
+            nom_accessoire: cleanName,
+            quantite: Math.round(line.quantity), // Forcer en entier
+            prix: line.unit_price_vat_exclude,
+            prix_vente_ttc: line.unit_price_vat_exclude * 1.2,
+            categorie: "Import Evoliz",
+            statut_paiement: "payé",
+            accessory_id: accessoryId, // ✅ Lier au catalogue si trouvé
+          };
+        });
 
         const { error } = await (supabase as any).from("project_expenses").insert(expenses);
 
         if (error) throw error;
+
+        const linkedCount = expenses.filter((e) => e.accessory_id).length;
+        console.log(`✅ ${expenses.length} dépenses importées (${linkedCount} liées au catalogue)`);
       }
 
-      // 2. Importer MO dans project_todos
+      // 4. Importer MO dans project_todos
       if (travauxLines.length > 0) {
         // Créer ou récupérer catégorie "Import Evoliz"
         let categoryId: string;
