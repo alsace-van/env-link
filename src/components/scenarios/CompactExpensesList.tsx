@@ -1,6 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.2 - Catégories unifiées (catalogue + dépenses) pour le formulaire
+// VERSION: 2.3 - Catégories chargées depuis table categories du catalogue
 // ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
 import { useState, useEffect } from "react";
@@ -68,41 +68,36 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
 
-  // Charger les catégories unifiées (catalogue + dépenses)
+  // Charger les catégories depuis la table categories (catalogue)
   const loadAllCategories = async () => {
-    const uniqueCats = new Set<string>();
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
 
-    // 1. Catégories du catalogue
-    const { data: catalogData } = await supabase
-      .from("accessories_catalog")
-      .select("categorie")
-      .not("categorie", "is", null)
-      .not("categorie", "eq", "");
+    // Charger depuis la table categories du catalogue
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id, nom, parent_id")
+      .eq("user_id", userData.user.id)
+      .order("nom");
 
-    if (catalogData) {
-      catalogData.forEach((item: any) => {
-        if (item.categorie) {
-          uniqueCats.add(item.categorie);
-        }
+    if (data && !error) {
+      // Construire la liste avec les sous-catégories indentées
+      const rootCats = data.filter((c) => !c.parent_id);
+      const subCats = data.filter((c) => c.parent_id);
+
+      const result: string[] = [];
+      rootCats.forEach((root) => {
+        result.push(root.nom);
+        // Ajouter les sous-catégories de cette racine
+        subCats
+          .filter((sub) => sub.parent_id === root.id)
+          .forEach((sub) => {
+            result.push(sub.nom);
+          });
       });
+
+      setAllCategories(result);
     }
-
-    // 2. Catégories des dépenses existantes
-    const { data: expensesData } = await supabase
-      .from("project_expenses")
-      .select("categorie")
-      .not("categorie", "is", null)
-      .not("categorie", "eq", "");
-
-    if (expensesData) {
-      expensesData.forEach((item: any) => {
-        if (item.categorie) {
-          uniqueCats.add(item.categorie);
-        }
-      });
-    }
-
-    setAllCategories(Array.from(uniqueCats).sort());
   };
 
   useEffect(() => {
@@ -679,7 +674,6 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
         isLocked={isLocked}
         onSuccess={() => {
           loadExpenses();
-          loadAllCategories(); // Recharger les catégories si nouvelle créée
           onExpenseChange();
           setIsDialogOpen(false);
           setEditingExpense(null);
