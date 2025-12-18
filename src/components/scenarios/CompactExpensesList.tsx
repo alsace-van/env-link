@@ -1,6 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.1 - Ajout coche verte si lié au catalogue
+// VERSION: 2.2 - Catégories unifiées (catalogue + dépenses) pour le formulaire
 // ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
 import { useState, useEffect } from "react";
@@ -64,11 +64,50 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [allCategories, setAllCategories] = useState<string[]>([]); // Catégories unifiées pour le formulaire
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
 
+  // Charger les catégories unifiées (catalogue + dépenses)
+  const loadAllCategories = async () => {
+    const uniqueCats = new Set<string>();
+
+    // 1. Catégories du catalogue
+    const { data: catalogData } = await supabase
+      .from("accessories_catalog")
+      .select("categorie")
+      .not("categorie", "is", null)
+      .not("categorie", "eq", "");
+
+    if (catalogData) {
+      catalogData.forEach((item: any) => {
+        if (item.categorie) {
+          uniqueCats.add(item.categorie);
+        }
+      });
+    }
+
+    // 2. Catégories des dépenses existantes
+    const { data: expensesData } = await supabase
+      .from("project_expenses")
+      .select("categorie")
+      .not("categorie", "is", null)
+      .not("categorie", "eq", "");
+
+    if (expensesData) {
+      expensesData.forEach((item: any) => {
+        if (item.categorie) {
+          uniqueCats.add(item.categorie);
+        }
+      });
+    }
+
+    setAllCategories(Array.from(uniqueCats).sort());
+  };
+
   useEffect(() => {
     loadExpenses();
+    loadAllCategories();
   }, [scenarioId]);
 
   const loadExpenses = async () => {
@@ -634,12 +673,13 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
           setEditingExpense(null);
         }}
         projectId={projectId}
-        existingCategories={categories}
+        existingCategories={allCategories}
         expense={editingExpense}
         scenarioId={scenarioId}
         isLocked={isLocked}
         onSuccess={() => {
           loadExpenses();
+          loadAllCategories(); // Recharger les catégories si nouvelle créée
           onExpenseChange();
           setIsDialogOpen(false);
           setEditingExpense(null);
