@@ -2,7 +2,7 @@
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
 // Sélection, suppression, changement de catégorie
-// VERSION: 3.3 - Catégories chargées depuis le catalogue (accessories_catalog)
+// VERSION: 3.4 - Catégories unifiées (catalogue + dépenses existantes)
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -146,32 +146,48 @@ export function ScenarioExpensesBulkManager({
     }
   };
 
-  // Charger les catégories du catalogue (accessories_catalog)
+  // Charger les catégories (catalogue + dépenses existantes)
   const loadCatalogCategories = async () => {
     try {
-      // Récupérer les catégories distinctes du catalogue
-      const { data, error } = await supabase
+      const uniqueCats = new Set<string>();
+
+      // 1. Catégories du catalogue
+      const { data: catalogData } = await supabase
         .from("accessories_catalog")
         .select("categorie")
         .not("categorie", "is", null)
         .not("categorie", "eq", "");
 
-      if (data) {
-        // Extraire les catégories uniques
-        const uniqueCats = new Set<string>();
-        data.forEach((item: any) => {
+      if (catalogData) {
+        catalogData.forEach((item: any) => {
           if (item.categorie) {
             uniqueCats.add(item.categorie);
           }
         });
-        // Convertir en format attendu par le composant
-        const categoriesArray = Array.from(uniqueCats)
-          .sort()
-          .map((nom, index) => ({ id: `cat-${index}`, nom }));
-        setCatalogCategories(categoriesArray);
       }
+
+      // 2. Catégories des dépenses existantes (pour cohérence)
+      const { data: expensesData } = await supabase
+        .from("project_expenses")
+        .select("categorie")
+        .not("categorie", "is", null)
+        .not("categorie", "eq", "");
+
+      if (expensesData) {
+        expensesData.forEach((item: any) => {
+          if (item.categorie) {
+            uniqueCats.add(item.categorie);
+          }
+        });
+      }
+
+      // Convertir en format attendu
+      const categoriesArray = Array.from(uniqueCats)
+        .sort()
+        .map((nom, index) => ({ id: `cat-${index}`, nom }));
+      setCatalogCategories(categoriesArray);
     } catch (error: any) {
-      console.error("Erreur chargement catégories catalogue:", error);
+      console.error("Erreur chargement catégories:", error);
     }
   };
 
@@ -289,6 +305,11 @@ export function ScenarioExpensesBulkManager({
 
       // Invalider le cache
       queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
+
+      // Recharger les catégories si nouvelle catégorie créée
+      if (newCategory && !catalogCategories.find((c) => c.nom === newCategory)) {
+        loadCatalogCategories();
+      }
 
       // Confirmation visuelle
       toast.success(`Catégorie → "${newCategory || "Aucune"}"`);
@@ -476,13 +497,6 @@ export function ScenarioExpensesBulkManager({
                           {cat.nom}
                         </SelectItem>
                       ))}
-                      {uniqueCategories
-                        .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
-                        .map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat}
-                          </SelectItem>
-                        ))}
                     </SelectContent>
                   </Select>
 
@@ -566,20 +580,11 @@ export function ScenarioExpensesBulkManager({
                           <SelectItem value="__none__">
                             <span className="text-yellow-600">Non classé</span>
                           </SelectItem>
-                          {/* Catégories du catalogue */}
                           {catalogCategories.map((cat) => (
                             <SelectItem key={cat.id} value={cat.nom}>
                               {cat.nom}
                             </SelectItem>
                           ))}
-                          {/* Catégories existantes non dans le catalogue */}
-                          {uniqueCategories
-                            .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
-                            .map((cat) => (
-                              <SelectItem key={cat} value={cat}>
-                                {cat}
-                              </SelectItem>
-                            ))}
                         </SelectContent>
                       </Select>
                     </div>
