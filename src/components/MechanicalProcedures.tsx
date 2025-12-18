@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 2.1 - Fix crash: déplacer handleResizeMouseDown avant useMemo
+// VERSION: 2.3 - Positionnement intelligent des blocs au centre + groupés
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -1067,6 +1067,96 @@ const MechanicalProcedures = () => {
     }
   };
 
+  // 🔥 Helper: Calculer la prochaine position centrée pour un nouveau bloc
+  const getNextBlockPosition = (existingBlocks: ContentBlock[], newWidth: number = 300, newHeight: number = 150) => {
+    // Calculer le centre visible du canvas
+    let centerX = 400;
+    let centerY = 300;
+
+    if (reactFlowInstanceRef.current && reactFlowContainerRef.current) {
+      const viewport = reactFlowInstanceRef.current.getViewport();
+      const containerRect = reactFlowContainerRef.current.getBoundingClientRect();
+
+      centerX = (containerRect.width / 2 - viewport.x) / viewport.zoom;
+      centerY = (containerRect.height / 2 - viewport.y) / viewport.zoom;
+    }
+
+    if (existingBlocks.length === 0) {
+      return {
+        x: Math.round(centerX - newWidth / 2),
+        y: Math.round(centerY - newHeight / 2),
+      };
+    }
+
+    const gapX = 20;
+    const gapY = 20;
+
+    // Trouver le bloc le plus proche du centre
+    const closestBlock = existingBlocks.reduce((closest, block) => {
+      const distCurrent = Math.hypot(block.position_x - centerX, block.position_y - centerY);
+      const distClosest = Math.hypot(closest.position_x - centerX, closest.position_y - centerY);
+      return distCurrent < distClosest ? block : closest;
+    }, existingBlocks[0]);
+
+    // Vérifier si une position est libre
+    const isPositionFree = (x: number, y: number) => {
+      return !existingBlocks.some((block) => {
+        const blockRight = block.position_x + (block.width || 300);
+        const blockBottom = block.position_y + (block.height || 150);
+        const newRight = x + newWidth;
+        const newBottom = y + newHeight;
+
+        return !(
+          x >= blockRight + gapX ||
+          newRight <= block.position_x - gapX ||
+          y >= blockBottom + gapY ||
+          newBottom <= block.position_y - gapY
+        );
+      });
+    };
+
+    const stepX = (closestBlock.width || 300) + gapX;
+    const stepY = (closestBlock.height || 150) + gapY;
+    const baseX = closestBlock.position_x;
+    const baseY = closestBlock.position_y;
+
+    // Essayer à droite
+    if (isPositionFree(baseX + stepX, baseY)) {
+      return { x: Math.round(baseX + stepX), y: Math.round(baseY) };
+    }
+
+    // Essayer en dessous
+    if (isPositionFree(baseX, baseY + stepY)) {
+      return { x: Math.round(baseX), y: Math.round(baseY + stepY) };
+    }
+
+    // Chercher en spirale
+    const directions = [
+      { dx: 1, dy: 0 },
+      { dx: 0, dy: 1 },
+      { dx: -1, dy: 0 },
+      { dx: 0, dy: -1 },
+      { dx: 1, dy: 1 },
+      { dx: -1, dy: 1 },
+      { dx: 1, dy: -1 },
+      { dx: -1, dy: -1 },
+    ];
+
+    for (let radius = 1; radius <= 5; radius++) {
+      for (const dir of directions) {
+        const testX = baseX + dir.dx * stepX * radius;
+        const testY = baseY + dir.dy * stepY * radius;
+        if (isPositionFree(testX, testY)) {
+          return { x: Math.round(testX), y: Math.round(testY) };
+        }
+      }
+    }
+
+    // Fallback : en dessous de tous les blocs
+    const maxY = Math.max(...existingBlocks.map((b) => b.position_y + (b.height || 150)));
+    return { x: Math.round(centerX - newWidth / 2), y: Math.round(maxY + gapY) };
+  };
+
   // Créer une nouvelle gamme
   const handleCreateGamme = async () => {
     if (!newGamme.title) {
@@ -1317,19 +1407,8 @@ const MechanicalProcedures = () => {
         height = 320;
       }
 
-      // 🔥 Position en grille simple - tous les blocs regroupés
-      // Calcul: 3 blocs par ligne, espacés de 350px horizontalement et 200px verticalement
-      const blocksPerRow = 3;
-      const gapX = 350;
-      const gapY = 200;
-      const startX = 50;
-      const startY = 50;
-
-      const row = Math.floor(blocks.length / blocksPerRow);
-      const col = blocks.length % blocksPerRow;
-
-      const posX = startX + col * gapX;
-      const posY = startY + row * gapY;
+      // 🔥 Utiliser le helper pour la position centrée et groupée
+      const { x: posX, y: posY } = getNextBlockPosition(blocks, width, height);
 
       const { data, error } = await (supabase as any)
         .from("mechanical_blocks")
@@ -1352,14 +1431,23 @@ const MechanicalProcedures = () => {
       setSelectedBlockId(data.id);
       setIsIconPickerOpen(false);
 
-      // 🔥 Afficher tous les blocs après un court délai
+      // 🔥 Centrer sur le nouveau bloc sans tout recadrer
       setTimeout(() => {
         if (reactFlowInstanceRef.current) {
-          reactFlowInstanceRef.current.fitView({
-            padding: 0.2,
-            duration: 300,
-            // Pas de filtre nodes = affiche tous les blocs
-          });
+          // Si c'est le premier bloc, faire un fitView
+          if (blocks.length === 0) {
+            reactFlowInstanceRef.current.fitView({
+              padding: 0.5,
+              duration: 300,
+            });
+          } else {
+            // Sinon, centrer doucement sur le nouveau bloc
+            reactFlowInstanceRef.current.setCenter(
+              data.position_x + (data.width || 150),
+              data.position_y + (data.height || 75),
+              { duration: 300, zoom: reactFlowInstanceRef.current.getZoom() },
+            );
+          }
         }
       }, 100);
 
@@ -2232,14 +2320,17 @@ Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explicatio
               data: { publicUrl },
             } = supabase.storage.from("mechanical-images").getPublicUrl(fileName);
 
+            // 🔥 Calculer la position centrée
+            const { x: posX, y: posY } = getNextBlockPosition(blocks, 400, 300);
+
             // Créer un bloc image avec le SVG
             const { error: blockError } = await (supabase as any).from("mechanical_blocks").insert({
               chapter_id: activeChapterId,
               type: "image",
               content: "Schéma SVG généré par IA",
               image_url: publicUrl,
-              position_x: 100,
-              position_y: 100 + blocks.length * 50,
+              position_x: posX,
+              position_y: posY,
               width: 400,
               height: 300,
               order_index: blocks.length,
@@ -2319,13 +2410,20 @@ Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explicatio
 
         // Créer les blocs
         const createdBlocks: { label: string; id: string }[] = [];
-        const startX = 100;
-        const startY = 100;
         const blockWidth = 300;
         const blockHeight = 150;
         const gapX = 100;
         const gapY = 50;
         const blocksPerRow = 3;
+
+        // 🔥 Calculer une grille centrée
+        const totalRows = Math.ceil(schema.blocks.length / blocksPerRow);
+        const centerX = 600;
+        const centerY = 400;
+        const gridWidth = blocksPerRow * blockWidth + (blocksPerRow - 1) * gapX;
+        const gridHeight = totalRows * blockHeight + (totalRows - 1) * gapY;
+        const startX = centerX - gridWidth / 2;
+        const startY = centerY - gridHeight / 2;
 
         for (let i = 0; i < schema.blocks.length; i++) {
           const blockData = schema.blocks[i];
@@ -2761,21 +2859,40 @@ RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans tex
         }
 
         console.log(`  - ${blocksToCreate.length} blocs à créer`);
+
+        // 🔥 Calculer une grille centrée pour les blocs
+        const blockWidth = 400;
+        const blockHeight = 150;
+        const gapX = 50;
+        const gapY = 50;
+        const blocksPerRow = 2;
+        const totalRows = Math.ceil(blocksToCreate.length / blocksPerRow);
+
+        // Centre du canvas (position par défaut)
+        const centerX = 600;
+        const centerY = 400;
+
+        // Calculer l'offset pour centrer la grille
+        const gridWidth = blocksPerRow * blockWidth + (blocksPerRow - 1) * gapX;
+        const gridHeight = totalRows * blockHeight + (totalRows - 1) * gapY;
+        const startX = centerX - gridWidth / 2;
+        const startY = centerY - gridHeight / 2;
+
         for (let blockIndex = 0; blockIndex < blocksToCreate.length; blockIndex++) {
           const block = blocksToCreate[blockIndex];
 
-          const row = Math.floor(blockIndex / 2);
-          const col = blockIndex % 2;
+          const row = Math.floor(blockIndex / blocksPerRow);
+          const col = blockIndex % blocksPerRow;
 
           const { error: blockError } = await (supabase as any).from("mechanical_blocks").insert({
             chapter_id: newChapterData.id,
             type: block.type || "text",
             title: block.title || null,
             content: block.content || "",
-            position_x: 50 + col * 450,
-            position_y: 50 + row * 200,
-            width: 400,
-            height: 150,
+            position_x: Math.round(startX + col * (blockWidth + gapX)),
+            position_y: Math.round(startY + row * (blockHeight + gapY)),
+            width: blockWidth,
+            height: blockHeight,
             order_index: blockIndex,
           });
 
