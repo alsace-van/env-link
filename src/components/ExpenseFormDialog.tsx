@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpenseFormDialog
 // Formulaire d'ajout/modification de dépense
-// VERSION: 2.0 - Fix suggestions catalogue si déjà lié
+// VERSION: 2.1 - Fix: ne pas proposer suggestion si nom exactement identique
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -176,6 +176,7 @@ const ExpenseFormDialog = ({
 
   // Filter accessories based on search
   // Ne pas proposer de suggestions si l'article est déjà lié au catalogue
+  // Ou si le nom correspond exactement à une suggestion (déjà dans le catalogue)
   useEffect(() => {
     // Si déjà lié à un article du catalogue, ne pas proposer de suggestions
     if (selectedAccessoryId) {
@@ -184,13 +185,20 @@ const ExpenseFormDialog = ({
     }
 
     if (formData.nom_accessoire && formData.nom_accessoire.length >= 2) {
-      const searchTerm = formData.nom_accessoire.toLowerCase();
-      const filtered = catalogAccessories.filter(
-        (acc) =>
+      const searchTerm = formData.nom_accessoire.toLowerCase().trim();
+      const filtered = catalogAccessories.filter((acc) => {
+        // Exclure les articles dont le nom correspond EXACTEMENT (déjà créé)
+        const accName = acc.nom?.toLowerCase().trim();
+        if (accName === searchTerm) {
+          return false; // Ne pas proposer si c'est exactement le même nom
+        }
+
+        return (
           acc.nom.toLowerCase().includes(searchTerm) ||
           (acc.description && acc.description.toLowerCase().includes(searchTerm)) ||
-          (acc.fournisseur && acc.fournisseur.toLowerCase().includes(searchTerm)),
-      );
+          (acc.fournisseur && acc.fournisseur.toLowerCase().includes(searchTerm))
+        );
+      });
       setFilteredAccessories(filtered.slice(0, 5)); // Limit to 5 suggestions
     } else {
       setFilteredAccessories([]);
