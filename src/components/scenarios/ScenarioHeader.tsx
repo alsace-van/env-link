@@ -1,5 +1,6 @@
 // components/scenarios/ScenarioHeader.tsx
 // Header d'un scénario avec nom, badge principal et menu actions
+// VERSION: 1.1 - Badges et menu de changement de statut (Facturé, Validé, Brouillon)
 // ✅ AJOUT: Bouton Export vers Evoliz
 
 import { useState } from "react";
@@ -42,8 +43,15 @@ const COULEURS_PREDEFINES = [
 const ICONES_PREDEFINIES = ["🔒", "📋", "⚡", "💰", "🎯", "⭐", "🚀", "💡"];
 
 const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, clientName }: ScenarioHeaderProps) => {
-  const { updateScenario, deleteScenario, promoteScenario, duplicateScenario, unlockScenario, clearDevisHistory } =
-    useScenarios(scenario.project_id);
+  const {
+    updateScenario,
+    deleteScenario,
+    promoteScenario,
+    duplicateScenario,
+    unlockScenario,
+    clearDevisHistory,
+    updateScenarioStatut,
+  } = useScenarios(scenario.project_id);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [isCustomizeDialogOpen, setIsCustomizeDialogOpen] = useState(false);
   const [isExportEvolizOpen, setIsExportEvolizOpen] = useState(false);
@@ -133,6 +141,11 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, cli
     }
   };
 
+  const handleChangeStatut = async (statut: "brouillon" | "validé" | "facturé") => {
+    await updateScenarioStatut(scenario.id, statut);
+    onScenarioChange();
+  };
+
   return (
     <>
       <div
@@ -143,12 +156,29 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, cli
           <span className="text-2xl">{scenario.icone}</span>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold truncate">{scenario.nom}</h3>
-            {scenario.est_principal && (
-              <Badge variant="default" className="mt-1">
-                {isLocked ? <Lock className="h-3 w-3 mr-1" /> : null}
-                Principal {isLocked ? "(Verrouillé)" : ""}
-              </Badge>
-            )}
+            <div className="flex flex-wrap gap-1 mt-1">
+              {scenario.est_principal && (
+                <Badge variant="default">
+                  {isLocked ? <Lock className="h-3 w-3 mr-1" /> : null}
+                  Principal {isLocked ? "(Verrouillé)" : ""}
+                </Badge>
+              )}
+              {(scenario as any).statut === "facturé" && (
+                <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50">
+                  ✓ Facturé
+                </Badge>
+              )}
+              {(scenario as any).statut === "validé" && (
+                <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50">
+                  ✓ Validé
+                </Badge>
+              )}
+              {(scenario as any).evoliz_quote_number && (
+                <Badge variant="outline" className="text-gray-500 border-gray-300">
+                  {(scenario as any).evoliz_quote_number}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
 
@@ -198,6 +228,28 @@ const ScenarioHeader = ({ scenario, onScenarioChange, isLocked, projectName, cli
               <ListChecks className="h-4 w-4 mr-2" />
               Gérer les articles
             </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            {/* Changement de statut */}
+            {(scenario as any).statut !== "facturé" && (
+              <DropdownMenuItem onClick={() => handleChangeStatut("facturé")}>
+                <Star className="h-4 w-4 mr-2 text-green-600" />
+                Marquer Facturé
+              </DropdownMenuItem>
+            )}
+            {(scenario as any).statut !== "validé" && (
+              <DropdownMenuItem onClick={() => handleChangeStatut("validé")}>
+                <Star className="h-4 w-4 mr-2 text-blue-600" />
+                Marquer Validé
+              </DropdownMenuItem>
+            )}
+            {(scenario as any).statut && (scenario as any).statut !== "brouillon" && (
+              <DropdownMenuItem onClick={() => handleChangeStatut("brouillon")}>
+                <FileText className="h-4 w-4 mr-2 text-gray-400" />
+                Remettre en brouillon
+              </DropdownMenuItem>
+            )}
 
             {!scenario.est_principal && (
               <>
