@@ -1,7 +1,7 @@
 // ============================================
 // EnergyBalance.tsx
 // Bilan énergétique du projet
-// VERSION: 2.2 - Correction affichage capacité batterie (Ah → Wh)
+// VERSION: 2.3 - Fix requêtes catalogue (sans jointure Supabase)
 // ============================================
 
 import { useEffect, useState, useRef } from "react";
@@ -114,40 +114,49 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
 
   const loadElectricalItemsWithoutScenario = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("project_expenses")
-      .select(
-        `
-        *,
-        accessories_catalog (
-          type_electrique,
-          puissance_watts,
-          capacite_ah,
-          marque
-        )
-      `,
-      )
-      .eq("project_id", projectId);
+
+    // Récupérer les expenses
+    const { data: expenses, error } = await supabase.from("project_expenses").select("*").eq("project_id", projectId);
 
     if (error) {
       console.error("Erreur lors du chargement des équipements électriques:", error);
-    } else {
-      // Enrichir avec les données du catalogue si nécessaire
-      const enrichedData = (data || [])
-        .map((expense: any) => {
-          const catalog = expense.accessories_catalog;
-          return {
-            ...expense,
-            type_electrique: expense.type_electrique || catalog?.type_electrique,
-            puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
-            capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
-            marque: expense.marque || catalog?.marque,
-          };
-        })
-        .filter((item: any) => item.type_electrique);
-
-      setItems(enrichedData);
+      setLoading(false);
+      return;
     }
+
+    // Récupérer les accessory_ids pour enrichir depuis le catalogue
+    const accessoryIds = (expenses || []).filter((e: any) => e.accessory_id).map((e: any) => e.accessory_id);
+
+    let catalogMap: Record<string, any> = {};
+
+    if (accessoryIds.length > 0) {
+      const { data: catalogItems } = await supabase
+        .from("accessories_catalog")
+        .select("id, type_electrique, puissance_watts, capacite_ah, marque")
+        .in("id", accessoryIds);
+
+      if (catalogItems) {
+        catalogItems.forEach((item: any) => {
+          catalogMap[item.id] = item;
+        });
+      }
+    }
+
+    // Enrichir avec les données du catalogue si nécessaire
+    const enrichedData = (expenses || [])
+      .map((expense: any) => {
+        const catalog = catalogMap[expense.accessory_id];
+        return {
+          ...expense,
+          type_electrique: expense.type_electrique || catalog?.type_electrique,
+          puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
+          capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
+          marque: expense.marque || catalog?.marque,
+        };
+      })
+      .filter((item: any) => item.type_electrique);
+
+    setItems(enrichedData);
     setLoading(false);
   };
 
@@ -182,42 +191,52 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     }
 
     setLoading(true);
-    const result: any = await (supabase as any)
-      .from("project_expenses")
-      .select(
-        `
-        *,
-        accessories_catalog (
-          type_electrique,
-          puissance_watts,
-          capacite_ah,
-          marque
-        )
-      `,
-      )
-      .eq("scenario_id", principalScenarioId);
 
-    const { data, error } = result;
+    // Récupérer les expenses du scénario
+    const { data: expenses, error } = await (supabase as any)
+      .from("project_expenses")
+      .select("*")
+      .eq("scenario_id", principalScenarioId);
 
     if (error) {
       console.error("Erreur lors du chargement des équipements électriques:", error);
-    } else {
-      // Enrichir avec les données du catalogue si nécessaire
-      const enrichedData = (data || [])
-        .map((expense: any) => {
-          const catalog = expense.accessories_catalog;
-          return {
-            ...expense,
-            type_electrique: expense.type_electrique || catalog?.type_electrique,
-            puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
-            capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
-            marque: expense.marque || catalog?.marque,
-          };
-        })
-        .filter((item: any) => item.type_electrique);
-
-      setItems(enrichedData);
+      setLoading(false);
+      return;
     }
+
+    // Récupérer les accessory_ids pour enrichir depuis le catalogue
+    const accessoryIds = (expenses || []).filter((e: any) => e.accessory_id).map((e: any) => e.accessory_id);
+
+    let catalogMap: Record<string, any> = {};
+
+    if (accessoryIds.length > 0) {
+      const { data: catalogItems } = await (supabase as any)
+        .from("accessories_catalog")
+        .select("id, type_electrique, puissance_watts, capacite_ah, marque")
+        .in("id", accessoryIds);
+
+      if (catalogItems) {
+        catalogItems.forEach((item: any) => {
+          catalogMap[item.id] = item;
+        });
+      }
+    }
+
+    // Enrichir avec les données du catalogue si nécessaire
+    const enrichedData = (expenses || [])
+      .map((expense: any) => {
+        const catalog = catalogMap[expense.accessory_id];
+        return {
+          ...expense,
+          type_electrique: expense.type_electrique || catalog?.type_electrique,
+          puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
+          capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
+          marque: expense.marque || catalog?.marque,
+        };
+      })
+      .filter((item: any) => item.type_electrique);
+
+    setItems(enrichedData);
     setLoading(false);
   };
 
