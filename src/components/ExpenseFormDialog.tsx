@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpenseFormDialog
 // Formulaire d'ajout/modification de dépense
-// VERSION: 2.3 - Catégories unifiées (catalogue + dépenses existantes)
+// VERSION: 2.4 - Catégories chargées depuis table categories du catalogue
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -224,43 +224,34 @@ const ExpenseFormDialog = ({
   };
 
   const loadCatalogCategories = async () => {
-    const uniqueCats = new Set<string>();
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
 
-    // 1. Catégories du catalogue
-    const { data: catalogData } = await supabase
-      .from("accessories_catalog")
-      .select("categorie")
-      .not("categorie", "is", null)
-      .not("categorie", "eq", "");
+    // Charger depuis la table categories du catalogue
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id, nom, parent_id")
+      .eq("user_id", userData.user.id)
+      .order("nom");
 
-    if (catalogData) {
-      catalogData.forEach((item: any) => {
-        if (item.categorie) {
-          uniqueCats.add(item.categorie);
-        }
+    if (data && !error) {
+      // Construire la liste avec les sous-catégories
+      const rootCats = data.filter((c) => !c.parent_id);
+      const subCats = data.filter((c) => c.parent_id);
+
+      const result: { id: string; nom: string }[] = [];
+      rootCats.forEach((root) => {
+        result.push({ id: root.id, nom: root.nom });
+        // Ajouter les sous-catégories de cette racine
+        subCats
+          .filter((sub) => sub.parent_id === root.id)
+          .forEach((sub) => {
+            result.push({ id: sub.id, nom: sub.nom });
+          });
       });
+
+      setCatalogCategories(result);
     }
-
-    // 2. Catégories des dépenses existantes (pour cohérence)
-    const { data: expensesData } = await supabase
-      .from("project_expenses")
-      .select("categorie")
-      .not("categorie", "is", null)
-      .not("categorie", "eq", "");
-
-    if (expensesData) {
-      expensesData.forEach((item: any) => {
-        if (item.categorie) {
-          uniqueCats.add(item.categorie);
-        }
-      });
-    }
-
-    // Convertir en format attendu
-    const categoriesArray = Array.from(uniqueCats)
-      .sort()
-      .map((nom, index) => ({ id: `cat-${index}`, nom }));
-    setCatalogCategories(categoriesArray);
   };
 
   const loadCatalogAccessories = async () => {
