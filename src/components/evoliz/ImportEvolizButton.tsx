@@ -3,7 +3,7 @@
 // Bouton + Modale pour importer un devis Evoliz
 // Étape 1: Choisir le devis
 // Étape 2: Cocher les lignes + choisir Matériel/MO + scénario cible
-// VERSION: 2.0 - Ajout sélection scénario cible (nouveau ou existant)
+// VERSION: 2.1 - Fix: retrait user_id de project_scenarios
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -443,7 +443,6 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           .from("project_scenarios")
           .insert({
             project_id: projectId,
-            user_id: user.id,
             nom: scenarioName,
             icone: "📄",
             couleur: "#6366f1",
