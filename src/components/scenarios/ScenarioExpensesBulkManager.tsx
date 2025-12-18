@@ -2,7 +2,7 @@
 // ScenarioExpensesBulkManager.tsx
 // Gestion en masse des dépenses d'un scénario
 // Sélection, suppression, changement de catégorie
-// VERSION: 3.4 - Catégories unifiées (catalogue + dépenses existantes)
+// VERSION: 3.5 - Catégories chargées depuis table categories du catalogue
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -146,46 +146,36 @@ export function ScenarioExpensesBulkManager({
     }
   };
 
-  // Charger les catégories (catalogue + dépenses existantes)
+  // Charger les catégories depuis la table categories (catalogue)
   const loadCatalogCategories = async () => {
     try {
-      const uniqueCats = new Set<string>();
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
 
-      // 1. Catégories du catalogue
-      const { data: catalogData } = await supabase
-        .from("accessories_catalog")
-        .select("categorie")
-        .not("categorie", "is", null)
-        .not("categorie", "eq", "");
+      const { data, error } = await supabase
+        .from("categories")
+        .select("id, nom, parent_id")
+        .eq("user_id", userData.user.id)
+        .order("nom");
 
-      if (catalogData) {
-        catalogData.forEach((item: any) => {
-          if (item.categorie) {
-            uniqueCats.add(item.categorie);
-          }
+      if (data && !error) {
+        // Construire la liste avec les sous-catégories
+        const rootCats = data.filter((c) => !c.parent_id);
+        const subCats = data.filter((c) => c.parent_id);
+
+        const result: { id: string; nom: string }[] = [];
+        rootCats.forEach((root) => {
+          result.push({ id: root.id, nom: root.nom });
+          // Ajouter les sous-catégories de cette racine
+          subCats
+            .filter((sub) => sub.parent_id === root.id)
+            .forEach((sub) => {
+              result.push({ id: sub.id, nom: sub.nom });
+            });
         });
+
+        setCatalogCategories(result);
       }
-
-      // 2. Catégories des dépenses existantes (pour cohérence)
-      const { data: expensesData } = await supabase
-        .from("project_expenses")
-        .select("categorie")
-        .not("categorie", "is", null)
-        .not("categorie", "eq", "");
-
-      if (expensesData) {
-        expensesData.forEach((item: any) => {
-          if (item.categorie) {
-            uniqueCats.add(item.categorie);
-          }
-        });
-      }
-
-      // Convertir en format attendu
-      const categoriesArray = Array.from(uniqueCats)
-        .sort()
-        .map((nom, index) => ({ id: `cat-${index}`, nom }));
-      setCatalogCategories(categoriesArray);
     } catch (error: any) {
       console.error("Erreur chargement catégories:", error);
     }
@@ -305,11 +295,6 @@ export function ScenarioExpensesBulkManager({
 
       // Invalider le cache
       queryClient.invalidateQueries({ queryKey: ["project-expenses", projectId] });
-
-      // Recharger les catégories si nouvelle catégorie créée
-      if (newCategory && !catalogCategories.find((c) => c.nom === newCategory)) {
-        loadCatalogCategories();
-      }
 
       // Confirmation visuelle
       toast.success(`Catégorie → "${newCategory || "Aucune"}"`);
