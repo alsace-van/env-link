@@ -152,7 +152,7 @@ const Downloads = () => {
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
       <div className="container max-w-6xl mx-auto py-8 px-4">
         {/* Header */}
-        <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6">
+        <Button variant="ghost" onClick={() => navigate("/")} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Retour
         </Button>
