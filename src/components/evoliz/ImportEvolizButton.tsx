@@ -2,7 +2,8 @@
 // ImportEvolizButton.tsx
 // Bouton + Modale pour importer un devis Evoliz
 // Étape 1: Choisir le devis
-// Étape 2: Cocher les lignes + choisir Matériel/MO
+// Étape 2: Cocher les lignes + choisir Matériel/MO + scénario cible
+// VERSION: 2.0 - Ajout sélection scénario cible (nouveau ou existant)
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -20,6 +21,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Loader2,
   Download,
@@ -33,6 +35,8 @@ import {
   AlertCircle,
   Check,
   BookPlus,
+  FolderPlus,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useEvolizConfig } from "@/hooks/useEvolizConfig";
@@ -157,12 +161,54 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
   const [lines, setLines] = useState<QuoteLine[]>([]);
   const [addToCatalog, setAddToCatalog] = useState(true); // Ajouter au catalogue par défaut
 
+  // États pour le scénario cible
+  const [scenarios, setScenarios] = useState<
+    Array<{
+      id: string;
+      nom: string;
+      icone: string;
+      couleur: string;
+      est_principal: boolean;
+      statut?: string;
+    }>
+  >([]);
+  const [targetScenarioId, setTargetScenarioId] = useState<string>("__new__");
+  const [newScenarioName, setNewScenarioName] = useState<string>("");
+
   // Charger les devis quand on ouvre
   useEffect(() => {
     if (open && isConfigured) {
       fetchQuotes();
     }
   }, [open, isConfigured]);
+
+  // Charger les scénarios du projet
+  useEffect(() => {
+    const loadScenarios = async () => {
+      const { data, error } = await (supabase as any)
+        .from("project_scenarios")
+        .select("id, nom, icone, couleur, est_principal, statut")
+        .eq("project_id", projectId)
+        .order("ordre");
+
+      if (data) {
+        setScenarios(data);
+        // Par défaut, proposer de créer un nouveau scénario
+        setTargetScenarioId("__new__");
+      }
+    };
+
+    if (open && projectId) {
+      loadScenarios();
+    }
+  }, [open, projectId]);
+
+  // Pré-remplir le nom du scénario quand on sélectionne un devis
+  useEffect(() => {
+    if (selectedQuote) {
+      setNewScenarioName(selectedQuote.object || `Devis ${selectedQuote.document_number || ""}`);
+    }
+  }, [selectedQuote]);
 
   // État pour l'enrichissement
   const [isEnriching, setIsEnriching] = useState(false);
@@ -374,6 +420,66 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
+      // 0. Déterminer le scénario cible
+      let finalScenarioId: string | null = null;
+
+      if (targetScenarioId === "__new__") {
+        // Créer un nouveau scénario
+        const scenarioName =
+          newScenarioName.trim() || selectedQuote?.object || `Devis ${selectedQuote?.document_number || ""}`;
+
+        // Récupérer le prochain ordre
+        const { data: existingScenarios } = await (supabase as any)
+          .from("project_scenarios")
+          .select("ordre")
+          .eq("project_id", projectId)
+          .order("ordre", { ascending: false })
+          .limit(1);
+
+        const nextOrdre = (existingScenarios?.[0]?.ordre || 0) + 1;
+        const isFirst = scenarios.length === 0;
+
+        const { data: newScenario, error: scenarioError } = await (supabase as any)
+          .from("project_scenarios")
+          .insert({
+            project_id: projectId,
+            user_id: user.id,
+            nom: scenarioName,
+            icone: "📄",
+            couleur: "#6366f1",
+            ordre: nextOrdre,
+            est_principal: isFirst,
+            statut: "facturé",
+            evoliz_quote_id: selectedQuote?.quoteid?.toString() || null,
+            evoliz_quote_number: selectedQuote?.document_number || null,
+          })
+          .select()
+          .single();
+
+        if (scenarioError) {
+          console.error("❌ Erreur création scénario:", scenarioError);
+          throw scenarioError;
+        }
+
+        finalScenarioId = newScenario.id;
+        console.log("✅ Nouveau scénario créé:", scenarioName, finalScenarioId);
+        toast.success(`Scénario "${scenarioName}" créé`);
+      } else {
+        // Utiliser le scénario existant sélectionné
+        finalScenarioId = targetScenarioId;
+
+        // Mettre à jour les infos Evoliz sur le scénario existant
+        await (supabase as any)
+          .from("project_scenarios")
+          .update({
+            evoliz_quote_id: selectedQuote?.quoteid?.toString() || null,
+            evoliz_quote_number: selectedQuote?.document_number || null,
+          })
+          .eq("id", targetScenarioId);
+
+        console.log("📋 Utilisation scénario existant:", finalScenarioId);
+      }
+
       // 1. Ajouter au catalogue si option activée (seulement les lignes matériel)
       let catalogItemsCreated = 0;
       if (addToCatalog && scenarioLines.length > 0) {
@@ -462,7 +568,7 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
       if (scenarioLines.length > 0) {
         const expenses = scenarioLines.map((line) => ({
           project_id: projectId,
-          scenario_id: scenarioId || null,
+          scenario_id: finalScenarioId,
           user_id: user.id,
           nom_accessoire: line.designation.replace(/<[^>]*>/g, "").trim(), // Nettoyer HTML
           quantite: Math.round(line.quantity), // Forcer en entier
@@ -511,14 +617,18 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
 
         const todos = travauxLines.map((line, index) => {
           const forfaitTTC = line.total_vat_exclude * 1.2;
+          const forfaitHT = line.total_vat_exclude;
           return {
             project_id: projectId,
             user_id: user.id,
             category_id: categoryId,
+            work_scenario_id: finalScenarioId, // ✅ Lier au scénario
             title: line.designation.replace(/<[^>]*>/g, "").trim(),
             completed: false,
             display_order: index + 1,
             forfait_ttc: forfaitTTC,
+            forfait_ht: forfaitHT, // ✅ Ajouter HT pour les stats
+            tva_rate: 20,
             estimated_hours: estimateHours(forfaitTTC),
             imported_from_evoliz: true,
             evoliz_item_id: line.itemid,
@@ -548,6 +658,8 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
       queryClient.invalidateQueries({ queryKey: ["project-todos", projectId] });
       queryClient.invalidateQueries({ queryKey: ["work-categories", projectId] });
       queryClient.invalidateQueries({ queryKey: ["accessories-catalog"] });
+      queryClient.invalidateQueries({ queryKey: ["project-scenarios", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["scenarios", projectId] });
 
       let message = `Import réussi : ${result.scenarioCount} article(s) + ${result.travauxCount} tâche(s)`;
       if (result.catalogItemsCreated > 0) {
@@ -638,6 +750,61 @@ export function ImportEvolizButton({ projectId, scenarioId, onImportComplete }: 
           {/* ÉTAPE 2 : Lignes du devis */}
           {step === 2 && selectedQuote && (
             <>
+              {/* Choix du scénario cible */}
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <FolderPlus className="h-5 w-5 text-blue-600" />
+                  <Label className="text-sm font-medium">Scénario cible pour l'import</Label>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Select value={targetScenarioId} onValueChange={setTargetScenarioId}>
+                    <SelectTrigger className="w-[280px]">
+                      <SelectValue placeholder="Sélectionner..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__new__" className="text-blue-600 font-medium">
+                        <span className="flex items-center gap-2">
+                          <Plus className="h-4 w-4" />
+                          Créer un nouveau scénario
+                        </span>
+                      </SelectItem>
+                      {scenarios.length > 0 && <div className="h-px bg-border my-1" />}
+                      {scenarios.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          <span className="flex items-center gap-2">
+                            <span>{s.icone}</span>
+                            <span>{s.nom}</span>
+                            {s.est_principal && (
+                              <Badge variant="secondary" className="text-xs ml-1">
+                                Principal
+                              </Badge>
+                            )}
+                            {s.statut === "facturé" && (
+                              <Badge variant="outline" className="text-xs text-green-600">
+                                Facturé
+                              </Badge>
+                            )}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {targetScenarioId === "__new__" && (
+                    <Input
+                      value={newScenarioName}
+                      onChange={(e) => setNewScenarioName(e.target.value)}
+                      placeholder="Nom du nouveau scénario..."
+                      className="w-[280px]"
+                    />
+                  )}
+
+                  {targetScenarioId !== "__new__" && (
+                    <span className="text-sm text-amber-600">⚠️ Les articles seront ajoutés au scénario existant</span>
+                  )}
+                </div>
+              </div>
+
               <div className="flex items-center justify-between py-2">
                 <Button variant="ghost" size="sm" onClick={() => setStep(1)}>
                   <ChevronLeft className="h-4 w-4 mr-1" />
