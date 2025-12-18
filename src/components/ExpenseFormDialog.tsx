@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpenseFormDialog
 // Formulaire d'ajout/modification de dépense
-// VERSION: 2.2 - Catégories chargées depuis le catalogue + suggestions groupées
+// VERSION: 2.3 - Catégories unifiées (catalogue + dépenses existantes)
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -224,27 +224,43 @@ const ExpenseFormDialog = ({
   };
 
   const loadCatalogCategories = async () => {
-    // Récupérer les catégories distinctes depuis le catalogue
-    const { data } = await supabase
+    const uniqueCats = new Set<string>();
+
+    // 1. Catégories du catalogue
+    const { data: catalogData } = await supabase
       .from("accessories_catalog")
       .select("categorie")
       .not("categorie", "is", null)
       .not("categorie", "eq", "");
 
-    if (data) {
-      // Extraire les catégories uniques
-      const uniqueCats = new Set<string>();
-      data.forEach((item: any) => {
+    if (catalogData) {
+      catalogData.forEach((item: any) => {
         if (item.categorie) {
           uniqueCats.add(item.categorie);
         }
       });
-      // Convertir en format attendu
-      const categoriesArray = Array.from(uniqueCats)
-        .sort()
-        .map((nom, index) => ({ id: `cat-${index}`, nom }));
-      setCatalogCategories(categoriesArray);
     }
+
+    // 2. Catégories des dépenses existantes (pour cohérence)
+    const { data: expensesData } = await supabase
+      .from("project_expenses")
+      .select("categorie")
+      .not("categorie", "is", null)
+      .not("categorie", "eq", "");
+
+    if (expensesData) {
+      expensesData.forEach((item: any) => {
+        if (item.categorie) {
+          uniqueCats.add(item.categorie);
+        }
+      });
+    }
+
+    // Convertir en format attendu
+    const categoriesArray = Array.from(uniqueCats)
+      .sort()
+      .map((nom, index) => ({ id: `cat-${index}`, nom }));
+    setCatalogCategories(categoriesArray);
   };
 
   const loadCatalogAccessories = async () => {
@@ -1016,30 +1032,11 @@ const ExpenseFormDialog = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__new__">+ Nouvelle catégorie</SelectItem>
-                    {/* Catégories du catalogue en premier */}
-                    {catalogCategories.length > 0 && (
-                      <>
-                        <div className="px-2 py-1 text-xs text-muted-foreground font-medium">Catalogue</div>
-                        {catalogCategories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.nom}>
-                            {cat.nom}
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                    {/* Catégories existantes pas dans le catalogue */}
-                    {existingCategories.filter((c) => !catalogCategories.find((cc) => cc.nom === c)).length > 0 && (
-                      <>
-                        <div className="px-2 py-1 text-xs text-muted-foreground font-medium mt-1">Autres</div>
-                        {existingCategories
-                          .filter((c) => !catalogCategories.find((cc) => cc.nom === c))
-                          .map((cat) => (
-                            <SelectItem key={cat} value={cat}>
-                              {cat}
-                            </SelectItem>
-                          ))}
-                      </>
-                    )}
+                    {catalogCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.nom}>
+                        {cat.nom}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               )}
