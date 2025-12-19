@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 2.8 - Fix canvas + sidebar photos
+// VERSION: 2.9 - onOpen prop pour PhotoGallerySidebar
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -5019,6 +5019,7 @@ ${block.content}`,
       <PhotoGallerySidebar
         isOpen={isPhotoSidebarOpen}
         onClose={() => setIsPhotoSidebarOpen(false)}
+        onOpen={() => setIsPhotoSidebarOpen(true)}
         onSelectPhoto={(url, name) => {
           // Créer un bloc au centre du canvas visible
           const centerX = window.innerWidth / 2;
