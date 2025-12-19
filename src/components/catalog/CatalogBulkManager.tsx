@@ -2,7 +2,7 @@
 // CatalogBulkManager.tsx
 // Gestion en masse des articles du catalogue
 // Sélection, suppression, filtrage
-// VERSION: 1.1 - Ajout colonne catégorie + rafraîchissement fermeture
+// VERSION: 1.2 - Filtre catégorie + création catégorie inline
 // ============================================
 
 import { useState, useEffect, useMemo } from "react";
@@ -199,6 +199,13 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
   // État pour les catégories
   const [categories, setCategories] = useState<Category[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
+  const [filterCategory, setFilterCategory] = useState<string>("all");
+
+  // État pour la création de nouvelle catégorie
+  const [showNewCategoryDialog, setShowNewCategoryDialog] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParentId, setNewCategoryParentId] = useState<string | null>(null);
+  const [savingCategory, setSavingCategory] = useState(false);
 
   // Options pour type électrique (compact)
   const typeElectriqueOptions = [
@@ -314,8 +321,51 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
       setSearchTerm("");
       setFilterFournisseur("all");
       setFilterDate("all");
+      setFilterCategory("all");
     }
   }, [open]);
+
+  // Créer une nouvelle catégorie
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      toast.error("Le nom de la catégorie est requis");
+      return;
+    }
+
+    setSavingCategory(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("categories")
+        .insert({
+          nom: newCategoryName.trim(),
+          parent_id: newCategoryParentId,
+          user_id: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Ajouter à la liste locale
+      setCategories((prev) => [...prev, data].sort((a, b) => a.nom.localeCompare(b.nom)));
+
+      toast.success(`Catégorie "${newCategoryName}" créée`);
+      setNewCategoryName("");
+      setNewCategoryParentId(null);
+      setShowNewCategoryDialog(false);
+      setHasChanges(true);
+    } catch (error: any) {
+      console.error("Erreur création catégorie:", error);
+      toast.error("Erreur lors de la création");
+    } finally {
+      setSavingCategory(false);
+    }
+  };
 
   // Extraire les fournisseurs uniques
   const uniqueFournisseurs = useMemo(() => {
@@ -367,9 +417,27 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
         if (itemDate !== filterDate) return false;
       }
 
+      // Filtre catégorie
+      if (filterCategory !== "all") {
+        if (filterCategory === "none") {
+          if (item.category_id) return false;
+        } else {
+          // Inclure aussi les sous-catégories si on filtre par catégorie parente
+          const cat = categories.find((c) => c.id === item.category_id);
+          if (!cat) {
+            if (item.category_id !== filterCategory) return false;
+          } else {
+            // Vérifier si c'est la catégorie directe ou son parent
+            if (cat.id !== filterCategory && cat.parent_id !== filterCategory) {
+              return false;
+            }
+          }
+        }
+      }
+
       return true;
     });
-  }, [items, searchTerm, filterFournisseur, filterDate]);
+  }, [items, searchTerm, filterFournisseur, filterDate, filterCategory, categories]);
 
   // Toggle sélection
   const toggleSelect = (id: string) => {
@@ -516,6 +584,25 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Filtre catégorie */}
+            <Select value={filterCategory} onValueChange={setFilterCategory}>
+              <SelectTrigger className="w-[180px]">
+                <FolderTree className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Catégorie" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes catégories</SelectItem>
+                <SelectItem value="none">Sans catégorie</SelectItem>
+                {categories
+                  .filter((c) => !c.parent_id)
+                  .map((parent) => (
+                    <SelectItem key={parent.id} value={parent.id}>
+                      {parent.nom}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Barre d'actions sélection */}
@@ -658,7 +745,14 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                         <div onClick={(e) => e.stopPropagation()}>
                           <select
                             value={item.category_id || ""}
-                            onChange={(e) => updateField(item.id, "category_id", e.target.value)}
+                            onChange={(e) => {
+                              if (e.target.value === "__new__") {
+                                setShowNewCategoryDialog(true);
+                                e.target.value = item.category_id || "";
+                              } else {
+                                updateField(item.id, "category_id", e.target.value);
+                              }
+                            }}
                             className="text-xs bg-transparent border rounded px-1 py-0.5 cursor-pointer hover:bg-muted w-full focus:ring-1 focus:ring-primary focus:outline-none truncate"
                             title={(() => {
                               if (!item.category_id) return "Sans catégorie";
@@ -668,6 +762,12 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                               return parent ? `${parent.nom} > ${cat.nom}` : cat.nom;
                             })()}
                           >
+                            <option value="__new__" className="text-primary font-medium">
+                              + Nouvelle catégorie...
+                            </option>
+                            <option value="" disabled>
+                              ────────────
+                            </option>
                             <option value="">Sans catégorie</option>
                             {/* Catégories parentes */}
                             {categories
@@ -914,6 +1014,85 @@ export function CatalogBulkManager({ onComplete }: CatalogBulkManagerProps) {
                   <Trash2 className="h-4 w-4 mr-2" />
                   Supprimer ({selectedIds.size})
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de création de catégorie */}
+      <Dialog open={showNewCategoryDialog} onOpenChange={setShowNewCategoryDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderTree className="h-5 w-5" />
+              Nouvelle catégorie
+            </DialogTitle>
+            <DialogDescription>Créez une nouvelle catégorie pour organiser vos articles</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="category-name">Nom de la catégorie</Label>
+              <Input
+                id="category-name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newCategoryName.trim()) {
+                    handleCreateCategory();
+                  }
+                }}
+                placeholder="Ex: Électricité, Isolation..."
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="category-parent">Catégorie parente (optionnel)</Label>
+              <Select
+                value={newCategoryParentId || "root"}
+                onValueChange={(value) => setNewCategoryParentId(value === "root" ? null : value)}
+              >
+                <SelectTrigger id="category-parent">
+                  <SelectValue placeholder="Aucune (catégorie principale)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="root">Aucune (catégorie principale)</SelectItem>
+                  {categories
+                    .filter((c) => !c.parent_id)
+                    .map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.nom}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Sélectionnez une catégorie parente pour créer une sous-catégorie
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowNewCategoryDialog(false);
+                setNewCategoryName("");
+                setNewCategoryParentId(null);
+              }}
+            >
+              Annuler
+            </Button>
+            <Button onClick={handleCreateCategory} disabled={!newCategoryName.trim() || savingCategory}>
+              {savingCategory ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Création...
+                </>
+              ) : (
+                "Créer la catégorie"
               )}
             </Button>
           </DialogFooter>
