@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 3.3 - Bouton plein écran
+// VERSION: 3.4 - Marge bas pour centrage canvas + hauteur augmentée
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -3926,7 +3926,7 @@ ${block.content}`,
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-300px)] min-h-[600px] border rounded-lg overflow-hidden bg-background">
+    <div className="flex flex-col h-[calc(100vh-180px)] min-h-[700px] border rounded-lg overflow-hidden bg-background mb-[50vh]">
       {/* Onglets des gammes en haut */}
       <div className="flex items-center border-b bg-muted/30 px-2">
         <ScrollArea className="flex-1">
