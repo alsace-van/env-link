@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.2 - Fix requêtes catalogue (sans jointure Supabase)
+// VERSION: 2.3 - Popover articles élargi + texte complet + quantités visibles
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1030,7 +1030,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 Scénario
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-0 z-[9999]" align="end">
+            <PopoverContent className="w-96 p-0 z-[9999]" align="end">
               <div className="p-3 border-b bg-blue-50">
                 <div className="text-xs text-blue-600 font-medium mb-2">Articles du scénario principal</div>
                 <Input
@@ -1040,7 +1040,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   className="h-8"
                 />
               </div>
-              <ScrollArea className="h-64">
+              <ScrollArea className="h-72">
                 {scenarioLoading ? (
                   <div className="flex items-center justify-center h-32">
                     <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -1070,22 +1070,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         <button
                           key={item.id}
                           onClick={() => addFromScenario(item, 1)}
-                          className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
+                          className="w-full flex items-start gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
                         >
-                          <IconComponent className={`h-4 w-4 shrink-0 ${typeConfig.color}`} />
+                          <IconComponent className={`h-4 w-4 shrink-0 mt-0.5 ${typeConfig.color}`} />
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">
+                            <div className="text-sm font-medium leading-tight">
                               {decodeHtmlEntities(item.nom_accessoire)}
                             </div>
-                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                            <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
                               {item.marque && <span>{item.marque}</span>}
                               {item.puissance_watts && <span>{item.puissance_watts}W</span>}
                               {!item.type_electrique && <span className="text-orange-500">(sans type)</span>}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-gray-400">
-                              {usedQty}/{totalQty}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                                availableQty > 0 ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {availableQty}/{totalQty}
                             </span>
                             <Plus className="h-4 w-4 text-gray-400" />
                           </div>
@@ -1112,7 +1116,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 Catalogue
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-0" align="end">
+            <PopoverContent className="w-96 p-0" align="end">
               <div className="p-3 border-b">
                 <Input
                   placeholder="Rechercher..."
@@ -1121,7 +1125,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   className="h-8"
                 />
               </div>
-              <ScrollArea className="h-64">
+              <ScrollArea className="h-72">
                 {catalogLoading ? (
                   <div className="flex items-center justify-center h-32">
                     <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
@@ -1137,18 +1141,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         <button
                           key={item.id}
                           onClick={() => addFromCatalog(item)}
-                          className="w-full flex items-center gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
+                          className="w-full flex items-start gap-2 p-2 rounded hover:bg-gray-100 text-left transition-colors"
                         >
-                          <IconComponent className={`h-4 w-4 shrink-0 ${typeConfig.color}`} />
+                          <IconComponent className={`h-4 w-4 shrink-0 mt-0.5 ${typeConfig.color}`} />
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{decodeHtmlEntities(item.nom)}</div>
-                            <div className="text-xs text-gray-500 flex items-center gap-2">
+                            <div className="text-sm font-medium leading-tight">{decodeHtmlEntities(item.nom)}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
                               {item.marque && <span>{item.marque}</span>}
                               {item.puissance_watts && <span>{item.puissance_watts}W</span>}
                               {item.capacite_ah && <span>{item.capacite_ah}Ah</span>}
                             </div>
                           </div>
-                          <Plus className="h-4 w-4 text-gray-400" />
+                          <Plus className="h-4 w-4 text-gray-400 shrink-0" />
                         </button>
                       );
                     })}
