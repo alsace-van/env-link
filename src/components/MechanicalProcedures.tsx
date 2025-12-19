@@ -1,11 +1,12 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 3.2 - Modale préview complète (zoom/pan/navigation)
+// VERSION: 3.3 - Bouton plein écran
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 import {
   ReactFlow,
   Background,
@@ -127,6 +128,7 @@ import {
   Maximize,
   Maximize2,
   Minimize,
+  Minimize2,
   ZoomIn,
   ZoomOut,
   Search,
@@ -924,6 +926,32 @@ const MechanicalProcedures = () => {
 
   // 🔥 Sidebar pellicule photos
   const [isPhotoSidebarOpen, setIsPhotoSidebarOpen] = useState(false);
+
+  // 🔥 Mode plein écran
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  // Écouter les changements de fullscreen
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  // Toggle plein écran
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await canvasContainerRef.current?.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (error) {
+      console.error("Erreur fullscreen:", error);
+    }
+  };
 
   // 🔥 Modale de prévisualisation d'image avec zoom/pan
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
@@ -4027,7 +4055,10 @@ ${block.content}`,
           </div>
 
           {/* Zone de contenu centrale */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div
+            ref={canvasContainerRef}
+            className={cn("flex-1 flex flex-col overflow-hidden", isFullscreen && "bg-background")}
+          >
             {/* Barre d'outils */}
             <div className="flex items-center gap-2 p-2 border-b bg-muted/10 flex-wrap">
               <span className="text-sm text-muted-foreground mr-2">Ajouter :</span>
@@ -4165,6 +4196,18 @@ ${block.content}`,
               >
                 <Maximize2 className="h-4 w-4 mr-1" />
                 Centrer
+              </Button>
+
+              {/* 🔥 Bouton Plein écran */}
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("h-8", isFullscreen && "bg-primary text-primary-foreground hover:bg-primary/90")}
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Quitter le plein écran (Esc)" : "Plein écran"}
+              >
+                {isFullscreen ? <Minimize2 className="h-4 w-4 mr-1" /> : <Maximize className="h-4 w-4 mr-1" />}
+                {isFullscreen ? "Réduire" : "Plein écran"}
               </Button>
 
               {activeChapterId && (
