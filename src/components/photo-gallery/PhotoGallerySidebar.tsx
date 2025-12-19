@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.7 - Fix export + handle simplifié
+// VERSION: 2.8 - Handle fixe toujours visible + onOpen prop
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -46,6 +46,7 @@ interface Photo {
 interface PhotoGallerySidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpen?: () => void;
   onSelectPhoto: (photoUrl: string, photoName: string) => void;
   onSelectMultiplePhotos?: (photos: { url: string; name: string }[]) => void;
   projectId?: string;
@@ -130,6 +131,7 @@ function formatSize(bytes: number): string {
 function PhotoGallerySidebar({
   isOpen,
   onClose,
+  onOpen,
   onSelectPhoto,
   onSelectMultiplePhotos,
   projectId,
@@ -438,6 +440,21 @@ function PhotoGallerySidebar({
       {isOpen && (
         <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity" onClick={onClose} />
       )}
+
+      {/* Handle pour ouvrir/fermer - TOUJOURS VISIBLE */}
+      <button
+        className={cn(
+          "fixed top-1/2 -translate-y-1/2 z-50 h-10 rounded-l-lg",
+          "bg-background/90 backdrop-blur-md border border-r-0 border-border/50",
+          "flex items-center gap-1 px-1.5 transition-all hover:bg-muted/80",
+          "shadow-lg",
+          isOpen ? "right-80 md:right-96" : "right-0",
+        )}
+        onClick={isOpen ? onClose : onOpen}
+      >
+        <Image className="h-4 w-4 text-muted-foreground" />
+        <ChevronRight className={cn("h-4 w-4 transition-transform", !isOpen && "rotate-180")} />
+      </button>
 
       {/* Sidebar */}
       <div
@@ -830,20 +847,6 @@ function PhotoGallerySidebar({
             )}
           </div>
         </div>
-
-        {/* Handle unifié icône + flèche */}
-        <button
-          className={cn(
-            "absolute top-1/2 -translate-y-1/2 -left-8 h-10 rounded-l-lg",
-            "bg-background/90 backdrop-blur-md border border-r-0 border-border/50",
-            "flex items-center gap-1 px-1.5 transition-all hover:bg-muted/80",
-            "shadow-lg",
-          )}
-          onClick={onClose}
-        >
-          <Image className="h-4 w-4 text-muted-foreground" />
-          <ChevronRight className={cn("h-4 w-4 transition-transform", !isOpen && "rotate-180")} />
-        </button>
       </div>
 
       {/* 🔥 Modale de prévisualisation avancée */}
