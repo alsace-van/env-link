@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.2 - Click outside to close modal
+// VERSION: 2.3 - Fix fermeture accidentelle pendant drag zoom
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -969,17 +969,24 @@ function PhotoPreviewModal({
     if (isDragging) {
       setIsDragging(false);
       positionRef.current = { ...position };
+      // Garder le flag pendant 150ms pour bloquer le click qui suit le mouseup
+      setTimeout(() => {
+        hasDraggedRef.current = false;
+      }, 150);
     }
   };
 
   // Gérer le click sur le fond pour fermer
   const handleBackgroundClick = (e: React.MouseEvent) => {
-    // Ne pas fermer si on vient de drag ou si le click est sur l'image
+    // Ne jamais fermer si on a draggé récemment
     if (hasDraggedRef.current) {
-      hasDraggedRef.current = false;
       return;
     }
-    // Le click doit être sur le conteneur, pas sur l'image
+    // Ne pas fermer si on est en mode zoom (le click sert à initier un drag)
+    if (zoom > 1) {
+      return;
+    }
+    // Fermer seulement si click direct sur le conteneur (fond noir)
     if (e.target === containerRef.current) {
       onClose();
     }
