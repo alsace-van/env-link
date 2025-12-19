@@ -1,13 +1,29 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 1.1 - Sélection multiple avec coches + drag groupé
+// VERSION: 1.4 - Fix sélection: click=cocher, double-click=canvas
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { X, Upload, Search, Image, Trash2, GripVertical, ChevronRight, FolderOpen, Grid3X3, List, Check, CheckCircle2, Images } from "lucide-react";
+import {
+  X,
+  Upload,
+  Search,
+  Image,
+  Trash2,
+  GripVertical,
+  ChevronRight,
+  FolderOpen,
+  Grid3X3,
+  List,
+  Check,
+  CheckCircle2,
+  Images,
+  StopCircle,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,22 +48,100 @@ interface PhotoGallerySidebarProps {
   bucketName?: string;
 }
 
+// 🔥 Configuration de la compression
+const COMPRESSION_CONFIG = {
+  maxWidth: 1920, // Largeur max en pixels
+  maxHeight: 1920, // Hauteur max en pixels
+  quality: 0.8, // Qualité JPEG (0-1)
+  maxSizeKB: 500, // Taille max cible en KB
+};
+
+// 🔥 Fonction de compression d'image
+async function compressImage(file: File): Promise<{ blob: Blob; originalSize: number; compressedSize: number }> {
+  return new Promise((resolve, reject) => {
+    const originalSize = file.size;
+
+    // Si ce n'est pas une image, retourner tel quel
+    if (!file.type.startsWith("image/")) {
+      resolve({ blob: file, originalSize, compressedSize: originalSize });
+      return;
+    }
+
+    const img = new window.Image();
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+
+    img.onload = () => {
+      let { width, height } = img;
+
+      // Calculer les nouvelles dimensions
+      if (width > COMPRESSION_CONFIG.maxWidth || height > COMPRESSION_CONFIG.maxHeight) {
+        const ratio = Math.min(COMPRESSION_CONFIG.maxWidth / width, COMPRESSION_CONFIG.maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Dessiner l'image redimensionnée
+      ctx?.drawImage(img, 0, 0, width, height);
+
+      // Compresser en JPEG
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve({
+              blob,
+              originalSize,
+              compressedSize: blob.size,
+            });
+          } else {
+            // Fallback si la compression échoue
+            resolve({ blob: file, originalSize, compressedSize: originalSize });
+          }
+        },
+        "image/jpeg",
+        COMPRESSION_CONFIG.quality,
+      );
+    };
+
+    img.onerror = () => {
+      // En cas d'erreur, retourner le fichier original
+      resolve({ blob: file, originalSize, compressedSize: originalSize });
+    };
+
+    // Charger l'image
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// Formater la taille de fichier
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function PhotoGallerySidebar({
   isOpen,
   onClose,
   onSelectPhoto,
   onSelectMultiplePhotos,
   projectId,
-  bucketName = "mechanical-photos"
+  bucketName = "mechanical-photos",
 }: PhotoGallerySidebarProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, fileName: "" });
+  const [uploadStats, setUploadStats] = useState({ saved: 0, uploaded: 0 });
   const [isDragOver, setIsDragOver] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
 
   // Charger les photos au montage
@@ -65,33 +159,36 @@ export function PhotoGallerySidebar({
     }
   }, [isOpen]);
 
+  // Cleanup à la fermeture
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   const loadPhotos = async () => {
     try {
       const folderPath = projectId ? `${projectId}/` : "";
-      const { data, error } = await supabase.storage
-        .from(bucketName)
-        .list(folderPath, {
-          limit: 100,
-          sortBy: { column: "created_at", order: "desc" }
-        });
+      const { data, error } = await supabase.storage.from(bucketName).list(folderPath, {
+        limit: 100,
+        sortBy: { column: "created_at", order: "desc" },
+      });
 
       if (error) throw error;
 
-      const photoFiles = data?.filter(file => 
-        file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
-      ) || [];
+      const photoFiles = data?.filter((file) => file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) || [];
 
-      const photosWithUrls = photoFiles.map(file => {
-        const { data: urlData } = supabase.storage
-          .from(bucketName)
-          .getPublicUrl(`${folderPath}${file.name}`);
-        
+      const photosWithUrls = photoFiles.map((file) => {
+        const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(`${folderPath}${file.name}`);
+
         return {
           id: file.id || file.name,
           url: urlData.publicUrl,
           name: file.name,
           created_at: file.created_at || new Date().toISOString(),
-          size: file.metadata?.size
+          size: file.metadata?.size,
         };
       });
 
@@ -101,62 +198,110 @@ export function PhotoGallerySidebar({
     }
   };
 
+  // 🔥 Upload avec compression et possibilité d'annulation
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    
+
+    // Créer un nouveau AbortController pour cet upload
+    abortControllerRef.current = new AbortController();
+
     setIsUploading(true);
+    setUploadProgress({ current: 0, total: files.length, fileName: "" });
+    setUploadStats({ saved: 0, uploaded: 0 });
+
     const folderPath = projectId ? `${projectId}/` : "";
+    let totalSaved = 0;
+    let successCount = 0;
 
     try {
-      for (const file of Array.from(files)) {
+      const fileArray = Array.from(files);
+
+      for (let i = 0; i < fileArray.length; i++) {
+        // Vérifier si l'upload a été annulé
+        if (abortControllerRef.current?.signal.aborted) {
+          toast({
+            title: "Upload annulé",
+            description: `${successCount} photo(s) uploadée(s) sur ${files.length}`,
+          });
+          break;
+        }
+
+        const file = fileArray[i];
+
         if (!file.type.startsWith("image/")) {
           toast({
             title: "Format non supporté",
             description: `${file.name} n'est pas une image`,
-            variant: "destructive"
+            variant: "destructive",
           });
           continue;
         }
 
-        const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        setUploadProgress({ current: i + 1, total: files.length, fileName: file.name });
+
+        // 🔥 Compresser l'image
+        const { blob, originalSize, compressedSize } = await compressImage(file);
+        totalSaved += originalSize - compressedSize;
+
+        // Générer le nom du fichier
+        const extension = file.type === "image/png" ? "png" : "jpg";
+        const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9.-]/g, "_");
+        const fileName = `${Date.now()}_${baseName}.${extension}`;
         const filePath = `${folderPath}${fileName}`;
 
-        const { error } = await supabase.storage
-          .from(bucketName)
-          .upload(filePath, file, { upsert: true });
+        // Upload le fichier compressé
+        const { error } = await supabase.storage.from(bucketName).upload(filePath, blob, {
+          upsert: true,
+          contentType: "image/jpeg",
+        });
 
         if (error) throw error;
+
+        successCount++;
+        setUploadStats({ saved: totalSaved, uploaded: successCount });
       }
 
-      toast({
-        title: "Upload réussi",
-        description: `${files.length} photo(s) ajoutée(s)`
-      });
+      if (successCount > 0 && !abortControllerRef.current?.signal.aborted) {
+        const savedMB = (totalSaved / (1024 * 1024)).toFixed(1);
+        toast({
+          title: "Upload réussi",
+          description: `${successCount} photo(s) • ${savedMB} MB économisés`,
+        });
+      }
 
       loadPhotos();
     } catch (error: any) {
-      toast({
-        title: "Erreur d'upload",
-        description: error.message,
-        variant: "destructive"
-      });
+      if (error.name !== "AbortError") {
+        toast({
+          title: "Erreur d'upload",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsUploading(false);
+      setUploadProgress({ current: 0, total: 0, fileName: "" });
+      abortControllerRef.current = null;
       setIsDragOver(false);
+    }
+  };
+
+  // 🔥 Annuler l'upload en cours
+  const handleCancelUpload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
   const handleDelete = async (photo: Photo) => {
     try {
       const folderPath = projectId ? `${projectId}/` : "";
-      const { error } = await supabase.storage
-        .from(bucketName)
-        .remove([`${folderPath}${photo.name}`]);
+      const { error } = await supabase.storage.from(bucketName).remove([`${folderPath}${photo.name}`]);
 
       if (error) throw error;
 
-      setPhotos(prev => prev.filter(p => p.id !== photo.id));
-      setSelectedPhotos(prev => {
+      setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+      setSelectedPhotos((prev) => {
         const next = new Set(prev);
         next.delete(photo.id);
         return next;
@@ -166,7 +311,7 @@ export function PhotoGallerySidebar({
       toast({
         title: "Erreur",
         description: error.message,
-        variant: "destructive"
+        variant: "destructive",
       });
     }
   };
@@ -191,7 +336,7 @@ export function PhotoGallerySidebar({
 
   // Toggle sélection d'une photo
   const togglePhotoSelection = (photoId: string) => {
-    setSelectedPhotos(prev => {
+    setSelectedPhotos((prev) => {
       const next = new Set(prev);
       if (next.has(photoId)) {
         next.delete(photoId);
@@ -212,7 +357,7 @@ export function PhotoGallerySidebar({
       setSelectedPhotos(new Set());
       setIsSelectionMode(false);
     } else {
-      setSelectedPhotos(new Set(filteredPhotos.map(p => p.id)));
+      setSelectedPhotos(new Set(filteredPhotos.map((p) => p.id)));
       setIsSelectionMode(true);
     }
   };
@@ -228,20 +373,26 @@ export function PhotoGallerySidebar({
     // Si la photo draggée fait partie de la sélection, on drag toutes les sélectionnées
     if (selectedPhotos.has(photo.id) && selectedPhotos.size > 1) {
       const selectedPhotosList = filteredPhotos
-        .filter(p => selectedPhotos.has(p.id))
-        .map(p => ({ url: p.url, name: p.name }));
-      
-      e.dataTransfer.setData("application/json", JSON.stringify({
-        type: "photos",
-        photos: selectedPhotosList
-      }));
+        .filter((p) => selectedPhotos.has(p.id))
+        .map((p) => ({ url: p.url, name: p.name }));
+
+      e.dataTransfer.setData(
+        "application/json",
+        JSON.stringify({
+          type: "photos",
+          photos: selectedPhotosList,
+        }),
+      );
     } else {
       // Sinon, on drag juste cette photo
-      e.dataTransfer.setData("application/json", JSON.stringify({
-        type: "photo",
-        url: photo.url,
-        name: photo.name
-      }));
+      e.dataTransfer.setData(
+        "application/json",
+        JSON.stringify({
+          type: "photo",
+          url: photo.url,
+          name: photo.name,
+        }),
+      );
     }
     e.dataTransfer.effectAllowed = "copy";
   };
@@ -251,39 +402,27 @@ export function PhotoGallerySidebar({
     if (selectedPhotos.size === 0) return;
 
     const selectedPhotosList = filteredPhotos
-      .filter(p => selectedPhotos.has(p.id))
-      .map(p => ({ url: p.url, name: p.name }));
+      .filter((p) => selectedPhotos.has(p.id))
+      .map((p) => ({ url: p.url, name: p.name }));
 
     if (onSelectMultiplePhotos) {
       onSelectMultiplePhotos(selectedPhotosList);
     } else {
       // Fallback: ajouter une par une
-      selectedPhotosList.forEach(p => onSelectPhoto(p.url, p.name));
+      selectedPhotosList.forEach((p) => onSelectPhoto(p.url, p.name));
     }
 
     clearSelection();
     onClose();
   };
 
-  const filteredPhotos = photos.filter(photo =>
-    photo.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const formatFileSize = (bytes?: number) => {
-    if (!bytes) return "";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  const filteredPhotos = photos.filter((photo) => photo.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
     <>
       {/* Overlay backdrop */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity" onClick={onClose} />
       )}
 
       {/* Sidebar */}
@@ -291,12 +430,11 @@ export function PhotoGallerySidebar({
         className={cn(
           "fixed top-0 right-0 h-full z-50 transition-all duration-300 ease-out",
           "w-80 md:w-96",
-          isOpen ? "translate-x-0" : "translate-x-full"
+          isOpen ? "translate-x-0" : "translate-x-full",
         )}
       >
         {/* Container principal avec effet glassmorphism */}
         <div className="h-full flex flex-col bg-background/80 backdrop-blur-xl border-l border-border/50 shadow-2xl">
-          
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border/50">
             <div className="flex items-center gap-3">
@@ -336,20 +474,10 @@ export function PhotoGallerySidebar({
                 <span className="text-sm font-medium">{selectedPhotos.size} sélectionnée(s)</span>
               </div>
               <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={toggleSelectAll}
-                >
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={toggleSelectAll}>
                   {selectedPhotos.size === filteredPhotos.length ? "Désélectionner tout" : "Tout sélectionner"}
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={clearSelection}
-                >
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearSelection}>
                   Annuler
                 </Button>
               </div>
@@ -373,17 +501,15 @@ export function PhotoGallerySidebar({
           <div className="p-3">
             <div
               className={cn(
-                "relative border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer",
-                "hover:border-primary/50 hover:bg-primary/5",
-                isDragOver 
-                  ? "border-primary bg-primary/10 scale-[1.02]" 
-                  : "border-border/50 bg-muted/20",
-                isUploading && "pointer-events-none opacity-50"
+                "relative border-2 border-dashed rounded-xl p-6 text-center transition-all",
+                !isUploading && "cursor-pointer hover:border-primary/50 hover:bg-primary/5",
+                isDragOver ? "border-primary bg-primary/10 scale-[1.02]" : "border-border/50 bg-muted/20",
+                isUploading && "pointer-events-none",
               )}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => !isUploading && fileInputRef.current?.click()}
             >
               <input
                 ref={fileInputRef}
@@ -393,29 +519,56 @@ export function PhotoGallerySidebar({
                 className="hidden"
                 onChange={(e) => handleUpload(e.target.files)}
               />
-              
-              <div className={cn(
-                "transition-transform duration-200",
-                isDragOver && "scale-110"
-              )}>
-                <Upload className={cn(
-                  "h-8 w-8 mx-auto mb-2 transition-colors",
-                  isDragOver ? "text-primary" : "text-muted-foreground"
-                )} />
-                <p className="text-sm font-medium">
-                  {isUploading ? "Upload en cours..." : "Glissez vos photos ici"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  ou cliquez pour parcourir
-                </p>
-              </div>
 
-              {/* Indicateur de progression */}
-              {isUploading && (
-                <div className="absolute inset-x-4 bottom-3">
-                  <div className="h-1 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary animate-pulse w-2/3" />
+              {isUploading ? (
+                // 🔥 Affichage pendant l'upload
+                <div className="space-y-3">
+                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">
+                      Upload {uploadProgress.current}/{uploadProgress.total}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate mt-1">{uploadProgress.fileName}</p>
+                    {uploadStats.saved > 0 && (
+                      <p className="text-xs text-green-600 mt-1">💾 {formatSize(uploadStats.saved)} économisés</p>
+                    )}
                   </div>
+
+                  {/* Barre de progression */}
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                    />
+                  </div>
+
+                  {/* 🔥 Bouton annuler */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 text-destructive border-destructive/50 hover:bg-destructive/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCancelUpload();
+                    }}
+                  >
+                    <StopCircle className="h-4 w-4 mr-1" />
+                    Annuler l'upload
+                  </Button>
+                </div>
+              ) : (
+                <div className={cn("transition-transform duration-200", isDragOver && "scale-110")}>
+                  <Upload
+                    className={cn(
+                      "h-8 w-8 mx-auto mb-2 transition-colors",
+                      isDragOver ? "text-primary" : "text-muted-foreground",
+                    )}
+                  />
+                  <p className="text-sm font-medium">Glissez vos photos ici</p>
+                  <p className="text-xs text-muted-foreground mt-1">ou cliquez pour parcourir</p>
+                  <p className="text-[10px] text-muted-foreground/60 mt-2">
+                    📦 Compression automatique (max {COMPRESSION_CONFIG.maxWidth}px)
+                  </p>
                 </div>
               )}
             </div>
@@ -426,55 +579,52 @@ export function PhotoGallerySidebar({
             {filteredPhotos.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  {searchQuery ? "Aucune photo trouvée" : "Aucune photo"}
-                </p>
+                <p className="text-sm text-muted-foreground">{searchQuery ? "Aucune photo trouvée" : "Aucune photo"}</p>
                 <p className="text-xs text-muted-foreground/60 mt-1">
                   {searchQuery ? "Essayez un autre terme" : "Uploadez des photos pour commencer"}
                 </p>
               </div>
             ) : viewMode === "grid" ? (
               // Vue grille
-              <div className="grid grid-cols-3 gap-2 pb-4">
+              <div className="grid grid-cols-2 gap-2 pb-4">
                 {filteredPhotos.map((photo) => {
                   const isSelected = selectedPhotos.has(photo.id);
                   return (
                     <div
                       key={photo.id}
                       className={cn(
-                        "group relative aspect-square rounded-lg overflow-hidden cursor-pointer",
-                        "border-2 transition-all duration-200",
-                        "hover:scale-105 hover:shadow-lg hover:z-10",
+                        "group relative aspect-[4/3] rounded-lg overflow-hidden cursor-pointer",
+                        "border-2 transition-all duration-200 bg-muted/30",
+                        "hover:scale-[1.02] hover:shadow-lg hover:z-10",
                         isSelected
-                          ? "border-primary ring-2 ring-primary/30" 
-                          : "border-transparent hover:border-primary/30"
+                          ? "border-primary ring-2 ring-primary/30"
+                          : "border-transparent hover:border-primary/30",
                       )}
                       draggable
                       onDragStart={(e) => handlePhotoDragStart(e, photo)}
-                      onClick={(e) => {
-                        if (e.ctrlKey || e.metaKey || isSelectionMode) {
-                          togglePhotoSelection(photo.id);
-                        } else if (selectedPhotos.size === 0) {
-                          onSelectPhoto(photo.url, photo.name);
-                        } else {
-                          togglePhotoSelection(photo.id);
-                        }
+                      onClick={() => {
+                        // 🔥 Click = toujours sélectionner/désélectionner
+                        togglePhotoSelection(photo.id);
+                      }}
+                      onDoubleClick={() => {
+                        // 🔥 Double-click = envoyer directement au canvas
+                        onSelectPhoto(photo.url, photo.name);
                       }}
                     >
                       <img
                         src={photo.url}
                         alt={photo.name}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain bg-black/5"
                         loading="lazy"
                       />
-                      
+
                       {/* Checkbox de sélection - toujours visible */}
-                      <div 
+                      <div
                         className={cn(
                           "absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center transition-all",
-                          isSelected 
-                            ? "bg-primary text-primary-foreground" 
-                            : "bg-black/40 text-white opacity-0 group-hover:opacity-100"
+                          isSelected
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-black/40 text-white opacity-0 group-hover:opacity-100",
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -487,18 +637,18 @@ export function PhotoGallerySidebar({
                           <div className="w-4 h-4 rounded-full border-2 border-white" />
                         )}
                       </div>
-                      
+
                       {/* Overlay au survol */}
-                      <div className={cn(
-                        "absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent transition-opacity",
-                        isSelected ? "opacity-30" : "opacity-0 group-hover:opacity-100"
-                      )}>
+                      <div
+                        className={cn(
+                          "absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent transition-opacity",
+                          isSelected ? "opacity-30" : "opacity-0 group-hover:opacity-100",
+                        )}
+                      >
                         <div className="absolute bottom-0 left-0 right-0 p-2">
-                          <p className="text-[10px] text-white truncate font-medium">
-                            {photo.name}
-                          </p>
+                          <p className="text-[10px] text-white truncate font-medium">{photo.name}</p>
                         </div>
-                        
+
                         {/* Bouton supprimer */}
                         <button
                           className="absolute top-1 right-1 p-1.5 rounded-md bg-black/50 hover:bg-destructive text-white transition-colors"
@@ -512,9 +662,7 @@ export function PhotoGallerySidebar({
                       </div>
 
                       {/* Badge sélectionné */}
-                      {isSelected && (
-                        <div className="absolute inset-0 bg-primary/20 pointer-events-none" />
-                      )}
+                      {isSelected && <div className="absolute inset-0 bg-primary/20 pointer-events-none" />}
                     </div>
                   );
                 })}
@@ -531,29 +679,24 @@ export function PhotoGallerySidebar({
                         "group flex items-center gap-3 p-2 rounded-lg cursor-pointer",
                         "border transition-all duration-200",
                         "hover:bg-muted/50",
-                        isSelected 
-                          ? "border-primary bg-primary/5" 
-                          : "border-transparent"
+                        isSelected ? "border-primary bg-primary/5" : "border-transparent",
                       )}
                       draggable
                       onDragStart={(e) => handlePhotoDragStart(e, photo)}
-                      onClick={(e) => {
-                        if (e.ctrlKey || e.metaKey || isSelectionMode) {
-                          togglePhotoSelection(photo.id);
-                        } else if (selectedPhotos.size === 0) {
-                          onSelectPhoto(photo.url, photo.name);
-                        } else {
-                          togglePhotoSelection(photo.id);
-                        }
+                      onClick={() => {
+                        // 🔥 Click = toujours sélectionner/désélectionner
+                        togglePhotoSelection(photo.id);
+                      }}
+                      onDoubleClick={() => {
+                        // 🔥 Double-click = envoyer directement au canvas
+                        onSelectPhoto(photo.url, photo.name);
                       }}
                     >
                       {/* Checkbox */}
-                      <div 
+                      <div
                         className={cn(
                           "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all",
-                          isSelected 
-                            ? "bg-primary text-primary-foreground" 
-                            : "bg-muted border border-border"
+                          isSelected ? "bg-primary text-primary-foreground" : "bg-muted border border-border",
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -563,18 +706,13 @@ export function PhotoGallerySidebar({
                         {isSelected && <Check className="h-3 w-3" />}
                       </div>
 
-                      <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0 border border-border/30">
-                        <img
-                          src={photo.url}
-                          alt={photo.name}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
+                      <div className="w-16 h-12 rounded-md overflow-hidden flex-shrink-0 border border-border/30 bg-muted/30">
+                        <img src={photo.url} alt={photo.name} className="w-full h-full object-contain" loading="lazy" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{photo.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {formatFileSize(photo.size)} • {new Date(photo.created_at).toLocaleDateString("fr-FR")}
+                          {formatSize(photo.size || 0)} • {new Date(photo.created_at).toLocaleDateString("fr-FR")}
                         </p>
                       </div>
                       <button
@@ -596,17 +734,20 @@ export function PhotoGallerySidebar({
           {/* Footer avec bouton d'ajout groupé */}
           <div className="p-3 border-t border-border/30 bg-muted/20">
             {selectedPhotos.size > 0 ? (
-              <Button
-                className="w-full bg-primary hover:bg-primary/90"
-                onClick={handleAddSelectedToCanvas}
-              >
+              <Button className="w-full bg-primary hover:bg-primary/90" onClick={handleAddSelectedToCanvas}>
                 <Images className="h-4 w-4 mr-2" />
                 Ajouter {selectedPhotos.size} photo(s) au canvas
               </Button>
             ) : (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <GripVertical className="h-4 w-4" />
-                <span>Glissez une photo ou cochez pour sélectionner</span>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div className="flex items-center gap-2">
+                  <Check className="h-3 w-3" />
+                  <span>Cliquez pour sélectionner</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <GripVertical className="h-3 w-3" />
+                  <span>Glissez vers le canvas ou double-cliquez</span>
+                </div>
               </div>
             )}
           </div>
@@ -618,14 +759,11 @@ export function PhotoGallerySidebar({
             "absolute top-1/2 -translate-y-1/2 -left-8 w-8 h-20 rounded-l-lg",
             "bg-background/80 backdrop-blur-md border border-r-0 border-border/50",
             "flex items-center justify-center transition-all hover:bg-muted/80",
-            "shadow-lg"
+            "shadow-lg",
           )}
           onClick={onClose}
         >
-          <ChevronRight className={cn(
-            "h-4 w-4 transition-transform",
-            !isOpen && "rotate-180"
-          )} />
+          <ChevronRight className={cn("h-4 w-4 transition-transform", !isOpen && "rotate-180")} />
         </button>
       </div>
     </>
@@ -636,7 +774,7 @@ export function PhotoGallerySidebar({
 export function PhotoGalleryToggle({
   isOpen,
   onToggle,
-  photoCount = 0
+  photoCount = 0,
 }: {
   isOpen: boolean;
   onToggle: () => void;
@@ -650,17 +788,13 @@ export function PhotoGalleryToggle({
         "fixed right-4 top-1/2 -translate-y-1/2 z-30",
         "bg-background/80 backdrop-blur-md border-border/50 shadow-lg",
         "hover:bg-primary/10 hover:border-primary/50 transition-all",
-        isOpen && "opacity-0 pointer-events-none"
+        isOpen && "opacity-0 pointer-events-none",
       )}
       onClick={onToggle}
     >
       <Image className="h-4 w-4 mr-2" />
       Photos
-      {photoCount > 0 && (
-        <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary/20 text-xs">
-          {photoCount}
-        </span>
-      )}
+      {photoCount > 0 && <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary/20 text-xs">{photoCount}</span>}
     </Button>
   );
 }
