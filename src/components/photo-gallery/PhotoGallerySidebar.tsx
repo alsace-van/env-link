@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.4 - Fix modal: overlay séparé, click outside OK
+// VERSION: 2.5 - Boutons Photos + flèche fusionnés
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -831,16 +831,18 @@ export function PhotoGallerySidebar({
           </div>
         </div>
 
-        {/* Handle pour ouvrir/fermer depuis le bord */}
+        {/* Handle unifié Photos + flèche */}
         <button
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 -left-8 w-8 h-20 rounded-l-lg",
-            "bg-background/80 backdrop-blur-md border border-r-0 border-border/50",
-            "flex items-center justify-center transition-all hover:bg-muted/80",
+            "absolute top-1/2 -translate-y-1/2 -left-10 h-12 rounded-l-lg",
+            "bg-background/90 backdrop-blur-md border border-r-0 border-border/50",
+            "flex items-center gap-1.5 px-2 transition-all hover:bg-muted/80",
             "shadow-lg",
           )}
           onClick={onClose}
         >
+          <Image className="h-4 w-4 text-muted-foreground" />
+          <span className="text-xs font-medium">Photos</span>
           <ChevronRight className={cn("h-4 w-4 transition-transform", !isOpen && "rotate-180")} />
         </button>
       </div>
@@ -1152,16 +1154,17 @@ export function PhotoGalleryToggle({
       variant="outline"
       size="sm"
       className={cn(
-        "fixed right-4 top-1/2 -translate-y-1/2 z-30",
-        "bg-background/80 backdrop-blur-md border-border/50 shadow-lg",
-        "hover:bg-primary/10 hover:border-primary/50 transition-all",
+        "fixed right-0 top-1/2 -translate-y-1/2 z-30 h-12 rounded-l-lg rounded-r-none",
+        "bg-background/90 backdrop-blur-md border-r-0 border-border/50 shadow-lg",
+        "hover:bg-muted/80 transition-all px-2 gap-1.5",
         isOpen && "opacity-0 pointer-events-none",
       )}
       onClick={onToggle}
     >
-      <Image className="h-4 w-4 mr-2" />
-      Photos
-      {photoCount > 0 && <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary/20 text-xs">{photoCount}</span>}
+      <ChevronLeft className="h-4 w-4" />
+      <Image className="h-4 w-4" />
+      <span className="text-xs font-medium">Photos</span>
+      {photoCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-primary/20 text-xs">{photoCount}</span>}
     </Button>
   );
 }
