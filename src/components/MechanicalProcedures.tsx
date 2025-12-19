@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 3.0 - Fix drag-drop photos depuis sidebar
+// VERSION: 3.1 - Modale préview image + resize fluide
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -533,7 +533,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
   return (
     <div
-      className={`content-block rounded-lg border-2 shadow-md ${selected ? "ring-2 ring-blue-500 shadow-lg" : ""} ${blockType.bgColor} ${blockType.borderColor}`}
+      className={`content-block rounded-lg border-2 shadow-md flex flex-col ${selected ? "ring-2 ring-blue-500 shadow-lg" : ""} ${blockType.bgColor} ${blockType.borderColor}`}
       style={{
         width: block.width,
         minHeight: block.type === "image" && block.height ? block.height : 80,
@@ -549,7 +549,7 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
 
       {/* Header du bloc */}
       <div
-        className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg cursor-grab`}
+        className={`flex items-center gap-2 px-3 py-2 border-b ${blockType.borderColor} bg-white/50 dark:bg-black/20 rounded-t-lg cursor-grab shrink-0`}
       >
         <GripVertical className="h-4 w-4 text-muted-foreground" />
         <IconComponent className="h-4 w-4" />
@@ -576,22 +576,42 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
       </div>
 
       {/* Contenu du bloc - ÉDITABLE */}
-      <div className="p-3 nodrag relative" onPointerDown={stopDrag}>
+      <div
+        className="p-3 nodrag relative flex-1 flex flex-col"
+        onPointerDown={stopDrag}
+        style={{ minHeight: block.type === "image" ? 0 : undefined }}
+      >
         {block.type === "image" ? (
-          <div className="relative" style={{ minHeight: block.height ? block.height - 60 : 120 }}>
+          <div
+            className="relative group flex-1 flex items-center justify-center"
+            style={{
+              minHeight: 80,
+            }}
+          >
             {block.image_url ? (
-              <img
-                src={block.image_url}
-                alt="Illustration"
-                className="rounded object-contain"
-                style={{
-                  width: "100%",
-                  height: block.height ? block.height - 60 : "auto",
-                  maxHeight: block.height ? block.height - 60 : 300,
-                }}
-              />
+              <>
+                <img
+                  src={block.image_url}
+                  alt="Illustration"
+                  className="max-w-full max-h-full object-contain rounded"
+                />
+                {/* Bouton loupe pour prévisualiser */}
+                <button
+                  className="absolute top-2 right-2 p-1.5 rounded-md bg-black/50 hover:bg-primary text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const onPreviewImage = data.onPreviewImage as ((url: string, name: string) => void) | undefined;
+                    if (onPreviewImage) {
+                      onPreviewImage(block.image_url!, block.title || "Image");
+                    }
+                  }}
+                  title="Voir en grand"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </button>
+              </>
             ) : (
-              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded cursor-pointer hover:bg-muted/50">
+              <label className="flex flex-col items-center justify-center h-full border-2 border-dashed rounded cursor-pointer hover:bg-muted/50">
                 <Upload className="h-8 w-8 text-muted-foreground mb-2" />
                 <span className="text-sm text-muted-foreground">Cliquez pour ajouter</span>
                 <input
@@ -901,6 +921,10 @@ const MechanicalProcedures = () => {
 
   // 🔥 Sidebar pellicule photos
   const [isPhotoSidebarOpen, setIsPhotoSidebarOpen] = useState(false);
+
+  // 🔥 Modale de prévisualisation d'image
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewImageName, setPreviewImageName] = useState<string>("");
 
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
@@ -2075,6 +2099,10 @@ const MechanicalProcedures = () => {
         onImageUpload: handleImageUpload,
         onAudioUpload: handleAudioUpload,
         onResizeStart: handleResizeMouseDown,
+        onPreviewImage: (url: string, name: string) => {
+          setPreviewImageUrl(url);
+          setPreviewImageName(name);
+        },
       },
       style: { width: block.width, height: "auto" },
     }));
@@ -2109,6 +2137,10 @@ const MechanicalProcedures = () => {
             onImageUpload: handleImageUpload,
             onAudioUpload: handleAudioUpload,
             onResizeStart: handleResizeMouseDown,
+            onPreviewImage: (url: string, name: string) => {
+              setPreviewImageUrl(url);
+              setPreviewImageName(name);
+            },
           },
           style: { width: block.width, height: "auto" },
         })),
@@ -5039,6 +5071,37 @@ ${block.content}`,
         }}
         bucketName="mechanical-photos"
       />
+
+      {/* 🔥 Modale de prévisualisation d'image */}
+      {previewImageUrl && (
+        <div className="fixed inset-0 z-[100]">
+          {/* Overlay - ferme la modale */}
+          <div className="absolute inset-0 bg-black/90" onClick={() => setPreviewImageUrl(null)} />
+
+          {/* Header */}
+          <div className="relative z-10 flex items-center justify-between p-4 text-white">
+            <h3 className="font-medium truncate max-w-[50%]">{previewImageName}</h3>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/20"
+              onClick={() => setPreviewImageUrl(null)}
+            >
+              <X className="h-6 w-6" />
+            </Button>
+          </div>
+
+          {/* Image centrée */}
+          <div className="relative z-10 flex items-center justify-center h-[calc(100vh-120px)] pointer-events-none">
+            <img
+              src={previewImageUrl}
+              alt={previewImageName}
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl pointer-events-auto"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
