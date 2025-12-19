@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 3.1 - Modale préview image + resize fluide
+// VERSION: 3.2 - Modale préview complète (zoom/pan/navigation)
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -62,6 +62,7 @@ import {
   Plus,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Wrench,
   FileText,
   Image,
@@ -600,9 +601,11 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   className="absolute top-2 right-2 p-1.5 rounded-md bg-black/50 hover:bg-primary text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
                   onClick={(e) => {
                     e.stopPropagation();
-                    const onPreviewImage = data.onPreviewImage as ((url: string, name: string) => void) | undefined;
+                    const onPreviewImage = data.onPreviewImage as
+                      | ((url: string, name: string, blockId: string) => void)
+                      | undefined;
                     if (onPreviewImage) {
-                      onPreviewImage(block.image_url!, block.title || "Image");
+                      onPreviewImage(block.image_url!, block.title || "Image", block.id);
                     }
                   }}
                   title="Voir en grand"
@@ -922,9 +925,16 @@ const MechanicalProcedures = () => {
   // 🔥 Sidebar pellicule photos
   const [isPhotoSidebarOpen, setIsPhotoSidebarOpen] = useState(false);
 
-  // 🔥 Modale de prévisualisation d'image
+  // 🔥 Modale de prévisualisation d'image avec zoom/pan
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewImageName, setPreviewImageName] = useState<string>("");
+  const [previewImageBlockId, setPreviewImageBlockId] = useState<string | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
+  const [previewIsDragging, setPreviewIsDragging] = useState(false);
+  const previewDragStartRef = useRef({ x: 0, y: 0 });
+  const previewPositionRef = useRef({ x: 0, y: 0 });
+  const previewImageRef = useRef<HTMLImageElement>(null);
 
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
@@ -2099,9 +2109,13 @@ const MechanicalProcedures = () => {
         onImageUpload: handleImageUpload,
         onAudioUpload: handleAudioUpload,
         onResizeStart: handleResizeMouseDown,
-        onPreviewImage: (url: string, name: string) => {
+        onPreviewImage: (url: string, name: string, blockId: string) => {
           setPreviewImageUrl(url);
           setPreviewImageName(name);
+          setPreviewImageBlockId(blockId);
+          setPreviewZoom(1);
+          setPreviewPosition({ x: 0, y: 0 });
+          previewPositionRef.current = { x: 0, y: 0 };
         },
       },
       style: { width: block.width, height: "auto" },
@@ -2137,9 +2151,13 @@ const MechanicalProcedures = () => {
             onImageUpload: handleImageUpload,
             onAudioUpload: handleAudioUpload,
             onResizeStart: handleResizeMouseDown,
-            onPreviewImage: (url: string, name: string) => {
+            onPreviewImage: (url: string, name: string, blockId: string) => {
               setPreviewImageUrl(url);
               setPreviewImageName(name);
+              setPreviewImageBlockId(blockId);
+              setPreviewZoom(1);
+              setPreviewPosition({ x: 0, y: 0 });
+              previewPositionRef.current = { x: 0, y: 0 };
             },
           },
           style: { width: block.width, height: "auto" },
@@ -5072,36 +5090,258 @@ ${block.content}`,
         bucketName="mechanical-photos"
       />
 
-      {/* 🔥 Modale de prévisualisation d'image */}
-      {previewImageUrl && (
-        <div className="fixed inset-0 z-[100]">
-          {/* Overlay - ferme la modale */}
-          <div className="absolute inset-0 bg-black/90" onClick={() => setPreviewImageUrl(null)} />
+      {/* 🔥 Modale de prévisualisation d'image avec zoom/pan/navigation */}
+      {previewImageUrl &&
+        (() => {
+          // Filtrer les blocs images du chapitre actif
+          const imageBlocks = blocks.filter((b) => b.type === "image" && b.image_url);
+          const currentIndex = imageBlocks.findIndex((b) => b.id === previewImageBlockId);
+          const hasPrev = currentIndex > 0;
+          const hasNext = currentIndex < imageBlocks.length - 1;
 
-          {/* Header */}
-          <div className="relative z-10 flex items-center justify-between p-4 text-white">
-            <h3 className="font-medium truncate max-w-[50%]">{previewImageName}</h3>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20"
-              onClick={() => setPreviewImageUrl(null)}
+          // Fermer la modale
+          const closeModal = () => {
+            setPreviewImageUrl(null);
+            setPreviewImageBlockId(null);
+            setPreviewZoom(1);
+            setPreviewPosition({ x: 0, y: 0 });
+          };
+
+          // Navigation
+          const goToPrev = () => {
+            if (hasPrev) {
+              const prevBlock = imageBlocks[currentIndex - 1];
+              setPreviewImageUrl(prevBlock.image_url!);
+              setPreviewImageName(prevBlock.title || "Image");
+              setPreviewImageBlockId(prevBlock.id);
+              setPreviewZoom(1);
+              setPreviewPosition({ x: 0, y: 0 });
+              previewPositionRef.current = { x: 0, y: 0 };
+            }
+          };
+
+          const goToNext = () => {
+            if (hasNext) {
+              const nextBlock = imageBlocks[currentIndex + 1];
+              setPreviewImageUrl(nextBlock.image_url!);
+              setPreviewImageName(nextBlock.title || "Image");
+              setPreviewImageBlockId(nextBlock.id);
+              setPreviewZoom(1);
+              setPreviewPosition({ x: 0, y: 0 });
+              previewPositionRef.current = { x: 0, y: 0 };
+            }
+          };
+
+          // Zoom
+          const zoomIn = () => setPreviewZoom((prev) => Math.min(prev + 0.5, 5));
+          const zoomOut = () => {
+            setPreviewZoom((prev) => {
+              const newZoom = Math.max(prev - 0.5, 1);
+              if (newZoom === 1) {
+                setPreviewPosition({ x: 0, y: 0 });
+                previewPositionRef.current = { x: 0, y: 0 };
+              }
+              return newZoom;
+            });
+          };
+          const resetZoom = () => {
+            setPreviewZoom(1);
+            setPreviewPosition({ x: 0, y: 0 });
+            previewPositionRef.current = { x: 0, y: 0 };
+          };
+
+          // Drag pour déplacement
+          const handleMouseDown = (e: React.MouseEvent) => {
+            if (previewZoom > 1) {
+              e.preventDefault();
+              setPreviewIsDragging(true);
+              previewDragStartRef.current = { x: e.clientX, y: e.clientY };
+              previewPositionRef.current = { ...previewPosition };
+            }
+          };
+
+          const handleMouseMove = (e: React.MouseEvent) => {
+            if (previewIsDragging && previewZoom > 1) {
+              const deltaX = e.clientX - previewDragStartRef.current.x;
+              const deltaY = e.clientY - previewDragStartRef.current.y;
+              const newPosition = {
+                x: previewPositionRef.current.x + deltaX,
+                y: previewPositionRef.current.y + deltaY,
+              };
+              setPreviewPosition(newPosition);
+              if (previewImageRef.current) {
+                previewImageRef.current.style.transform = `scale(${previewZoom}) translate(${newPosition.x / previewZoom}px, ${newPosition.y / previewZoom}px)`;
+              }
+            }
+          };
+
+          const handleMouseUp = () => {
+            if (previewIsDragging) {
+              setPreviewIsDragging(false);
+              previewPositionRef.current = { ...previewPosition };
+            }
+          };
+
+          // Zoom molette
+          const handleWheel = (e: React.WheelEvent) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.25 : 0.25;
+            setPreviewZoom((prev) => {
+              const newZoom = Math.max(1, Math.min(5, prev + delta));
+              if (newZoom === 1) {
+                setPreviewPosition({ x: 0, y: 0 });
+                previewPositionRef.current = { x: 0, y: 0 };
+              }
+              return newZoom;
+            });
+          };
+
+          return (
+            <div
+              className="fixed inset-0 z-[100] flex flex-col"
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  goToPrev();
+                } else if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  goToNext();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  closeModal();
+                } else if (e.key === "+" || e.key === "=") {
+                  e.preventDefault();
+                  zoomIn();
+                } else if (e.key === "-") {
+                  e.preventDefault();
+                  zoomOut();
+                } else if (e.key === "0") {
+                  e.preventDefault();
+                  resetZoom();
+                }
+              }}
+              tabIndex={0}
+              ref={(el) => el?.focus()}
             >
-              <X className="h-6 w-6" />
-            </Button>
-          </div>
+              {/* Overlay - ferme la modale */}
+              <div className="absolute inset-0 bg-black/90" onClick={closeModal} />
 
-          {/* Image centrée */}
-          <div className="relative z-10 flex items-center justify-center h-[calc(100vh-120px)] pointer-events-none">
-            <img
-              src={previewImageUrl}
-              alt={previewImageName}
-              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        </div>
-      )}
+              {/* Header */}
+              <div className="relative z-10 flex items-center justify-between p-3 bg-black/50 backdrop-blur-sm">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Image className="h-5 w-5 text-white/70 flex-shrink-0" />
+                  <span className="text-sm font-medium text-white truncate">{previewImageName}</span>
+                  {imageBlocks.length > 1 && (
+                    <span className="text-xs text-white/50">
+                      {currentIndex + 1} / {imageBlocks.length}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Contrôles de zoom */}
+                  <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-white hover:bg-white/20"
+                      onClick={zoomOut}
+                      disabled={previewZoom <= 1}
+                    >
+                      <span className="text-lg font-bold">−</span>
+                    </Button>
+                    <span className="text-xs text-white min-w-[3rem] text-center">
+                      {Math.round(previewZoom * 100)}%
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-white hover:bg-white/20"
+                      onClick={zoomIn}
+                      disabled={previewZoom >= 5}
+                    >
+                      <span className="text-lg font-bold">+</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-white hover:bg-white/20"
+                      onClick={resetZoom}
+                      title="Réinitialiser (0)"
+                    >
+                      <span className="text-xs">1:1</span>
+                    </Button>
+                  </div>
+
+                  {/* Bouton fermer */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-white hover:bg-white/20"
+                    onClick={closeModal}
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Zone image avec navigation */}
+              <div className="relative z-10 flex-1 overflow-hidden flex items-center justify-center pointer-events-none">
+                {/* Bouton précédent */}
+                {hasPrev && (
+                  <button
+                    className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 pointer-events-auto"
+                    onClick={goToPrev}
+                    title="Image précédente (←)"
+                  >
+                    <ChevronLeft className="h-8 w-8" />
+                  </button>
+                )}
+
+                {/* Bouton suivant */}
+                {hasNext && (
+                  <button
+                    className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 pointer-events-auto"
+                    onClick={goToNext}
+                    title="Image suivante (→)"
+                  >
+                    <ChevronRight className="h-8 w-8" />
+                  </button>
+                )}
+
+                {/* Image - capte les events pour le drag */}
+                <img
+                  ref={previewImageRef}
+                  src={previewImageUrl}
+                  alt={previewImageName}
+                  className="max-w-full max-h-full object-contain select-none pointer-events-auto"
+                  style={{
+                    transform: `scale(${previewZoom}) translate(${previewPosition.x / previewZoom}px, ${previewPosition.y / previewZoom}px)`,
+                    willChange: previewIsDragging ? "transform" : "auto",
+                    transition: previewIsDragging ? "none" : "transform 0.1s ease-out",
+                    cursor: previewZoom > 1 ? (previewIsDragging ? "grabbing" : "grab") : "default",
+                  }}
+                  draggable={false}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  onWheel={handleWheel}
+                />
+              </div>
+
+              {/* Footer avec raccourcis */}
+              <div className="relative z-10 p-2 bg-black/50 backdrop-blur-sm flex items-center justify-center gap-6 text-xs text-white/50">
+                <span>← → Navigation</span>
+                <span>+ − Zoom</span>
+                <span>0 Reset</span>
+                <span>Molette Zoom</span>
+                <span>Glisser Déplacer</span>
+                <span>Esc Fermer</span>
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 };
