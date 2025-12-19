@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 1.9 - Boutons sélection + loupe aperçu modale
+// VERSION: 2.0 - Modale avancée: navigation, zoom, pan
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -15,6 +15,7 @@ import {
   Trash2,
   GripVertical,
   ChevronRight,
+  ChevronLeft,
   FolderOpen,
   Grid3X3,
   List,
@@ -844,54 +845,276 @@ export function PhotoGallerySidebar({
         </button>
       </div>
 
-      {/* 🔥 Modale de prévisualisation */}
+      {/* 🔥 Modale de prévisualisation avancée */}
       {previewPhoto && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => setPreviewPhoto(null)}
-        >
-          <div
-            className="relative max-w-4xl max-h-[90vh] bg-background rounded-lg overflow-hidden shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-3 border-b bg-muted/30">
-              <div className="flex items-center gap-2 min-w-0">
-                <Image className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm font-medium truncate">{previewPhoto.name}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Bouton ajouter au canvas */}
-                <Button
-                  size="sm"
-                  className="h-8"
-                  onClick={() => {
-                    onSelectPhoto(previewPhoto.url, previewPhoto.name);
-                    setPreviewPhoto(null);
-                  }}
-                >
-                  <Images className="h-4 w-4 mr-1" />
-                  Ajouter au canvas
-                </Button>
-                {/* Bouton fermer */}
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPreviewPhoto(null)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Image */}
-            <div className="bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center p-4 max-h-[calc(90vh-60px)] overflow-auto">
-              <img
-                src={previewPhoto.url}
-                alt={previewPhoto.name}
-                className="max-w-full max-h-[calc(90vh-100px)] object-contain rounded"
-              />
-            </div>
-          </div>
-        </div>
+        <PhotoPreviewModal
+          photo={previewPhoto}
+          photos={filteredPhotos}
+          onClose={() => setPreviewPhoto(null)}
+          onNavigate={(photo) => setPreviewPhoto(photo)}
+          onAddToCanvas={(photo) => {
+            onSelectPhoto(photo.url, photo.name);
+            setPreviewPhoto(null);
+          }}
+        />
       )}
     </>
+  );
+}
+
+// 🔥 Composant Modale de prévisualisation avec zoom et navigation
+function PhotoPreviewModal({
+  photo,
+  photos,
+  onClose,
+  onNavigate,
+  onAddToCanvas,
+}: {
+  photo: Photo;
+  photos: Photo[];
+  onClose: () => void;
+  onNavigate: (photo: Photo) => void;
+  onAddToCanvas: (photo: Photo) => void;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const currentIndex = photos.findIndex((p) => p.id === photo.id);
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < photos.length - 1;
+
+  // Navigation
+  const goToPrev = useCallback(() => {
+    if (hasPrev) {
+      onNavigate(photos[currentIndex - 1]);
+      resetZoom();
+    }
+  }, [currentIndex, hasPrev, photos, onNavigate]);
+
+  const goToNext = useCallback(() => {
+    if (hasNext) {
+      onNavigate(photos[currentIndex + 1]);
+      resetZoom();
+    }
+  }, [currentIndex, hasNext, photos, onNavigate]);
+
+  // Reset zoom et position
+  const resetZoom = () => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+  };
+
+  // Zoom
+  const zoomIn = () => {
+    setZoom((prev) => Math.min(prev + 0.5, 5));
+  };
+
+  const zoomOut = () => {
+    setZoom((prev) => {
+      const newZoom = Math.max(prev - 0.5, 1);
+      if (newZoom === 1) {
+        setPosition({ x: 0, y: 0 });
+      }
+      return newZoom;
+    });
+  };
+
+  // Gestion du drag pour déplacement
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && zoom > 1) {
+      setPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Zoom avec la molette
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    if (e.deltaY < 0) {
+      zoomIn();
+    } else {
+      zoomOut();
+    }
+  };
+
+  // Raccourcis clavier
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      switch (e.key) {
+        case "ArrowLeft":
+          e.preventDefault();
+          goToPrev();
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          goToNext();
+          break;
+        case "Escape":
+          e.preventDefault();
+          onClose();
+          break;
+        case "+":
+        case "=":
+          e.preventDefault();
+          zoomIn();
+          break;
+        case "-":
+          e.preventDefault();
+          zoomOut();
+          break;
+        case "0":
+          e.preventDefault();
+          resetZoom();
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [goToPrev, goToNext, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col" onClick={onClose}>
+      {/* Header */}
+      <div
+        className="flex items-center justify-between p-3 bg-black/50 backdrop-blur-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <Image className="h-5 w-5 text-white/70 flex-shrink-0" />
+          <span className="text-sm font-medium text-white truncate">{photo.name}</span>
+          <span className="text-xs text-white/50">
+            {currentIndex + 1} / {photos.length}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Contrôles de zoom */}
+          <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={zoomOut}
+              disabled={zoom <= 1}
+            >
+              <span className="text-lg font-bold">−</span>
+            </Button>
+            <span className="text-xs text-white min-w-[3rem] text-center">{Math.round(zoom * 100)}%</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={zoomIn}
+              disabled={zoom >= 5}
+            >
+              <span className="text-lg font-bold">+</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={resetZoom}
+              title="Réinitialiser (0)"
+            >
+              <span className="text-xs">1:1</span>
+            </Button>
+          </div>
+
+          {/* Bouton ajouter au canvas */}
+          <Button size="sm" className="h-8 bg-primary hover:bg-primary/90" onClick={() => onAddToCanvas(photo)}>
+            <Images className="h-4 w-4 mr-1" />
+            Ajouter
+          </Button>
+
+          {/* Bouton fermer */}
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Zone image avec navigation */}
+      <div
+        ref={containerRef}
+        className="flex-1 relative overflow-hidden flex items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onWheel={handleWheel}
+        style={{ cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
+      >
+        {/* Bouton précédent */}
+        {hasPrev && (
+          <button
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110"
+            onClick={(e) => {
+              e.stopPropagation();
+              goToPrev();
+            }}
+            title="Photo précédente (←)"
+          >
+            <ChevronLeft className="h-8 w-8" />
+          </button>
+        )}
+
+        {/* Bouton suivant */}
+        {hasNext && (
+          <button
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110"
+            onClick={(e) => {
+              e.stopPropagation();
+              goToNext();
+            }}
+            title="Photo suivante (→)"
+          >
+            <ChevronRight className="h-8 w-8" />
+          </button>
+        )}
+
+        {/* Image */}
+        <img
+          src={photo.url}
+          alt={photo.name}
+          className="max-w-full max-h-full object-contain select-none transition-transform duration-100"
+          style={{
+            transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
+          }}
+          draggable={false}
+        />
+      </div>
+
+      {/* Footer avec raccourcis */}
+      <div
+        className="p-2 bg-black/50 backdrop-blur-sm flex items-center justify-center gap-6 text-xs text-white/50"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span>← → Navigation</span>
+        <span>+ − Zoom</span>
+        <span>0 Reset</span>
+        <span>Molette Zoom</span>
+        <span>Glisser Déplacer</span>
+        <span>Esc Fermer</span>
+      </div>
+    </div>
   );
 }
 
