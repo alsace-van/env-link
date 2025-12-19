@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.1 - Déplacement photo fluide (no transition pendant drag)
+// VERSION: 2.2 - Click outside to close modal
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -881,6 +881,7 @@ function PhotoPreviewModal({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const positionRef = useRef({ x: 0, y: 0 });
+  const hasDraggedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
@@ -931,6 +932,7 @@ function PhotoPreviewModal({
     if (zoom > 1) {
       e.preventDefault();
       setIsDragging(true);
+      hasDraggedRef.current = false;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
       positionRef.current = { ...position };
     }
@@ -941,6 +943,11 @@ function PhotoPreviewModal({
       if (isDragging && zoom > 1) {
         const deltaX = e.clientX - dragStartRef.current.x;
         const deltaY = e.clientY - dragStartRef.current.y;
+
+        // Marquer qu'on a bougé si déplacement > 5px
+        if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+          hasDraggedRef.current = true;
+        }
 
         const newPosition = {
           x: positionRef.current.x + deltaX,
@@ -962,6 +969,19 @@ function PhotoPreviewModal({
     if (isDragging) {
       setIsDragging(false);
       positionRef.current = { ...position };
+    }
+  };
+
+  // Gérer le click sur le fond pour fermer
+  const handleBackgroundClick = (e: React.MouseEvent) => {
+    // Ne pas fermer si on vient de drag ou si le click est sur l'image
+    if (hasDraggedRef.current) {
+      hasDraggedRef.current = false;
+      return;
+    }
+    // Le click doit être sur le conteneur, pas sur l'image
+    if (e.target === containerRef.current) {
+      onClose();
     }
   };
 
@@ -1080,7 +1100,7 @@ function PhotoPreviewModal({
       <div
         ref={containerRef}
         className="flex-1 relative overflow-hidden flex items-center justify-center"
-        onClick={(e) => e.stopPropagation()}
+        onClick={handleBackgroundClick}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
