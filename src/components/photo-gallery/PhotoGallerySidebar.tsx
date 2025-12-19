@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.8 - Handle fixe toujours visible + onOpen prop
+// VERSION: 2.9 - Overlay sans flou + drag-drop amélioré
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -436,10 +436,8 @@ function PhotoGallerySidebar({
 
   return (
     <>
-      {/* Overlay backdrop */}
-      {isOpen && (
-        <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity" onClick={onClose} />
-      )}
+      {/* Overlay backdrop - transparent pour permettre le drag */}
+      {isOpen && <div className="fixed inset-0 z-40 bg-black/10 transition-opacity pointer-events-none" />}
 
       {/* Handle pour ouvrir/fermer - TOUJOURS VISIBLE */}
       <button
