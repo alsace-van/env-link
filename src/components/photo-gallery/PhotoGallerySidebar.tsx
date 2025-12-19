@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 1.7 - Retour object-cover + ratio 4:3 + 2 colonnes
+// VERSION: 1.8 - Fix miniatures: object-contain = vue complète
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -631,7 +631,14 @@ export function PhotoGallerySidebar({
                         onSelectPhoto(photo.url, photo.name);
                       }}
                     >
-                      <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" loading="lazy" />
+                      <div className="w-full h-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+                        <img
+                          src={photo.url}
+                          alt={photo.name}
+                          className="max-w-full max-h-full object-contain"
+                          loading="lazy"
+                        />
+                      </div>
 
                       {/* Checkbox de sélection - toujours visible */}
                       <div
@@ -721,8 +728,13 @@ export function PhotoGallerySidebar({
                         {isSelected && <Check className="h-3 w-3" />}
                       </div>
 
-                      <div className="w-16 h-12 rounded-md overflow-hidden flex-shrink-0 border border-border/30 bg-muted/30">
-                        <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" loading="lazy" />
+                      <div className="w-16 h-12 rounded-md overflow-hidden flex-shrink-0 border border-border/30 bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+                        <img
+                          src={photo.url}
+                          alt={photo.name}
+                          className="max-w-full max-h-full object-contain"
+                          loading="lazy"
+                        />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{photo.name}</p>
