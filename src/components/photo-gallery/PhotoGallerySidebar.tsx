@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.5 - Boutons Photos + flèche fusionnés
+// VERSION: 2.6 - Handle simplifié (icône + flèche uniquement)
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -831,18 +831,17 @@ export function PhotoGallerySidebar({
           </div>
         </div>
 
-        {/* Handle unifié Photos + flèche */}
+        {/* Handle unifié icône + flèche */}
         <button
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 -left-10 h-12 rounded-l-lg",
+            "absolute top-1/2 -translate-y-1/2 -left-8 h-10 rounded-l-lg",
             "bg-background/90 backdrop-blur-md border border-r-0 border-border/50",
-            "flex items-center gap-1.5 px-2 transition-all hover:bg-muted/80",
+            "flex items-center gap-1 px-1.5 transition-all hover:bg-muted/80",
             "shadow-lg",
           )}
           onClick={onClose}
         >
           <Image className="h-4 w-4 text-muted-foreground" />
-          <span className="text-xs font-medium">Photos</span>
           <ChevronRight className={cn("h-4 w-4 transition-transform", !isOpen && "rotate-180")} />
         </button>
       </div>
@@ -1136,36 +1135,6 @@ function PhotoPreviewModal({
         <span>Esc Fermer</span>
       </div>
     </div>
-  );
-}
-
-// Bouton flottant pour ouvrir la sidebar
-export function PhotoGalleryToggle({
-  isOpen,
-  onToggle,
-  photoCount = 0,
-}: {
-  isOpen: boolean;
-  onToggle: () => void;
-  photoCount?: number;
-}) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className={cn(
-        "fixed right-0 top-1/2 -translate-y-1/2 z-30 h-12 rounded-l-lg rounded-r-none",
-        "bg-background/90 backdrop-blur-md border-r-0 border-border/50 shadow-lg",
-        "hover:bg-muted/80 transition-all px-2 gap-1.5",
-        isOpen && "opacity-0 pointer-events-none",
-      )}
-      onClick={onToggle}
-    >
-      <ChevronLeft className="h-4 w-4" />
-      <Image className="h-4 w-4" />
-      <span className="text-xs font-medium">Photos</span>
-      {photoCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-primary/20 text-xs">{photoCount}</span>}
-    </Button>
   );
 }
 
