@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.3 - Fix fermeture accidentelle pendant drag zoom
+// VERSION: 2.4 - Fix modal: overlay séparé, click outside OK
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -881,7 +881,6 @@ function PhotoPreviewModal({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const positionRef = useRef({ x: 0, y: 0 });
-  const hasDraggedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
@@ -932,7 +931,6 @@ function PhotoPreviewModal({
     if (zoom > 1) {
       e.preventDefault();
       setIsDragging(true);
-      hasDraggedRef.current = false;
       dragStartRef.current = { x: e.clientX, y: e.clientY };
       positionRef.current = { ...position };
     }
@@ -943,11 +941,6 @@ function PhotoPreviewModal({
       if (isDragging && zoom > 1) {
         const deltaX = e.clientX - dragStartRef.current.x;
         const deltaY = e.clientY - dragStartRef.current.y;
-
-        // Marquer qu'on a bougé si déplacement > 5px
-        if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
-          hasDraggedRef.current = true;
-        }
 
         const newPosition = {
           x: positionRef.current.x + deltaX,
@@ -969,26 +962,6 @@ function PhotoPreviewModal({
     if (isDragging) {
       setIsDragging(false);
       positionRef.current = { ...position };
-      // Garder le flag pendant 150ms pour bloquer le click qui suit le mouseup
-      setTimeout(() => {
-        hasDraggedRef.current = false;
-      }, 150);
-    }
-  };
-
-  // Gérer le click sur le fond pour fermer
-  const handleBackgroundClick = (e: React.MouseEvent) => {
-    // Ne jamais fermer si on a draggé récemment
-    if (hasDraggedRef.current) {
-      return;
-    }
-    // Ne pas fermer si on est en mode zoom (le click sert à initier un drag)
-    if (zoom > 1) {
-      return;
-    }
-    // Fermer seulement si click direct sur le conteneur (fond noir)
-    if (e.target === containerRef.current) {
-      onClose();
     }
   };
 
@@ -1043,12 +1016,12 @@ function PhotoPreviewModal({
   }, [goToPrev, goToNext, onClose]);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col" onClick={onClose}>
-      {/* Header */}
-      <div
-        className="flex items-center justify-between p-3 bg-black/50 backdrop-blur-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-[60] flex flex-col">
+      {/* Overlay cliquable pour fermer - DERRIERE tout */}
+      <div className="absolute inset-0 bg-black/90" onClick={onClose} />
+
+      {/* Header - AU DESSUS de l'overlay */}
+      <div className="relative z-10 flex items-center justify-between p-3 bg-black/50 backdrop-blur-sm">
         <div className="flex items-center gap-3 min-w-0">
           <Image className="h-5 w-5 text-white/70 flex-shrink-0" />
           <span className="text-sm font-medium text-white truncate">{photo.name}</span>
@@ -1103,26 +1076,16 @@ function PhotoPreviewModal({
         </div>
       </div>
 
-      {/* Zone image avec navigation */}
+      {/* Zone image avec navigation - AU DESSUS de l'overlay mais transparent aux clicks */}
       <div
         ref={containerRef}
-        className="flex-1 relative overflow-hidden flex items-center justify-center"
-        onClick={handleBackgroundClick}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
-        style={{ cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
+        className="relative z-10 flex-1 overflow-hidden flex items-center justify-center pointer-events-none"
       >
         {/* Bouton précédent */}
         {hasPrev && (
           <button
-            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110"
-            onClick={(e) => {
-              e.stopPropagation();
-              goToPrev();
-            }}
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 pointer-events-auto"
+            onClick={goToPrev}
             title="Photo précédente (←)"
           >
             <ChevronLeft className="h-8 w-8" />
@@ -1132,37 +1095,37 @@ function PhotoPreviewModal({
         {/* Bouton suivant */}
         {hasNext && (
           <button
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110"
-            onClick={(e) => {
-              e.stopPropagation();
-              goToNext();
-            }}
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all hover:scale-110 pointer-events-auto"
+            onClick={goToNext}
             title="Photo suivante (→)"
           >
             <ChevronRight className="h-8 w-8" />
           </button>
         )}
 
-        {/* Image */}
+        {/* Image - capte les events pour le drag */}
         <img
           ref={imageRef}
           src={photo.url}
           alt={photo.name}
-          className="max-w-full max-h-full object-contain select-none"
+          className="max-w-full max-h-full object-contain select-none pointer-events-auto"
           style={{
             transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
             willChange: isDragging ? "transform" : "auto",
             transition: isDragging ? "none" : "transform 0.1s ease-out",
+            cursor: zoom > 1 ? (isDragging ? "grabbing" : "grab") : "default",
           }}
           draggable={false}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
         />
       </div>
 
-      {/* Footer avec raccourcis */}
-      <div
-        className="p-2 bg-black/50 backdrop-blur-sm flex items-center justify-center gap-6 text-xs text-white/50"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {/* Footer avec raccourcis - AU DESSUS de l'overlay */}
+      <div className="relative z-10 p-2 bg-black/50 backdrop-blur-sm flex items-center justify-center gap-6 text-xs text-white/50">
         <span>← → Navigation</span>
         <span>+ − Zoom</span>
         <span>0 Reset</span>
