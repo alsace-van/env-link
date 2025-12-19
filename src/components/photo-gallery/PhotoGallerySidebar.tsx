@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 1.4 - Fix sélection: click=cocher, double-click=canvas
+// VERSION: 1.5 - Fix affichage miniatures + fallback erreur
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -123,6 +123,43 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// 🔥 Composant miniature avec fallback sur erreur
+function PhotoThumbnail({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  if (hasError) {
+    return (
+      <div className={cn("flex flex-col items-center justify-center bg-muted/50 text-muted-foreground p-2", className)}>
+        <Image className="h-6 w-6 mb-1 opacity-40" />
+        <span className="text-[8px] text-center truncate w-full">{alt}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("relative", className)}>
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        className={cn("w-full h-full object-contain", isLoading && "opacity-0")}
+        loading="lazy"
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          console.error("❌ Erreur chargement image:", src);
+          setHasError(true);
+          setIsLoading(false);
+        }}
+      />
+    </div>
+  );
+}
+
 export function PhotoGallerySidebar({
   isOpen,
   onClose,
@@ -171,17 +208,32 @@ export function PhotoGallerySidebar({
   const loadPhotos = async () => {
     try {
       const folderPath = projectId ? `${projectId}/` : "";
+      console.log("📷 Chargement photos depuis:", bucketName, folderPath);
+
       const { data, error } = await supabase.storage.from(bucketName).list(folderPath, {
         limit: 100,
         sortBy: { column: "created_at", order: "desc" },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ Erreur liste photos:", error);
+        throw error;
+      }
 
-      const photoFiles = data?.filter((file) => file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)) || [];
+      console.log("📷 Fichiers trouvés:", data?.length, data);
+
+      const photoFiles =
+        data?.filter(
+          (file) => file.name && !file.name.startsWith(".") && file.name.match(/\.(jpg|jpeg|png|gif|webp)$/i),
+        ) || [];
+
+      console.log("📷 Photos filtrées:", photoFiles.length);
 
       const photosWithUrls = photoFiles.map((file) => {
-        const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(`${folderPath}${file.name}`);
+        const filePath = `${folderPath}${file.name}`;
+        const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+
+        console.log("📷 URL générée:", file.name, urlData.publicUrl);
 
         return {
           id: file.id || file.name,
@@ -194,7 +246,12 @@ export function PhotoGallerySidebar({
 
       setPhotos(photosWithUrls);
     } catch (error) {
-      console.error("Erreur chargement photos:", error);
+      console.error("❌ Erreur chargement photos:", error);
+      toast({
+        title: "Erreur de chargement",
+        description: "Impossible de charger les photos. Vérifiez que le bucket existe.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -611,12 +668,7 @@ export function PhotoGallerySidebar({
                         onSelectPhoto(photo.url, photo.name);
                       }}
                     >
-                      <img
-                        src={photo.url}
-                        alt={photo.name}
-                        className="w-full h-full object-contain bg-black/5"
-                        loading="lazy"
-                      />
+                      <PhotoThumbnail src={photo.url} alt={photo.name} className="w-full h-full object-contain" />
 
                       {/* Checkbox de sélection - toujours visible */}
                       <div
@@ -707,7 +759,7 @@ export function PhotoGallerySidebar({
                       </div>
 
                       <div className="w-16 h-12 rounded-md overflow-hidden flex-shrink-0 border border-border/30 bg-muted/30">
-                        <img src={photo.url} alt={photo.name} className="w-full h-full object-contain" loading="lazy" />
+                        <PhotoThumbnail src={photo.url} alt={photo.name} className="w-full h-full object-contain" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{photo.name}</p>
