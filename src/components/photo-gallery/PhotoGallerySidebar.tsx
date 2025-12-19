@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.0 - Modale avancée: navigation, zoom, pan
+// VERSION: 2.1 - Déplacement photo fluide (no transition pendant drag)
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -879,8 +879,10 @@ function PhotoPreviewModal({
   const [zoom, setZoom] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const positionRef = useRef({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   const currentIndex = photos.findIndex((p) => p.id === photo.id);
   const hasPrev = currentIndex > 0;
@@ -905,6 +907,7 @@ function PhotoPreviewModal({
   const resetZoom = () => {
     setZoom(1);
     setPosition({ x: 0, y: 0 });
+    positionRef.current = { x: 0, y: 0 };
   };
 
   // Zoom
@@ -917,41 +920,64 @@ function PhotoPreviewModal({
       const newZoom = Math.max(prev - 0.5, 1);
       if (newZoom === 1) {
         setPosition({ x: 0, y: 0 });
+        positionRef.current = { x: 0, y: 0 };
       }
       return newZoom;
     });
   };
 
-  // Gestion du drag pour déplacement
+  // Gestion du drag pour déplacement - optimisé
   const handleMouseDown = (e: React.MouseEvent) => {
     if (zoom > 1) {
+      e.preventDefault();
       setIsDragging(true);
-      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
+      positionRef.current = { ...position };
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging && zoom > 1) {
-      setPosition({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y,
-      });
-    }
-  };
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (isDragging && zoom > 1) {
+        const deltaX = e.clientX - dragStartRef.current.x;
+        const deltaY = e.clientY - dragStartRef.current.y;
+
+        const newPosition = {
+          x: positionRef.current.x + deltaX,
+          y: positionRef.current.y + deltaY,
+        };
+
+        setPosition(newPosition);
+
+        // Mise à jour directe du style pour fluidité maximale
+        if (imageRef.current) {
+          imageRef.current.style.transform = `scale(${zoom}) translate(${newPosition.x / zoom}px, ${newPosition.y / zoom}px)`;
+        }
+      }
+    },
+    [isDragging, zoom],
+  );
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    if (isDragging) {
+      setIsDragging(false);
+      positionRef.current = { ...position };
+    }
   };
 
   // Zoom avec la molette
-  const handleWheel = (e: React.WheelEvent) => {
+  const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    if (e.deltaY < 0) {
-      zoomIn();
-    } else {
-      zoomOut();
-    }
-  };
+    const delta = e.deltaY > 0 ? -0.25 : 0.25;
+    setZoom((prev) => {
+      const newZoom = Math.max(1, Math.min(5, prev + delta));
+      if (newZoom === 1) {
+        setPosition({ x: 0, y: 0 });
+        positionRef.current = { x: 0, y: 0 };
+      }
+      return newZoom;
+    });
+  }, []);
 
   // Raccourcis clavier
   useEffect(() => {
@@ -1092,11 +1118,14 @@ function PhotoPreviewModal({
 
         {/* Image */}
         <img
+          ref={imageRef}
           src={photo.url}
           alt={photo.name}
-          className="max-w-full max-h-full object-contain select-none transition-transform duration-100"
+          className="max-w-full max-h-full object-contain select-none"
           style={{
             transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
+            willChange: isDragging ? "transform" : "auto",
+            transition: isDragging ? "none" : "transform 0.1s ease-out",
           }}
           draggable={false}
         />
