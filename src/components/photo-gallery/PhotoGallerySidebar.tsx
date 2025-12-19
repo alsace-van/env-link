@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 2.6 - Handle simplifié (icône + flèche uniquement)
+// VERSION: 2.7 - Fix export + handle simplifié
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
