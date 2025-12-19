@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 2.5 - Sélection multiple photos avec coches + drag groupé
+// VERSION: 2.7 - Suppression PhotoGalleryToggle redondant
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -124,6 +124,7 @@ import {
   RotateCw,
   RefreshCw,
   Maximize,
+  Maximize2,
   Minimize,
   ZoomIn,
   ZoomOut,
@@ -183,7 +184,7 @@ import {
   FileUp,
 } from "lucide-react";
 import { toast } from "sonner";
-import { PhotoGallerySidebar, PhotoGalleryToggle } from "@/components/photo-gallery/PhotoGallerySidebar";
+import PhotoGallerySidebar from "@/components/photo-gallery/PhotoGallerySidebar";
 
 // Types
 interface Gamme {
@@ -4096,6 +4097,25 @@ ${block.content}`,
                 <span className="text-amber-700 font-medium">Pellicule</span>
               </Button>
 
+              {/* 🔥 Bouton Centrer le canvas */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => {
+                  if (reactFlowInstanceRef.current) {
+                    reactFlowInstanceRef.current.fitView({
+                      padding: 0.3,
+                      duration: 300,
+                    });
+                  }
+                }}
+                title="Centrer et ajuster la vue"
+              >
+                <Maximize2 className="h-4 w-4 mr-1" />
+                Centrer
+              </Button>
+
               {activeChapterId && (
                 <span className="text-xs text-muted-foreground ml-auto">
                   💡 Double-clic pour éditer • Tirez depuis les points pour connecter
@@ -4138,6 +4158,14 @@ ${block.content}`,
                     onConnect={handleConnect}
                     onInit={(instance) => {
                       reactFlowInstanceRef.current = instance;
+                      // Centrer le canvas avec du padding au chargement
+                      setTimeout(() => {
+                        instance.fitView({
+                          padding: 0.3,
+                          includeHiddenNodes: false,
+                          duration: 300,
+                        });
+                      }, 100);
                     }}
                     onEdgeClick={(_, edge) => {
                       if (confirm("Supprimer cette connexion ?")) {
@@ -4146,6 +4174,10 @@ ${block.content}`,
                     }}
                     nodeTypes={nodeTypes}
                     fitView
+                    fitViewOptions={{
+                      padding: 0.3,
+                      includeHiddenNodes: false,
+                    }}
                     snapToGrid
                     snapGrid={[20, 20]}
                     connectionMode={"loose" as any}
@@ -4165,8 +4197,12 @@ ${block.content}`,
                     panOnDrag={[1, 2]}
                     zoomOnScroll={true}
                     zoomOnPinch={true}
-                    minZoom={0.2}
+                    minZoom={0.1}
                     maxZoom={2}
+                    translateExtent={[
+                      [-2000, -2000],
+                      [5000, 5000],
+                    ]}
                   >
                     <Background gap={20} size={1} />
                     <Controls />
@@ -4996,8 +5032,6 @@ ${block.content}`,
       </AlertDialog>
 
       {/* 🔥 Sidebar pellicule photos */}
-      <PhotoGalleryToggle isOpen={isPhotoSidebarOpen} onToggle={() => setIsPhotoSidebarOpen(!isPhotoSidebarOpen)} />
-
       <PhotoGallerySidebar
         isOpen={isPhotoSidebarOpen}
         onClose={() => setIsPhotoSidebarOpen(false)}
