@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 2.3 - Positionnement intelligent des blocs au centre + groupés
+// VERSION: 2.5 - Sélection multiple photos avec coches + drag groupé
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -183,6 +183,7 @@ import {
   FileUp,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PhotoGallerySidebar, PhotoGalleryToggle } from "@/components/photo-gallery/PhotoGallerySidebar";
 
 // Types
 interface Gamme {
@@ -897,6 +898,9 @@ const MechanicalProcedures = () => {
   const [pdfImportLoading, setPdfImportLoading] = useState(false);
   const [pdfImportProgress, setPdfImportProgress] = useState("");
 
+  // 🔥 Sidebar pellicule photos
+  const [isPhotoSidebarOpen, setIsPhotoSidebarOpen] = useState(false);
+
   // États pour la transcription audio
   const [transcribingBlockId, setTranscribingBlockId] = useState<string | null>(null);
   const [summarizingBlockId, setSummarizingBlockId] = useState<string | null>(null);
@@ -1458,7 +1462,165 @@ const MechanicalProcedures = () => {
     }
   };
 
-  // Mettre à jour un bloc
+  // 🔥 Créer un bloc image depuis le drop de la sidebar photos
+  const handlePhotoDropOnCanvas = useCallback(
+    async (photoUrl: string, photoName: string, screenX: number, screenY: number) => {
+      if (!activeChapterId) {
+        toast.error("Sélectionnez un chapitre d'abord");
+        return;
+      }
+
+      try {
+        // Convertir les coordonnées écran en coordonnées canvas
+        let posX = 100;
+        let posY = 100;
+
+        if (reactFlowInstanceRef.current && reactFlowContainerRef.current) {
+          const containerRect = reactFlowContainerRef.current.getBoundingClientRect();
+          const position = reactFlowInstanceRef.current.screenToFlowPosition({
+            x: screenX,
+            y: screenY,
+          });
+          posX = position.x;
+          posY = position.y;
+        }
+
+        const width = 350;
+        const height = 280;
+
+        const { data, error } = await (supabase as any)
+          .from("mechanical_blocks")
+          .insert({
+            chapter_id: activeChapterId,
+            type: "image",
+            content: "",
+            title: photoName,
+            image_url: photoUrl,
+            position_x: posX,
+            position_y: posY,
+            width: width,
+            height: height,
+            order_index: blocks.length,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setBlocks([...blocks, data]);
+        setSelectedBlockId(data.id);
+
+        toast.success(`Photo "${photoName}" ajoutée au canvas`);
+      } catch (error) {
+        console.error("Erreur création bloc photo:", error);
+        toast.error("Erreur lors de l'ajout de la photo");
+      }
+    },
+    [activeChapterId, blocks],
+  );
+
+  // Handler pour le drop de photos depuis la sidebar (simple ou multiple)
+  const handleCanvasDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+
+      try {
+        const jsonData = e.dataTransfer.getData("application/json");
+        if (!jsonData) return;
+
+        const data = JSON.parse(jsonData);
+
+        // Position du drop
+        const x = e.clientX;
+        const y = e.clientY;
+
+        if (data.type === "photos" && Array.isArray(data.photos)) {
+          // 🔥 Drop multiple - positionner en grille
+          handleMultiplePhotosDrop(data.photos, x, y);
+        } else if (data.type === "photo" && data.url) {
+          // Drop simple
+          handlePhotoDropOnCanvas(data.url, data.name, x, y);
+        }
+      } catch (error) {
+        console.error("Erreur lors du drop:", error);
+      }
+    },
+    [handlePhotoDropOnCanvas],
+  );
+
+  // 🔥 Handler pour le drop de plusieurs photos - positionnées en grille
+  const handleMultiplePhotosDrop = useCallback(
+    async (photos: { url: string; name: string }[], startX: number, startY: number) => {
+      if (!activeChapterId || photos.length === 0) {
+        toast.error("Sélectionnez un chapitre d'abord");
+        return;
+      }
+
+      try {
+        // Convertir les coordonnées écran en coordonnées canvas
+        let baseX = 100;
+        let baseY = 100;
+
+        if (reactFlowInstanceRef.current && reactFlowContainerRef.current) {
+          const position = reactFlowInstanceRef.current.screenToFlowPosition({
+            x: startX,
+            y: startY,
+          });
+          baseX = position.x;
+          baseY = position.y;
+        }
+
+        const photoWidth = 350;
+        const photoHeight = 280;
+        const gap = 20;
+        const cols = 3; // Nombre de colonnes dans la grille
+
+        const newBlocks: ContentBlock[] = [];
+
+        for (let i = 0; i < photos.length; i++) {
+          const photo = photos[i];
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+
+          const posX = baseX + col * (photoWidth + gap);
+          const posY = baseY + row * (photoHeight + gap);
+
+          const { data, error } = await (supabase as any)
+            .from("mechanical_blocks")
+            .insert({
+              chapter_id: activeChapterId,
+              type: "image",
+              content: "",
+              title: photo.name,
+              image_url: photo.url,
+              position_x: posX,
+              position_y: posY,
+              width: photoWidth,
+              height: photoHeight,
+              order_index: blocks.length + i,
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          newBlocks.push(data);
+        }
+
+        setBlocks((prev) => [...prev, ...newBlocks]);
+
+        toast.success(`${photos.length} photo(s) ajoutée(s) au canvas`);
+      } catch (error) {
+        console.error("Erreur création blocs photos:", error);
+        toast.error("Erreur lors de l'ajout des photos");
+      }
+    },
+    [activeChapterId, blocks],
+  );
+
+  const handleCanvasDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
   const handleUpdateBlock = async (blockId: string, updates: Partial<ContentBlock>) => {
     // 🔥 Mettre à jour l'état local IMMÉDIATEMENT (avant l'appel API)
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
@@ -3922,6 +4084,18 @@ ${block.content}`,
                 </span>
               </Button>
 
+              {/* 🔥 Bouton Pellicule Photos */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 bg-gradient-to-r from-amber-50 to-orange-50 hover:from-amber-100 hover:to-orange-100 border-amber-200"
+                onClick={() => setIsPhotoSidebarOpen(true)}
+                title="Ouvrir la pellicule photos"
+              >
+                <Image className="h-4 w-4 mr-1 text-amber-600" />
+                <span className="text-amber-700 font-medium">Pellicule</span>
+              </Button>
+
               {activeChapterId && (
                 <span className="text-xs text-muted-foreground ml-auto">
                   💡 Double-clic pour éditer • Tirez depuis les points pour connecter
@@ -3930,7 +4104,12 @@ ${block.content}`,
             </div>
 
             {/* Canvas React Flow */}
-            <div className="flex-1 relative overflow-hidden" ref={reactFlowContainerRef}>
+            <div
+              className="flex-1 relative overflow-hidden"
+              ref={reactFlowContainerRef}
+              onDrop={handleCanvasDrop}
+              onDragOver={handleCanvasDragOver}
+            >
               {!activeChapterId ? (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground bg-muted/5">
                   <div className="text-center">
@@ -4815,6 +4994,29 @@ ${block.content}`,
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 🔥 Sidebar pellicule photos */}
+      <PhotoGalleryToggle isOpen={isPhotoSidebarOpen} onToggle={() => setIsPhotoSidebarOpen(!isPhotoSidebarOpen)} />
+
+      <PhotoGallerySidebar
+        isOpen={isPhotoSidebarOpen}
+        onClose={() => setIsPhotoSidebarOpen(false)}
+        onSelectPhoto={(url, name) => {
+          // Créer un bloc au centre du canvas visible
+          const centerX = window.innerWidth / 2;
+          const centerY = window.innerHeight / 2;
+          handlePhotoDropOnCanvas(url, name, centerX, centerY);
+          setIsPhotoSidebarOpen(false);
+        }}
+        onSelectMultiplePhotos={(photos) => {
+          // Créer plusieurs blocs en grille au centre du canvas
+          const centerX = window.innerWidth / 2;
+          const centerY = window.innerHeight / 2;
+          handleMultiplePhotosDrop(photos, centerX, centerY);
+          setIsPhotoSidebarOpen(false);
+        }}
+        bucketName="mechanical-photos"
+      />
     </div>
   );
 };
