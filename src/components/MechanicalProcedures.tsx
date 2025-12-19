@@ -1,7 +1,7 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 2.9 - onOpen prop pour PhotoGallerySidebar
+// VERSION: 3.0 - Fix drag-drop photos depuis sidebar
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
@@ -1520,35 +1520,6 @@ const MechanicalProcedures = () => {
     [activeChapterId, blocks],
   );
 
-  // Handler pour le drop de photos depuis la sidebar (simple ou multiple)
-  const handleCanvasDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-
-      try {
-        const jsonData = e.dataTransfer.getData("application/json");
-        if (!jsonData) return;
-
-        const data = JSON.parse(jsonData);
-
-        // Position du drop
-        const x = e.clientX;
-        const y = e.clientY;
-
-        if (data.type === "photos" && Array.isArray(data.photos)) {
-          // 🔥 Drop multiple - positionner en grille
-          handleMultiplePhotosDrop(data.photos, x, y);
-        } else if (data.type === "photo" && data.url) {
-          // Drop simple
-          handlePhotoDropOnCanvas(data.url, data.name, x, y);
-        }
-      } catch (error) {
-        console.error("Erreur lors du drop:", error);
-      }
-    },
-    [handlePhotoDropOnCanvas],
-  );
-
   // 🔥 Handler pour le drop de plusieurs photos - positionnées en grille
   const handleMultiplePhotosDrop = useCallback(
     async (photos: { url: string; name: string }[], startX: number, startY: number) => {
@@ -1618,10 +1589,40 @@ const MechanicalProcedures = () => {
     [activeChapterId, blocks],
   );
 
+  // Handler pour le drop de photos depuis la sidebar (simple ou multiple)
+  const handleCanvasDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+
+      try {
+        const jsonData = e.dataTransfer.getData("application/json");
+        if (!jsonData) return;
+
+        const data = JSON.parse(jsonData);
+
+        // Position du drop
+        const x = e.clientX;
+        const y = e.clientY;
+
+        if (data.type === "photos" && Array.isArray(data.photos)) {
+          // 🔥 Drop multiple - positionner en grille
+          handleMultiplePhotosDrop(data.photos, x, y);
+        } else if (data.type === "photo" && data.url) {
+          // Drop simple
+          handlePhotoDropOnCanvas(data.url, data.name, x, y);
+        }
+      } catch (error) {
+        console.error("Erreur lors du drop:", error);
+      }
+    },
+    [handlePhotoDropOnCanvas, handleMultiplePhotosDrop],
+  );
+
   const handleCanvasDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   }, []);
+
   const handleUpdateBlock = async (blockId: string, updates: Partial<ContentBlock>) => {
     // 🔥 Mettre à jour l'état local IMMÉDIATEMENT (avant l'appel API)
     setBlocks((prev) => prev.map((b) => (b.id === blockId ? { ...b, ...updates } : b)));
@@ -4156,6 +4157,8 @@ ${block.content}`,
                     onEdgesChange={onEdgesChange}
                     onNodeDragStop={handleNodeDragStop}
                     onConnect={handleConnect}
+                    onDrop={handleCanvasDrop}
+                    onDragOver={handleCanvasDragOver}
                     onInit={(instance) => {
                       reactFlowInstanceRef.current = instance;
                     }}
