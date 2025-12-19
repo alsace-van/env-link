@@ -1,6 +1,6 @@
 // ============================================
 // PhotoGallerySidebar.tsx
-// VERSION: 1.8 - Fix miniatures: object-contain = vue complète
+// VERSION: 1.9 - Boutons sélection + loupe aperçu modale
 // Auteur: Claude - VPB Project
 // Date: 2025-12-19
 // Description: Sidebar transparente pour upload et sélection de photos
@@ -23,6 +23,9 @@ import {
   Images,
   StopCircle,
   Loader2,
+  ZoomIn,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,6 +143,7 @@ export function PhotoGallerySidebar({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<Photo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { toast } = useToast();
@@ -371,17 +375,6 @@ export function PhotoGallerySidebar({
     });
   };
 
-  // Sélectionner/Désélectionner tout
-  const toggleSelectAll = () => {
-    if (selectedPhotos.size === filteredPhotos.length) {
-      setSelectedPhotos(new Set());
-      setIsSelectionMode(false);
-    } else {
-      setSelectedPhotos(new Set(filteredPhotos.map((p) => p.id)));
-      setIsSelectionMode(true);
-    }
-  };
-
   // Annuler la sélection
   const clearSelection = () => {
     setSelectedPhotos(new Set());
@@ -486,26 +479,21 @@ export function PhotoGallerySidebar({
             </div>
           </div>
 
-          {/* Barre de sélection */}
-          {isSelectionMode && (
+          {/* Barre de sélection - compteur */}
+          {selectedPhotos.size > 0 && (
             <div className="px-3 py-2 bg-primary/10 border-b border-border/30 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">{selectedPhotos.size} sélectionnée(s)</span>
               </div>
-              <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={toggleSelectAll}>
-                  {selectedPhotos.size === filteredPhotos.length ? "Désélectionner tout" : "Tout sélectionner"}
-                </Button>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearSelection}>
-                  Annuler
-                </Button>
-              </div>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearSelection}>
+                Annuler
+              </Button>
             </div>
           )}
 
-          {/* Zone de recherche */}
-          <div className="p-3 border-b border-border/30">
+          {/* Zone de recherche + boutons sélection */}
+          <div className="p-3 border-b border-border/30 space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -515,6 +503,37 @@ export function PhotoGallerySidebar({
                 className="pl-10 h-9 bg-muted/30 border-border/30 focus:bg-background/50"
               />
             </div>
+
+            {/* Boutons Tout sélectionner / Tout désélectionner */}
+            {filteredPhotos.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs flex-1"
+                  onClick={() => {
+                    setSelectedPhotos(new Set(filteredPhotos.map((p) => p.id)));
+                    setIsSelectionMode(true);
+                  }}
+                >
+                  <CheckSquare className="h-3 w-3 mr-1" />
+                  Tout sélectionner
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs flex-1"
+                  onClick={() => {
+                    setSelectedPhotos(new Set());
+                    setIsSelectionMode(false);
+                  }}
+                  disabled={selectedPhotos.size === 0}
+                >
+                  <Square className="h-3 w-3 mr-1" />
+                  Tout désélectionner
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Zone d'upload drag & drop */}
@@ -671,16 +690,32 @@ export function PhotoGallerySidebar({
                           <p className="text-[10px] text-white truncate font-medium">{photo.name}</p>
                         </div>
 
-                        {/* Bouton supprimer */}
-                        <button
-                          className="absolute top-1 right-1 p-1.5 rounded-md bg-black/50 hover:bg-destructive text-white transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(photo);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {/* Boutons en haut à droite */}
+                        <div className="absolute top-1 right-1 flex items-center gap-1">
+                          {/* Bouton loupe / aperçu */}
+                          <button
+                            className="p-1.5 rounded-md bg-black/50 hover:bg-primary text-white transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPreviewPhoto(photo);
+                            }}
+                            title="Aperçu"
+                          >
+                            <ZoomIn className="h-3 w-3" />
+                          </button>
+
+                          {/* Bouton supprimer */}
+                          <button
+                            className="p-1.5 rounded-md bg-black/50 hover:bg-destructive text-white transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(photo);
+                            }}
+                            title="Supprimer"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Badge sélectionné */}
@@ -742,15 +777,30 @@ export function PhotoGallerySidebar({
                           {formatSize(photo.size || 0)} • {new Date(photo.created_at).toLocaleDateString("fr-FR")}
                         </p>
                       </div>
-                      <button
-                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(photo);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+
+                      {/* Boutons actions */}
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          className="p-1.5 rounded hover:bg-primary/10 hover:text-primary transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewPhoto(photo);
+                          }}
+                          title="Aperçu"
+                        >
+                          <ZoomIn className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(photo);
+                          }}
+                          title="Supprimer"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -793,6 +843,54 @@ export function PhotoGallerySidebar({
           <ChevronRight className={cn("h-4 w-4 transition-transform", !isOpen && "rotate-180")} />
         </button>
       </div>
+
+      {/* 🔥 Modale de prévisualisation */}
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-background rounded-lg overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-3 border-b bg-muted/30">
+              <div className="flex items-center gap-2 min-w-0">
+                <Image className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm font-medium truncate">{previewPhoto.name}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Bouton ajouter au canvas */}
+                <Button
+                  size="sm"
+                  className="h-8"
+                  onClick={() => {
+                    onSelectPhoto(previewPhoto.url, previewPhoto.name);
+                    setPreviewPhoto(null);
+                  }}
+                >
+                  <Images className="h-4 w-4 mr-1" />
+                  Ajouter au canvas
+                </Button>
+                {/* Bouton fermer */}
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPreviewPhoto(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Image */}
+            <div className="bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center p-4 max-h-[calc(90vh-60px)] overflow-auto">
+              <img
+                src={previewPhoto.url}
+                alt={previewPhoto.name}
+                className="max-w-full max-h-[calc(90vh-100px)] object-contain rounded"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
