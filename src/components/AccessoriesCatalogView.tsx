@@ -1,3 +1,10 @@
+/**
+ * AccessoriesCatalogView.tsx
+ * Version: 1.57
+ * Date: 2025-12-20
+ * Description: Vue catalogue des accessoires avec onglets de catégories redesignés
+ */
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -808,25 +815,29 @@ const AccessoriesCatalogView = () => {
             </Button>
           </div>
 
-          {/* Onglets style Excel */}
-          <div className="border rounded-lg overflow-hidden">
+          {/* Onglets style moderne */}
+          <div className="border rounded-xl overflow-hidden shadow-sm">
             {/* Barre d'onglets */}
-            <div className="bg-gray-100 dark:bg-gray-800 border-b overflow-x-auto">
-              <div className="flex items-stretch min-w-max">
+            <div className="bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-850 border-b overflow-x-auto">
+              <div className="flex items-stretch min-w-max gap-1 p-1.5">
                 {/* Onglet Toutes */}
                 <button
                   onClick={() => setActiveTab("__all__")}
                   className={`
-                    px-4 py-2.5 text-sm font-medium border-r transition-all flex items-center gap-2
+                    px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2
                     ${
                       activeTab === "__all__"
-                        ? "bg-white dark:bg-gray-900 text-primary border-b-2 border-b-primary"
-                        : "hover:bg-gray-200 dark:hover:bg-gray-700 text-muted-foreground"
+                        ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/20 -translate-y-px"
+                        : "hover:bg-white/80 dark:hover:bg-gray-700 hover:text-primary hover:shadow-sm text-muted-foreground"
                     }
                   `}
                 >
-                  📋 Toutes
-                  <Badge variant="secondary" className="text-xs">
+                  <FolderOpen className="h-4 w-4" />
+                  Toutes
+                  <Badge
+                    variant={activeTab === "__all__" ? "default" : "secondary"}
+                    className={`text-xs font-semibold ${activeTab === "__all__" ? "bg-primary/90" : "bg-gray-200 dark:bg-gray-600"}`}
+                  >
                     {filteredAccessories.length}
                   </Badge>
                 </button>
@@ -843,21 +854,24 @@ const AccessoriesCatalogView = () => {
                       key={mainCategoryName}
                       onClick={() => setActiveTab(mainCategoryName)}
                       className={`
-                        px-4 py-2.5 text-sm font-medium border-r transition-all whitespace-nowrap flex items-center gap-2
+                        px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap flex items-center gap-2
                         ${
                           isActive
-                            ? "bg-white dark:bg-gray-900 text-primary border-b-2 border-b-primary"
-                            : "hover:bg-gray-200 dark:hover:bg-gray-700 text-muted-foreground"
+                            ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/20 -translate-y-px"
+                            : "hover:bg-white/80 dark:hover:bg-gray-700 hover:text-primary hover:shadow-sm text-muted-foreground"
                         }
                       `}
                     >
                       {hasEmoji ? (
                         <span className="text-base">{group.mainCategoryIcon}</span>
                       ) : (
-                        <CategoryIcon className="h-4 w-4" />
+                        <CategoryIcon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
                       )}
                       {mainCategoryName}
-                      <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
+                      <Badge
+                        variant={isActive ? "default" : "secondary"}
+                        className={`text-xs font-semibold ${isActive ? "bg-primary/90" : "bg-gray-200 dark:bg-gray-600"}`}
+                      >
                         {totalCount}
                       </Badge>
                     </button>
@@ -867,7 +881,7 @@ const AccessoriesCatalogView = () => {
                 {/* Bouton pour gérer les catégories */}
                 <button
                   onClick={() => setIsCategoryManagementOpen(true)}
-                  className="px-3 py-2.5 text-muted-foreground hover:bg-gray-200 dark:hover:bg-gray-700 transition-all flex items-center gap-1"
+                  className="px-3 py-2 rounded-lg text-muted-foreground hover:bg-white/80 dark:hover:bg-gray-700 hover:text-primary hover:shadow-sm transition-all duration-200 flex items-center gap-1"
                   title="Gérer les catégories"
                 >
                   <Settings className="h-4 w-4" />
