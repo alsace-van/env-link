@@ -1,8 +1,8 @@
 /**
  * AccessoryCatalogFormDialog.tsx
- * Version: 1.12
+ * Version: 1.13
  * Date: 2025-12-20
- * Description: Formulaire d'ajout/édition d'accessoire avec type combi (chargeur+convertisseur)
+ * Description: Formulaire avec type combi et champ puissance de charge pour chargeurs/combis
  */
 
 import { useState, useEffect } from "react";
@@ -47,6 +47,7 @@ interface AccessoryCatalogFormDialogProps {
     largeur_mm?: number | null;
     hauteur_mm?: number | null;
     puissance_watts?: number | null;
+    puissance_charge_watts?: number | null;
     intensite_amperes?: number | null;
     capacite_ah?: number | null;
     tension_volts?: number | null;
@@ -74,6 +75,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     largeur_mm: "",
     hauteur_mm: "",
     puissance_watts: "",
+    puissance_charge_watts: "",
     intensite_amperes: "",
     capacite_ah: "",
     tension_volts: "",
@@ -161,6 +163,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           largeur_mm: accessory.largeur_mm?.toString() ?? "",
           hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
           puissance_watts: accessory.puissance_watts?.toString() ?? "",
+          puissance_charge_watts: (accessory as any).puissance_charge_watts?.toString() ?? "",
           intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
           capacite_ah: accessory.capacite_ah?.toString() ?? "",
           tension_volts: accessory.tension_volts?.toString() ?? "",
@@ -226,6 +229,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           largeur_mm: "",
           hauteur_mm: "",
           puissance_watts: "",
+          puissance_charge_watts: "",
           intensite_amperes: "",
           capacite_ah: "",
           tension_volts: "",
@@ -605,6 +609,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          puissance_charge_watts: formData.puissance_charge_watts ? parseFloat(formData.puissance_charge_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
           capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
           tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
@@ -636,6 +641,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           type_electrique: formData.type_electrique || null,
           poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          puissance_charge_watts: formData.puissance_charge_watts ? parseFloat(formData.puissance_charge_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
         })
         .eq("accessory_id", accessory.id);
@@ -666,6 +672,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
           hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
+          puissance_charge_watts: formData.puissance_charge_watts ? parseFloat(formData.puissance_charge_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
           capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
           tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
@@ -1064,7 +1071,13 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="puissance">Puissance (W)</Label>
+              <Label htmlFor="puissance">
+                {formData.type_electrique === "combi"
+                  ? "Puissance convertisseur (W)"
+                  : formData.type_electrique === "chargeur"
+                    ? "Puissance de charge (W)"
+                    : "Puissance (W)"}
+              </Label>
               <Input
                 id="puissance"
                 type="number"
@@ -1072,9 +1085,30 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                 value={formData.puissance_watts}
                 onChange={(e) => handleElectricalChange("puissance_watts", e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 400"
+                placeholder={formData.type_electrique === "combi" ? "Ex: 3000 (sortie AC)" : "Ex: 400"}
               />
             </div>
+
+            {/* Champ puissance de charge - uniquement pour chargeur et combi */}
+            {(formData.type_electrique === "chargeur" || formData.type_electrique === "combi") && (
+              <div className="space-y-2">
+                <Label htmlFor="puissance_charge" className="text-orange-600 dark:text-orange-400">
+                  🔋 Puissance de charge (W)
+                </Label>
+                <Input
+                  id="puissance_charge"
+                  type="number"
+                  step="0.1"
+                  value={formData.puissance_charge_watts}
+                  onChange={(e) => setFormData({ ...formData, puissance_charge_watts: e.target.value })}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  placeholder="Ex: 1200 (230V → batterie)"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Puissance envoyée vers la batterie (utilisée dans le bilan énergétique)
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="intensite">Intensité (A) @ {formData.tension_volts || "12"}V</Label>
